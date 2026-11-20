@@ -204,6 +204,29 @@ describe("bots for any game", function()
     eq(r.seat, 2); eq(r.n, 7); eq(r.src, "seen")
   end)
 
+  it("a bot host starts the next game when engine.over says so with any truthy value", function()
+    require("pick_engine")
+    local E = ns.Engines.pick
+    E.over = function(st) return st.winner and "yes" or nil end
+    local okRun, err = pcall(function()
+      local sim, a, _, bots = setup()
+      local tid = bots:hostTable("pick"); sim:run(3); a:sit(tid, 2); sim:run(4)
+      eq(a.session.status, "live")
+      local results = 0
+      a:on("result", function() results = results + 1 end)
+      for _ = 1, 30 do
+        if results > 0 then break end
+        if a.session.state.turn == 2 then a:playAuto() end
+        sim:run(1)
+      end
+      eq(results, 1)
+      sim:run(3)
+      eq(a.session.state.winner, nil) -- the bot started the next game
+    end)
+    E.over = nil
+    assert(okRun, err)
+  end)
+
   it("hostTable and inviteMe refuse a game that is not built", function()
     local _, _, _, bots = setup()
     eq(bots:hostTable("belot"), nil); eq(bots:inviteMe("holdem"), nil); ok(bots:hostTable()) -- default ttt

@@ -141,6 +141,9 @@ T["table.again"] = "Нова игра"
 T["table.waitingMore"] = "Чакаме още играчи…"
 T["table.pressStart"] = "Всички ли са тук? Натисни „Започни“."
 T["table.waitingHost"] = "Чакаме домакина да започне…"
+T["start.short"] = "Още няма достатъчно играчи."
+T["start.live"] = "Играта още тече."
+T["start.failed"] = "Играта не започна."
 
 -- Морски шах board
 T["ttt.x"] = "Х"

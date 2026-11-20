@@ -81,10 +81,15 @@ function TableFrame.stand()
   ns.MainWindow.show("hall")
 end
 
--- „Започни“ / „Нова игра“: the host starts the next game.
+-- „Започни“ / „Нова игра“: the host starts the next game; a refusal (a click
+-- that lost a race with a player standing up, say) is said on the news line.
 function TableFrame.startGame()
   local client = ns.client
-  if client then client:startGame() end
+  if not client then return end
+  local started, code = client:startGame()
+  if not started then
+    TableFrame.say(L(code == "short" and "start.short" or code == "live" and "start.live" or "start.failed"))
+  end
 end
 
 function TableFrame.invite(name)
@@ -252,13 +257,6 @@ local function renderBoard(v, s, rows)
   if s.state then view.update(board, s) end
 end
 
--- A game is running: live and not over (engine.over, else a known result).
-local function gameRunning(s, engine)
-  if s.status ~= "live" or not s.state then return false end
-  if engine.over then return not engine.over(s.state) end
-  return not (engine.result and engine.result(s.state) ~= nil)
-end
-
 -- Precedence: hostSilent > resynced > aborted > the open table's waiting line.
 -- A host-started table waits for players, then for its host; a game that is
 -- over shows none (the view says who lost).
@@ -273,17 +271,20 @@ local function bannerKey(s, engine)
 end
 
 -- „Започни“ / „Нова игра“: the host of a host-started table while no game
--- runs, enabled with minSeats seated. The news line sits right of it while it
--- is shown, else right of „Покани“.
+-- runs, enabled exactly when Session:canStart (the check of startGame) says
+-- so; right of „Покани“, or of „Стани“ while „Покани“ is hidden. The news
+-- line sits right of it while it is shown, else right of „Покани“.
 local function renderStart(v, s, engine)
-  local shown = s.role == "host" and engine.start == "host" and not gameRunning(s, engine)
+  local can, code = s:canStart()
+  local shown = s.role == "host" and engine.start == "host" and code ~= "live"
   local b = v.startButton
   b:SetShown(shown)
   if shown then
     b.text:SetText(L(s.state and "table.again" or "table.start"))
-    local enabled = s:seatedCount() >= engine.minSeats
-    b:SetEnabled(enabled)
-    b:SetAlpha(enabled and 1 or 0.5)
+    b:SetEnabled(can == true)
+    b:SetAlpha(can and 1 or 0.5)
+    b:ClearAllPoints()
+    b:SetPoint("LEFT", v.inviteButton:IsShown() and v.inviteButton or v.standButton, "RIGHT", 8, 0)
   end
   v.line:ClearAllPoints()
   v.line:SetPoint("LEFT", shown and b or v.inviteButton, "RIGHT", 14, 0)

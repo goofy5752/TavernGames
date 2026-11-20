@@ -141,6 +141,9 @@ T["table.again"] = "New game"
 T["table.waitingMore"] = "Waiting for more players…"
 T["table.pressStart"] = "Is everyone here? Press “Start”."
 T["table.waitingHost"] = "Waiting for the host to start…"
+T["start.short"] = "Not enough players yet."
+T["start.live"] = "The game is still on."
+T["start.failed"] = "The game did not start."
 
 -- Tic-tac-toe board
 T["ttt.x"] = "X"

@@ -256,9 +256,8 @@ describe("ui: table frame, host-started games", function()
     eq(#w:texts("Начално число 100"), 1)
   end)
 
-  it("with a second player „Започни“ starts the game and goes away; after the game it reads „Нова игра“", function()
-    local w, v = drTable()
-    local L, client = w.ns.L, w.ns.client
+  -- „Бот Иванов“ takes my invitation through the „Покани“ picker.
+  local function inviteBot(w, v)
     w:click(v.inviteButton)
     local row
     for _, r in ipairs(v.picker.rows) do
@@ -267,6 +266,12 @@ describe("ui: table frame, host-started games", function()
     assert(row, "no row for the bot in the picker")
     w:click(row.frame)
     w:advance(2)
+  end
+
+  it("with a second player „Започни“ starts the game and goes away; after the game it reads „Нова игра“", function()
+    local w, v = drTable()
+    local L, client = w.ns.L, w.ns.client
+    inviteBot(w, v)
     eq(client.session.seats[2], BOT)
     ok(v.banner:IsVisible(), "no banner"); eq(v.bannerText:GetText(), L("table.pressStart"))
     eq(L("table.pressStart"), "Всички ли са тук? Натисни „Започни“.")
@@ -281,6 +286,51 @@ describe("ui: table frame, host-started games", function()
     ok(v.startButton:IsVisible(), "no Нова игра"); eq(v.startButton.text:GetText(), "Нова игра")
     eq(v.startButton:IsEnabled(), true)
     eq(v.banner:IsVisible(), false) -- the view says who lost
+  end)
+
+  it("„Започни“ is enabled exactly when startGame would start, also for a truthy non-boolean engine.over", function()
+    local w, v = drTable()
+    local client, E = w.ns.client, w.ns.Engines.deathroll
+    local s = client.session
+    local function agrees(label)
+      local can, code = s:canStart()
+      eq(v.startButton:IsShown(), code ~= "live", label .. ": shown")
+      if v.startButton:IsShown() then eq(v.startButton:IsEnabled(), can == true, label .. ": enabled") end
+    end
+    E.over = function(st) return st.phase == "over" and "yes" or nil end
+    local okRun, err = pcall(function()
+      agrees("alone")
+      inviteBot(w, v); agrees("two seated")
+      w:click(v.startButton); w:advance(0); agrees("live")
+      eq(v.startButton:IsShown(), false)
+      s:play(1, { k = "roll", n = 1, max = 100, src = "ask" }); w:advance(0); agrees("over")
+      eq(v.startButton:IsEnabled(), true); eq(v.startButton.text:GetText(), "Нова игра")
+      w:click(v.startButton); w:advance(0)
+      eq(s.state.phase, "play"); eq(v.startButton:IsShown(), false)
+    end)
+    E.over = nil
+    assert(okRun, err)
+  end)
+
+  it("a refused start says why on the news line", function()
+    local w, v = drTable()
+    eq(v.startButton:IsEnabled(), false)
+    w.ns.TableFrame.startGame() -- a click that lost a race: still alone
+    ok(v.line:IsVisible(), "no news line"); eq(v.line:GetText(), "Още няма достатъчно играчи.")
+    eq(w.ns.client.session.status, "open")
+  end)
+
+  it("with every seat taken „Започни“ moves next to „Стани“", function()
+    local w, v = drTable()
+    local s = w.ns.client.session
+    for i = 2, #s.seats do s.seats[i] = "Играч " .. i end
+    w.ns.client.events:emit("session", s); w:advance(0)
+    eq(v.inviteButton:IsShown(), false)
+    local p = v.startButton.points[1]
+    ok(p[2] == v.standButton, "not next to Стани"); eq({ p[1], p[3], p[4], p[5] }, { "LEFT", "RIGHT", 8, 0 })
+    s.seats[5] = false
+    w.ns.client.events:emit("session", s); w:advance(0)
+    ok(v.startButton.points[1][2] == v.inviteButton, "not next to Покани")
   end)
 
   it("a guest at a host-started table sees „Чакаме домакина да започне…“ and no start button", function()

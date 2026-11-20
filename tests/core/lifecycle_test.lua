@@ -66,6 +66,27 @@ describe("game lifecycle", function()
     eq({a:startGame()}, {nil, "live"})
   end)
 
+  it("gameOver: false without a state, any truthy engine.over counts, else a known result", function()
+    local E = Sim.ns.Engines.pick
+    local sim, a, b = clients()
+    local tid = a:openTable{game="pick", access="guild", turn=45}; sim:run(3)
+    local s = a.session
+    eq(s:gameOver(), false); eq({s:canStart()}, {nil, "short"})
+    b:sit(tid, 2); sim:run(1)
+    eq({s:canStart()}, {true}); ok(a:startGame()); sim:run(1)
+    eq(s:gameOver(), false); eq({s:canStart()}, {nil, "live"})
+    E.over = function(st) return st.n[1] > 0 and "yes" or nil end -- truthy, not true
+    local okRun, err = pcall(function()
+      eq(s:gameOver(), false)
+      ok(a:act{k="inc", by=1}); sim:run(1)
+      eq(s:gameOver(), true); eq({s:canStart()}, {true})
+      ok(a:startGame()); sim:run(1); eq(s.state.n, {0, 0, 0, 0})
+    end)
+    E.over = nil
+    assert(okRun, err)
+    eq({b.session:canStart()}, {nil, "nothost"})
+  end)
+
   it("a newcomer waits for the next game; the result is announced once; the winner starts", function()
     local sim, a, b, c, d, tid = running()
     d:sit(tid, 4); sim:run(1)
