@@ -1,0 +1,5 @@
+# Vendored files are stored byte-for-byte as published upstream.
+Libs/** -text
+media/fonts/** -text
+*.ttf binary
+*.tga binary
