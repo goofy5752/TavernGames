@@ -11,10 +11,14 @@ local say = Adapter.say
 
 local PROBE_BYTES = 600 -- packed size of the self-whisper (above 255: AceComm splits it)
 local PROBE_WAIT = 5
--- Reported by presence only; the probe never calls them.
+local ROLL_PROBE_WAIT = 3 -- seconds /tavern probe roll waits for its roll line
+-- Reported by presence only; the probe never calls them (probe roll calls RandomRoll).
 local PROBE_APIS = {
   "InitiateTrade", "C_TradeInfo.SetTradeMoney", "SetSendMailMoney", "SendMail", "issecretvalue", "IsGUIDInGroup",
+  "RandomRoll", "C_PartyInfo.InviteUnit", "InviteUnit", "AcceptGroup", "UnitIsGroupLeader", "StaticPopup_Hide",
 }
+-- /tavern bots host|invite <game>: short names for engine ids.
+local GAME_ALIAS = { dr = "deathroll" }
 local ALPHABET = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 
 local function lookup(path)
@@ -55,8 +59,10 @@ function Slash.probe()
   for i = 1, 5 do samples[i] = tostring(math.random(1, 1000000)) end
   say(L("probe.random", table.concat(samples, " ")))
   say(L("probe.randomseed", type(math.randomseed)))
+  -- "OK"/"-" are diagnostic tokens: was a roll line pattern built from the format?
+  say(L("probe.rollfmt", tostring(RANDOM_ROLL_RESULT), ns.RollChat.pattern(RANDOM_ROLL_RESULT) and "OK" or "-"))
 
-  local p = { id = tostring(GetTime()) .. "-" .. math.random(1, 1000000), instance = inInstance and true or false }
+  local p ={ id = tostring(GetTime()) .. "-" .. math.random(1, 1000000), instance = inInstance and true or false }
   local msg, bytes = { v = C.PROTOCOL, t = "PRB", id = p.id }, 0
   local n = PROBE_BYTES
   repeat
@@ -80,15 +86,40 @@ function Slash.probe()
   end)
 end
 
+-- /tavern probe roll: one server roll 1-100 (the only RandomRoll call besides
+-- „Хвърли“), then what the chat showed of it within ROLL_PROBE_WAIT s.
+function Slash.probeRoll()
+  if type(RandomRoll) ~= "function" then return say(L("probe.api", "RandomRoll", type(RandomRoll))) end
+  local started = GetTime()
+  RandomRoll(1, 100)
+  C_Timer.NewTimer(ROLL_PROBE_WAIT, function()
+    local last = ns.RollChat.last
+    if not last or last.at < started then return say(L("probe.roll.lost")) end
+    local me = ns.client and last.name == ns.client.env.me
+    -- "yes"/"no" are diagnostic tokens: did the roll line's name resolve to me?
+    say(L("probe.roll.ok", last.raw, last.name, me and "yes" or "no"))
+  end)
+end
+
+local function probe(arg)
+  if arg == "roll" then return Slash.probeRoll() end
+  if arg ~= "" then return say(L("slash.help")) end
+  Slash.probe()
+end
+
 local function bots(arg)
-  local action
-  if arg == "host" or arg == "invite" then
+  local verb, game = arg:match("^(%S*)%s*(.-)$")
+  if verb == "host" or verb == "invite" then
+    if game == "" then game = "ttt" end
+    game = GAME_ALIAS[game] or game
+    if not ns.Games.engine(game) then return say(L("bots.nogame")) end
     if not ns.bots then
       local state = Adapter.toggleBots()
       if state == "wait" then return say(L("bots.wait")) end
       say(L("bots.on"))
     end
-    if arg == "host" then action = ns.bots:hostTable() else action = ns.bots:inviteMe() end
+    local action
+    if verb == "host" then action = ns.bots:hostTable(game) else action = ns.bots:inviteMe(game) end
     if not action then say(L("bots.none")) end
     return
   end
@@ -115,7 +146,7 @@ local COMMANDS = {
     ns.db.lang, ns.db.introDone = nil, nil
     say(L("reset.done"))
   end,
-  probe = Slash.probe,
+  probe = probe,
 }
 
 function Slash.run(input)

@@ -36,11 +36,12 @@ T["intro.book.text"] = "Видиш ли ⓘ, кликни на него. Отв�
 -- WoW adapter and /tavern
 T["addon.title"] = "Tavern Games"
 T["hall.noguild"] = "Не си в гилдия. Кръчмата е за хората от гилдията, но можеш да я пробваш с ботове: /tavern bots"
-T["slash.help"] = "Команди: /tavern (залата), /tavern bots [host | invite], /tavern debug, /tavern intro, /tavern reset, /tavern probe"
+T["slash.help"] = "Команди: /tavern (залата), /tavern bots [host | invite] [игра], /tavern debug, /tavern intro, /tavern reset, /tavern probe [roll]"
 T["bots.on"] = "Ботовете влязоха в кръчмата."
 T["bots.off"] = "Ботовете си тръгнаха."
 T["bots.wait"] = "Още разпознавам името ти. Опитай пак след няколко секунди."
 T["bots.none"] = "Всички ботове са заети."
+T["bots.nogame"] = "Тази игра още не е готова."
 T["debug.on"] = "Протоколът се показва в чата (само за теб)."
 T["debug.off"] = "Протоколът вече не се показва."
 T["reset.done"] = "Езикът и въведението са изчистени. Следващото отваряне започва отначало."
@@ -54,6 +55,9 @@ T["probe.randomseed"] = "math.randomseed: %s"
 T["probe.echo.sent"] = "Пратих си шепот от %d байта, чакам го %d с..."
 T["probe.echo.ok"] = "echo OK: %d байта, IsInInstance при пращането: %s, подател: %s"
 T["probe.echo.lost"] = "echo LOST: %d байта, IsInInstance при пращането: %s"
+T["probe.rollfmt"] = "Формат на /roll: %s (шаблон: %s)"
+T["probe.roll.ok"] = "/roll се вижда: „%s“, име „%s“, това съм аз: %s"
+T["probe.roll.lost"] = "/roll не се видя в чата до 3 сек."
 
 -- Main window and hall
 T["tab.hall"] = "Зала"

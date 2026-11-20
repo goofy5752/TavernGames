@@ -57,6 +57,7 @@ locale/en.lua
 
 # WoW
 wow/Adapter.lua
+wow/Rolls.lua
 wow/Slash.lua
 
 # UI

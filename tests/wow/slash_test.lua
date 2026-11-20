@@ -92,6 +92,22 @@ describe("/tavern", function()
     for _, s in ipairs(w.sent) do ok(not mentions(s.msg, BOTS), "a bot name went out for real") end
   end)
 
+  it("bots host <game> opens that game; an unknown game says so", function()
+    local w = guildWow()
+    local c = w.ns.client
+    w:slash("bots host dr"); w:advance(1); eq(c.lobby:tables()[1].game, "deathroll")
+    w:slash("bots host belot"); eq(#w:chatWith(w.ns.L("bots.nogame")), 1); w:advance(1)
+    eq(#c.lobby:tables(), 1)
+    w:slash("bots invite nonsense"); eq(#w:chatWith(w.ns.L("bots.nogame")), 2)
+    w:slash("bots invite deathroll"); w:advance(1)
+    ok(c.invites.received, "no invitation"); eq(c.invites.received.game, "deathroll")
+  end)
+
+  it("bots host with an unknown game does not start the bots", function()
+    local w = guildWow()
+    w:slash("bots host belot"); eq(#w:chatWith(w.ns.L("bots.nogame")), 1); eq(w.ns.bots, nil)
+  end)
+
   it("bots waits while the own name is still unknown", function()
     local w = Wow.new(); w.inGuild = true; w:boot()
     w:slash("bots")
@@ -129,6 +145,30 @@ describe("/tavern probe", function()
     eq(#w.sent, sent + 1)
     local p = w.sent[#w.sent]
     eq(p.dist, "WHISPER"); eq(p.target, ME); eq(p.msg.t, "PRB"); ok(#p.text >= 600, "packed only " .. #p.text)
+  end)
+
+  it("probe lists the roll and party API and the roll format; probe roll reports what the chat showed", function()
+    local w = guildWow()
+    local L = w.ns.L
+    w:slash("probe"); eq(#w:chatWith("RandomRoll: function"), 1); eq(#w:chatWith("AcceptGroup: function"), 1)
+    eq(#w:chatWith("C_PartyInfo.InviteUnit: function"), 1); eq(#w:chatWith("InviteUnit: nil"), 1)
+    eq(#w:chatWith("UnitIsGroupLeader: function"), 1); eq(#w:chatWith("StaticPopup_Hide: function"), 1)
+    eq(#w:chatWith(L("probe.rollfmt", "%s rolls %d (%d-%d)", "OK")), 1); eq(#w.rolls, 0)
+    w:slash("probe roll"); eq(w.rolls, { { 1, 100 } }); w:fire("CHAT_MSG_SYSTEM", "Иван rolls 64 (1-100)"); w:advance(3)
+    eq(#w:chatWith("Иван rolls 64 (1-100)"), 1)
+    eq(#w:chatWith(L("probe.roll.ok", "Иван rolls 64 (1-100)", ME, "yes")), 1)
+    w:slash("probe roll"); w:advance(3); eq(#w:chatWith(L("probe.roll.lost")), 1)
+    eq(#w.rolls, 2)
+  end)
+
+  it("probe shows '-' for a roll format it cannot use", function()
+    local w = Wow.new()
+    w.G.RANDOM_ROLL_RESULT = "%s rolls"
+    w.inGuild = true
+    w.roster = { { name = ME .. "-Forever", online = true, guid = Wow.GUID } }
+    w:boot(); w:fire("GUILD_ROSTER_UPDATE")
+    w:slash("probe"); eq(#w:chatWith(w.ns.L("probe.rollfmt", "%s rolls", "-")), 1)
+    eq(w.ns.RollChat.parse("Иван rolls 64 (1-100)"), nil)
   end)
 
   it("reports echo OK with the instance flag at send time when the whisper comes back", function()

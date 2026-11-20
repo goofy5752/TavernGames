@@ -53,6 +53,8 @@ function Wow.new(opts)
     clock = 0, timers = {}, seq = 0, frames = {}, sent = {}, chat = {}, filters = {},
     roster = {}, rosterRequests = 0, inGuild = false, combat = false, instance = false,
     dnd = false, group = {}, money = 0, icons = {}, sounds = {}, reloads = 0,
+    rolls = {}, groupInvites = {}, accepted = 0, popupsHidden = {},
+    party = { grouped = false, leader = false, raid = false, size = 0 },
   }, Wow)
   local G = {}
   for _, name in ipairs(BUILTINS) do G[name] = _G[name] end
@@ -107,6 +109,16 @@ function Wow.new(opts)
   G.DEFAULT_CHAT_FRAME = { AddMessage = function(_, text) self.chat[#self.chat + 1] = text end }
   G.ERR_CHAT_PLAYER_NOT_FOUND_S = "No player named '%s' is currently playing."
   G.ERR_FRIEND_OFFLINE_S = "%s has gone offline."
+  G.RANDOM_ROLL_RESULT = "%s rolls %d (%d-%d)"
+  G.RandomRoll = function(lo, hi) self.rolls[#self.rolls + 1] = { lo, hi } end
+  G.C_PartyInfo = { InviteUnit = function(name) self.groupInvites[#self.groupInvites + 1] = name end }
+  G.AcceptGroup = function() self.accepted = self.accepted + 1 end
+  G.StaticPopup_Hide = function(which) self.popupsHidden[#self.popupsHidden + 1] = which end
+  -- My own group, from w.party = {grouped, leader, raid, size}.
+  G.IsInGroup = function() return self.party.grouped end
+  G.IsInRaid = function() return self.party.raid end
+  G.UnitIsGroupLeader = function(unit) return unit == "player" and self.party.leader end
+  G.GetNumGroupMembers = function() return self.party.size end
   G.RAID_CLASS_COLORS = { MAGE = { r = 0.25, g = 0.78, b = 0.92 } }
   G.SOUNDKIT = { TELL_MESSAGE = 3081 }
   G.PlaySound = function(id, channel) self.sounds[#self.sounds + 1] = { id, channel } end
@@ -154,7 +166,9 @@ function Wow.new(opts)
     -- From here on, reading a global the fake does not define is an error: it
     -- catches a WoW API the fake lacks and a misspelt or out-of-scope local.
     -- Globals that may be absent in the game too (saved variables, optional APIs).
-    local optional = { TavernGamesDB = true, CUSTOM_CLASS_COLORS = true, SOUNDKIT = true }
+    local optional = {
+      TavernGamesDB = true, CUSTOM_CLASS_COLORS = true, SOUNDKIT = true, issecretvalue = true, InviteUnit = true,
+    }
     setmetatable(G, { __index = function(_, k)
       if optional[k] then return nil end
       error("undefined global " .. tostring(k), 2)

@@ -36,11 +36,12 @@ T["intro.book.text"] = "See an ⓘ? Click it. The rules book opens, with simple 
 -- WoW adapter and /tavern
 T["addon.title"] = "Tavern Games"
 T["hall.noguild"] = "You are not in a guild. The tavern is for guild members, but you can try it with bots: /tavern bots"
-T["slash.help"] = "Commands: /tavern (the hall), /tavern bots [host | invite], /tavern debug, /tavern intro, /tavern reset, /tavern probe"
+T["slash.help"] = "Commands: /tavern (the hall), /tavern bots [host | invite] [game], /tavern debug, /tavern intro, /tavern reset, /tavern probe [roll]"
 T["bots.on"] = "The bots came into the tavern."
 T["bots.off"] = "The bots left."
 T["bots.wait"] = "Still finding out your name. Try again in a few seconds."
 T["bots.none"] = "All bots are busy."
+T["bots.nogame"] = "This game is not ready yet."
 T["debug.on"] = "The protocol is shown in chat (only to you)."
 T["debug.off"] = "The protocol is no longer shown."
 T["reset.done"] = "Language and intro are cleared. The next opening starts from the beginning."
@@ -54,6 +55,9 @@ T["probe.randomseed"] = "math.randomseed: %s"
 T["probe.echo.sent"] = "Sent myself a %d-byte whisper, waiting %d s..."
 T["probe.echo.ok"] = "echo OK: %d bytes, IsInInstance at send: %s, sender: %s"
 T["probe.echo.lost"] = "echo LOST: %d bytes, IsInInstance at send: %s"
+T["probe.rollfmt"] = "/roll format: %s (pattern: %s)"
+T["probe.roll.ok"] = "/roll is visible: \"%s\", name \"%s\", this is me: %s"
+T["probe.roll.lost"] = "/roll did not show up in chat within 3 s."
 
 -- Main window and hall
 T["tab.hall"] = "Hall"

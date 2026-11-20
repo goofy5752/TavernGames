@@ -56,18 +56,25 @@ function Adapter.priority(msg)
   return "NORMAL"
 end
 
+-- `text` with every Lua pattern magic character escaped: it matches itself.
+-- The one copy of that rule (wow/Rolls.lua uses it too).
+function Adapter.escape(text)
+  return (text:gsub("([%^%$%(%)%.%[%]%*%+%-%?%%])", "%%%1"))
+end
+
 -- A Lua pattern for the text string.format(fmt, name) gives; captures the name.
 function Adapter.pattern(fmt)
   if type(fmt) ~= "string" then return nil end
-  local p = fmt:gsub("([%^%$%(%)%.%[%]%*%+%-%?%%])", "%%%1")
-  p = p:gsub("%%%%s", "(.+)")
+  local p = Adapter.escape(fmt):gsub("%%%%s", "(.+)")
   return "^" .. p .. "$"
 end
 
--- The player name in a system line's capture, which may be a player link.
+-- The player name in a system line's capture, which may be a player link
+-- (normalized). The one copy of the link strip (wow/Rolls.lua uses it too).
 local function nameIn(captured)
   return Names.normalize(captured:match("|Hplayer:([^:|]+)") or captured)
 end
+Adapter.nameIn = nameIn
 
 local function match(pattern, text)
   if not pattern or type(text) ~= "string" then return nil end
@@ -145,12 +152,14 @@ local function inGroup(guid)
 end
 
 -- A bot's env (Bots.spawn replaces send); bots keep their settings in memory.
+-- Of the roll and group calls a bot has only env.random (see ns.RollChat.env).
 function Adapter.botEnv(name, cls)
   local env = baseEnv(name, "Bot-" .. name, cls)
   env.send = function() end
   env.status = function() return { combat = false, instance = false, busy = false } end
   env.inGroup = function() return false end
   env.db = { introDone = true, busy = false, snoozeUntil = 0, debug = false, minimap = { hide = true } }
+  ns.RollChat.env(env, true)
   return env
 end
 
@@ -166,6 +175,7 @@ function Adapter.createClient(name, send)
   local _, cls = UnitClass("player")
   local env = baseEnv(name, UnitGUID("player"), cls)
   env.send, env.status, env.inGroup, env.db, env.log = send, status, inGroup, ns.db, Adapter.log
+  ns.RollChat.env(env, false)
   local client = ns.Client.new(env)
   ns.client, Adapter.env = client, env
   local queue = readyQueue
