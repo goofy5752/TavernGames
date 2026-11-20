@@ -1,17 +1,24 @@
 local _, ns = ...
 
 -- „Нова маса“: the game, the stake (stage 1: only „Само за удоволствие“), who
--- may sit (Всеки от гилдията / Само поканени / Групата ми) and the turn time
--- (30/45/60/90 s, 45 preselected). „Отвори“ → client:openTable.
+-- may sit (Всеки от гилдията / Само поканени / Групата ми), the turn time
+-- (30/45/60/90 s, 45 preselected) and one row per option of the game's engine
+-- (E.options, the default preselected). „Отвори“ → client:openTable.
 local Theme, W, L, C = ns.Theme, ns.W, ns.L, ns.Const
 
-local D = {}
+local D = {
+  options = {}, -- option id -> choice group, for the game the dialog is open on
+}
 ns.NewTableDialog = D
 
 local WIDTH, HEIGHT, EDGE = 400, 330, 12
 local LABEL_X, VALUE_X = 24, 170
+local OPTION_H = 34 -- one row per engine option, below the turn row
+local CHOICE_GAP, RIGHT_MARGIN = 10, 24
 
 local ACCESS = { "guild", "invite", "group" }
+
+local optionSets = {} -- game id -> {frame, groups = {id -> group}, width}
 
 -- A group of radio options; `group.value` is the chosen one.
 local function choiceGroup()
@@ -23,9 +30,9 @@ local function choiceGroup()
   return group
 end
 
+-- One radio option `width` px wide (nil: as wide as its text).
 local function addOption(group, parent, text, value, x, y, width)
   local b = CreateFrame("Button", nil, parent)
-  b:SetSize(width, 20)
   b:SetPoint("TOPLEFT", parent, "TOPLEFT", x, y)
   b:RegisterForClicks("LeftButtonUp")
   local ring = b:CreateTexture(nil, "ARTWORK")
@@ -39,6 +46,7 @@ local function addOption(group, parent, text, value, x, y, width)
   dot:SetVertexColor(Theme.rgb("gold"))
   local fs = W.Label(b, "ui", text, 13)
   fs:SetPoint("LEFT", ring, "RIGHT", 6, 0)
+  b:SetSize(width or (22 + fs:GetStringWidth()), 20)
   local o = { frame = b, text = fs, value = value, dot = dot }
   b:SetScript("OnClick", function() group.set(value) end)
   group.options[#group.options + 1] = o
@@ -51,13 +59,46 @@ local function rowLabel(f, key, y)
   return fs
 end
 
+-- The option rows of game `id` (built once, on a layer over the dialog).
+local function optionSet(id)
+  if optionSets[id] then return optionSets[id] end
+  local engine = ns.Games.engine(id)
+  local frame = CreateFrame("Frame", nil, D.frame)
+  frame:SetAllPoints(D.frame)
+  local options = engine and engine.options or {}
+  local set = { frame = frame, groups = {}, width = WIDTH, count = #options }
+  for i, o in ipairs(options) do
+    local y = D.optionsY - (i - 1) * OPTION_H
+    rowLabel(frame, "opt." .. id .. "." .. o.id, y)
+    local group, x = choiceGroup(), VALUE_X
+    group.default = o.default
+    for _, value in ipairs(o.choices) do
+      local choice = addOption(group, frame, tostring(value), value, x, y)
+      x = x + choice.frame:GetWidth() + CHOICE_GAP
+    end
+    set.width = math.max(set.width, x - CHOICE_GAP + RIGHT_MARGIN)
+    set.groups[o.id] = group
+  end
+  optionSets[id] = set
+  return set
+end
+
+-- Sizes the dialog and its wood to `w` x `h`.
+local function resize(w, h)
+  D.frame:SetSize(w, h)
+  D.wood:SetTexCoord(0, (w - 8) / Theme.texSize.wood, 0, (h - 8) / Theme.texSize.wood)
+  D.error:SetWidth(w - 48)
+end
+
 local function submit()
   local client = ns.client
   if not client then
     D.error:SetText(L(ns.noGuild and "hall.noguild" or "hall.wait"))
     return
   end
-  local tid, code = client:openTable{ game = D.gameId, access = D.access.value, turn = D.turn.value }
+  local opt = {}
+  for id, group in pairs(D.options) do opt[id] = group.value end
+  local tid, code = client:openTable{ game = D.gameId, access = D.access.value, turn = D.turn.value, opt = opt }
   if tid then
     D.frame:Hide()
   else
@@ -77,6 +118,7 @@ local function build()
   local wood = W.tile(f, Theme.tex.wood, Theme.texSize.wood, WIDTH - 8, HEIGHT - 8)
   wood:SetPoint("TOPLEFT", f, "TOPLEFT", 4, -4)
   wood:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -4, 4)
+  D.wood = wood
   W.nine(f, Theme.tex.frame, Theme.texSize.frame, EDGE, EDGE, "BORDER", true)
 
   local title = W.Label(f, "heading", L("dialog.title"), 18)
@@ -106,6 +148,7 @@ local function build()
   for i, s in ipairs(C.TURN_CHOICES) do
     addOption(D.turn, f, L("dialog.seconds", s), s, VALUE_X + (i - 1) * 54, y, 52)
   end
+  D.optionsY = y - OPTION_H
 
   D.error = W.Label(f, "ui", "", 13)
   D.error:SetTextColor(Theme.rgb("oMark"))
@@ -126,11 +169,16 @@ end
 function D.open(gameId)
   if not D.frame then build() end
   D.gameId = gameId or "ttt"
-  local key = "game." .. D.gameId
-  D.game:SetText(L(key))
+  D.game:SetText(W.gameName(D.gameId))
   D.stake.set("none")
   D.access.set("guild")
   D.turn.set(C.TURN_DEFAULT)
+  for id, set in pairs(optionSets) do set.frame:SetShown(id == D.gameId) end
+  local set = optionSet(D.gameId)
+  set.frame:Show()
+  D.options = set.groups
+  for _, group in pairs(D.options) do group.set(group.default) end
+  resize(set.width, HEIGHT + OPTION_H * set.count)
   D.error:SetText("")
   D.frame:Show()
 end

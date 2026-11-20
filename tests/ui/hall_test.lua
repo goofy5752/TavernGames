@@ -21,10 +21,10 @@ local function hi(w, name, cls, at)
   w:advance(0) -- the hall redraws on the next frame
 end
 
-local function tbl(w, host, seats, state)
+local function tbl(w, host, seats, state, game)
   local tid = host .. "#1"
   w:member(host)
-  w:deliver("GUILD", host, { v = 1, t = "TBL", tid = tid, g = "ttt", h = host, e = 1, ac = "guild", tn = 45,
+  w:deliver("GUILD", host, { v = 1, t = "TBL", tid = tid, g = game or "ttt", h = host, e = 1, ac = "guild", tn = 45,
                              st = state or "open", s = seats or { host, false }, w = 0 })
   w:advance(0)
   return tid
@@ -145,19 +145,33 @@ describe("ui: main window", function()
 end)
 
 describe("ui: hall", function()
-  it("lists six games: Морски шах active, the other five dimmed with „Скоро“", function()
+  it("lists six games: Морски шах and Death Roll active, the other four dimmed with „Скоро“", function()
     local w = guildWow()
     w.ns.MainWindow.show()
     local games = w.ns.Hall.view.games
     eq(#games, 6)
-    eq(games[1].id, "ttt"); eq(games[1].frame:GetAlpha(), 1); eq(games[1].soon:IsVisible(), false)
+    eq({ games[1].id, games[2].id, games[3].id, games[6].id }, { "ttt", "deathroll", "santase", "holdem" })
     eq(games[1].name:GetText(), "Морски шах")
-    for i = 2, 6 do
+    for i = 1, 2 do eq(games[i].frame:GetAlpha(), 1); eq(games[i].soon:IsVisible(), false) end
+    for i = 3, 6 do
       ok(games[i].frame:GetAlpha() < 1, "not dimmed: " .. games[i].id)
       ok(games[i].soon:IsVisible(), "no Скоро: " .. games[i].id); eq(games[i].soon:GetText(), "Скоро")
     end
-    w:click(games[1].frame)
+    eq(#w:texts("2–5 играчи"), 1)
+    w:click(games[2].frame)
     ok(w.ns.NewTableDialog.frame:IsVisible(), "dialog not open")
+    eq(w.ns.NewTableDialog.gameId, "deathroll")
+  end)
+
+  it("a dimmed game opens the rules book on „soon“; „Отвори маса“ opens the first active game", function()
+    local w = guildWow()
+    local opened = {}
+    w.ns.HelpBook = { open = function(id) opened[#opened + 1] = id end }
+    w.ns.MainWindow.show()
+    w:click(w.ns.Hall.view.games[3].frame)
+    eq(opened, { "soon" })
+    w:click(w.ns.Hall.view.openButton)
+    eq(w.ns.NewTableDialog.gameId, "ttt")
   end)
 
   it("an empty hall says so", function()
@@ -268,6 +282,46 @@ describe("ui: hall", function()
     list.scripts.OnMouseWheel(list, 1); eq(list:GetVerticalScroll(), 0)
   end)
 
+  it("a five-seat table shows five chairs without name labels; the list shows 2/5", function()
+    local w = guildWow()
+    w.ns.MainWindow.show()
+    local view = w.ns.Hall.view
+    local tid = tbl(w, B, { B, "Kiro Barley", false, false, false }, "open", "deathroll")
+    eq(w.ns.Hall.mode, "floor")
+    local t = view.tables[1]
+    eq(t.tid, tid); eq(t.game:GetText(), "Death Roll")
+    local shown, enabled, labels = 0, 0, 0
+    for _, c in ipairs(t.chairs) do
+      if c.button:IsVisible() then shown = shown + 1 end
+      if c.button:IsVisible() and c.button:IsEnabled() then enabled = enabled + 1 end
+      if c.label:IsVisible() then labels = labels + 1 end
+    end
+    eq({ shown, enabled, labels }, { 5, 3, 0 })
+    w:hover(t.top)
+    eq({ w.G.GameTooltip.lines[2], w.G.GameTooltip.lines[3] }, { B, "Kiro Barley" })
+    for i = 1, 8 do tbl(w, "Гост " .. i) end
+    eq(w.ns.Hall.mode, "list")
+    local row
+    for _, r in ipairs(view.rows) do
+      if r.frame:IsVisible() and r.tid == tid then row = r end
+    end
+    ok(row, "no row for the Death Roll table"); eq(row.seats:GetText(), "2/5")
+  end)
+
+  it("a table of a game this client does not have is named „Непозната игра“ and a chair click is refused", function()
+    local w = guildWow()
+    w.ns.MainWindow.show()
+    eq(w.ns.L("game.unknown"), "Непозната игра")
+    local tid = tbl(w, B, { B, false }, "open", "|TInterface\\Icons\\x:16|t")
+    local t = w.ns.Hall.view.tables[1]
+    eq(t.tid, tid)
+    eq(#w:texts("Непозната игра"), 1); eq(#w:texts("|T"), 0)
+    local sent = #w.sent
+    w:click(t.chairs[2].button)
+    eq(w.ns.Hall.view.footer:GetText(), w.ns.L("refused.version"))
+    eq(#w.sent, sent)
+  end)
+
   it("„В кръчмата сега“ lists names in class color and where they are", function()
     local w = guildWow()
     w.ns.MainWindow.show()
@@ -359,6 +413,34 @@ describe("ui: new-table dialog", function()
     eq(D.frame:IsShown(), false)
     w:advance(0)
     eq(w.ns.Hall.view.tables[1].tid, s.tid)
+  end)
+
+  it("the Death Roll dialog offers the start number, 1000 preselected, and opens with the chosen one", function()
+    local w = guildWow()
+    w.ns.MainWindow.show()
+    local D = w.ns.NewTableDialog
+    D.open("deathroll")
+    eq(D.game:GetText(), "Death Roll")
+    eq(#w:texts("Начално число"), 1)
+    local g = D.options.start
+    eq(#g.options, 4); eq(g.value, 1000); eq(g.options[4].text:GetText(), "100000")
+    eq(D.frame:GetHeight(), 364)
+    w:click(g.options[3].frame)
+    w:click(D.openButton)
+    local s = w.ns.client.session
+    ok(s, "no table"); eq(s.game, "deathroll"); eq(s.opt, { start = 10000 }); eq(#s.seats, 5)
+  end)
+
+  it("the Морски шах dialog has no option row", function()
+    local w = guildWow()
+    w.ns.MainWindow.show()
+    local D = w.ns.NewTableDialog
+    D.open("deathroll"); D.open("ttt")
+    eq(next(D.options), nil)
+    eq(D.frame:GetHeight(), 330)
+    eq(#w:texts("Начално число"), 0)
+    D.open("deathroll")
+    eq(D.frame:GetHeight(), 364); eq(#w:texts("Начално число"), 1); eq(D.options.start.value, 1000)
   end)
 
   it("opening while already at a table shows the busy refusal and keeps the dialog", function()

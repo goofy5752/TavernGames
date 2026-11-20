@@ -65,6 +65,7 @@ ui/Theme.lua
 ui/Widgets.lua
 ui/MainWindow.lua
 ui/NewTableDialog.lua
+ui/HallPeers.lua
 ui/Hall.lua
 ui/Minimap.lua
 ui/TableFrame.lua

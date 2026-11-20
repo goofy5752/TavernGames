@@ -114,13 +114,17 @@ function W.colored(client, name, text)
   return W.paint(text or name, W.nameColor(client, name))
 end
 
--- The display name of a game id (the id itself when it has no locale entry).
+-- The display name of a game id; „Непозната игра“ for an id without a locale
+-- entry (the id comes off the wire, so it is never shown as it is).
 function W.gameName(id)
   local key = "game." .. tostring(id)
   local s = L(key)
-  if s == key then return tostring(id) end
+  if s == key then return L("game.unknown") end
   return s
 end
+
+-- The first word of a player's name ("Иван Петров" -> "Иван").
+function W.firstWord(name) return ns.Names.first(name) end
 
 -- A `px` wide line along each side of `frame`, tinted by setColor(r, g, b, a).
 -- Returns {top, bottom, left, right, setColor}.
