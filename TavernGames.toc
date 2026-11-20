@@ -43,5 +43,7 @@ locale/bg.lua
 locale/en.lua
 
 # WoW
+wow/Adapter.lua
+wow/Slash.lua
 
 # UI
