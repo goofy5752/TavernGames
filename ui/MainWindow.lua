@@ -31,16 +31,25 @@ local function refreshGold()
   if MainWindow.gold then MainWindow.gold:SetText(ns.Util.money(GetMoney())) end
 end
 
+-- Keys go on to the game again after an Escape held them (`keysHeld`).
+local function release(f)
+  f.keysHeld = nil
+  f:SetPropagateKeyboardInput(true)
+end
+
 -- Escape closes the window; every other key goes on to the game. Out of combat
 -- only: SetPropagateKeyboardInput may be protected in combat, where Escape just
--- closes the window and still reaches the game.
+-- closes the window and still reaches the game. The keys held for the Escape are
+-- released on the next frame, or at PLAYER_REGEN_DISABLED if combat starts
+-- first (the lockdown begins after that event), so they are never held in combat.
 local function onKeyDown(self, key)
   if key == "ESCAPE" then
     if not inCombat() then
       self:SetPropagateKeyboardInput(false)
+      self.keysHeld = true
       -- Hand the keyboard back once this key press is over.
       C_Timer.After(0, function()
-        if not inCombat() then self:SetPropagateKeyboardInput(true) end
+        if self.keysHeld and not inCombat() then release(self) end
       end)
     end
     self:Hide()
@@ -64,8 +73,23 @@ local function onEvent(self, event)
     refreshGold()
   elseif event == "PLAYER_REGEN_ENABLED" then
     takeKeyboard(self)
-    self:SetPropagateKeyboardInput(true)
+    release(self)
+  elseif event == "PLAYER_REGEN_DISABLED" then
+    -- Still allowed here: the lockdown starts after this event.
+    if self.keyboardReady then release(self) end
   end
+end
+
+-- Out of combat the window always starts by passing keys on. Should keys still
+-- be held in combat (no PLAYER_REGEN_DISABLED seen), it does not open: it would
+-- swallow every key until combat ends.
+local function onShow(self)
+  if inCombat() then
+    if self.keysHeld then return self:Hide() end
+  else
+    release(self)
+  end
+  refreshGold()
 end
 
 local function styleTab(id)
@@ -171,11 +195,9 @@ local function build()
 
   f:RegisterEvent("PLAYER_MONEY")
   f:RegisterEvent("PLAYER_REGEN_ENABLED")
+  f:RegisterEvent("PLAYER_REGEN_DISABLED")
   f:SetScript("OnEvent", onEvent)
-  f:SetScript("OnShow", function(self)
-    if not inCombat() then self:SetPropagateKeyboardInput(true) end
-    refreshGold()
-  end)
+  f:SetScript("OnShow", onShow)
   f:Hide()
   layoutTabs()
 end

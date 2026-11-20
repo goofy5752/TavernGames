@@ -80,6 +80,30 @@ describe("ui: main window", function()
     eq(MW.frame:IsShown(), false); eq(MW.frame.propagate, before)
   end)
 
+  it("Escape, then combat before the next frame: keys are handed back before the lockdown", function()
+    local w = guildWow()
+    local MW = w.ns.MainWindow
+    MW.show()
+    w:key(MW.frame, "ESCAPE"); eq(MW.frame.propagate, false)
+    -- PLAYER_REGEN_DISABLED fires before InCombatLockdown() turns true
+    w:fire("PLAYER_REGEN_DISABLED"); w.combat = true
+    eq(MW.frame.propagate, true)
+    w:advance(0); MW.show()
+    ok(MW.frame:IsShown(), "not reopened"); eq(MW.frame.propagate, true)
+    w:key(MW.frame, "W"); eq(MW.frame.propagate, true)
+  end)
+
+  it("keys still held in combat (no PLAYER_REGEN_DISABLED seen): it does not open until combat ends", function()
+    local w = guildWow()
+    local MW = w.ns.MainWindow
+    MW.show()
+    w:key(MW.frame, "ESCAPE"); w.combat = true; w:advance(0)
+    eq(MW.frame.propagate, false)
+    MW.show(); eq(MW.frame:IsShown(), false)
+    w.combat = false; w:fire("PLAYER_REGEN_ENABLED"); eq(MW.frame.propagate, true)
+    MW.show(); ok(MW.frame:IsShown(), "not reopened")
+  end)
+
   it("built in combat, it takes the keyboard only once combat ends", function()
     local w = guildWow()
     local MW = w.ns.MainWindow
