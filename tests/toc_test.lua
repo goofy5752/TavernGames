@@ -42,3 +42,28 @@ describe("toc", function()
     ok(true)
   end)
 end)
+
+describe(".pkgmeta", function()
+  it("pins every external to the tag recorded in LICENSE-THIRD-PARTY.md", function()
+    local f = assert(io.open("LICENSE-THIRD-PARTY.md", "r"))
+    local license = f:read("*a")
+    f:close()
+    local tags, current = {}, nil
+    for line in io.lines(".pkgmeta") do
+      line = line:gsub("\r", "")
+      local path = line:match("^  (Libs/[^:]+):%s*$")
+      if path then current = path end
+      local tag = line:match("^    tag:%s*(%S+)%s*$")
+      if tag and current then tags[current] = tag end
+    end
+    local expected = {
+      ["Libs/LibStub"] = "Release-r1403", ["Libs/CallbackHandler-1.0"] = "Release-r1403",
+      ["Libs/AceAddon-3.0"] = "Release-r1403", ["Libs/AceComm-3.0"] = "Release-r1403",
+      ["Libs/AceSerializer-3.0"] = "Release-r1403", ["Libs/AceDB-3.0"] = "Release-r1403",
+      ["Libs/LibDeflate"] = "1.0.2-release", ["Libs/LibDataBroker-1.1"] = "v1.1.4",
+      ["Libs/LibDBIcon-1.0"] = "v12.1.2",
+    }
+    eq(tags, expected)
+    for _, tag in pairs(tags) do ok(license:find(tag, 1, true), "tag not in LICENSE-THIRD-PARTY.md: " .. tag) end
+  end)
+end)

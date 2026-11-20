@@ -99,7 +99,7 @@ Stage 1 presentation of stage 2 features: the tabs **Класация / Тефт
 | `t` | chan | fields | meaning |
 |---|---|---|---|
 | `HI` | G, W | `ver, cls, id, at, re` | presence; `id` GUID, `at` tid or nil, `re=true` asks peers to answer by whisper |
-| `BYE` | G | | leaving |
+| `BYE` | G | | leaving (logout or `/reload`); stands nobody up: a seated player keeps the seat for the 3-minute offline window and a host's players claim after the silence; only a host alone at its table sends `END` first |
 | `TBL` | G, W | `tid, g, h, e, ac, tn, st, s, w` | table record: game, host, epoch, access `"guild"/"invite"/"group"`, turn seconds, state `"open"/"live"`, seats array (`name` or `false`), watcher count |
 | `END` | G | `tid, e` | table closed |
 | `SIT` | W→h | `tid, seat` | |
@@ -111,10 +111,17 @@ Stage 1 presentation of stage 2 features: the tabs **Класация / Тефт
 | `ACT` | W→h | `tid, a` | player action |
 | `EV` | W | `tid, e, q, seat, a, auto, left` | ordered event `q`; `seat` 0 = table/system; `left` = seconds on the next turn |
 | `SYN` | W→h | `tid, have` | I am at seq `have`, send a snapshot |
-| `SNP` | W | `tid, e, q, tbl, st, left` | snapshot: `tbl` = TBL record, `st` = `Engine.snapshot` |
+| `SNP` | W | `tid, e, q, tbl, st, left, inv` | snapshot: `tbl` = TBL record, `st` = `Engine.snapshot`; `inv` = invited names of an `"invite"` table (byte order, omitted when empty), so a member that becomes host keeps letting them in |
 | `PNG` | W→h | `tid` | member heartbeat |
 | `TCK` | W | `tid, e, q` | host heartbeat |
-| `HND` | W | `tid, e, to` | graceful handoff, whispered by the old host to every member; the successor `to` (not the old host) then whispers `SNP` at epoch `e` |
+| `HND` | W | `tid, e, to, inv` | graceful handoff, whispered by the old host to every member; the successor `to` (not the old host) then whispers `SNP` at epoch `e`; `inv` as on `SNP` (invitations sent after the members' snapshots) |
+| `INA` | W | `tid, e, n` | host → every seated player of an `"invite"` table: name `n` was invited at epoch `e`; taken only from my current host at my epoch |
+| `WHO` | G | `id` | adapter only (never reaches the Client): own-name lookup when the roster has no entry with my GUID; the echo whose `id` is my GUID names me |
+| `PRB` | W | `id, pad` | adapter only: `/tavern probe` whisper to myself (packed above 255 bytes); the echo with the same `id` and `pad` proves split whispers arrive |
+
+Guild gate (adapter): a message reaches the Client only from a sender listed in the latest guild-roster scan, or from myself; anything else is dropped and a roster refresh is asked for (at most once per 10 s), so a member who just joined passes from the next scan on. `WHO` and `PRB` bypass the gate (they verify themselves as my own echo).
+
+Lobby rule: a `TBL` at a higher epoch than the known record replaces it only when its sender sits in the known record's seats (as `Succession.authority` on the session side); `END` only from the known host.
 
 Frozen across protocol versions: the fields `v`, `t`, `tid` (on `SIT`, `WAT`, `SNO`), and `SNO.why="version"`. Table/system events (`seat=0`): `{k="sit",seat,name}`, `{k="stand",seat,why}` (`why` `"left"/"offline"`), `{k="start"}`, `{k="abort"}`, plus engine system actions.
 
