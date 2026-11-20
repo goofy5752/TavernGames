@@ -1,0 +1,174 @@
+<meta name="darkreader-lock">
+<link href="https://fonts.googleapis.com/css2?family=Alegreya+SC:wght@500;700&family=Alegreya+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root { color-scheme: dark; }
+  .gw { display:grid; grid-template-columns: repeat(2, 560px); gap: 28px 32px; justify-content:center; }
+  .gw figure { margin:0; }
+  .gw figcaption { color: var(--text-secondary); font-size: .88rem; margin-top: .55rem; max-width: 560px; }
+  .gw figcaption b { color: var(--text-primary); }
+
+  .mh { --brass:#b0813f; --brass-hi:#e9c98a; --ink:#f3e2c0; --ink-dim:#c9b28a; --cream:#fbf3e2; --ox:#7a1f24; --gold:#f2c94c;
+        font-family:'Alegreya Sans',sans-serif; color:var(--ink); }
+  .mh .win { position:relative; width:560px; height:370px; border-radius:10px; padding:8px; overflow:hidden;
+             background: linear-gradient(135deg,#4a2c1a,#2e190e 45%,#553220); box-shadow:0 14px 30px rgba(0,0,0,.5), inset 0 0 0 1px #8a5a2b; }
+  .mh .tb { height:26px; display:flex; align-items:center; gap:10px; padding:0 6px; font-size:12px; color:var(--ink-dim); }
+  .mh .tb .nm { font-family:'Alegreya SC',serif; font-weight:700; font-size:15px; color:var(--brass-hi); }
+  .mh .tb .x { margin-left:auto; width:16px; height:16px; border-radius:50%; background:#6b3a1f; text-align:center; font:700 10px/16px sans-serif; color:var(--brass-hi); }
+  .mh .felt { position:relative; height: calc(100% - 28px); border-radius:6px; overflow:hidden;
+              background: radial-gradient(ellipse at 50% 42%, #7a1f24 0%, #4d1216 62%, #2c090b 100%); box-shadow: inset 0 0 50px rgba(0,0,0,.55), inset 0 0 0 2px #b0813f; }
+  .mh .plate { position:absolute; background:rgba(32,16,8,.82); border:1px solid #a8773b; border-radius:4px; padding:3px 8px; font-size:11.5px; white-space:nowrap; }
+  .mh .plate i { font-style:normal; font-weight:700; }
+  .mh .plate.turn { border-color: var(--gold); box-shadow: 0 0 10px rgba(242,201,76,.5); }
+  .mh .btn { display:inline-block; padding:3px 10px; border-radius:4px; font-family:'Alegreya SC',serif; font-weight:700; font-size:12.5px;
+             color:#2e190e; background: linear-gradient(#f0d28f,#c8963f); box-shadow: inset 0 -2px 0 #8a5a2b, 0 2px 4px rgba(0,0,0,.4); }
+  .mh .btn.ghost { background: rgba(32,16,8,.8); color: var(--brass-hi); box-shadow: inset 0 0 0 1px var(--brass); }
+  .mh .btn.red { background: linear-gradient(#c4544a,#7a1f24); color: var(--cream); box-shadow: inset 0 -2px 0 #4d1216, 0 2px 4px rgba(0,0,0,.4); }
+
+  .pc { position:relative; width:40px; height:58px; border-radius:4px; background:#fbf3e2; border:1px solid #c7ad82; box-shadow:0 2px 5px rgba(0,0,0,.45); font-family:'Alegreya Sans',sans-serif; flex-shrink:0; }
+  .pc .r { position:absolute; left:3px; top:1px; font-size:13px; font-weight:700; line-height:1; }
+  .pc .s { position:absolute; left:3px; top:14px; font-size:10px; line-height:1; }
+  .pc .big { position:absolute; right:4px; bottom:2px; font-size:21px; line-height:1; }
+  .pc.red { color:#a3161c; } .pc.black { color:#22170f; }
+  .pc.back { background: repeating-linear-gradient(45deg,#3b1d10 0 4px,#5c311a 4px 8px); border-color:#c19350; }
+  .row { position:absolute; display:flex; }
+  .row.fan .pc { margin-left:-12px; } .row.fan .pc:first-child { margin-left:0; }
+  .row.gap .pc { margin-left:5px; }
+  .pc.up { transform: translateY(-8px); box-shadow: 0 0 0 2px var(--gold), 0 6px 12px rgba(0,0,0,.5); }
+  .pc.dim { filter: brightness(.55) saturate(.6); }
+
+  /* ---- Табла ---- */
+  .bg-board { position:absolute; inset:10px 10px 44px 10px; display:grid; grid-template-columns: 1fr 22px 1fr 34px; gap:0; border-radius:4px;
+              background:#2a160c; box-shadow: inset 0 0 0 5px #6b3a1f, inset 0 0 0 7px #b0813f; padding:9px; }
+  .bg-half { position:relative; background: linear-gradient(#3f2414,#2f1a0e); }
+  .bg-bar { background: linear-gradient(90deg,#4a2c1a,#6b3a1f,#4a2c1a); }
+  .bg-off { background:#1d0f07; margin-left:6px; position:relative; }
+  .pt { position:absolute; width: calc(100%/6); height: 44%; }
+  .pt::before { content:""; position:absolute; inset:0 3px; clip-path: polygon(0 0,100% 0,50% 100%); }
+  .pt.b { bottom:0; } .pt.b::before { clip-path: polygon(0 100%,100% 100%,50% 0); }
+  .pt.c1::before { background:#e7d3a8; } .pt.c2::before { background:#8d2a30; }
+  .ck { position:absolute; width:20px; height:20px; border-radius:50%; left:50%; transform:translateX(-50%); box-shadow: 0 2px 3px rgba(0,0,0,.6), inset 0 -2px 0 rgba(0,0,0,.25); }
+  .ck.w { background: radial-gradient(circle at 40% 35%, #fffaf0, #d9c49a); } .ck.d { background: radial-gradient(circle at 40% 35%, #5a3a2a, #1c0f09); border:1px solid #b0813f; }
+  .dice { position:absolute; display:flex; gap:6px; }
+  .die { width:24px; height:24px; border-radius:5px; background:#fbf3e2; box-shadow: 0 2px 5px rgba(0,0,0,.5); display:grid; grid-template-columns: repeat(3,1fr); padding:3px; }
+  .die i { width:5px; height:5px; border-radius:50%; background:#22170f; margin:auto; visibility:hidden; } .die i.o { visibility:visible; }
+  .hl::after { content:""; position:absolute; left:50%; transform:translateX(-50%); width:22px; height:22px; border-radius:50%; border:2px dashed var(--gold); }
+
+  /* ---- Холдем ---- */
+  .oval { position:absolute; left:58px; right:58px; top:34px; bottom:78px; border-radius: 50% / 50%; background: radial-gradient(ellipse at 50% 45%, #8d2a30, #4d1216 75%); box-shadow: 0 0 0 7px #4a2c1a, 0 0 0 9px #b0813f, 0 10px 22px rgba(0,0,0,.55); }
+  .chips { display:inline-flex; align-items:center; gap:4px; font-size:11.5px; color:var(--gold); }
+  .chips::before { content:""; width:12px; height:12px; border-radius:50%; background: radial-gradient(circle, #f2c94c 30%, #8a5a2b 32% 46%, #f2c94c 48%); box-shadow:0 1px 2px rgba(0,0,0,.6); }
+  .slider { display:inline-block; width:110px; height:5px; border-radius:3px; background:rgba(0,0,0,.5); position:relative; vertical-align:middle; margin:0 6px; }
+  .slider::before { content:""; position:absolute; left:0; top:0; height:100%; width:35%; background:var(--gold); border-radius:3px; }
+  .slider::after { content:""; position:absolute; left:35%; top:50%; width:12px; height:12px; border-radius:50%; background:var(--cream); transform:translate(-50%,-50%); box-shadow:0 1px 3px rgba(0,0,0,.6); }
+
+  /* ---- Морски шах ---- */
+  .ttt { position:absolute; left:50%; top:46%; transform:translate(-50%,-50%); width:204px; height:204px; display:grid; grid-template-columns:repeat(3,1fr); gap:6px; }
+  .ttt div { background: rgba(32,16,8,.7); border:1px solid #8a5a2b; border-radius:6px; display:flex; align-items:center; justify-content:center; font-family:'Alegreya SC',serif; font-size:44px; line-height:1; }
+  .ttt .x { color: var(--brass-hi); text-shadow: 0 0 10px rgba(233,201,138,.5); } .ttt .o { color:#e2735a; }
+  .ttt .w3 { background: rgba(242,201,76,.18); border-color: var(--gold); }
+  .ttt .ghost { color: rgba(233,201,138,.25); }
+
+  /* ---- Death Roll ---- */
+  .trail { position:absolute; left:20px; right:20px; top:70px; display:flex; align-items:flex-end; justify-content:center; gap:14px; }
+  .roll { text-align:center; font-size:10.5px; color:var(--ink-dim); }
+  .roll b { display:block; font-family:'Alegreya SC',serif; color:var(--ink); line-height:1; margin-bottom:4px; }
+  .skull { font-size:56px; line-height:1; }
+</style>
+
+<h2>Игрите в стил „Механа“</h2>
+<p class="subtitle">Всички игри ползват една и съща рамка, сукно и табелки с имената в цвета на класа. Белотът е като на първия екран. Разгледай и ми кажи кое да сменим, с каква игра или вариант да започнем, и има ли нещо, което ти липсва.</p>
+
+<div class="gw" id="gw"></div>
+
+<script>
+(function(){
+  const C = { mage:'#3FC7EB', war:'#C69B6D', rog:'#FFF468', pri:'#FFFFFF', hun:'#AAD372', pal:'#F48CBA', dru:'#FF7C0A', lock:'#8788EE', sham:'#0070DD' };
+  const S = { h:['♥','red'], d:['♦','red'], s:['♠','black'], c:['♣','black'] };
+  const card = (r,s,cls='') => `<div class="pc ${S[s][1]} ${cls}"><span class="r">${r}</span><span class="s">${S[s][0]}</span><span class="big">${S[s][0]}</span></div>`;
+  const back = (n,style='') => ('<div class="pc back" style="'+style+'"></div>').repeat(n);
+  const win = (title, meta, body) => `<div class="mh"><div class="win"><div class="tb"><span class="nm">${title}</span><span>${meta}</span><span class="x">✕</span></div><div class="felt">${body}</div></div></div>`;
+  const die = n => { const on = {1:[4],2:[0,8],3:[0,4,8],4:[0,2,6,8],5:[0,2,4,6,8],6:[0,2,3,5,6,8]}[n];
+    return `<div class="die">${[...Array(9)].map((_,i)=>`<i class="${on.includes(i)?'o':''}"></i>`).join('')}</div>`; };
+
+  // ---------- Табла ----------
+  // points: index 0..23 ; top-left half = points 13..18 (left to right), top-right = 19..24 ; bottom-left = 12..7, bottom-right = 6..1
+  const stacks = { 1:['d',2], 6:['w',5], 8:['w',3], 12:['d',5], 13:['w',5], 17:['d',3], 19:['d',5], 24:['w',2] };
+  stacks[6]=['w',4]; stacks[4]=['w',1]; stacks[19]=['d',4]; stacks[21]=['d',1];
+  const half = (pts, top) => pts.map((p,i)=>{ const st = stacks[p]; let ck='';
+      if (st) for (let k=0;k<Math.min(st[1],5);k++) ck += `<span class="ck ${st[0]}" style="${top?'top':'bottom'}:${2+k*21}px"></span>`;
+      const hl = (p===10||p===2) ? `<span class="hl" style="${top?'top':'bottom'}:2px;position:absolute;left:50%"></span>`:'';
+      return `<div class="pt ${top?'':'b'} ${(i+(top?0:1))%2?'c2':'c1'}" style="left:calc(${i}*100%/6)">${ck}${hl}</div>`; }).join('');
+  const tabla = win('Табла','Тапа · партия 3 : 2 · залог 2g', `
+    <div class="bg-board">
+      <div class="bg-half">${half([13,14,15,16,17,18],true)}${half([12,11,10,9,8,7],false)}</div>
+      <div class="bg-bar"></div>
+      <div class="bg-half">${half([19,20,21,22,23,24],true)}${half([6,5,4,3,2,1],false)}
+        <div class="dice" style="left:50%;top:50%;transform:translate(-50%,-50%)">${die(6)}${die(2)}</div></div>
+      <div class="bg-off"></div>
+    </div>
+    <div class="plate turn" style="left:12px;bottom:10px"><i style="color:${C.sham}">Ти</i> · хвърли 6 и 2 · 0:41</div>
+    <div class="plate" style="left:50%;transform:translateX(-50%);bottom:10px">Ход: местиш пул от 8 на 2</div>
+    <div style="position:absolute;right:12px;bottom:8px"><span class="btn ghost">Върни</span> <span class="btn">Готово</span></div>`);
+
+  // ---------- Сантасе ----------
+  const santase = win('Сантасе','до 11 игри · 7 : 4 · залог 1g', `
+    <div class="plate" style="left:50%;transform:translateX(-50%);top:8px"><i style="color:${C.dru}">Nadya Frostwind</i> · 38 точки</div>
+    <div class="row fan" style="left:50%;transform:translateX(-50%);top:34px">${back(6)}</div>
+    <div style="position:absolute;left:44px;top:118px">
+      <div class="pc back" style="position:absolute;left:0;top:0"></div><div class="pc back" style="position:absolute;left:3px;top:-3px"></div>
+      <div style="position:absolute;left:30px;top:10px;transform:rotate(90deg)">${card('9','h')}</div>
+      <div style="position:absolute;left:-2px;top:68px;width:110px;font-size:11px;color:var(--ink-dim)">Тесте: 6 карти<br>Коз: <span style="color:#e2735a">♥ купа</span></div></div>
+    <div class="row gap" style="left:50%;transform:translateX(-50%);top:112px">${card('K','s')}<span style="width:16px"></span>${card('A','s','')}</div>
+    <div class="plate turn" style="left:12px;bottom:10px"><i style="color:${C.sham}">Ти</i> · 42 точки · твой ход</div>
+    <div class="row fan" style="left:50%;transform:translateX(-50%);bottom:12px">${card('Q','h','up')}${card('K','h','up')}${card('10','s')}${card('J','c')}${card('A','d')}${card('9','d')}</div>
+    <div style="position:absolute;right:12px;top:120px;display:flex;flex-direction:column;gap:6px;align-items:flex-end">
+      <span class="btn">Обяви 40</span><span class="btn ghost">Смени деветката</span><span class="btn red">Затвори</span></div>`);
+
+  // ---------- Холдем ----------
+  const seatH = (x,y,name,col,stack,extra='') => `<div class="plate ${extra}" style="left:${x}px;top:${y}px;text-align:center"><i style="color:${col}">${name}</i><br><span class="chips">${stack}</span></div>`;
+  const holdem = win('Тексас Холдем','блайнд 10s / 20s · вход 3g', `
+    <div class="oval"></div>
+    ${seatH(222,4,'Bozhana',C.pri,'3g 10s')}
+    ${seatH(30,48,'Kiro',C.hun,'1g 85s')}
+    ${seatH(420,48,'Nadya',C.dru,'4g 60s')}
+    ${seatH(16,170,'Lazar',C.lock,'пас')}
+    ${seatH(432,170,'Velin',C.rog,'all-in 2g')}
+    <div class="row gap" style="left:50%;transform:translateX(-50%);top:104px">${card('A','h')}${card('J','h')}${card('7','c')}${card('Q','h')}<div class="pc back" style="margin-left:5px;opacity:.35"></div></div>
+    <div style="position:absolute;left:50%;transform:translateX(-50%);top:78px"><span class="chips">Пот 6g 40s</span> <span style="font-size:11px;color:var(--ink-dim)">· страничен 1g 20s</span></div>
+    <div class="plate turn" style="left:12px;bottom:10px"><i style="color:${C.sham}">Ти</i> · <span class="chips">2g 70s</span> · 0:18</div>
+    <div class="row" style="left:16px;bottom:40px">${card('K','h')}<span style="width:4px"></span>${card('10','h')}</div>
+    <div style="position:absolute;left:108px;bottom:62px;font-size:13px;font-family:Alegreya SC,serif;color:var(--gold)">Роял флош!</div>
+    <div style="position:absolute;right:12px;bottom:10px;display:flex;align-items:center;gap:5px">
+      <span class="btn ghost">Пас</span><span class="btn ghost">Плащам 40s</span><span class="slider"></span><span class="btn">Вдигам 1g</span></div>`);
+
+  // ---------- Морски шах ----------
+  const ttt = win('Морски шах','до 3 победи · 2 : 1 · залог 50s', `
+    <div class="plate" style="left:14px;top:12px"><i style="color:${C.war}">Grumbar</i> · <span style="color:#e2735a">O</span> · 1 победа</div>
+    <div class="plate turn" style="right:14px;top:12px"><i style="color:${C.sham}">Ти</i> · <span style="color:#e9c98a">X</span> · 2 победи</div>
+    <div class="ttt"><div class="x w3">X</div><div class="o">O</div><div></div>
+      <div class="o">O</div><div class="x w3">X</div><div></div>
+      <div></div><div class="o">O</div><div class="x w3">X</div></div>
+    <div style="position:absolute;left:0;right:0;bottom:12px;text-align:center"><span style="font-family:'Alegreya SC',serif;color:var(--gold);font-size:17px">Печелиш партията и мача!</span><br>
+      <span style="font-size:11.5px;color:var(--ink-dim)">Grumbar ти дължи 50s</span> &nbsp;<span class="btn">Реванш</span></div>`);
+
+  // ---------- Death Roll ----------
+  const rolls = [[1000,'старт',C.sham],[642,'Ти',C.sham],[311,'Velin',C.rog],[87,'Ти',C.sham],[12,'Velin',C.rog],[3,'Ти',C.sham]];
+  const sizes = [30,28,26,24,22,22];
+  const droll = win('Death Roll','1v1 · залог 50s', `
+    <div class="plate" style="left:14px;top:12px"><i style="color:${C.sham}">Ти</i></div>
+    <div class="plate turn" style="right:14px;top:12px"><i style="color:${C.rog}">Velin Ashfield</i> · хвърля /roll 3</div>
+    <div class="trail">${rolls.map((r,i)=>`<div class="roll"><b style="font-size:${sizes[i]}px;color:${r[2]}">${r[0]}</b>${r[1]}</div><span style="color:var(--brass);font-size:14px;align-self:center">›</span>`).join('')}
+      <div class="roll"><div class="skull" style="color:#e2735a;opacity:.35">?</div>Velin</div></div>
+    <div style="position:absolute;left:0;right:0;top:190px;text-align:center;font-size:12px;color:var(--ink-dim)">Числата идват от истинския <b style="color:var(--ink)">/roll</b> в чата, така че никой не може да ги нагласи.<br>Който хвърли 1, губи.</div>
+    <div style="position:absolute;left:0;right:0;bottom:14px;text-align:center"><span class="btn ghost">Изчакай Velin…</span></div>`);
+
+  const figs = [
+    ['Табла', tabla, 'Пулове от кост и абанос, дъска от орех. Позволеният ход свети с пунктир. Режими <b>Обикновена, Тапа и Гюлбара</b>, като ги играем на партия от три. Заровете ги хвърля сървърът с /roll.'],
+    ['Сантасе', santase, 'Двама играчи. Тестето и козът са вляво, отляво и отдясно са взятките. Картите, с които можеш да обявиш 40, са повдигнати. Бутоните <b>Смени деветката</b> и <b>Затвори</b> се показват само когато правилата ги позволяват.'],
+    ['Тексас Холдем', holdem, 'Овална маса за до 9 души. Пулът и страничният пул са в центъра. Ръката ти, роял флош, се изписва под картите. За залог има бутони и плъзгач. Влизаш с фиксиран вход и не се пращат пари, докато масата не се закрие.'],
+    ['Морски шах', ttt, 'Най-простата игра, за загрявка. Мачът е до 3 победи. Печелившата линия светва в злато, а отдолу веднага пише кой на кого дължи и има бутон <b>Реванш</b>.'],
+    ['Death Roll', droll, 'Стълбица от хвърлянията, всяко в цвета на играча, който го е хвърлил. Числата идват от истинския /roll, така че са видими за всички в чата. Отличен за бърз залог между две игри.'],
+  ];
+  document.getElementById('gw').innerHTML = figs.map(f=>`<figure>${f[1]}<figcaption><b>${f[0]}.</b> ${f[2]}</figcaption></figure>`).join('');
+})();
+</script>

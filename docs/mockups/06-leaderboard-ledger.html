@@ -1,0 +1,115 @@
+<meta name="darkreader-lock">
+<link href="https://fonts.googleapis.com/css2?family=Alegreya+SC:wght@500;700&family=Alegreya+Sans:wght@400;500;700&family=Alegreya:ital,wght@1,500&display=swap" rel="stylesheet">
+<style>
+  :root { color-scheme: dark; }
+  .lw { max-width:1120px; margin:0 auto; }
+  .mh { --brass:#b0813f; --brass-hi:#e9c98a; --ink:#f3e2c0; --ink-dim:#c9b28a; --cream:#fbf3e2; --gold:#f2c94c; --good:#9fd17a; --bad:#e2735a;
+        font-family:'Alegreya Sans',sans-serif; color:var(--ink); }
+  .mh .win { position:relative; width:100%; height:600px; border-radius:10px; padding:10px; overflow:hidden;
+             background: linear-gradient(135deg,#4a2c1a,#2e190e 45%,#553220); box-shadow:0 18px 40px rgba(0,0,0,.5), inset 0 0 0 1px #8a5a2b; }
+  .mh .titlebar { height:34px; display:flex; align-items:center; gap:14px; padding:0 8px; }
+  .mh .logo { font-family:'Alegreya SC',serif; font-weight:700; font-size:20px; color:var(--brass-hi); letter-spacing:.04em; }
+  .mh .tabs { display:flex; gap:2px; margin-left:12px; }
+  .mh .tab { font-size:13px; padding:4px 12px; border-radius:4px 4px 0 0; color:var(--ink-dim); }
+  .mh .tab.on { background:rgba(0,0,0,.35); color:var(--brass-hi); box-shadow: inset 0 -2px 0 var(--brass); }
+  .mh .x { margin-left:auto; width:18px; height:18px; border-radius:50%; background:#6b3a1f; text-align:center; font:700 11px/18px sans-serif; color:var(--brass-hi); }
+  .mh .body { display:grid; grid-template-columns: 1fr 360px; gap:10px; height: calc(100% - 38px); }
+  .mh .panel { background: rgba(20,10,5,.55); border:1px solid #6e4824; border-radius:6px; padding:12px; overflow:hidden; position:relative; }
+  .mh .ph { font-family:'Alegreya SC',serif; font-size:15px; color:var(--brass-hi); letter-spacing:.03em; }
+  .seg { display:inline-flex; border:1px solid var(--brass); border-radius:5px; overflow:hidden; }
+  .seg span { padding:3px 10px; font-size:12px; border-left:1px solid rgba(176,129,63,.5); } .seg span:first-child { border-left:0; }
+  .seg span.on { background: linear-gradient(#f0d28f,#c8963f); color:#2e190e; font-weight:700; }
+  .filters { display:flex; gap:10px; align-items:center; margin:8px 0 10px; flex-wrap:wrap; }
+
+  .king { display:flex; align-items:center; gap:14px; padding:10px 12px; border-radius:6px; margin-bottom:8px;
+          background: linear-gradient(90deg, rgba(242,201,76,.16), rgba(242,201,76,0) 70%); border:1px solid rgba(242,201,76,.45); }
+  .king .crown { font-size:30px; line-height:1; color:var(--gold); text-shadow:0 0 12px rgba(242,201,76,.6); }
+  .king .t { font-family:'Alegreya SC',serif; color:var(--gold); font-size:13px; }
+  .king .n { font-size:18px; font-weight:700; }
+  .king .s { margin-left:auto; text-align:right; font-size:12px; color:var(--ink-dim); } .king .s b { color:var(--good); font-size:16px; }
+
+  table.t { width:100%; border-collapse:collapse; font-size:13px; }
+  table.t th { text-align:right; font-weight:500; color:var(--ink-dim); font-size:11.5px; padding:4px 6px; border-bottom:1px solid rgba(176,129,63,.45); white-space:nowrap; }
+  table.t th:nth-child(-n+2) { text-align:left; }
+  table.t td { padding:5px 6px; border-bottom:1px solid rgba(176,129,63,.16); text-align:right; font-variant-numeric: tabular-nums; white-space:nowrap; }
+  table.t td:nth-child(-n+2) { text-align:left; }
+  table.t td.rk { color:var(--ink-dim); width:26px; }
+  table.t tr.me td { background: rgba(0,112,221,.12); }
+  table.t th.sort { color:var(--brass-hi); } table.t th.sort::after { content:" ▾"; }
+  .pos { color:var(--good); } .neg { color:var(--bad); }
+  .bar { display:inline-block; height:6px; border-radius:3px; vertical-align:middle; margin-left:6px; }
+  .tag { display:inline-block; font-size:10.5px; padding:0 6px; border-radius:8px; border:1px solid var(--brass); color:var(--brass-hi); margin-left:6px; }
+
+  /* ledger book */
+  .book { position:absolute; inset:62px 12px 12px 12px; border-radius:4px; padding:10px 12px;
+          background: linear-gradient(90deg, rgba(0,0,0,.08) 0 1px, transparent 1px) 30px 0/100% 100% no-repeat, repeating-linear-gradient(180deg, #efe1c0 0 25px, #d9c49a 25px 26px);
+          color:#3b2414; box-shadow: inset 0 0 18px rgba(80,40,10,.35), 0 3px 10px rgba(0,0,0,.5); font-family:'Alegreya', serif; font-style:italic; }
+  .book .ln { display:flex; align-items:center; height:26px; font-size:14px; gap:6px; }
+  .book .ln b { font-style:normal; font-family:'Alegreya Sans',sans-serif; font-weight:700; font-size:12.5px; }
+  .book .ln .amt { margin-left:auto; font-style:normal; font-family:'Alegreya Sans',sans-serif; font-weight:700; color:#7a1f24; }
+  .book .ln .age { font-size:11px; color:#7a5a3a; width:56px; text-align:right; }
+  .book .ln.paid { text-decoration: line-through; text-decoration-color:#7a1f24; opacity:.6; }
+  .book .ln.paid .amt { color:#4a6a2a; }
+  .book .foot { position:absolute; left:12px; right:12px; bottom:8px; font-size:12.5px; display:flex; justify-content:space-between; }
+  .sub { font-size:11.5px; color:var(--ink-dim); margin-top:2px; }
+</style>
+
+<h2>Класация и тефтерът на гилдията</h2>
+<p class="subtitle">Всичко е прозрачно и всеки в гилдията вижда едно и също. Вляво е класацията, вдясно са всички открити дългове в гилдията, записани като в тефтера на кръчмаря. Платените се задраскват.</p>
+
+<div class="lw" id="lw"></div>
+
+<script>
+(function(){
+  const C = { mage:'#3FC7EB', war:'#C69B6D', rog:'#FFF468', pri:'#FFFFFF', hun:'#AAD372', pal:'#F48CBA', dru:'#FF7C0A', lock:'#8788EE', sham:'#0070DD' };
+  const nm = (n,c) => `<span style="color:${c};font-weight:700">${n}</span>`;
+  const rows = [
+    ['Ralitsa Moonbrook',C.mage,142,88,'+214g',214,'Белот','8 поредни'],
+    ['Kiro Embervale',C.hun,97,51,'+96g 40s',96,'Холдем',''],
+    ['Ти',C.sham,121,63,'+41g 10s',41,'Табла','',true],
+    ['Nadya Frostwind',C.dru,64,33,'+12g',12,'Сантасе',''],
+    ['Bozhana Thornfield',C.pri,58,27,'−8g 50s',-8,'Холдем',''],
+    ['Velin Ashfield',C.rog,110,49,'−37g',-37,'Death Roll',''],
+    ['Lazar Grimm',C.lock,45,16,'−61g 20s',-61,'Холдем',''],
+    ['Grumbar Ironpot',C.war,133,52,'−158g',-158,'Белот','5 загуби подред'],
+  ];
+  const tr = rows.map((r,i)=>`<tr class="${r[8]?'me':''}"><td class="rk">${i+1}</td><td>${nm(r[0],r[1])}${r[7]?`<span class="tag">${r[7]}</span>`:''}</td>
+      <td>${r[2]}</td><td>${r[3]}</td><td>${Math.round(r[3]/r[2]*100)}%</td>
+      <td class="${r[5]>=0?'pos':'neg'}">${r[4]}<span class="bar" style="width:${Math.min(60,Math.abs(r[5])/3)}px;background:${r[5]>=0?'#9fd17a':'#e2735a'}"></span></td>
+      <td style="color:var(--ink-dim)">${r[6]}</td></tr>`).join('');
+
+  const debts = [
+    ['Grumbar','#C69B6D','Ralitsa','#3FC7EB','45g','3 дни'],
+    ['Grumbar','#C69B6D','Kiro','#AAD372','22g 50s','вчера'],
+    ['Lazar','#8788EE','Kiro','#AAD372','14g','днес'],
+    ['Velin','#FFF468','Ти','#0070DD','5g','днес'],
+    ['Ти','#0070DD','Grumbar','#C69B6D','12g 50s','вчера'],
+    ['Bozhana','#FFFFFF','Nadya','#FF7C0A','3g 20s','днес'],
+    ['Velin','#FFF468','Ralitsa','#3FC7EB','8g','вчера', true],
+    ['Lazar','#8788EE','Ralitsa','#3FC7EB','2g','5 дни', true],
+  ];
+  // ink in book is dark; class colours too light on parchment -> darken via filter
+  const bk = (n,c) => `<b style="color:${c};filter:brightness(.55) saturate(1.4)">${n}</b>`;
+  const lines = debts.map(d=>`<div class="ln ${d[6]?'paid':''}">${bk(d[0],d[1])} дължи на ${bk(d[2],d[3])}<span class="amt">${d[4]}</span><span class="age">${d[6]?'платено':d[5]}</span></div>`).join('');
+
+  document.getElementById('lw').innerHTML = `<div class="mh"><div class="win">
+    <div class="titlebar"><span class="logo">Krachma</span>
+      <div class="tabs"><span class="tab">Зала</span><span class="tab on">Класация</span><span class="tab">Тефтер</span><span class="tab">История</span><span class="tab">Настройки</span></div><span class="x">✕</span></div>
+    <div class="body">
+      <div class="panel">
+        <div class="ph">Класация на МЕХАНАТА</div>
+        <div class="filters"><div class="seg"><span>Седмица</span><span class="on">Месец</span><span>Всичко</span></div>
+          <div class="seg"><span class="on">Всички игри</span><span>Белот</span><span>Сантасе</span><span>Табла</span><span>Холдем</span><span>Морски шах</span><span>Death Roll</span></div></div>
+        <div class="king"><span class="crown">♛</span><div><div class="t">Кралица на механата · ноември</div><div class="n">${nm('Ralitsa Moonbrook',C.mage)}</div></div>
+          <div class="s">спечелени за месеца<br><b>+214g</b></div></div>
+        <table class="t"><tr><th>#</th><th>Играч</th><th>Игри</th><th>Победи</th><th>%</th><th class="sort">Голд</th><th>Любима игра</th></tr>${tr}</table>
+        <div class="sub" style="margin-top:8px">Кликни играч, за да видиш историята му и срещу кого печели или губи. Подреждаш по всяка колона.</div>
+      </div>
+      <div class="panel">
+        <div class="ph">Тефтерът</div><div class="sub">Открити дългове в гилдията: 102g 20s в 6 записа</div>
+        <div class="book">${lines}
+          <div class="foot"><span>Най-голям длъжник: ${bk('Grumbar','#C69B6D')}</span><span>67g 50s</span></div></div>
+      </div>
+    </div></div></div>`;
+})();
+</script>

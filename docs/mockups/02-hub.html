@@ -1,0 +1,157 @@
+<meta name="darkreader-lock">
+<link href="https://fonts.googleapis.com/css2?family=Alegreya+SC:wght@500;700&family=Alegreya+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root { color-scheme: dark; }
+  .hub-wrap { display: flex; flex-direction: column; gap: 2.5rem; max-width: 1180px; margin: 0 auto; }
+  .opt { padding: 1rem; border-radius: 14px; border: 2px solid transparent; cursor: pointer; }
+  .opt:hover { border-color: var(--border); }
+  .opt.selected { border-color: var(--selected-border); background: var(--selected-bg); }
+  .opt > h3 { margin: 0 0 .25rem 0; } .opt > p { color: var(--text-secondary); font-size: .9rem; margin-bottom: .9rem; max-width: 75ch; }
+
+  /* ===== Theme A tokens ===== */
+  .mh { --wood1:#4a2c1a; --wood2:#2e190e; --brass:#b0813f; --brass-hi:#e9c98a; --felt:#7a1f24; --felt-dk:#4d1216;
+        --ink:#f3e2c0; --ink-dim:#c9b28a; --plate:rgba(32,16,8,.82); --cream:#fbf3e2; --good:#9fd17a; --bad:#e2735a;
+        font-family:'Alegreya Sans',sans-serif; color:var(--ink); }
+  .mh .win { position:relative; width:100%; aspect-ratio: 1100/620; border-radius:10px; padding:10px; overflow:hidden;
+             background: linear-gradient(135deg,#4a2c1a,#2e190e 45%,#553220); box-shadow:0 18px 40px rgba(0,0,0,.5), inset 0 0 0 1px #8a5a2b; }
+  .mh .titlebar { height:34px; display:flex; align-items:center; gap:14px; padding:0 8px; }
+  .mh .logo { font-family:'Alegreya SC',serif; font-weight:700; font-size:20px; color:var(--brass-hi); letter-spacing:.04em; }
+  .mh .tabs { display:flex; gap:2px; margin-left:12px; }
+  .mh .tab { font-size:13px; padding:4px 12px; border-radius:4px 4px 0 0; color:var(--ink-dim); }
+  .mh .tab.on { background:rgba(0,0,0,.35); color:var(--brass-hi); box-shadow: inset 0 -2px 0 var(--brass); }
+  .mh .gold { margin-left:auto; font-size:13px; color:var(--ink-dim); }
+  .mh .gold b { color:#f2c94c; }
+  .mh .x { width:18px; height:18px; border-radius:50%; background:#6b3a1f; text-align:center; font:700 11px/18px sans-serif; color:var(--brass-hi); }
+  .mh .body { display:grid; grid-template-columns: 190px 1fr 250px; gap:10px; height: calc(100% - 38px); }
+  .mh .panel { background: rgba(20,10,5,.55); border:1px solid #6e4824; border-radius:6px; padding:10px; overflow:hidden; }
+  .mh .ph { font-family:'Alegreya SC',serif; font-size:14px; color:var(--brass-hi); margin-bottom:8px; letter-spacing:.03em; }
+
+  /* left: open a table */
+  .mh .game { display:flex; align-items:center; gap:9px; padding:6px 6px; border-radius:5px; font-size:13.5px; }
+  .mh .game:hover { background: rgba(233,201,138,.08); }
+  .mh .game .ic { width:28px; height:28px; border-radius:50%; background: radial-gradient(circle at 35% 30%, #8d2a30, #3f0d10); border:1px solid var(--brass);
+                  display:flex; align-items:center; justify-content:center; font-size:14px; color:var(--cream); flex-shrink:0; }
+  .mh .game small { display:block; color:var(--ink-dim); font-size:11px; line-height:1.1; }
+  .mh .btn { display:block; text-align:center; margin-top:10px; padding:7px 0; border-radius:5px; font-family:'Alegreya SC',serif; font-weight:700; font-size:14px;
+             color:#2e190e; background: linear-gradient(#f0d28f,#c8963f); box-shadow: inset 0 -2px 0 #8a5a2b, 0 2px 5px rgba(0,0,0,.4); }
+  .mh .btn.sm { display:inline-block; margin:0; padding:2px 9px; font-size:12px; }
+  .mh .btn.ghost { background: transparent; color: var(--brass-hi); box-shadow: inset 0 0 0 1px var(--brass); }
+
+  /* centre A: floor plan */
+  .mh .floor { position:relative; padding:0; background:
+      repeating-linear-gradient(90deg, rgba(0,0,0,.25) 0 1px, transparent 1px 64px),
+      repeating-linear-gradient(0deg, rgba(0,0,0,.18) 0 1px, transparent 1px 22px),
+      linear-gradient(180deg,#5b371f,#3e2414); }
+  .mh .floor .ph { position:absolute; left:10px; top:8px; z-index:2; }
+  .mh .floor .hint { position:absolute; right:10px; top:10px; font-size:11.5px; color:var(--ink-dim); }
+  .mh .rt { position:absolute; width:150px; height:150px; }
+  .mh .rt .top { position:absolute; inset:28px; border-radius:50%; background: radial-gradient(circle at 45% 40%, #8d2a30, #4d1216 70%);
+                 box-shadow: 0 0 0 4px #6b3a1f, 0 0 0 6px var(--brass), 0 8px 18px rgba(0,0,0,.55);
+                 display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; }
+  .mh .rt .top b { font-family:'Alegreya SC',serif; font-size:15px; color:var(--brass-hi); line-height:1.1; }
+  .mh .rt .top span { font-size:11px; color:var(--ink); opacity:.9; }
+  .mh .rt .top .st { margin-top:3px; font-size:11px; color:#f2c94c; }
+  .mh .chair { position:absolute; width:22px; height:22px; border-radius:50%; transform:translate(-50%,-50%); border:2px solid #2e190e; box-shadow:0 2px 4px rgba(0,0,0,.5); }
+  .mh .chair.empty { background: transparent; border:2px dashed var(--brass-hi); box-shadow:none; }
+  .mh .rt.live .top::after { content:"тече"; position:absolute; bottom:-30px; font-size:10.5px; color:var(--ink-dim); }
+  .mh .rt.mine .top { box-shadow: 0 0 0 4px #6b3a1f, 0 0 0 6px #f2c94c, 0 0 22px rgba(242,201,76,.55); }
+  .mh .tip { position:absolute; width:205px; padding:8px 10px; border-radius:5px; font-size:12px; line-height:1.45; z-index:5;
+             background: rgba(8,8,18,.94); border:1px solid #9a9aa8; color:#fff; box-shadow:0 6px 16px rgba(0,0,0,.6); }
+  .mh .tip .t1 { color:#ffd100; font-size:13.5px; } .mh .tip .dim { color:#bbb; }
+
+  /* centre B: list */
+  .mh .row { display:grid; grid-template-columns: 34px 1fr 110px 70px 74px; align-items:center; gap:8px; padding:7px 6px; border-bottom:1px solid rgba(176,129,63,.25); font-size:13px; }
+  .mh .row .ic { width:28px; height:28px; border-radius:50%; background: radial-gradient(circle at 35% 30%, #8d2a30, #3f0d10); border:1px solid var(--brass); display:flex; align-items:center; justify-content:center; font-size:14px; color:var(--cream); }
+  .mh .row small { color:var(--ink-dim); display:block; font-size:11px; }
+  .mh .dots { display:flex; gap:3px; } .mh .dots i { width:10px; height:10px; border-radius:50%; display:block; border:1px solid #2e190e; }
+  .mh .dots i.e { border:1px dashed var(--brass-hi); }
+  .mh .grp { font-family:'Alegreya SC',serif; color:var(--brass-hi); font-size:12.5px; padding:8px 6px 2px; }
+
+  /* right: ledger + online */
+  .mh .led { display:flex; align-items:center; justify-content:space-between; gap:6px; padding:6px 0; border-bottom:1px solid rgba(176,129,63,.22); font-size:13px; }
+  .mh .led .amt { font-weight:700; } .mh .led .owe { color:var(--bad); } .mh .led .get { color:var(--good); }
+  .mh .led small { display:block; color:var(--ink-dim); font-size:11px; }
+  .mh .sum { margin-top:8px; font-size:12.5px; color:var(--ink-dim); }
+  .mh .online { margin-top:14px; }
+  .mh .online div { font-size:12.5px; padding:2px 0; display:flex; justify-content:space-between; }
+  .mh .online span.s { color:var(--ink-dim); font-size:11px; }
+
+  /* invite toast */
+  .mh .toast { position:absolute; right:22px; bottom:22px; width:290px; padding:12px 14px; border-radius:8px; z-index:6;
+               background: linear-gradient(135deg,#4a2c1a,#2e190e); border:1px solid var(--brass); box-shadow: 0 10px 28px rgba(0,0,0,.7), 0 0 0 3px rgba(233,201,138,.12); }
+  .mh .toast b { font-family:'Alegreya SC',serif; color:var(--brass-hi); font-size:15px; }
+  .mh .toast p { font-size:12.5px; margin:4px 0 9px; }
+  .mh .toast .bar { height:3px; background:rgba(0,0,0,.4); border-radius:2px; margin-top:9px; } .mh .toast .bar::after { content:""; display:block; height:100%; width:70%; background:var(--brass-hi); }
+</style>
+
+<h2>Главният прозорец: залата</h2>
+<p class="subtitle">Това е екранът, който виждаш, когато отвориш аддона. Вляво отваряш нова маса. В средата са масите на гилдията в момента. Вдясно е кой на кого дължи. Долу вдясно е покана, която изскача, когато някой те покани. Кликни вариант A или B за средата.</p>
+
+<div class="hub-wrap" id="hubs"></div>
+
+<script>
+(function(){
+  const C = { mage:'#3FC7EB', war:'#C69B6D', rog:'#FFF468', pri:'#FFFFFF', hun:'#AAD372', pal:'#F48CBA', dru:'#FF7C0A', lock:'#8788EE', sham:'#0070DD' };
+  const games = [['♠','Белот','4 играчи'],['🂡','Сантасе','2 играчи'],['⚀','Табла','2 играчи'],['♦','Тексас Холдем','2–9 играчи'],['✕','Морски шах','2 играчи'],['☠','Death Roll','2+ играчи']];
+  const left = `<div class="panel"><div class="ph">Отвори маса</div>
+    ${games.map(g=>`<div class="game"><span class="ic">${g[0]}</span><div>${g[1]}<small>${g[2]}</small></div></div>`).join('')}
+    <div class="btn">Отвори маса</div></div>`;
+
+  // floor-plan tables: x,y (% of floor), seats as [angleDeg,color|null]
+  const tables = [
+    { x:4,  y:12, name:'Белот', sub:'Ralitsa', st:'5g на човек', seats:[[270,C.mage],[0,C.war],[90,C.rog],[180,null]], tip:true },
+    { x:38, y:8,  name:'Табла', sub:'Grumbar срещу Dimo', st:'2g', seats:[[200,C.war],[340,C.pal]], live:true },
+    { x:70, y:16, name:'Холдем', sub:'блайнд 10s / 20s', st:'вход 3g', seats:[[270,C.pri],[330,C.hun],[30,C.dru],[90,null],[150,C.lock],[210,null]] },
+    { x:36, y:58, name:'Сантасе', sub:'Nadya', st:'1g', seats:[[200,C.dru],[340,null]] },
+    { x:66, y:60, name:'Death Roll', sub:'до 1000', st:'50s', seats:[[240,C.sham],[300,C.rog],[60,null]], mine:true },
+  ];
+  const seat = (a,c) => { const r=60, x=75+r*Math.cos(a*Math.PI/180), y=75+r*Math.sin(a*Math.PI/180);
+    return `<span class="chair ${c?'':'empty'}" style="left:${x}px;top:${y}px;${c?`background:${c}`:''}"></span>`; };
+  const floor = `<div class="panel floor"><div class="ph">Залата</div><div class="hint">Кликни свободен стол, за да седнеш</div>
+    ${tables.map(t=>`<div class="rt ${t.live?'live':''} ${t.mine?'mine':''}" style="left:${t.x}%;top:${t.y}%">
+        <div class="top"><b>${t.name}</b><span>${t.sub}</span><span class="st">${t.st}</span></div>${t.seats.map(s=>seat(...s)).join('')}</div>`).join('')}
+    <div class="tip" style="left:calc(4% + 4px);top:calc(12% + 142px)"><div class="t1">Белот при Ralitsa</div>
+      Ralitsa Moonbrook, Grumbar Ironpot, Velin Ashfield<br><span class="dim">1 свободно място · до 151 · залог 5g на човек</span><br>
+      <span style="color:#9fd17a">Кликни празния стол, за да седнеш</span></div>
+  </div>`;
+
+  const dots = arr => `<span class="dots">${arr.map(c=>c?`<i style="background:${c}"></i>`:'<i class="e"></i>').join('')}</span>`;
+  const list = `<div class="panel"><div class="ph">Маси в гилдията</div>
+    <div class="grp">Търсят играчи</div>
+    <div class="row"><span class="ic">♠</span><div>Белот при Ralitsa<small>до 151</small></div>${dots([C.mage,C.war,C.rog,null])}<span style="color:#f2c94c">5g</span><span class="btn sm">Седни</span></div>
+    <div class="row"><span class="ic">♦</span><div>Холдем при Bozhana<small>блайнд 10s / 20s</small></div>${dots([C.pri,C.hun,C.dru,null,C.lock,null])}<span style="color:#f2c94c">3g</span><span class="btn sm">Седни</span></div>
+    <div class="row"><span class="ic">🂡</span><div>Сантасе при Nadya<small>до 11 точки</small></div>${dots([C.dru,null])}<span style="color:#f2c94c">1g</span><span class="btn sm">Седни</span></div>
+    <div class="row" style="box-shadow: inset 3px 0 0 #f2c94c"><span class="ic">☠</span><div>Death Roll, твоята маса<small>до 1000</small></div>${dots([C.sham,C.rog,null])}<span style="color:#f2c94c">50s</span><span class="btn sm ghost">Покани</span></div>
+    <div class="grp">Играят в момента</div>
+    <div class="row"><span class="ic">⚀</span><div>Табла: Grumbar срещу Dimo<small>3 : 2 партии</small></div>${dots([C.war,C.pal])}<span style="color:#f2c94c">2g</span><span class="btn sm ghost">Гледай</span></div>
+  </div>`;
+
+  const right = `<div class="panel"><div class="ph">Сметки</div>
+    <div class="led"><div>Grumbar Ironpot<small>Белот, вчера</small></div><span class="amt owe">−12g 50s</span><span class="btn sm">Плати</span></div>
+    <div class="led"><div>Velin Ashfield<small>Холдем, днес</small></div><span class="amt get">+5g</span><span class="btn sm ghost">Напомни</span></div>
+    <div class="led"><div>Kiro Embervale<small>Табла, днес</small></div><span class="amt get">+2g</span><span class="btn sm ghost">Напомни</span></div>
+    <div class="sum">Общо: дължиш 12g 50s, дължат ти 7g</div>
+    <div class="online"><div class="ph">В кръчмата сега</div>
+      <div><span style="color:${C.mage}">Ralitsa Moonbrook</span><span class="s">на Белот</span></div>
+      <div><span style="color:${C.war}">Grumbar Ironpot</span><span class="s">на Табла</span></div>
+      <div><span style="color:${C.hun}">Kiro Embervale</span><span class="s">на Холдем</span></div>
+      <div><span style="color:${C.lock}">Lazar Grimm</span><span class="s">свободен</span></div>
+      <div><span style="color:${C.pri}">Bozhana Thornfield</span><span class="s">на Холдем</span></div>
+    </div></div>`;
+
+  const toast = `<div class="toast"><b>Покана за Белот</b><p><span style="color:${C.mage}">Ralitsa Moonbrook</span> те кани на масата си. Залог 5g на човек, до 151.</p>
+     <span class="btn sm">Приемам</span> <span class="btn sm ghost">Не сега</span> <span class="btn sm ghost">Не ме безпокой 30 мин</span><div class="bar"></div></div>`;
+
+  const shell = centre => `<div class="mh"><div class="win">
+      <div class="titlebar"><span class="logo">Krachma</span>
+        <div class="tabs"><span class="tab on">Зала</span><span class="tab">Класация</span><span class="tab">История</span><span class="tab">Настройки</span></div>
+        <span class="gold">В чантата: <b>184g 32s</b></span><span class="x">✕</span></div>
+      <div class="body">${left}${centre}${right}</div>${toast}</div></div>`;
+
+  document.getElementById('hubs').innerHTML = `
+    <div class="opt" data-choice="floor" onclick="toggleSelect(this)"><h3>A · Залата като план</h3>
+      <p>Масите са нарисувани като маси в кръчма, а столовете около тях са в цвета на класа на играча. Празният стол е с пунктир и се кликва. Масата, на която седиш ти, свети. Забавно и запомнящо се, но при 8 и повече маси става тясно.</p>${shell(floor)}</div>
+    <div class="opt" data-choice="list" onclick="toggleSelect(this)"><h3>B · Списък с маси</h3>
+      <p>Същото като ред в списък: кой е домакин, кои места са заети, залог и бутон. По-скучно, но се събират много маси и се чете по-бързо.</p>${shell(list)}</div>`;
+})();
+</script>

@@ -1,0 +1,138 @@
+<meta name="darkreader-lock">
+<link href="https://fonts.googleapis.com/css2?family=Alegreya+SC:wght@500;700&family=Alegreya+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root { color-scheme: dark; }
+  .hw { display:flex; flex-direction:column; gap:30px; align-items:center; }
+  .hw figure { margin:0; }
+  .hw figcaption { color: var(--text-secondary); font-size:.88rem; margin-top:.55rem; max-width:980px; }
+  .hw figcaption b { color: var(--text-primary); }
+  .pair { display:grid; grid-template-columns: 480px 480px; gap:20px; }
+
+  .mh { --brass:#b0813f; --brass-hi:#e9c98a; --ink:#f3e2c0; --ink-dim:#c9b28a; --cream:#fbf3e2; --gold:#f2c94c; --good:#9fd17a; --bad:#e2735a;
+        font-family:'Alegreya Sans',sans-serif; color:var(--ink); }
+  .mh .win { position:relative; border-radius:10px; padding:8px; overflow:hidden;
+             background: linear-gradient(135deg,#4a2c1a,#2e190e 45%,#553220); box-shadow:0 14px 30px rgba(0,0,0,.5), inset 0 0 0 1px #8a5a2b; }
+  .mh .tb { height:26px; display:flex; align-items:center; gap:10px; padding:0 6px; font-size:12px; color:var(--ink-dim); }
+  .mh .tb .nm { font-family:'Alegreya SC',serif; font-weight:700; font-size:15px; color:var(--brass-hi); }
+  .mh .tb .x { margin-left:auto; width:16px; height:16px; border-radius:50%; background:#6b3a1f; text-align:center; font:700 10px/16px sans-serif; color:var(--brass-hi); }
+  .mh .felt { position:relative; border-radius:6px; overflow:hidden; background: radial-gradient(ellipse at 50% 42%, #7a1f24 0%, #4d1216 62%, #2c090b 100%); box-shadow: inset 0 0 50px rgba(0,0,0,.55), inset 0 0 0 2px #b0813f; }
+  .mh .side { border-radius:6px; background: rgba(20,10,5,.6); border:1px solid #6e4824; padding:10px 12px; font-size:12.5px; }
+  .mh .ph { font-family:'Alegreya SC',serif; color:var(--brass-hi); font-size:14.5px; margin-bottom:6px; }
+  .mh .plate { position:absolute; background:rgba(32,16,8,.85); border:1px solid #a8773b; border-radius:4px; padding:3px 8px; font-size:11.5px; white-space:nowrap; text-align:center; }
+  .mh .plate i { font-style:normal; font-weight:700; }
+  .mh .plate.turn { border-color: var(--gold); box-shadow: 0 0 10px rgba(242,201,76,.5); }
+  .mh .plate.out { opacity:.55; border-style:dashed; }
+  .mh .btn { display:inline-block; padding:3px 10px; border-radius:4px; font-family:'Alegreya SC',serif; font-weight:700; font-size:12.5px;
+             color:#2e190e; background: linear-gradient(#f0d28f,#c8963f); box-shadow: inset 0 -2px 0 #8a5a2b, 0 2px 4px rgba(0,0,0,.4); }
+  .mh .btn.ghost { background: rgba(32,16,8,.8); color: var(--brass-hi); box-shadow: inset 0 0 0 1px var(--brass); }
+  .mh .btn.red { background: linear-gradient(#c4544a,#7a1f24); color: var(--cream); box-shadow: inset 0 -2px 0 #4d1216, 0 2px 4px rgba(0,0,0,.4); }
+  .mh .btn.off { opacity:.4; }
+  .chips { display:inline-flex; align-items:center; gap:4px; color:var(--gold); }
+  .chips::before { content:""; width:11px; height:11px; border-radius:50%; background: radial-gradient(circle, #f2c94c 30%, #8a5a2b 32% 46%, #f2c94c 48%); box-shadow:0 1px 2px rgba(0,0,0,.6); }
+  .oval { position:absolute; border-radius:50%; background: radial-gradient(ellipse at 50% 45%, #8d2a30, #4d1216 75%); box-shadow: 0 0 0 7px #4a2c1a, 0 0 0 9px #b0813f, 0 10px 22px rgba(0,0,0,.55); }
+  .pc { position:relative; width:40px; height:58px; border-radius:4px; background:#fbf3e2; border:1px solid #c7ad82; box-shadow:0 2px 5px rgba(0,0,0,.45); flex-shrink:0; }
+  .pc .r { position:absolute; left:3px; top:1px; font-size:13px; font-weight:700; line-height:1; }
+  .pc .s { position:absolute; left:3px; top:14px; font-size:10px; line-height:1; }
+  .pc .big { position:absolute; right:4px; bottom:2px; font-size:21px; line-height:1; }
+  .pc.red { color:#a3161c; } .pc.black { color:#22170f; }
+  .rowc { position:absolute; display:flex; gap:5px; }
+
+  table.t { width:100%; border-collapse:collapse; font-size:12.5px; }
+  table.t th { text-align:left; font-weight:500; color:var(--ink-dim); font-size:11.5px; padding:3px 4px; border-bottom:1px solid rgba(176,129,63,.4); }
+  table.t td { padding:4px 4px; border-bottom:1px solid rgba(176,129,63,.18); }
+  table.t td.n { text-align:right; font-variant-numeric: tabular-nums; }
+  .pos { color:var(--good); } .neg { color:var(--bad); }
+  .tabs2 { display:flex; gap:2px; margin-bottom:8px; } .tabs2 span { font-size:12px; padding:3px 9px; border-radius:4px; color:var(--ink-dim); } .tabs2 span.on { background:rgba(0,0,0,.35); color:var(--brass-hi); box-shadow: inset 0 -2px 0 var(--brass); }
+  .log { margin-top:8px; font-size:11.5px; color:var(--ink-dim); line-height:1.5; }
+  .log b { color:var(--ink); font-weight:500; }
+  .kv { display:flex; justify-content:space-between; padding:3px 0; font-size:13px; }
+  .kv.total { border-top:1px solid rgba(176,129,63,.5); margin-top:4px; padding-top:6px; font-weight:700; }
+  .lbl { font-size:12px; color:var(--ink-dim); margin:8px 0 4px; }
+  .field { display:inline-block; background:rgba(0,0,0,.45); border:1px solid #8a5a2b; border-radius:4px; padding:2px 8px; font-size:13px; }
+  .seg { display:inline-flex; border:1px solid var(--brass); border-radius:5px; overflow:hidden; }
+  .seg span { padding:3px 10px; font-size:12px; border-left:1px solid rgba(176,129,63,.5); } .seg span:first-child { border-left:0; }
+  .seg span.on { background: linear-gradient(#f0d28f,#c8963f); color:#2e190e; font-weight:700; }
+</style>
+
+<h2>Холдем с вход, rebuy и сметка между всеки двама</h2>
+<p class="subtitle">По време на играта не се мести голд, а се записва кой колко е взел от кого. Когато станеш от масата, аддонът знае точно кой на кого дължи. Няма каса и нищо не се праща предварително.</p>
+
+<div class="hw" id="hw"></div>
+
+<script>
+(function(){
+  const C = { mage:'#3FC7EB', war:'#C69B6D', rog:'#FFF468', pri:'#FFFFFF', hun:'#AAD372', dru:'#FF7C0A', lock:'#8788EE', sham:'#0070DD' };
+  const S = { h:['♥','red'], d:['♦','red'], s:['♠','black'], c:['♣','black'] };
+  const card = (r,s) => `<div class="pc ${S[s][1]}"><span class="r">${r}</span><span class="s">${S[s][0]}</span><span class="big">${S[s][0]}</span></div>`;
+  const nm = (n,c) => `<span style="color:${c};font-weight:700">${n}</span>`;
+  const seat = (x,y,n,c,stack,cls='') => `<div class="plate ${cls}" style="left:${x}px;top:${y}px"><i style="color:${c}">${n}</i><br><span class="chips">${stack}</span></div>`;
+
+  // ---------- 1. Setup + waiting ----------
+  const setup = `<div class="mh"><div class="win" style="width:480px;height:330px"><div class="tb"><span class="nm">Нова маса: Холдем</span><span class="x">✕</span></div>
+    <div class="side" style="height:calc(100% - 28px)">
+      <div class="lbl">Вход (с толкова чипа сядаш)</div><span class="field">3g</span>
+      <div class="lbl">Блайндове</div><span class="field">10s</span> / <span class="field">20s</span> <span style="font-size:11.5px;color:var(--ink-dim)">&nbsp;вдигат се на всеки 20 мин: <b style="color:var(--ink)">не</b></span>
+      <div class="lbl">Rebuy</div><div class="seg"><span>Без</span><span class="on">Когато свършат чиповете</span><span>Винаги до входа</span></div>
+      <div class="lbl">Играчи</div><span class="field">мин. 2</span> <span class="field">макс. 9</span>
+      <div style="margin-top:14px;margin-right:180px;padding:7px 9px;border:1px dashed var(--brass);border-radius:6px;font-size:12.5px">
+        Масата чака: ${nm('Ти','#0070DD')} + ${nm('Kiro','#AAD372')} · 2 от минимум 2<br><span style="color:var(--ink-dim)">Други могат да сядат и между ръцете.</span></div>
+      <div style="position:absolute;right:20px;bottom:18px"><span class="btn">Раздай първата ръка</span></div>
+    </div></div></div>`;
+
+  // ---------- 3. Leave dialog ----------
+  const leave = `<div class="mh"><div class="win" style="width:480px;height:330px"><div class="tb"><span class="nm">Ставаш от масата</span><span class="x">✕</span></div>
+    <div class="side" style="height:calc(100% - 28px)">
+      <div class="kv"><span>Вход + 1 rebuy</span><span>6g 00s</span></div>
+      <div class="kv"><span>Ставаш с</span><span class="chips">4g 10s</span></div>
+      <div class="kv total"><span>Резултат</span><span class="neg">−1g 90s</span></div>
+      <div class="lbl" style="margin-top:10px">Ето как се разпределя</div>
+      <table class="t"><tr><td>Ти дължиш на ${nm('Kiro Embervale',C.hun)}</td><td class="n neg">1g 40s</td></tr>
+        <tr><td>Ти дължиш на ${nm('Nadya Frostwind',C.dru)}</td><td class="n neg">1g 10s</td></tr>
+        <tr><td>${nm('Bozhana Thornfield',C.pri)} ти дължи</td><td class="n pos">60s</td></tr></table>
+      <div style="font-size:11.5px;color:var(--ink-dim);margin-top:8px">Записва се в колоната „Сметки“ при всички засегнати. Останалите продължават да играят.</div>
+      <div style="position:absolute;right:20px;bottom:18px"><span class="btn ghost">Остани</span> <span class="btn red">Стани и запиши</span></div>
+    </div></div></div>`;
+
+  // ---------- 2. In-game ----------
+  const game = `<div class="mh"><div class="win" style="width:980px;height:470px"><div class="tb"><span class="nm">Тексас Холдем</span><span>при Bozhana · блайнд 10s / 20s · вход 3g · ръка #37</span><span class="x">✕</span></div>
+    <div style="display:grid;grid-template-columns: 1fr 330px;gap:8px;height:calc(100% - 28px)">
+      <div class="felt">
+        <div class="oval" style="left:60px;right:60px;top:40px;bottom:90px"></div>
+        ${seat(268,6,'Bozhana',C.pri,'3g 70s')}
+        ${seat(40,58,'Kiro',C.hun,'6g 20s')}
+        ${seat(490,58,'Nadya',C.dru,'4g 30s')}
+        ${seat(18,212,'Lazar',C.lock,'rebuy…','out')}
+        ${seat(512,212,'Velin',C.rog,'all-in 1g 05s')}
+        <div style="position:absolute;left:50%;transform:translateX(-50%);top:98px;font-size:12px"><span class="chips">Пот 3g 40s</span> <span style="color:var(--ink-dim)">· страничен 80s</span></div>
+        <div class="rowc" style="left:50%;transform:translateX(-50%);top:124px">${card('A','h')}${card('J','h')}${card('7','c')}${card('Q','s')}</div>
+        <div class="plate turn" style="left:14px;bottom:12px;text-align:left"><i style="color:${C.sham}">Ти</i> · <span class="chips">4g 10s</span> · 0:18</div>
+        <div class="rowc" style="left:16px;bottom:44px">${card('A','d')}${card('A','c')}</div>
+        <div style="position:absolute;left:110px;bottom:66px;font-family:'Alegreya SC',serif;color:var(--gold);font-size:13px">Тройка аса</div>
+        <div style="position:absolute;right:12px;bottom:12px;display:flex;align-items:center;gap:5px">
+          <span class="btn ghost">Пас</span><span class="btn ghost">Плащам 40s</span><span class="btn">Вдигам 1g</span></div>
+        <div style="position:absolute;right:12px;top:10px;display:flex;gap:5px"><span class="btn ghost off">Rebuy</span><span class="btn ghost">Стани от масата</span></div>
+      </div>
+      <div class="side">
+        <div class="ph">Сметка на масата</div>
+        <div class="tabs2"><span class="on">Ти срещу всеки</span><span>Всички</span><span>Ръце</span></div>
+        <table class="t"><tr><th>Срещу</th><th class="n" style="text-align:right">Взел от теб</th><th style="text-align:right">Взел си</th><th style="text-align:right">Нето</th></tr>
+          <tr><td>${nm('Kiro',C.hun)}</td><td class="n">2g 60s</td><td class="n">1g 20s</td><td class="n neg">−1g 40s</td></tr>
+          <tr><td>${nm('Nadya',C.dru)}</td><td class="n">1g 50s</td><td class="n">40s</td><td class="n neg">−1g 10s</td></tr>
+          <tr><td>${nm('Bozhana',C.pri)}</td><td class="n">30s</td><td class="n">90s</td><td class="n pos">+60s</td></tr>
+          <tr><td>${nm('Velin',C.rog)}</td><td class="n">0</td><td class="n">0</td><td class="n">0</td></tr>
+          <tr><td>${nm("Lazar",C.lock)}</td><td class="n">0</td><td class="n">0</td><td class="n">0</td></tr><tr><td>${nm("Dimo","#F48CBA")} <span style="color:var(--ink-dim);font-size:11px">стана</span></td><td class="n">0</td><td class="n">0</td><td class="n">0</td></tr></table>
+        <div class="kv total" style="margin-top:8px"><span>Ти общо (вход 3g + rebuy 3g)</span><span class="neg">−1g 90s</span></div>
+        <div class="log"><b>#36</b> Kiro взе 1g 20s с две двойки (40s от теб, 80s от Nadya)<br>
+          <b>#35</b> Ти взе 90s с флош (60s от Bozhana, 30s от Nadya)<br>
+          <b>#34</b> Dimo стана: дължи 1g на Kiro и 20s на Velin</div>
+      </div>
+    </div></div></div>`;
+
+  document.getElementById('hw').innerHTML = `
+    <div class="pair">
+      <figure>${setup}<figcaption><b>Отваряне.</b> Задаваш вход, блайндове и rebuy. Масата тръгва, щом седнат <b>2 души</b>. Другите могат да сядат и да стават между ръцете.</figcaption></figure>
+      <figure>${leave}<figcaption><b>Ставане по средата.</b> Чиповете ти се сравняват с това, което си внесъл. Разликата се разпределя по това от кого колко си взел или загубил, и се записва в „Сметки“.</figcaption></figure>
+    </div>
+    <figure>${game}<figcaption><b>По време на играта.</b> Панелът вдясно се обновява след всяка ръка. „Ти срещу всеки“ показва колко е взел всеки от теб и ти от него, а „Ръце“ е историята. Rebuy е активен само когато чиповете ти свършат. Lazar в момента купува отново.</figcaption></figure>`;
+})();
+</script>

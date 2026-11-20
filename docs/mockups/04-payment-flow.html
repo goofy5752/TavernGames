@@ -1,0 +1,118 @@
+<meta name="darkreader-lock">
+<link href="https://fonts.googleapis.com/css2?family=Alegreya+SC:wght@500;700&family=Alegreya+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root { color-scheme: dark; }
+  .flow { display:grid; grid-template-columns: repeat(2, 560px); gap: 26px 32px; justify-content:center; }
+  .flow figure { margin:0; }
+  .flow figcaption { color: var(--text-secondary); font-size:.88rem; margin-top:.55rem; max-width:560px; }
+  .flow figcaption b { color: var(--text-primary); }
+  .step { display:inline-block; width:22px; height:22px; border-radius:50%; background:#b0813f; color:#2e190e; font-weight:700; text-align:center; line-height:22px; font-size:12px; margin-right:6px; }
+
+  .mh { --brass:#b0813f; --brass-hi:#e9c98a; --ink:#f3e2c0; --ink-dim:#c9b28a; --cream:#fbf3e2; --gold:#f2c94c; --good:#9fd17a; --bad:#e2735a;
+        font-family:'Alegreya Sans',sans-serif; color:var(--ink); }
+  .mh .win { position:relative; width:560px; height:360px; border-radius:10px; padding:8px; overflow:hidden;
+             background: linear-gradient(135deg,#4a2c1a,#2e190e 45%,#553220); box-shadow:0 14px 30px rgba(0,0,0,.5), inset 0 0 0 1px #8a5a2b; }
+  .mh .tb { height:26px; display:flex; align-items:center; gap:10px; padding:0 6px; font-size:12px; color:var(--ink-dim); }
+  .mh .tb .nm { font-family:'Alegreya SC',serif; font-weight:700; font-size:15px; color:var(--brass-hi); }
+  .mh .tb .x { margin-left:auto; width:16px; height:16px; border-radius:50%; background:#6b3a1f; text-align:center; font:700 10px/16px sans-serif; color:var(--brass-hi); }
+  .mh .in { position:relative; height:calc(100% - 28px); border-radius:6px; background: rgba(20,10,5,.6); border:1px solid #6e4824; padding:12px 14px; overflow:hidden; }
+  .mh .btn { display:inline-block; padding:4px 12px; border-radius:4px; font-family:'Alegreya SC',serif; font-weight:700; font-size:13px;
+             color:#2e190e; background: linear-gradient(#f0d28f,#c8963f); box-shadow: inset 0 -2px 0 #8a5a2b, 0 2px 4px rgba(0,0,0,.4); }
+  .mh .btn.ghost { background: rgba(32,16,8,.8); color: var(--brass-hi); box-shadow: inset 0 0 0 1px var(--brass); }
+  .mh .lbl { font-size:12px; color:var(--ink-dim); margin:8px 0 4px; }
+  .mh .seg { display:inline-flex; border:1px solid var(--brass); border-radius:5px; overflow:hidden; }
+  .mh .seg span { padding:4px 11px; font-size:12.5px; border-left:1px solid rgba(176,129,63,.5); } .mh .seg span:first-child { border-left:0; }
+  .mh .seg span.on { background: linear-gradient(#f0d28f,#c8963f); color:#2e190e; font-weight:700; }
+  .mh .field { display:inline-block; background:rgba(0,0,0,.45); border:1px solid #8a5a2b; border-radius:4px; padding:3px 9px; font-size:13px; min-width:44px; }
+  .mh .coin { display:inline-block; width:10px; height:10px; border-radius:50%; margin:0 3px 0 1px; vertical-align:-1px; }
+  .mh .g { background: radial-gradient(circle at 35% 35%, #fff2a8, #d4a017); } .mh .s { background: radial-gradient(circle at 35% 35%, #fff, #a9a9b3); }
+  .mh .note { font-size:11.5px; color:var(--ink-dim); }
+  .mh .warn { font-size:11.5px; color:#f3d79a; background: rgba(176,129,63,.14); border-left:3px solid var(--gold); padding:5px 8px; border-radius:0 4px 4px 0; }
+
+  .mh .res { display:flex; align-items:center; gap:10px; padding:7px 0; border-bottom:1px solid rgba(176,129,63,.22); font-size:13.5px; }
+  .mh .res .arrow { flex:1; height:2px; background: linear-gradient(90deg, var(--bad), var(--good)); position:relative; }
+  .mh .res .arrow::after { content:""; position:absolute; right:-2px; top:-4px; border-left:8px solid var(--good); border-top:5px solid transparent; border-bottom:5px solid transparent; }
+  .mh .res .amt { color:var(--gold); font-weight:700; min-width:58px; text-align:right; }
+  .mh .big { font-family:'Alegreya SC',serif; color:var(--gold); font-size:22px; text-align:center; margin:2px 0 8px; }
+
+  .mh .choice { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:10px; }
+  .mh .ch { border:1px solid #8a5a2b; border-radius:6px; padding:10px; background:rgba(0,0,0,.3); font-size:12.5px; }
+  .mh .ch b { font-family:'Alegreya SC',serif; color:var(--brass-hi); font-size:15px; display:block; margin-bottom:3px; }
+  .mh .ch.on { border-color: var(--gold); box-shadow: 0 0 12px rgba(242,201,76,.3); }
+  .mh .ch .ok { color:var(--good); } .mh .ch .no { color:var(--ink-dim); }
+
+  /* blizzard mail frame imitation */
+  .bz { position:absolute; left:14px; top:12px; width:250px; height:290px; background:#1b1b1b; border:2px solid #6f6f6f; border-radius:4px; box-shadow: 0 8px 20px rgba(0,0,0,.6); font-family: Arial, sans-serif; font-size:11.5px; color:#ffd100; }
+  .bz .h { background: linear-gradient(#3a3a3a,#262626); padding:4px 8px; color:#ffd100; font-weight:bold; border-bottom:1px solid #555; }
+  .bz .f { margin:7px 8px 0; } .bz .f div { background:#000; border:1px solid #555; color:#fff; padding:3px 5px; margin-top:2px; min-height:18px; }
+  .bz .body { height:80px; }
+  .bz .money { color:#fff; } .bz .send { position:absolute; right:8px; bottom:8px; background: linear-gradient(#a01010,#600); color:#ffd100; padding:3px 12px; border:1px solid #c33; border-radius:3px; font-weight:bold; box-shadow: 0 0 0 3px rgba(242,201,76,.0); animation: pulse 1.4s ease-in-out infinite; }
+  @keyframes pulse { 50% { box-shadow: 0 0 0 4px rgba(242,201,76,.55); } }
+  @media (prefers-reduced-motion: reduce) { .bz .send { animation:none; box-shadow: 0 0 0 3px rgba(242,201,76,.55); } }
+  .callout { position:absolute; left:280px; width:250px; font-size:12.5px; }
+  .callout b { color: var(--brass-hi); font-family:'Alegreya SC',serif; font-size:15px; }
+</style>
+
+<h2>Залог и плащане</h2>
+<p class="subtitle">Целият път на един залог, от отварянето на масата до изчистената сметка. Аддонът никога не мести голд сам. Той само попълва пощата или трейда, а ти натискаш бутона.</p>
+
+<div class="flow" id="flow"></div>
+
+<script>
+(function(){
+  const C = { mage:'#3FC7EB', war:'#C69B6D', rog:'#FFF468', sham:'#0070DD' };
+  const win = (title, meta, body) => `<div class="mh"><div class="win"><div class="tb"><span class="nm">${title}</span><span>${meta}</span><span class="x">✕</span></div><div class="in">${body}</div></div></div>`;
+  const nm = (n,c) => `<span style="color:${c};font-weight:700">${n}</span>`;
+
+  const setup = win('Нова маса','Белот', `
+    <div class="lbl">На какво играем</div>
+    <div class="seg"><span>Само за удоволствие</span><span class="on">Със залог</span></div>
+    <div class="lbl">Залог на човек</div>
+    <span class="field">5</span><span class="coin g"></span> <span class="field">0</span><span class="coin s"></span>
+    <span class="note">&nbsp; таванът на гилдията е 50g</span>
+    <div class="lbl">Кой може да седне</div>
+    <div class="seg"><span class="on">Всеки от гилдията</span><span>Само поканени</span><span>Групата ми</span></div>
+    <div class="lbl">Как се плаща</div>
+    <div class="seg"><span class="on">Губещият плаща на победителя</span><span>Всички към една каса</span></div>
+    <div style="margin-top:12px;margin-right:190px" class="warn">Всеки, който сяда, вижда залога и трябва да го приеме, преди да седне.</div>
+    <div style="position:absolute;right:14px;bottom:12px"><span class="btn ghost">Отказ</span> <span class="btn">Отвори маса</span></div>`);
+
+  const result = win('Сметката','Белот · 151 : 98', `
+    <div class="big">Печелите с ${nm('Ralitsa','#3FC7EB')}!</div>
+    <div class="res">${nm('Grumbar Ironpot',C.war)}<span class="arrow"></span>${nm('Ти',C.sham)}<span class="amt">5g</span></div>
+    <div class="res">${nm('Velin Ashfield',C.rog)}<span class="arrow"></span>${nm('Ralitsa Moonbrook',C.mage)}<span class="amt">5g</span></div>
+    <div class="lbl" style="margin-top:10px">Всеки губещ плаща на един от победителите, така че има само два превода вместо четири.</div>
+    <div class="note">Сметката се записва при всички четирима и се появява в колоната „Сметки“ в залата.</div>
+    <div style="position:absolute;left:14px;right:14px;bottom:12px;display:flex;justify-content:space-between">
+      <span class="btn ghost">Към залата</span><span class="btn">Реванш на същата маса</span></div>`);
+
+  const pay = win('Плащане','на Grumbar Ironpot', `
+    <div style="font-size:14px">Дължиш на ${nm('Grumbar Ironpot',C.war)} <span style="color:var(--gold);font-weight:700">12g 50s</span> <span class="note">(Белот вчера + Табла днес)</span></div>
+    <div class="choice">
+      <div class="ch on"><b>Трейд</b>Отваря трейд с Grumbar и попълва сумата. Ти натискаш „Trade“.<br><span class="ok">● Grumbar е до теб</span></div>
+      <div class="ch"><b>Поща</b>Когато отвориш пощенска кутия, писмото е готово и попълнено. Ти натискаш „Send“.<br><span class="no">● Няма пощенска кутия наблизо</span></div>
+    </div>
+    <div style="margin-top:12px" class="warn">Трейдовете не струват нищо. Пощата взима 30c такса. В Forever много чести преводи могат временно да задействат защитата срещу купуване на голд, затова аддонът събира дълговете и ти предлага един превод вместо много малки.</div>
+    <div style="position:absolute;right:14px;bottom:12px"><span class="btn ghost">По-късно</span> <span class="btn">Отвори трейд</span></div>`);
+
+  const mail = win('Поща','попълнено от аддона', `
+    <div class="bz"><div class="h">Send Mail</div>
+      <div class="f">To:<div>Grumbar Ironpot</div></div>
+      <div class="f">Subject:<div>Krachma: Белот 19.11 + Табла 20.11</div></div>
+      <div class="f body"><div style="height:62px;color:#ccc">Изплатено през Krachma. Наздраве!</div></div>
+      <div class="f">Send Money: <span class="money">12 <span class="coin g"></span> 50 <span class="coin s"></span> 0 c</span></div>
+      <span class="send">Send</span></div>
+    <div class="callout" style="top:22px"><b>Само натисни Send</b><br>Получателят, сумата и темата вече са попълнени. Аддонът не може да изпрати писмото сам. Така е по правилата на Blizzard и така е по-сигурно.</div>
+    <div class="callout" style="top:150px;padding:8px 10px;border:1px solid var(--good);border-radius:6px;background:rgba(159,209,122,.08)">
+      <span style="color:var(--good);font-weight:700">✓ Изпратено</span><br>
+      ${nm('Grumbar Ironpot',C.war)} получава съобщение. Когато прибере парите от пощата, сметката при двама ви се затваря сама.</div>`);
+
+  const figs = [
+    [1,'Отваряне на маса', setup, 'Залогът се избира при отварянето на масата. „Само за удоволствие“ е напълно без пари. <b>Таванът на гилдията</b> се задава от GM-а в настройките, за да не се стига до лудости.'],
+    [2,'Край на играта', result, 'След последната ръка всички виждат кой на кого дължи. В отборните игри аддонът ги сдвоява, така че има възможно най-малко преводи.'],
+    [3,'Плати с трейд или поща', pay, 'Бутонът „Плати“ от колоната „Сметки“ отваря това. Ако другият е до теб, предлага трейд. Ако си до пощенска кутия, предлага поща. Дълговете към един човек се събират в един превод.'],
+    [4,'Пощата е готова', mail, 'Отваряш пощенската кутия и писмото вече е попълнено. Натискаш Send. Когато получателят прибере парите, сметката се изчиства и при двамата. При трейд става същото, веднага щом сделката мине.'],
+  ];
+  document.getElementById('flow').innerHTML = figs.map(f=>`<figure>${f[2]}<figcaption><span class="step">${f[0]}</span><b>${f[1]}.</b> ${f[3]}</figcaption></figure>`).join('');
+})();
+</script>
