@@ -120,17 +120,24 @@ end
 describe("holdem setup", function()
   it("declares the contract fields, options and the 52-card deck", function()
     eq({ E.id, E.minSeats, E.maxSeats, E.start }, { "holdem", 2, 9, "host" })
-    eq(E.options, { { id = "stack", choices = { 1000, 2000, 5000 }, default = 1000 },
-      { id = "blinds", choices = { 10, 20, 50 }, default = 10 } })
+    eq(E.options, { { id = "betting", choices = { "nl", "pl" }, default = "nl" },
+      { id = "blinds", choices = { 10, 20, 50, 100, 200 }, default = 10 },
+      { id = "stack", choices = { 50, 100, 200 }, default = 100 } })
     eq(#E.DECK, 52); local seen = {}
     for _, f in ipairs(E.DECK) do ok(H.valid(f)); ok(not seen[f]); seen[f] = true end
     local s = mk({ 1, 2 }); eq(E.result(s), nil); eq(E.over(s), false)
   end)
   it("new takes the options, falls back to defaults, seats the occupied chairs", function()
-    local s = mk({ 2, 5 }, { opt = { stack = 2000, blinds = 20 } })
-    eq({ s.stack, s.bb, s.sb, s.phase }, { 2000, 20, 10, "idle" }); eq(chips(s), { [2] = 2000, [5] = 2000 })
-    s = mk({ 1, 2 }, { opt = { stack = 7, blinds = 3 } }); eq({ s.stack, s.bb, s.sb }, { 1000, 10, 5 })
-    s = mk({ 1, 2 }, { opt = { blinds = 50 } }); eq({ s.bb, s.sb }, { 50, 25 })
+    local s = mk({ 2, 5 }, { opt = { stack = 100, blinds = 20 } })
+    eq({ s.stack, s.bb, s.sb, s.betting, s.phase }, { 2000, 20, 10, "nl", "idle" })
+    eq(chips(s), { [2] = 2000, [5] = 2000 })
+    s = mk({ 1, 2 }, { opt = { stack = 7, blinds = 3, betting = "fl" } })
+    eq({ s.stack, s.bb, s.sb, s.betting }, { 1000, 10, 5, "nl" })
+    s = mk({ 1, 2 }, { opt = { stack = 1000, blinds = 50 } }); eq({ s.stack, s.bb, s.sb }, { 5000, 50, 25 })
+    s = mk({ 1, 2 }, { opt = { stack = 50, blinds = 100, betting = "pl" } })
+    eq({ s.stack, s.bb, s.sb, s.betting }, { 5000, 100, 50, "pl" }); eq(chips(s), { 5000, 5000 })
+    s = mk({ 1, 2 }, { opt = { stack = 200, blinds = 200 } }); eq({ s.stack, s.bb, s.sb }, { 40000, 200, 100 })
+    ok(E.apply(s, 0, { k = "join", seat = 4 })); eq(s.seats[4].chips, 40000)
     s = E.new(); eq(chips(s), {}); eq(s.phase, "idle"); eq(E.system(s), nil)
   end)
   it("system asks for a hand only with two playing seats", function()
@@ -266,6 +273,74 @@ describe("holdem betting", function()
     local s = mk({ 1, 2, 3 }); start(s)
     eq(E.auto(s, 1), { k = "fold" }); eq(E.auto(s, 2), nil); acts(s, { { 1, "call" }, { 2, "call" } })
     eq(E.auto(s, 3), { k = "check" }); eq(E.auto(s, 0), nil); eq(E.legal(s, 1), {}); eq(E.legal(s, 0), {})
+  end)
+end)
+
+describe("holdem pot limit", function()
+  local function pl(seatList, o)
+    o = o or {}
+    o.opt = o.opt or { betting = "pl" }
+    return mk(seatList, o)
+  end
+  it("preflop full ring: first to act may raise to 35 at 5/10, then call plus pot after the call", function()
+    local s = pl({ 1, 2, 3, 4, 5, 6, 7, 8, 9 }); start(s)
+    eq({ s.sbSeat, s.bbSeat, s.turn }, { 2, 3, 4 })
+    eq(E.legal(s, 4), { { k = "fold" }, { k = "call" }, { k = "raise", to = 20, max = 35 } })
+    rejects(s, 4, { k = "raise", to = 36 }, "amount"); rejects(s, 4, { k = "allin" }, "amount")
+    acts(s, { { 4, "call" } })                                  -- pot 25: call 10, pot 35 -> to 45
+    eq(E.legal(s, 5)[3], { k = "raise", to = 20, max = 45 }); acts(s, { { 5, "raise", 45 } })
+    eq(E.legal(s, 6)[3], { k = "raise", to = 80, max = 160 })  -- pot 70: call 45, pot 115 -> to 160
+    rejects(s, 6, { k = "raise", to = 161 }, "amount"); acts(s, { { 6, "raise", 160 } })
+    eq(E.legal(s, 7), { { k = "fold" }, { k = "call" }, { k = "raise", to = 275, max = 550 } })
+    rejects(s, 7, { k = "raise", to = 551 }, "amount"); acts(s, { { 7, "raise", 550 } })
+    eq({ s.bet, s.minRaise, s.seats[7].chips }, { 550, 390, 450 })
+  end)
+  it("preflop three-handed: the blinds' raises and re-raises count their posted chips", function()
+    local s = pl({ 1, 2, 3 }); start(s)
+    eq(E.legal(s, 1)[3], { k = "raise", to = 20, max = 35 }); acts(s, { { 1, "raise", 35 } })
+    -- sb has 5 in: call 30 -> pot 80 -> to 115
+    eq(E.legal(s, 2), { { k = "fold" }, { k = "call" }, { k = "raise", to = 60, max = 115 } })
+    acts(s, { { 2, "raise", 115 } })
+    -- bb has 10 in: call 105 -> pot 265 -> to 380
+    eq(E.legal(s, 3), { { k = "fold" }, { k = "call" }, { k = "raise", to = 195, max = 380 } })
+    rejects(s, 3, { k = "raise", to = 381 }, "amount"); acts(s, { { 3, "raise", 380 } })
+    -- the cap (1255) is above his stack: all-in for less is allowed, the raise max is the stack
+    eq(E.legal(s, 1), { { k = "fold" }, { k = "call" }, { k = "raise", to = 645, max = 1000 }, { k = "allin" } })
+    acts(s, { { 1, "allin" } }); eq({ s.bet, s.p[1].allin }, { 1000, true })
+  end)
+  it("preflop heads-up: the button may raise to 30, the big blind's option is pot too", function()
+    local s = pl({ 1, 2 }); start(s)
+    eq({ s.sbSeat, s.bbSeat, s.turn }, { 1, 2, 1 })
+    eq(E.legal(s, 1)[3], { k = "raise", to = 20, max = 30 }); acts(s, { { 1, "call" } })
+    eq(E.legal(s, 2), { { k = "fold" }, { k = "check" }, { k = "raise", to = 20, max = 30 } })
+    rejects(s, 2, { k = "raise", to = 31 }, "amount"); acts(s, { { 2, "raise", 30 } })
+    eq(E.legal(s, 1)[3], { k = "raise", to = 50, max = 90 })   -- call 20 -> pot 60 -> to 90
+    acts(s, { { 1, "raise", 90 }, { 2, "call" } }); eq(s.phase, "street")
+  end)
+  it("an unopened street: the max bet is the pot, then raises follow the same rule", function()
+    local s = pl({ 1, 2, 3 }); start(s)
+    acts(s, { { 1, "call" }, { 2, "call" }, { 3, "check" } }); sys(s)
+    eq(E.legal(s, 2), { { k = "fold" }, { k = "check" }, { k = "bet", to = 10, max = 30 } })
+    rejects(s, 2, { k = "bet", to = 31 }, "amount"); acts(s, { { 2, "bet", 30 } })
+    eq(E.legal(s, 3)[3], { k = "raise", to = 60, max = 120 }); acts(s, { { 3, "raise", 120 } })
+    eq(E.legal(s, 1)[3], { k = "raise", to = 210, max = 420 }) -- pot 180: call 120 -> pot 300 -> to 420
+    acts(s, { { 1, "raise", 420 } }); eq({ s.bet, s.minRaise }, { 420, 300 })
+  end)
+  it("all-in is allowed when the stack is at or under the cap, refused above it", function()
+    local s = pl({ 1, 2, 3 }, { stacks = { [1] = 35 } }); start(s)
+    eq(E.legal(s, 1), { { k = "fold" }, { k = "call" }, { k = "raise", to = 20, max = 35 }, { k = "allin" } })
+    acts(s, { { 1, "allin" } }); eq({ s.bet, s.p[1].allin }, { 35, true })
+    s = pl({ 1, 2, 3 }, { stacks = { [1] = 30 } }); start(s)
+    eq(E.legal(s, 1), { { k = "fold" }, { k = "call" }, { k = "raise", to = 20, max = 30 }, { k = "allin" } })
+    s = pl({ 1, 2, 3 }, { stacks = { [1] = 36 } }); start(s)
+    eq(E.legal(s, 1), { { k = "fold" }, { k = "call" }, { k = "raise", to = 20, max = 35 } })
+    rejects(s, 1, { k = "allin" }, "amount"); rejects(s, 1, { k = "raise", to = 36 }, "amount")
+    acts(s, { { 1, "raise", 35 } }); eq({ s.seats[1].chips, s.p[1].allin }, { 1, false })
+  end)
+  it("no limit keeps the whole stack as the max in the same spots", function()
+    local s = mk({ 1, 2, 3 }); start(s)
+    eq(E.legal(s, 1), { { k = "fold" }, { k = "call" }, { k = "raise", to = 20, max = 1000 }, { k = "allin" } })
+    acts(s, { { 1, "raise", 36 } }); eq(s.bet, 36)
   end)
 end)
 
@@ -469,17 +544,38 @@ end)
 -- Plays `hands` hands from LCG-shuffled decks. Actions: E.auto 3 times in 10, else a random legal action
 -- (a random amount for bet/raise). Seats join and leave between hands and now and then mid-hand.
 -- withViews: every seat's view (and a watcher's) replays the stream and must equal E.view of the full state.
-local function fuzz(seed, hands, withViews)
+-- opt: the table options (E.new's opts.opt). Pot Limit: every bet/raise max is checked against the cap
+-- computed here from the chips put in, and a raise above a binding cap must be refused.
+local function fuzz(seed, hands, withViews, opt)
   local rnd = lcg(seed)
   local n, seatList = rnd(2, 9), {}
   for i = 1, 9 do if #seatList < n and rnd(1, 9) <= n then seatList[#seatList + 1] = i end end
   if #seatList < 2 then seatList = { 1, 9 } end
-  local s = mk(seatList, { first = rnd(1, 9) })
+  local s = mk(seatList, { first = rnd(1, 9), opt = opt })
   local injected, gone, played = #seatList * s.stack, 0, 0
-  local stats = { showdown = 0, sidepots = 0, split = 0, midLeave = 0, players = {} }
+  local stats = { showdown = 0, sidepots = 0, split = 0, midLeave = 0, capped = 0, players = {} }
+  local function check(cond, msg) if not cond then error(msg, 2) end end
+  local function plCheck(seat, legal)
+    local p, pot = s.p[seat], 0
+    for _, i in ipairs(s.order) do pot = pot + s.p[i].total end
+    local toCall = s.bet - p.bet
+    local cap, stackTo = s.bet + pot + toCall, p.bet + s.seats[seat].chips
+    local hasAllin, sized = false, nil
+    for _, la in ipairs(legal) do
+      if la.k == "allin" then hasAllin = true end
+      if la.max then sized = la end
+    end
+    if sized then check(sized.max == math.min(cap, stackTo), "pot limit max " .. sized.max .. " vs cap " .. cap) end
+    if hasAllin then check(stackTo <= cap, "all-in above the pot limit cap") end
+    if sized and cap < stackTo then
+      check(not hasAllin, "all-in offered above the cap")
+      local r, why = E.apply(E.restore(E.snapshot(s)), seat, { k = sized.k, to = cap + 1 })
+      check(r == nil and why == "amount", "raise above the pot limit cap accepted")
+      stats.capped = stats.capped + 1
+    end
+  end
   local views = {}
   if withViews then for i = 0, 9 do views[i] = E.view(s, i) end end
-  local function check(cond, msg) if not cond then error(msg, 2) end end
   -- Leak check independent of the engine's seat records: every sitting gets a player id, every dealt
   -- index remembers the player it went to; a chair sees only the cards of the player sitting in it now.
   local owner, pids, dealtTo = {}, 0, {}
@@ -552,6 +648,7 @@ local function fuzz(seed, hands, withViews)
         for _, la in ipairs(legal) do
           check(E.apply(E.restore(E.snapshot(s)), seat, la), "legal action refused: " .. la.k)
         end
+        if s.betting == "pl" then plCheck(seat, legal) end
         local act
         if rnd(1, 10) <= 3 then
           act = E.auto(s, seat, rnd)
@@ -596,22 +693,36 @@ local function fuzz(seed, hands, withViews)
   return played, stats
 end
 
+-- 6 x 50 hands; optFor(seed) gives the table options of each run
+local function fuzz300(optFor)
+  local total, agg = 0, { showdown = 0, sidepots = 0, split = 0, midLeave = 0, capped = 0, players = {} }
+  for seed = 1, 6 do
+    local played, st = fuzz(seed * 7919, 50, false, optFor(seed))
+    total = total + played
+    for k in pairs(agg) do if k ~= "players" then agg[k] = agg[k] + st[k] end end
+    for p in pairs(st.players) do agg.players[p] = true end
+  end
+  eq(total, 300)
+  ok(agg.showdown >= 30, "showdowns " .. agg.showdown); ok(agg.sidepots >= 10, "side pots " .. agg.sidepots)
+  ok(agg.split >= 1, "splits " .. agg.split); ok(agg.midLeave >= 5, "mid-hand leaves " .. agg.midLeave)
+  for p = 2, 9 do ok(agg.players[p], "no hand with " .. p .. " players") end
+  return agg
+end
+
 describe("holdem fuzz", function()
-  it("300 hands with 2-9 players driven by auto and random legal actions conserve every chip", function()
-    local total, agg = 0, { showdown = 0, sidepots = 0, split = 0, midLeave = 0, players = {} }
-    for seed = 1, 6 do
-      local played, st = fuzz(seed * 7919, 50, false)
-      total = total + played
-      for k in pairs(agg) do if k ~= "players" then agg[k] = agg[k] + st[k] end end
-      for p in pairs(st.players) do agg.players[p] = true end
-    end
-    eq(total, 300)
-    ok(agg.showdown >= 30, "showdowns " .. agg.showdown); ok(agg.sidepots >= 10, "side pots " .. agg.sidepots)
-    ok(agg.split >= 1, "splits " .. agg.split); ok(agg.midLeave >= 5, "mid-hand leaves " .. agg.midLeave)
-    for p = 2, 9 do ok(agg.players[p], "no hand with " .. p .. " players") end
+  it("300 No Limit hands with 2-9 players driven by auto and random legal actions conserve every chip", function()
+    local agg = fuzz300(function() return nil end)
+    eq(agg.capped, 0)
+  end)
+  it("300 Pot Limit hands over every blind level and stack conserve every chip and respect the cap", function()
+    local blinds, stacks = E.options[2].choices, E.options[3].choices
+    local agg = fuzz300(function(seed)
+      return { betting = "pl", blinds = blinds[(seed - 1) % #blinds + 1], stack = stacks[(seed - 1) % #stacks + 1] }
+    end)
+    ok(agg.capped >= 100, "binding pot limit caps " .. agg.capped)
   end)
   it("30 hands replayed on every seat's view stay identical to the views of the full state", function()
-    local played = fuzz(424242, 30, true)
-    eq(played, 30)
+    eq(fuzz(424242, 30, true), 30)
+    eq(fuzz(424242, 30, true, { betting = "pl", blinds = 50, stack = 50 }), 30)
   end)
 end)
