@@ -2,13 +2,15 @@ local _, ns = ...
 
 -- Bot mode: local fake players, each a full Client on a private Bus shared with
 -- the human client, so one person can try every feature alone. Bots never reach
--- the real guild channel: enable() wraps env.send so that
+-- real players: enable() wraps env.send so that
 --   * a WHISPER to a bot goes only to the bus;
---   * a GUILD message goes to the real send and to the bus, except that one whose
---     tid is a bot table (a bot as host, in its seats or in its invited set) goes
---     to the bus only, and a HI whose `at` is a bot-hosted table goes out for
---     real with `at` cleared (a copy) and to the bus unchanged;
---   * everything else is unchanged.
+--   * a GUILD message goes to the real send and to the bus;
+--   * on the real side (GUILD and WHISPER to real players) a message whose tid
+--     is a bot table (a bot as host, in its seats or in its invited set) is
+--     dropped, and a HI whose `at` is a bot table goes out as a copy with `at`
+--     cleared (the bus gets it unchanged);
+--   * a table that was announced for real and then becomes a bot table gets one
+--     real END, so real players do not keep a ghost of it.
 -- A bot's WHISPER reaches the human or another bot through the bus (anything
 -- else is dropped); a bot's GUILD reaches the human and the other bots only.
 -- Deliveries are flushed through env.after(0, ...).
@@ -74,26 +76,55 @@ function Bots:busSend(from, channel, target, msg)
   self:schedule()
 end
 
--- The human client's env.send while bot mode is on.
+-- My message as it may reach real players: nil when its tid is a bot table, a
+-- copy without `at` for a HI sent while I am at a bot table, else msg itself.
+function Bots:realCopy(msg)
+  if type(msg) ~= "table" then return msg end
+  if type(msg.tid) == "string" and (self:tableKind(msg.tid)) then return nil end
+  if msg.t == "HI" and type(msg.at) == "string" and (self:tableKind(msg.at)) then
+    local real = copy(msg)
+    real.at = nil
+    return real
+  end
+  return msg
+end
+
+-- Tables that real players know of (a real TBL went out): tid -> epoch.
+function Bots:noteReal(msg)
+  if type(msg) ~= "table" or type(msg.tid) ~= "string" then return end
+  if msg.t == "TBL" and type(msg.e) == "number" then
+    self.announced[msg.tid] = msg.e
+  elseif msg.t == "END" then
+    self.announced[msg.tid] = nil
+  end
+end
+
+-- A table real players know of became a bot table: one real END takes it off their hall.
+function Bots:retire()
+  for tid, epoch in pairs(self.announced) do
+    if (self:tableKind(tid)) then
+      self.announced[tid] = nil
+      self.orig("GUILD", nil, { v = C.PROTOCOL, t = "END", tid = tid, e = epoch })
+      -- My last real HI may still place me there.
+      local presence = self.client.presence
+      if presence.at == tid then self.orig("GUILD", nil, self:realCopy(presence:hi(false))) end
+    end
+  end
+end
+
+-- The human client's env.send while bot mode is on. No bot table and no bot
+-- name ever goes out for real, by GUILD or by WHISPER.
 local function humanSend(self)
   local orig, me = self.orig, self.env.me
   return function(channel, target, msg)
-    if channel == "WHISPER" then
-      if self.isBot[target] then return self:busSend(me, channel, target, msg) end
-      return orig(channel, target, msg)
-    end
-    if channel ~= "GUILD" or type(msg) ~= "table" then return orig(channel, target, msg) end
-    if type(msg.tid) == "string" and (self:tableKind(msg.tid)) then
-      return self:busSend(me, channel, target, msg)
-    end
-    if msg.t == "HI" and type(msg.at) == "string" and select(2, self:tableKind(msg.at)) then
-      local real = copy(msg)
-      real.at = nil
+    self:retire()
+    if channel == "WHISPER" and self.isBot[target] then return self:busSend(me, channel, target, msg) end
+    local real = self:realCopy(msg)
+    if real ~= nil then
+      self:noteReal(real)
       orig(channel, target, real)
-    else
-      orig(channel, target, msg)
     end
-    self:busSend(me, channel, target, msg)
+    if channel == "GUILD" then self:busSend(me, channel, target, msg) end
   end
 end
 
@@ -195,7 +226,7 @@ end
 function Bots.enable(client, env, makeEnv)
   local self = setmetatable({
     client = client, env = env, makeEnv = makeEnv, orig = env.send,
-    bus = ns.Bus.new(), list = {}, isBot = {}, flushQueued = false, disabled = false,
+    bus = ns.Bus.new(), list = {}, isBot = {}, announced = {}, flushQueued = false, disabled = false,
   }, Bots)
   self.bus:join(env.me, function(channel, sender, msg) client:receive(channel, sender, msg) end)
   env.send = humanSend(self)

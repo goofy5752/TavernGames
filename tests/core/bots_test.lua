@@ -12,6 +12,23 @@ local function seated(seats, name)
   return false
 end
 
+local B = "Мария Стоянова"
+
+-- Does any string anywhere in `msg` equal one of `words`?
+local function mentions(msg, words)
+  if type(msg) == "string" then
+    for i = 1, #words do
+      if msg == words[i] then return true end
+    end
+    return false
+  end
+  if type(msg) ~= "table" then return false end
+  for k, v in pairs(msg) do
+    if mentions(k, words) or mentions(v, words) then return true end
+  end
+  return false
+end
+
 describe("bots", function()
   it("one human plays a whole match against a bot without touching the guild channel", function()
     local sim = Sim.new()
@@ -77,6 +94,49 @@ describe("bots", function()
     ok(envA.send == orig)
     for _, n in ipairs(STARTERS) do eq(a.presence:get(n), nil, n) end
     eq(#a.lobby:tables(), 0)
+  end)
+
+  it("a real player who comes online hears nothing of my bot table", function()
+    local sim = Sim.new()
+    local a, envA = sim:add(A, { cls = "MAGE" }); Bots.enable(a, envA, sim.makeEnv)
+    sim:run(1)
+    local tid = a:openTable{ game = "ttt", access = "invite", turn = 45 }; sim:run(1)
+    ok(a:invite("Бот Иванов")); sim:run(3)
+    eq(a.session.seats, { A, "Бот Иванов" })
+    local mark = #sim.sent
+    local b = sim:add(B, { cls = "ROGUE" }); sim:run(3)
+    local words = { tid, STARTERS[1], STARTERS[2], STARTERS[3] }
+    local toB = 0
+    for i = mark + 1, #sim.sent do
+      local m = sim.sent[i]
+      if m.from == A then
+        ok(not mentions(m.msg, words), "leak in " .. tostring(m.msg.t) .. " to " .. tostring(m.target))
+        if m.target == B then toB = toB + 1 end
+      end
+    end
+    ok(toB > 0, "A never answered B") -- the HI reply went out, without `at`
+    eq(b.lobby:get(tid), nil); eq(b.presence:get(A).at, nil)
+  end)
+
+  it("a table announced for real gets one real END when it becomes a bot table", function()
+    local sim = Sim.new()
+    local b = sim:add(B, { cls = "ROGUE" })
+    local a, envA = sim:add(A, { cls = "MAGE" }); Bots.enable(a, envA, sim.makeEnv)
+    sim:run(1)
+    local tid = a:openTable{ game = "ttt", access = "invite", turn = 45 }; sim:run(1)
+    ok(b.lobby:get(tid), "B never saw the table"); eq(b.presence:get(A).at, tid)
+    local mark = #sim.sent
+    ok(a:invite("Бот Иванов")); sim:run(1)
+    eq(b.lobby:get(tid), nil); eq(b.presence:get(A).at, nil)
+    sim:run(20)
+    local ends, leaks = 0, 0
+    for i = mark + 1, #sim.sent do
+      local m = sim.sent[i]
+      if m.msg.t == "END" and m.msg.tid == tid then ends = ends + 1
+      elseif mentions(m.msg, { tid }) then leaks = leaks + 1 end
+    end
+    eq(ends, 1); eq(leaks, 0)
+    eq(a.session.seats[2], "Бот Иванов")
   end)
 
   it("disable while seated at a bot table leaves it without a word on the guild channel", function()
