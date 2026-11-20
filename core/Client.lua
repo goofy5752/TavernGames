@@ -13,6 +13,7 @@ function Client.new(env)
   self.lobby = ns.Lobby.new(self)
   self.session = nil -- see core/Session.lua
   self.pending = nil -- { tid, host } of an unanswered SIT/WAT
+  self.invites = ns.Invites.new(self)
   return self
 end
 
@@ -71,6 +72,13 @@ function Client:stand() ns.Session.stand(self) end
 -- A move by my seat -> true | nil, code (see Session.act).
 function Client:act(action) return ns.Session.act(self, action) end
 
+-- Host of a table with a free seat: invite `name` -> true | nil, code
+-- ("nothost" "unknown" "seated" "pending"). The answer arrives as "inviteAnswer".
+function Client:invite(name) return self.invites:send(name) end
+
+-- An "invite" event's table: answer "yes", "no" or "snooze" (see core/Invites.lua).
+function Client:answerInvite(tid, answer) self.invites:answer(tid, answer) end
+
 function Client:receive(channel, sender, msg)
   if not self.running then return end
   if self.env.log then self.env.log("in", channel, sender, msg) end
@@ -92,4 +100,5 @@ function Client:receive(channel, sender, msg)
   self.presence:receive(channel, sender, msg)
   self.lobby:receive(channel, sender, msg)
   ns.Session.receive(self, channel, sender, msg)
+  self.invites:receive(channel, sender, msg)
 end

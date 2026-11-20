@@ -10,6 +10,7 @@ ns.Const = {
   TURN_CHOICES = { 30, 45, 60, 90 },
   INVITE_SECONDS = 30,
   SNOOZE_SECONDS = 1800,
+  INVITE_GRACE = 5, -- the host gives up on an unanswered INV this long after the toast ran out
   OFFLINE_STAND_SECONDS = 180,
 
   PING_EVERY = 30,

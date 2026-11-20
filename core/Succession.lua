@@ -186,11 +186,16 @@ local function becomeHost(s, oldHost, oldHeard)
   cancel(s, "silenceTimer")
   s.role, s.host = "host", me
   s.hostSilent, s.stale, s.lastSyn = false, nil, nil
-  s.watcherSet, s.watchers, s.invited = {}, 0, {}
+  s.watcherSet, s.watchers = {}, 0
+  -- The invited set came with the snapshot (and the HND); whoever already sits
+  -- here, and the old host, may come back too.
+  s.invited = s.invited or {}
+  if oldHost then s.invited[oldHost] = true end
   s.lastHeard = {}
   for i = 1, #s.seats do
     local name = s.seats[i]
     if name and name ~= me then
+      s.invited[name] = true
       s.lastHeard[name] = (name == oldHost and oldHeard) or now
     end
   end
@@ -242,7 +247,7 @@ function Succession.handoff(s, to)
   if s.status == "live" and s:seatedCount() < s:engine().minSeats then
     s:event(0, { k = "abort" })
   end
-  local m = { v = C.PROTOCOL, t = "HND", tid = s.tid, e = s.epoch + 1, to = to }
+  local m = { v = C.PROTOCOL, t = "HND", tid = s.tid, e = s.epoch + 1, to = to, inv = s:invitedList() }
   local members = s:members()
   for i = 1, #members do client:send("WHISPER", members[i], m) end
   client.lobby:remove(s.tid)
@@ -263,7 +268,9 @@ function Succession.onHandoff(client, sender, m)
     s.seq = s.seq + 1 -- its stand never reached me
   end
   s.epoch = m.e
-  becomeHost(s)
+  s.invited = s.invited or {}
+  s:addInvited(m.inv) -- invitations sent after my snapshot
+  becomeHost(s, sender)
 end
 
 -- TBL about my table from somebody claiming to host it.

@@ -16,6 +16,7 @@ core/Presence.lua
 core/Lobby.lua
 core/Succession.lua
 core/Session.lua
+core/Invites.lua
 core/Client.lua
 
 # Engines

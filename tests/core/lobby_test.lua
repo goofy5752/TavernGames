@@ -87,7 +87,7 @@ describe("lobby and seating", function()
     local rb = refusals(b)
     b:sit(tid, 2); sim:run(1); eq(rb, { { tid, "access" } }); eq(b.session, nil)
     b:watch(tid); sim:run(1); eq(rb[2], { tid, "access" }); eq(b.session, nil)
-    a.session.invited[C] = true -- filled by invitations (Task 7)
+    ok(a:invite(C)); eq(a.session.invited[C], true)
     c:sit(tid, 2); sim:run(1); eq(c.session.mySeat, 2)
     c:stand(); a:stand(); sim:run(3)
 

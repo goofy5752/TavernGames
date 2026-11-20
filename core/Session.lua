@@ -257,10 +257,30 @@ function Session:scheduleTick()
   end)
 end
 
+-- The invited set of an "invite" table as a list in byte order (nil when empty),
+-- so a member that becomes host keeps letting the same people in.
+function Session:invitedList()
+  if self.access ~= "invite" then return nil end
+  local out = {}
+  for name in pairs(self.invited) do out[#out + 1] = name end
+  if #out == 0 then return nil end
+  table.sort(out, byteLess)
+  return out
+end
+
+-- Adds every string in `list` (from an SNP or HND) to the invited set.
+function Session:addInvited(list)
+  if type(list) ~= "table" then return end
+  for i = 1, #list do
+    if type(list[i]) == "string" then self.invited[list[i]] = true end
+  end
+end
+
 function Session:snapshotTo(name)
   self.client:send("WHISPER", name, message("SNP", {
     tid = self.tid, e = self.epoch, q = self.seq, tbl = self:record(),
     st = self.state and self:engine().snapshot(self.state), left = self:left(),
+    inv = self:invitedList(),
   }))
 end
 
@@ -409,7 +429,7 @@ function Session.open(client, opts)
     game = opts.game, access = opts.access, turn = turn, watchers = 0,
     watcherSet = {}, -- name -> true
     lastHeard = {},  -- member name -> env.now() of its last message
-    invited = {},    -- name -> true, for access "invite" (filled by Task 7)
+    invited = {},    -- name -> true, for access "invite" (client:invite; travels in SNP/HND)
   }, Session)
   client.presence:setAt(tid)
   client.session:scheduleTick()
@@ -490,6 +510,8 @@ local function adopt(client, sender, m)
   s.status = t.st == "live" and "live" or (s.state and "aborted" or "open")
   s.deadline = type(m.left) == "number" and client.env.now() + m.left or nil
   s.stale = nil
+  s.invited = {}
+  s:addInvited(m.inv)
   client.pending, client.gaveUp = nil, nil
   client.session = s
   if not s.pingTimer then s:schedulePing() end
