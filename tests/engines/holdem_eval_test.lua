@@ -1,0 +1,61 @@
+local H = Loader.ns().HoldemEval
+local function cards(str) local t = {} for c in str:gmatch("%S+") do t[#t + 1] = c end return t end
+local function cat(str) local _, c = H.best(cards(str)) return c end
+local function score(str) return (H.best(cards(str))) end
+local function beats(a, b) ok(score(a) > score(b), a .. " should beat " .. b) end
+local function ties(a, b) eq(score(a), score(b), a .. " should tie " .. b) end
+
+describe("holdem_eval", function()
+  it("names every category of a five-card hand", function()
+    eq(cat("2C 7D 9H JS KC"), H.HIGH); eq(cat("2C 2D 9H JS KC"), H.PAIR)
+    eq(cat("2C 2D 9H 9S KC"), H.TWOPAIR); eq(cat("2C 2D 2H JS KC"), H.TRIPS)
+    eq(cat("5C 6D 7H 8S 9C"), H.STRAIGHT); eq(cat("2H 7H 9H JH KH"), H.FLUSH)
+    eq(cat("2C 2D 2H KS KC"), H.FULL); eq(cat("2C 2D 2H 2S KC"), H.QUADS)
+    eq(cat("5S 6S 7S 8S 9S"), H.SFLUSH); eq(cat("TH JH QH KH AH"), H.SFLUSH)
+    eq({H.HIGH, H.PAIR, H.TWOPAIR, H.TRIPS, H.STRAIGHT, H.FLUSH, H.FULL, H.QUADS, H.SFLUSH}, {1,2,3,4,5,6,7,8,9})
+    eq(H.NAMES[H.SFLUSH], "straightflush"); eq(#H.NAMES, 9)
+  end)
+  it("orders the categories", function()
+    local hands = { "2C 7D 9H JS KC", "2C 2D 9H JS KC", "2C 2D 9H 9S KC", "2C 2D 2H JS KC", "AC 2D 3H 4S 5C",
+      "2H 7H 9H JH KH", "2C 2D 2H 3S 3C", "2C 2D 2H 2S 3C", "AS 2S 3S 4S 5S" }
+    for i = 2, #hands do beats(hands[i], hands[i - 1]) end
+  end)
+  it("wheel A-5 is the lowest straight, broadway the highest, no wrap-around", function()
+    eq(cat("AC 2D 3H 4S 5C"), H.STRAIGHT); beats("2C 3D 4H 5S 6C", "AC 2D 3H 4S 5C")
+    beats("TC JD QH KS AC", "9C TD JH QS KC"); eq(cat("QC KD AH 2S 3C"), H.HIGH)
+    eq(cat("AS 2S 3S 4S 5S"), H.SFLUSH); beats("2H 3H 4H 5H 6H", "AS 2S 3S 4S 5S")
+    beats("AS 2S 3S 4S 5S", "2C 2D 2H 2S AC"); beats("TS JS QS KS AS", "9H TH JH QH KH")
+  end)
+  it("kickers break ties within a category", function()
+    beats("AC KD 9H 7S 3C", "AD KC 9S 7H 2D"); ties("AC KD 9H 7S 3C", "AD KH 9S 7C 3D")
+    beats("8C 8D AH 5S 3C", "8H 8S KH QS JC"); beats("8C 8D AH 5S 4C", "8H 8S AD 5D 3C")
+    beats("9C 9D 2H 2S 3C", "8H 8S 7H 7S AC"); beats("9C 9D 3H 3S 2C", "9H 9S 2H 2S AC")
+    beats("9C 9D 3H 3S 5C", "9H 9S 3D 3C 4C"); beats("7C 7D 7H AS 2C", "7C 7D 7H KS QC")
+    beats("2H 7H 9H JH KH", "2S 7S 9S TS KS"); ties("2H 7H 9H JH KH", "2S 7S 9S JS KS")
+    beats("3C 3D 3H 2S 2C", "2C 2D 2H AS AC"); beats("4C 4D 4H AS AC", "4C 4D 4H KS KC")
+    beats("5C 5D 5H 5S 3C", "5C 5D 5H 5S 2C"); ties("6C 7D 8H 9S TC", "6D 7H 8S 9C TD")
+  end)
+  it("picks the best five of seven", function()
+    eq(cat("AC AD KH KS QC QD 2H"), H.TWOPAIR); beats("AC AD KH KS QC QD 2H", "AC AD KH KS JC JD 2H")
+    eq(cat("2C 3D 4H 5S 6C 7D 8H"), H.STRAIGHT); ties("2C 3D 4H 5S 6C 7D 8H", "4C 5D 6H 7S 8C 2D 2H")
+    eq(cat("AH 2H 3H 4H 5H 6H 7D"), H.SFLUSH); ties("AH 2H 3H 4H 5H 6H 7D", "2H 3H 4H 5H 6H 2C 2D")
+    eq(cat("KC KD KH QS QC QD 2H"), H.FULL); ties("KC KD KH QS QC QD 2H", "KC KD KH QS QC 3D 2H")
+    eq(cat("2C 2D 2H 2S AC AD AH"), H.QUADS); eq(cat("AC 3C 5C 7C 9C JC KC"), H.FLUSH)
+    ties("AC 3C 5C 7C 9C JC KC", "AC 9C 7C 5C JC KC 2D"); beats("AC KC 9C 7C 5C 2C 3C", "AC KC 9C 7C 4C 2C 3C")
+    eq(cat("AC 2D 3H 4S 5C KD KH"), H.STRAIGHT)
+  end)
+  it("board plays: both players use the five community cards", function()
+    local board = "TC JD QH KS AC"
+    ties(board .. " 2C 3D", board .. " 4H 5S")
+    ties("9C 9D 9H 4S 4C 2D 3H", "9C 9D 9H 4S 4C 5D 6H")
+  end)
+  it("best returns the positions of the five chosen cards", function()
+    local s, c, pick = H.best(cards("2C AH 7D AS KD AD 3C"))
+    eq(c, H.TRIPS); eq(#pick, 5); table.sort(pick); eq(pick, {2, 3, 4, 5, 6})
+    local _, _, p5 = H.best(cards("2C 3C 4C 5C 6C")); eq(p5, {1, 2, 3, 4, 5}); ok(s > 0)
+  end)
+  it("faces parse and reject", function()
+    eq(H.rank("TS"), 10); eq(H.rank("AC"), 14); eq(H.rank("2D"), 2); eq(H.suit("9H"), "H")
+    ok(H.valid("KS")); ok(not H.valid("1S")); ok(not H.valid("KX")); ok(not H.valid("KSS")); ok(not H.valid(5))
+  end)
+end)
