@@ -30,7 +30,7 @@ end
 describe("game registry", function()
   it("lists the six games in order with their player counts", function()
     local l = G.list(); eq(#l, 6); eq(l[1].id, "ttt"); eq(l[1].players, "2"); ok(l[1].engine == ns.Engines.ttt)
-    eq(l[2].id, "deathroll"); eq(l[2].players, "2–6"); eq(l[6].id, "holdem"); eq(l[6].engine, nil); eq(G.engine(42), nil)
+    eq(l[2].id, "deathroll"); eq(l[2].players, "2–5"); eq(l[6].id, "holdem"); eq(l[6].engine, nil); eq(G.engine(42), nil)
     -- engines exist but are not playable until their integration stage lands
     ok(ns.Engines.santase ~= nil); ok(ns.Engines.holdem ~= nil)
     eq(G.engine("santase"), nil); eq(G.engine("belot"), nil); eq(G.engine("tabla"), nil); eq(G.engine("holdem"), nil)

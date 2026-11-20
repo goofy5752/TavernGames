@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (- [ ]) syntax for tracking.
 
-**Goal:** Guild members open a Death Roll table for 2–6 players, are grouped automatically, press „Хвърли“ to make a real server `/roll`, and watch a ladder of rolls in class colours until somebody rolls 1; along the way the hall, the new-table dialog, the table frame, the bots and the rules book stop assuming Морски шах and work for any registered game with 2..9 seats.
+**Goal:** Guild members open a Death Roll table for 2–5 players, are grouped automatically, press „Хвърли“ to make a real server `/roll`, and watch a ladder of rolls in class colours until somebody rolls 1; along the way the hall, the new-table dialog, the table frame, the bots and the rules book stop assuming Морски шах and work for any registered game with 2..9 seats.
 
 **Architecture:** A game is an engine in `ns.Engines` plus an entry in the registry `ns.Games`; everything in `core/` and `ui/` asks the registry. Engines may declare a start mode (`start = "host"`), table options, a `leave` and a `result` function, and session extensions (`ext = {...}`, looked up in `ns.Ext`) that hook into the host's handling of an `ACT`, into every applied event and into "play automatically for me". Death Roll is the engine `deathroll` plus two extensions: `rolls` (turns roll sightings from the chat into events and cross-checks them) and `party` (the host invites seated players into its group). The WoW side only parses the roll line, calls `RandomRoll`/`InviteUnit`/`AcceptGroup`, and feeds the core through new `env` fields; every such call degrades to a visible hint when the client refuses it.
 
@@ -17,7 +17,7 @@ Everything in `.superpowers/sdd/2026-11-20-stage1-platform-tictactoe/global-cons
 - Protocol stays `v=1`. Stage A adds **no message type**; it adds the optional field `TBL.o` and new action shapes inside `ACT`/`EV` (table below). Point-to-point types stay WHISPER-only.
 - Play for fun only: no wagers, ledger, payments or leaderboard; `stake` stays `nil`. A finished game is announced only as the client event `"result"`.
 - Engine ids: `ttt`, `deathroll`; registry order `ttt, deathroll, santase, belot, tabla, holdem`. A table has at most `MAX_SEATS = 9` seats.
-- Death Roll: `minSeats = 2`, `maxSeats = 6`, start number choices `100, 1000, 10000, 100000` (default `1000`), who rolls 1 loses.
+- Death Roll: `minSeats = 2`, `maxSeats = 5`, start number choices `100, 1000, 10000, 100000` (default `1000`), who rolls 1 loses. maxSeats = PARTY_SIZE so every player fits one party (no raid conversion).
 - Roll timing: `ROLL_CLAIM_WAIT = 3`, `ROLL_VERIFY_WAIT = 5`, `ROLL_ECHO_WAIT = 3`, `ROLL_LOG = 20` sightings kept; group: `GROUP_INVITE_GAP = 30`, `PARTY_SIZE = 5`; pending sit/watch: `PENDING_SECONDS = 10`.
 - The addon calls `RandomRoll` only from a click on „Хвърли“ or from `/tavern probe roll`. It never calls `SendChatMessage`. Exception to the stage 1 rule "no public-chat output of any kind": a server roll (`RandomRoll`) is the only sanctioned chat-visible output (spec 5.3, 6.3); the real `/roll` is required by spec 5.3. The probe's literal tokens `OK`/`-`/`yes`/`no` count as diagnostic tokens (like the stage 1 probe's `tostring` values), not as strings that need `ns.L`. A timeout or a bot never makes a server roll: the table rolls locally and the entry is tagged.
 - Group: only the host's client invites, only players seated at a table whose engine has `needsGroup`, at most once per name per 30 s. The addon never leaves, disbands or converts a group. It accepts a group invite automatically only from the host of the table I am seated at.
@@ -163,7 +163,7 @@ end)
 
 **Interfaces:**
 - Produces:
-  - `ns.Games.ORDER = {"ttt","deathroll","santase","belot","tabla","holdem"}`; `ns.Games.PLAYERS = {ttt="2", deathroll="2–6", santase="2", belot="4", tabla="2", holdem="2–9"}`.
+  - `ns.Games.ORDER = {"ttt","deathroll","santase","belot","tabla","holdem"}`; `ns.Games.PLAYERS = {ttt="2", deathroll="2–5", santase="2", belot="4", tabla="2", holdem="2–9"}`.
   - `ns.Games.list() -> { {id, players, engine = E|nil}, … }` in `ORDER`; `ns.Games.engine(id) -> E|nil` (nil for a non-string id).
   - `ns.Games.resolve(id, opt) -> table|nil` — nil when the engine is unknown, `opt` is neither nil nor a table, a key is not an option id, or a value is not among that option's `choices`; otherwise a new table with every option id set (given value or `default`). An engine without `options` gives `{}`.
   - `Const.MAX_SEATS = 9`.
@@ -176,7 +176,7 @@ end)
 ```lua
 it("lists the six games in order with their player counts", function()
   local l = G.list(); eq(#l, 6); eq(l[1].id, "ttt"); eq(l[1].players, "2"); ok(l[1].engine == ns.Engines.ttt)
-  eq(l[2].id, "deathroll"); eq(l[2].players, "2–6"); eq(l[6].id, "holdem"); eq(l[6].engine, nil); eq(G.engine(42), nil)
+  eq(l[2].id, "deathroll"); eq(l[2].players, "2–5"); eq(l[6].id, "holdem"); eq(l[6].engine, nil); eq(G.engine(42), nil)
 end)
 it("resolve fills defaults and rejects what the engine does not offer", function()
   eq(G.resolve("ttt", nil), {}); eq(G.resolve("optgame", nil), {goal=2}); eq(G.resolve("optgame", {goal=3}), {goal=3})
@@ -277,7 +277,7 @@ it("Морски шах announces its match result once on every client", functi
 
 **Interfaces:**
 - Produces `ns.Engines.deathroll`:
-  - `E.id="deathroll"`, `E.minSeats=2`, `E.maxSeats=6`, `E.start="host"`, `E.needsGroup=true`, `E.ext={"rolls","party"}`, `E.options={{id="start", choices={100,1000,10000,100000}, default=1000}}`, `E.SOURCES={seen=true, claim=true, ask=true, timeout=true}`.
+  - `E.id="deathroll"`, `E.minSeats=2`, `E.maxSeats=5`, `E.start="host"`, `E.needsGroup=true`, `E.ext={"rolls","party"}`, `E.options={{id="start", choices={100,1000,10000,100000}, default=1000}}`, `E.SOURCES={seen=true, claim=true, ask=true, timeout=true}`.
   - `E.new(opts) -> state`: `players` (occupied seats ascending), `turn` (`opts.first` when occupied, else `players[1]`), `start` and `max` (`opts.opt.start`, 1000 when absent), `rolls = {}`, `phase = "play"`, `loser = nil`.
   - `E.apply(state, seat, a) -> true | nil, code`, checked in this order: `"action"` (`a` not a table or `a.k ~= "roll"`), `"phase"` (not `"play"`), `"turn"`, `"max"` (`a.max ~= state.max`), `"n"` (not an integer in `1..max`), `"src"` (not in `E.SOURCES`). Effect: appends `{seat, n, max, src}` (named fields) to `rolls`; `n == 1` → `phase="over"`, `loser=seat`, `turn=nil`; otherwise `max = n` and the turn goes to the next seat in `players` (cyclic). A rejected action leaves the state untouched.
   - `E.legal(state, seat)` = `{{k="roll", max=state.max}}` for the seat on turn, else `{}`. `E.auto(state, seat, random)` = `{k="roll", n=(random or math.random)(1, state.max), max=state.max, src="timeout"}` for the seat on turn, else nil. `E.system()` = nil.
@@ -292,7 +292,7 @@ local E = Loader.ns().Engines.deathroll
 local function new(seats, first, start) return E.new{seats=seats, first=first, opt={start=start or 100}} end
 local function roll(s, seat, n, src) return E.apply(s, seat, {k="roll", n=n, max=s.max, src=src or "seen"}) end
 it("declares its contract", function()
-  eq({E.id, E.minSeats, E.maxSeats, E.start, E.needsGroup}, {"deathroll", 2, 6, "host", true}); eq(E.ext, {"rolls","party"})
+  eq({E.id, E.minSeats, E.maxSeats, E.start, E.needsGroup}, {"deathroll", 2, 5, "host", true}); eq(E.ext, {"rolls","party"})
   eq(E.options, {{id="start", choices={100,1000,10000,100000}, default=1000}}); eq(E.new{seats={true,true}}.max, 1000)
 end)
 it("two players roll down to 1 and the roller of 1 loses", function()
@@ -637,7 +637,7 @@ it("lists six games: Морски шах and Death Roll active, the other four d
   eq({games[1].id, games[2].id, games[3].id, games[6].id}, {"ttt", "deathroll", "santase", "holdem"})
   for i = 1, 2 do eq(games[i].frame:GetAlpha(), 1); eq(games[i].soon:IsVisible(), false) end
   for i = 3, 6 do ok(games[i].frame:GetAlpha() < 1); eq(games[i].soon:GetText(), "Скоро") end
-  eq(#w:texts("2–6 играчи"), 1); w:click(games[2].frame); eq(w.ns.NewTableDialog.gameId, "deathroll")
+  eq(#w:texts("2–5 играчи"), 1); w:click(games[2].frame); eq(w.ns.NewTableDialog.gameId, "deathroll")
 end)
 it("the Death Roll dialog offers the start number, 1000 preselected, and opens with the chosen one", function()
   local D = w.ns.NewTableDialog; D.open("deathroll"); eq(#w:texts("Начално число"), 1)
@@ -831,7 +831,7 @@ it("the Death Roll topic shows the ladder 1000 › 642 › 87 › 12 › 3 › 1
 ## Self-review (applied)
 
 - **Spec coverage (stage A):** 5.2 hall with N chairs and registry-driven game list → Tasks 9, 10; 5.3 Death Roll (ladder in class colours, numbers from the real `/roll`, who rolls 1 loses, 2+ players, automatic group on sitting or the existing group) → Tasks 4, 5, 6, 8, 11; 5.3а ⓘ topic in bg/en with a tavern-talk example and a picture → Task 11; 6.2 host authority, every client applies every event, timeout = automatic action → Tasks 3, 5; 6.3 roll taken from `CHAT_MSG_SYSTEM` through the localized `RANDOM_ROLL_RESULT` → Task 8; 6.5 bots and probe → Tasks 7, 8, 12. Handoff note (split `Session.lua`/`Hall.lua`) → Tasks 1, 9. Final-review items closed on the way: M1 (Tasks 1, 2), M2 (Task 1), M4 in part (seat count, unknown game label: Tasks 2, 9). Deliberately absent: wagers and the spec 8 rule "who rolls 1 pays everybody" (only the `"result"` event exists), ledger, the tabs, commit-reveal.
-- **Decisions the plan makes beyond the spec:** six seats for Death Roll; start number from four choices; the host starts the game with a button; a roll the host cannot see is accepted as a claim and marked rather than stalling the table; timeouts and bots get a local table roll rather than a server roll; group invites are accepted automatically from the table's host; no new message type; the list label "2–6 играчи" for Death Roll (part of the six-seat decision; the spec says „2+ играчи“).
+- **Decisions the plan makes beyond the spec:** five seats for Death Roll (one party); start number from four choices; the host starts the game with a button; a roll the host cannot see is accepted as a claim and marked rather than stalling the table; timeouts and bots get a local table roll rather than a server roll; group invites are accepted automatically from the table's host; no new message type; the list label "2–5 играчи" for Death Roll (part of the five-seat decision; the spec says „2+ играчи“).
 - **Step scan:** every task has a failing-test step with exact values, an expected failure, an implement step naming files and pinned values, the two run commands, and a commit with exact paths. No task leaves a rule to "handle as appropriate".
 - **Type and name consistency:** engine id `deathroll` everywhere (registry, locale `game.deathroll`, view, slash alias `dr`); roll action `{k="roll", n, max, src}` with `src` in `seen/claim/ask/timeout` in Tasks 4, 5, 7, 11; `client:roll/rollSeen/startGame/playAuto/groupInviteFrom/groupChanged` in Tasks 3, 5, 6, 7, 8, 11; `ns.Rolls` (core) vs `ns.RollChat` (wow); session fields `opt, rollLog, rollCheck, rolling, rollStuck, claim, partyAsked, partyWhy`; `env.random/roll/group/groupInvite` in the contract table, the sim (Tasks 3, 5, 6) and the adapter (Task 8); `HallLayout.plates(n, w)` returns `{x, y, pw}` in Task 10's tests and prose; `E.over` in the contract table, consumed by `startGame` (Task 3), defined by Death Roll (Task 4) and read by the table frame (Task 10).
 - **Review Focus:** each of the five has a named test in its owning task (Tasks 3, 5, 8).

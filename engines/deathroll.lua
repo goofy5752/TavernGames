@@ -5,8 +5,9 @@ ns.Engines = ns.Engines or {}
 -- max, and whoever rolls 1 loses. The host starts every game; the rolls come
 -- from the "rolls" extension (server roll seen, claimed, asked for, or a
 -- timeout's local roll, see E.SOURCES), the players share a group ("party").
+-- At most 5 players (Const.PARTY_SIZE) so everyone fits one WoW party; the addon never converts a group to a raid.
 local E = {
-  id = "deathroll", minSeats = 2, maxSeats = 6, start = "host", needsGroup = true,
+  id = "deathroll", minSeats = 2, maxSeats = 5, start = "host", needsGroup = true,
   ext = { "rolls", "party" },
   options = { { id = "start", choices = { 100, 1000, 10000, 100000 }, default = 1000 } },
   SOURCES = { seen = true, claim = true, ask = true, timeout = true },

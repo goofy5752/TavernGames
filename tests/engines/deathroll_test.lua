@@ -8,7 +8,7 @@ local function roll(s, seat, n, src) return E.apply(s, seat, {k="roll", n=n, max
 
 describe("deathroll", function()
   it("declares its contract", function()
-    eq({E.id, E.minSeats, E.maxSeats, E.start, E.needsGroup}, {"deathroll", 2, 6, "host", true}); eq(E.ext, {"rolls","party"})
+    eq({E.id, E.minSeats, E.maxSeats, E.start, E.needsGroup}, {"deathroll", 2, 5, "host", true}); eq(E.maxSeats, Loader.ns().Const.PARTY_SIZE); eq(E.ext, {"rolls","party"})
     eq(E.options, {{id="start", choices={100,1000,10000,100000}, default=1000}}); eq(E.new{seats={true,true}}.max, 1000)
   end)
 
