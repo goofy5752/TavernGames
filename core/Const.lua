@@ -36,4 +36,7 @@ ns.Const = {
   ROLL_VERIFY_WAIT = 5, -- an unconfirmed recorded roll is checked against my sightings after this long
   ROLL_ECHO_WAIT = 3,   -- my server roll that has not shown up in chat by then is reported stuck
   ROLL_LOG = 20,        -- roll sightings kept per table
+
+  GROUP_INVITE_GAP = 30, -- the host invites the same player into its group at most this often
+  PARTY_SIZE = 5,        -- members of a party (a raid has room for more)
 }

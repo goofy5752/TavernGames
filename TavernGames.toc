@@ -32,6 +32,7 @@ core/Succession.lua
 core/Session.lua
 core/Member.lua
 core/Rolls.lua
+core/Party.lua
 core/Lifecycle.lua
 core/Invites.lua
 core/Client.lua

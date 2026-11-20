@@ -86,6 +86,15 @@ function Client:roll() return ns.Rolls.roll(self) end
 -- "rollSeen"(shown, n, lo, hi) first, always (see Rolls.seen).
 function Client:rollSeen(shown, n, lo, hi) ns.Rolls.seen(self, shown, n, lo, hi) end
 
+-- A group invite from `shown` (normalized): accept it automatically? Only from
+-- the host of the table where I hold a seat, when its game needs a group.
+function Client:groupInviteFrom(shown) return ns.Party.inviteFrom(self, shown) end
+
+-- My group changed (who is in it, its leader or size): "session" again.
+function Client:groupChanged()
+  if self.session then ns.Session.emit(self) end
+end
+
 -- Host of a table with a free seat: invite `name` -> true | nil, code
 -- ("nothost" "unknown" "seated" "pending"). The answer arrives as "inviteAnswer".
 function Client:invite(name) return self.invites:send(name) end

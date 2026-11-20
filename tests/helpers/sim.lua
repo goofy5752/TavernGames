@@ -23,6 +23,7 @@ function Sim.new(ns)
     options = {},     -- name -> the opts of sim:add (reused by sim:relog)
     nextRolls = {},   -- results for env.roll, first to last; when empty: hi
     rolled = {},      -- every env.roll: { from, lo, hi, n }
+    groupInvites = {}, -- every env.groupInvite: { from, name }
   }, Sim)
   -- Whose server rolls `to` sees in chat, and the name it sees for `from`.
   self.canSee = function() return true end
@@ -92,8 +93,17 @@ end
 -- env.roll unless opts.roll == false. The roll shows up in chat (rollSeen) on
 -- the next drain for every client sim.canSee lets see it: as the full name for
 -- the roller, as sim.rollName for the others.
+-- env.group() reports opts.party (default: not in a group); env.groupInvite
+-- records into sim.groupInvites.
 function Sim:addFakes(env, opts)
   local sim, name = self, env.me
+  local party = opts.party or { grouped = false, leader = false, raid = false, size = 0 }
+  env.group = function()
+    return { grouped = party.grouped, leader = party.leader, raid = party.raid, size = party.size }
+  end
+  env.groupInvite = function(who)
+    sim.groupInvites[#sim.groupInvites + 1] = { from = name, name = who }
+  end
   if opts.roll ~= false then
     env.roll = function(lo, hi)
       local n = table.remove(sim.nextRolls, 1) or hi
