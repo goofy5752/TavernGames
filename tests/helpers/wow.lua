@@ -243,6 +243,15 @@ end
 
 function Wow:deliver(dist, sender, msg) self:deliverRaw("TAVG", self.wire:pack(msg), dist, sender) end
 
+-- `name` joins the guild: listed in the roster, and the roster scan has run.
+function Wow:member(name)
+  for _, m in ipairs(self.roster) do
+    if m.name == name then return end
+  end
+  self.roster[#self.roster + 1] = { name = name, online = true, guid = "Player-1-" .. name }
+  self:fire("GUILD_ROSTER_UPDATE")
+end
+
 function Wow:slash(text) self.G.SlashCmdList.TAVERNGAMES(text) end
 
 -- Sent records whose message type is t.

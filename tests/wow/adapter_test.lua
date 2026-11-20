@@ -112,6 +112,42 @@ describe("wow adapter: comm", function()
     eq(got, { { "GUILD", B, "HI" }, { "WHISPER", B, "TBL" } })
   end)
 
+  it("drops GUILD and WHISPER messages from a sender missing from the latest roster scan", function()
+    local w = guildWow()
+    local X = "Гошо Тестов"
+    local got = {}
+    w.ns.client.receive = function(_, ch, s, m) got[#got + 1] = { ch, s, m.t } end
+    local asked = w.rosterRequests
+    w:deliver("WHISPER", X, { v = 1, t = "HI" })
+    w:deliver("GUILD", X .. "-Forever", { v = 1, t = "TBL" })
+    w:deliver("WHISPER", X, { v = 1, t = "INV" })
+    eq(got, {}); eq(w.rosterRequests, asked + 1) -- one refresh, not one per message
+    w:advance(10); w:deliver("WHISPER", X, { v = 1, t = "HI" })
+    eq(got, {}); eq(w.rosterRequests, asked + 2)
+    -- the fresh roster lists him (he just joined): his later messages pass
+    w.roster[#w.roster + 1] = { name = X .. "-Forever", online = true, guid = "Player-1-00000009" }
+    w:fire("GUILD_ROSTER_UPDATE")
+    w:deliver("WHISPER", X, { v = 1, t = "HI" })
+    eq(got, { { "WHISPER", X, "HI" } })
+    -- he left the guild: dropped again
+    table.remove(w.roster)
+    w:fire("GUILD_ROSTER_UPDATE")
+    w:deliver("GUILD", X, { v = 1, t = "HI" })
+    eq(#got, 1)
+  end)
+
+  it("my own echo passes even when the roster has no entry for me", function()
+    local w = Wow.new(); w.inGuild, w.roster = true, rosterWith(false)
+    w:boot(); w:fire("GUILD_ROSTER_UPDATE"); w:advance(5.1)
+    w:deliver("GUILD", ME .. "-Forever", { v = 1, t = "WHO", id = Wow.GUID })
+    local c = w.ns.client; ok(c, "no client")
+    local got = {}
+    c.receive = function(_, ch, s, m) got[#got + 1] = { ch, s, m.t } end
+    w:deliver("GUILD", ME .. "-Forever", { v = 1, t = "HI" })
+    w:deliver("GUILD", "Гошо Тестов", { v = 1, t = "HI" })
+    eq(got, { { "GUILD", ME, "HI" } })
+  end)
+
   it("sends through SendCommMessage, ALERT for EV, ACT, SNP and NORMAL otherwise", function()
     local w = guildWow()
     local env = w.ns.client.env

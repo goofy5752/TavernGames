@@ -388,6 +388,7 @@ describe("ui: invite toast", function()
   it("a „Приемам“ refused locally shows the refusal on the toast, then it goes", function()
     local w = guildWow()
     local T = w.ns.InviteToast
+    w:member(B)
     w:deliver("WHISPER", B, { v = 1, t = "INV", tid = B .. "#1", g = "ttt", h = B, s = { B, false } })
     w:advance(0)
     ok(T.frame:IsShown(), "no toast")
@@ -402,6 +403,7 @@ describe("ui: invite toast", function()
   it("hides when the invitation goes stale", function()
     local w = guildWow()
     local T = w.ns.InviteToast
+    w:member(B)
     w:deliver("WHISPER", B, { v = 1, t = "INV", tid = B .. "#1", g = "ttt", h = B, s = { B, false } })
     w:advance(0)
     ok(T.frame:IsShown(), "no toast")
@@ -409,6 +411,7 @@ describe("ui: invite toast", function()
     eq(T.frame:IsShown(), false)
     -- Gone before the toast was drawn: never shown.
     local T2 = "Тодор Ангелов"
+    w:member(T2)
     w:deliver("WHISPER", T2, { v = 1, t = "INV", tid = T2 .. "#1", g = "ttt", h = T2, s = { T2, false } })
     w.ns.client.invites:drop(true)
     w:advance(0)

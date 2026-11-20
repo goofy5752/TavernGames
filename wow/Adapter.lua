@@ -26,6 +26,7 @@ local ALERT = { EV = true, ACT = true, SNP = true }
 local CHANNELS = { GUILD = true, WHISPER = true }
 local WHO_WAIT = 5 -- seconds of roster lookup before asking the guild channel
 local NOT_FOUND_WINDOW = 5 -- seconds a whisper target's "player not found" line stays hidden
+local ROSTER_ASK_GAP = 10 -- seconds between roster refreshes asked for by unknown senders
 local INK = { 243 / 255, 226 / 255, 192 / 255 }
 
 -- The db table of the env contract over an AceDB object: char keys and global
@@ -218,20 +219,45 @@ Adapter.handlers.WHO = function(distribution, rawSender, msg)
   if distribution == "GUILD" and msg.id == UnitGUID("player") then found(Names.normalize(rawSender)) end
 end
 
--- Roster: my own entry, and guild members who went from online to offline.
+-- Roster: my own entry, the guild's names, and guild members who went from
+-- online to offline.
 local lastOnline
+
+-- Guild gate: only a sender listed in the latest roster scan (or myself) reaches
+-- the Client, on GUILD and WHISPER alike. Nothing is accepted before the first
+-- scan. A sender the scan does not list (a stranger, or a member who joined
+-- after it) is dropped and a fresh roster is asked for, at most once per
+-- ROSTER_ASK_GAP; his later messages pass once a scan lists him. Losing a
+-- newcomer's first messages is harmless: HI and TBL repeat, and a guild member's
+-- client answers my own HI.
+Adapter.members = {} -- normalized name -> true, from the latest roster scan
+local lastRosterAsk
+
+function Adapter.isMember(name)
+  if Adapter.members[name] then return true end
+  return ns.client ~= nil and name == ns.client.env.me
+end
+
+local function askRoster()
+  local now = GetTime()
+  if lastRosterAsk and now - lastRosterAsk < ROSTER_ASK_GAP then return end
+  lastRosterAsk = now
+  requestRoster()
+end
 
 local function scanRoster()
   local myGuid = UnitGUID("player")
-  local online = {}
+  local online, members = {}, {}
   for i = 1, (GetNumGuildMembers()) do
     local raw, _, _, _, _, _, _, _, isOnline, _, _, _, _, _, _, _, guid = GetGuildRosterInfo(i)
     local name = Names.normalize(raw)
     if name then
       if guid == myGuid then found(name) end
       online[name] = isOnline and true or false
+      members[name] = true
     end
   end
+  Adapter.members = members
   local client = ns.client
   if client and lastOnline then
     for name, was in pairs(lastOnline) do
@@ -295,10 +321,15 @@ function addon:OnCommReceived(prefix, text, distribution, sender)
   local msg = wire:unpack(text)
   if not msg then return end
   Adapter.lastRawSender = sender -- the raw form, for /tavern probe
+  -- WHO and PRB check for themselves that they are my own echo (GUID, probe id).
   local handler = type(msg.t) == "string" and Adapter.handlers[msg.t]
   if handler then
     Adapter.log("in", distribution, name, msg)
     return handler(distribution, sender, msg)
+  end
+  if not Adapter.isMember(name) then
+    Adapter.log("drop", distribution, name, msg)
+    return askRoster()
   end
   if ns.client then ns.client:receive(distribution, name, msg) end
 end

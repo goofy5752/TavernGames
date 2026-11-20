@@ -16,12 +16,14 @@ local function guildWow(saved)
 end
 
 local function hi(w, name, cls, at)
+  w:member(name)
   w:deliver("GUILD", name, { v = 1, t = "HI", ver = "0.1.0", cls = cls, id = "Player-" .. name, at = at })
   w:advance(0) -- the hall redraws on the next frame
 end
 
 local function tbl(w, host, seats, state)
   local tid = host .. "#1"
+  w:member(host)
   w:deliver("GUILD", host, { v = 1, t = "TBL", tid = tid, g = "ttt", h = host, e = 1, ac = "guild", tn = 45,
                              st = state or "open", s = seats or { host, false }, w = 0 })
   w:advance(0)
@@ -294,6 +296,7 @@ describe("ui: hall", function()
     local w = guildWow()
     w.ns.MainWindow.show()
     eq(w.ns.L("update.available"), "Има по-нова версия на Tavern Games.")
+    w:member(B); w:member(C)
     w:deliver("GUILD", B, { v = 2, t = "HI" })
     w:deliver("GUILD", C, { v = 2, t = "HI" })
     w:advance(0)
