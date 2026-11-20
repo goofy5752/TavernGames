@@ -88,6 +88,7 @@ end
 -- A fresh Client under the same name and options; the old one vanishes silently.
 function Sim:relog(name)
   local old = self.envs[name]
+  self.offlineSet[name] = nil -- a relog is online again
   old.dead = true
   self.bus:leave(name)
   local env = self:newEnv(name, { cls = old.cls, db = old.db })

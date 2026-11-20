@@ -14,6 +14,7 @@ core/Bus.lua
 core/Trace.lua
 core/Presence.lua
 core/Lobby.lua
+core/Succession.lua
 core/Session.lua
 core/Client.lua
 

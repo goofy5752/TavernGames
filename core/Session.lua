@@ -7,12 +7,15 @@ local _, ns = ...
 -- ACT through the engine, runs the turn timer (an automatic move on expiry) and
 -- the engine's system actions; members apply events strictly in order and heal a
 -- gap with SYN -> SNP. Heartbeats: TCK from the host, PNG from members.
+-- Offline seats, host handoff, host silence and convergence between competing
+-- hosts live in core/Succession.lua.
 --
 -- client.session is nil or a Session with the public fields
 --   tid, role ("host"|"player"|"watcher"), mySeat, host, epoch, seq, seats,
 --   state (engine state, nil until the first start),
 --   status ("open"|"live"|"aborted"; "aborted" is kept until the next start),
---   deadline (env.now()-based end of the current turn, or nil)
+--   deadline (env.now()-based end of the current turn, or nil),
+--   hostSilent (true while a member has not heard its host for SILENT_AFTER s)
 -- and session:record() -> TBL fields. Every change emits "session"(session|nil);
 -- an EV from the host that the engine rejects emits "desync"(tid).
 local Session = {}
@@ -20,6 +23,7 @@ Session.__index = Session
 ns.Session = Session
 
 local C = ns.Const
+local Succession = ns.Succession
 local copy, byteLess = ns.Util.copy, ns.Util.byteLess
 
 local ACCESS = { guild = true, invite = true, group = true }
@@ -27,10 +31,13 @@ local ACCESS = { guild = true, invite = true, group = true }
 -- Point-to-point messages: honoured only when they arrive by WHISPER.
 local WHISPERED = {
   SIT = true, WAT = true, STD = true, SNO = true, SNP = true, EV = true,
-  ACT = true, SYN = true, PNG = true, TCK = true,
+  ACT = true, SYN = true, PNG = true, TCK = true, HND = true,
 }
 
-local TIMERS = { "announceTimer", "heartbeatTimer", "tickTimer", "pingTimer", "turnTimer", "systemTimer" }
+local TIMERS = {
+  "announceTimer", "heartbeatTimer", "tickTimer", "pingTimer", "turnTimer", "systemTimer",
+  "sweepTimer", "silenceTimer",
+}
 
 local function message(t, fields)
   fields.v, fields.t = C.PROTOCOL, t
@@ -73,6 +80,7 @@ local function leave(client)
   client.presence:setAt(nil)
   emit(client)
 end
+Session.leave = leave
 
 function Session:engine()
   return ns.Engines[self.game]
@@ -296,6 +304,7 @@ function Session:onRequest(sender, kind, seat)
     self.watcherSet[sender] = true
     self.watchers = self.watchers + 1
   end
+  Succession.track(self, sender)
   self:snapshotTo(sender)
   if kind == "SIT" then self:startIfFull() end
   self:recordChanged()
@@ -304,6 +313,7 @@ end
 -- A seated player leaving a live match below minSeats aborts it (no winner).
 function Session:onStand(sender)
   local seat = seatOf(self.seats, sender)
+  Succession.untrack(self, sender)
   if seat then
     self:event(0, { k = "stand", seat = seat, why = "left" }, sender)
     if self:seatedCount() == 0 then return self:finish() end
@@ -323,8 +333,14 @@ function Session:onAct(sender, a)
   if seat and self.status == "live" then self:play(seat, a) end
 end
 
-function Session:onSync(sender)
-  if seatOf(self.seats, sender) or self.watcherSet[sender] then self:snapshotTo(sender) end
+-- SYN or PNG. From somebody who is not (or no longer) at my table it is answered
+-- "gone", so a player stood up as offline or a dropped watcher lets go.
+function Session:onSync(sender, wantsSnapshot)
+  if not seatOf(self.seats, sender) and not self.watcherSet[sender] then
+    self.client:send("WHISPER", sender, message("SNO", { tid = self.tid, why = "gone" }))
+  elseif wantsSnapshot then
+    self:snapshotTo(sender)
+  end
 end
 
 -- The last seated player is gone: END on GUILD, the session ends for everyone.
@@ -340,21 +356,30 @@ end
 -- Member side
 ---------------------------------------------------------------------------
 
--- PNG to the host every PING_EVERY seconds.
+-- PNG to the host every PING_EVERY seconds; while stale, the snapshot request again.
 function Session:schedulePing()
   self.pingTimer = self.client:after(C.PING_EVERY, function()
     self.pingTimer = nil
-    self.client:send("WHISPER", self.host, message("PNG", { tid = self.tid }))
+    if self.stale then
+      self:requestSync()
+    else
+      self.client:send("WHISPER", self.host, message("PNG", { tid = self.tid }))
+    end
     self:schedulePing()
   end)
 end
 
--- SYN{have} to the host, at most one per SYN_MIN_GAP seconds.
+-- Asks the host for a snapshot, at most once per SYN_MIN_GAP seconds: SYN{have},
+-- or WAT from a watcher whose new host does not know it yet (see Succession).
 function Session:requestSync()
   local now = self.client.env.now()
   if self.lastSyn and now - self.lastSyn < C.SYN_MIN_GAP then return end
   self.lastSyn = now
-  self.client:send("WHISPER", self.host, message("SYN", { tid = self.tid, have = self.seq }))
+  if self.stale and not self.mySeat then
+    self.client:send("WHISPER", self.host, message("WAT", { tid = self.tid }))
+  else
+    self.client:send("WHISPER", self.host, message("SYN", { tid = self.tid, have = self.seq }))
+  end
 end
 
 ---------------------------------------------------------------------------
@@ -380,9 +405,10 @@ function Session.open(client, opts)
   client.session = setmetatable({
     client = client,
     tid = tid, role = "host", mySeat = 1, host = env.me, epoch = 1, seq = 0,
-    seats = seats, state = nil, status = "open", deadline = nil,
+    seats = seats, state = nil, status = "open", deadline = nil, hostSilent = false,
     game = opts.game, access = opts.access, turn = turn, watchers = 0,
     watcherSet = {}, -- name -> true
+    lastHeard = {},  -- member name -> env.now() of its last message
     invited = {},    -- name -> true, for access "invite" (filled by Task 7)
   }, Session)
   client.presence:setAt(tid)
@@ -396,6 +422,7 @@ function Session.request(client, kind, tid, seat)
   local s = client.session
   if s and (s.tid ~= tid or s.role == "host") then return refuse(client, tid, "busy") end
   local host = s and s.host
+  client.gaveUp = nil
   if not host then
     local rec = client.lobby:get(tid)
     if not rec then return refuse(client, tid, "gone") end
@@ -406,13 +433,17 @@ function Session.request(client, kind, tid, seat)
   client:send("WHISPER", host, message(kind, m))
 end
 
--- Stand up or stop watching; a pending request is forgotten.
+-- Stand up or stop watching; a pending request is forgotten. A host with
+-- another player seated hands the table over; alone, it closes the table.
+-- client.gaveUp remembers the table, so a late SNP for it is not adopted.
 function Session.stand(client)
+  local s, p = client.session, client.pending
+  client.gaveUp = (s and s.tid) or (p and p.tid) or client.gaveUp
   client.pending = nil
-  local s = client.session
   if not s then return end
   if s.role == "host" then
-    -- Task 6: with other players seated the host hands the table over instead.
+    local successor = Succession.candidates(s.seats, client.env.me)[1]
+    if successor then return Succession.handoff(s, successor) end
     return s:finish()
   end
   client:send("WHISPER", s.host, message("STD", { tid = s.tid }))
@@ -445,20 +476,28 @@ function Session.refuseVersion(client, sender, tid)
   end
 end
 
--- Member: session from a snapshot (new, or replacing the current one).
+-- Member: session from a snapshot (new, or replacing the current one; a host
+-- that lost its table to `sender` steps down first).
 local function adopt(client, sender, m)
   local t, me = m.tbl, client.env.me
   local seat = seatOf(t.s, me)
   local s = client.session or setmetatable({ client = client }, Session)
+  if s.role == "host" then Succession.demote(s) end
   s.tid, s.role, s.mySeat, s.host = m.tid, seat and "player" or "watcher", seat, sender
   s.epoch, s.seq, s.seats = m.e, m.q, copy(t.s)
   s.game, s.access, s.turn, s.watchers = t.g, t.ac, t.tn, t.w or 0
   s.state = type(m.st) == "table" and ns.Engines[t.g].restore(m.st) or nil
   s.status = t.st == "live" and "live" or (s.state and "aborted" or "open")
   s.deadline = type(m.left) == "number" and client.env.now() + m.left or nil
-  client.pending = nil
+  s.stale = nil
+  client.pending, client.gaveUp = nil, nil
   client.session = s
   if not s.pingTimer then s:schedulePing() end
+  Succession.watchHost(s)
+  -- A table I hosted until now, or one adopted before any TBL: list it as the host's.
+  if not client.lobby:get(s.tid) then
+    client.lobby:receive("WHISPER", sender, message("TBL", copy(t)))
+  end
   client.presence:setAt(s.tid)
   emit(client)
 end
@@ -469,27 +508,29 @@ local function onSnapshot(client, sender, m)
       or t.tid ~= m.tid or t.h ~= sender or not ns.Engines[t.g]
       or (t.st == "live" and type(m.st) ~= "table") then return end
   local s, p = client.session, client.pending
-  if s and s.role ~= "host" and s.tid == m.tid and s.host == sender then
-    if m.e >= s.epoch then adopt(client, sender, m) end
-  elseif not s and p and p.tid == m.tid and p.host == sender then
+  if s and s.tid == m.tid then
+    -- My table: a new host's snapshot always; my own host's unless it is older
+    -- than what I have (a stale member has nothing worth keeping).
+    local kind = Succession.authority(s, sender, m.e)
+    if kind == "new" or (kind == "current" and (s.stale or m.q >= s.seq)) then
+      adopt(client, sender, m)
+    end
+  elseif not s and ((p and p.tid == m.tid and p.host == sender)
+      or (client.gaveUp ~= m.tid and seatOf(t.s, client.env.me))) then
+    -- The answer to my request, or (after a relog) a table I still hold a seat at.
     adopt(client, sender, m)
-  elseif not s or s.tid ~= m.tid then
+  else
     -- Seated or listed after I gave up waiting or went elsewhere: free the place again.
     client:send("WHISPER", sender, message("STD", { tid = m.tid }))
   end
 end
 
--- My session when `m` (EV/TCK) comes from its host at my epoch or later, else nil.
-local function fromHost(client, sender, m)
-  local s = client.session
-  if not s or s.role == "host" or s.tid ~= m.tid or s.host ~= sender then return nil end
-  if type(m.e) ~= "number" or m.e < s.epoch or type(m.q) ~= "number" then return nil end
-  return s
-end
-
+-- Events are taken only from my host, at exactly my epoch, in order. An epoch
+-- is never adopted from an EV, and a stale member waits for its snapshot.
 local function onEvent(client, sender, m)
-  local s = fromHost(client, sender, m)
-  if not s or m.q <= s.seq then return end
+  local s = client.session
+  if not s or s.role == "host" or s.tid ~= m.tid or s.host ~= sender or s.stale then return end
+  if m.e ~= s.epoch or type(m.q) ~= "number" or m.q <= s.seq then return end
   if m.q > s.seq + 1 then return s:requestSync() end
   if not s:apply(m.seat, m.a) then
     client.events:emit("desync", s.tid)
@@ -501,8 +542,15 @@ local function onEvent(client, sender, m)
 end
 
 local function onTick(client, sender, m)
-  local s = fromHost(client, sender, m)
-  if s and m.q > s.seq then s:requestSync() end
+  local s = client.session
+  if not s or s.tid ~= m.tid or type(m.q) ~= "number" then return end
+  local kind = Succession.authority(s, sender, m.e)
+  if kind == "new" then
+    Succession.follow(s, sender, m.e)
+    s:requestSync()
+  elseif kind == "current" and (s.stale or m.q > s.seq) then
+    s:requestSync()
+  end
 end
 
 local function onRefusal(client, sender, m)
@@ -512,7 +560,10 @@ local function onRefusal(client, sender, m)
     client.pending = nil
     refuse(client, m.tid, m.why)
   elseif s and s.role ~= "host" and s.tid == m.tid and s.host == sender then
-    refuse(client, m.tid, m.why) -- e.g. a watcher asking for a taken chair
+    -- "gone": I am not at its table any more. Stale: the new host did not take me in.
+    -- Anything else I can live with, e.g. a watcher asking for a taken chair.
+    if m.why == "gone" or s.stale then leave(client) end
+    refuse(client, m.tid, m.why)
   end
 end
 
@@ -527,20 +578,21 @@ local function onEnd(client, sender, m)
   end
 end
 
--- A v=1 message (already validated by the client). PNG needs nothing here:
--- Presence already noted that the sender was heard.
+-- A v=1 message (already validated by the client).
 function Session.receive(client, channel, sender, m)
   local t = m.t
+  local s = client.session
+  if s then Succession.heard(s, sender, m) end
   if t == "HI" then
-    local s = client.session
-    if m.re == true and s and s.role == "host" then
-      client:send("WHISPER", sender, message("TBL", s:record()))
+    if s and s.role == "host" then
+      if m.re == true then client:send("WHISPER", sender, message("TBL", s:record())) end
+      -- Seated here but not aware of it (a relog): the snapshot brings it back.
+      if m.at ~= s.tid and seatOf(s.seats, sender) then s:snapshotTo(sender) end
     end
     return
   end
   if type(m.tid) ~= "string" then return end
   if WHISPERED[t] and channel ~= "WHISPER" then return end
-  local s = client.session
   local hosting = s and s.role == "host" and s.tid == m.tid
   if t == "SIT" or t == "WAT" then
     if hosting then
@@ -552,8 +604,12 @@ function Session.receive(client, channel, sender, m)
     if hosting then s:onStand(sender) end
   elseif t == "ACT" then
     if hosting then s:onAct(sender, m.a) end
-  elseif t == "SYN" then
-    if hosting then s:onSync(sender) end
+  elseif t == "SYN" or t == "PNG" then
+    if hosting then s:onSync(sender, t == "SYN") end
+  elseif t == "TBL" then
+    Succession.onTable(client, channel, sender, m)
+  elseif t == "HND" then
+    Succession.onHandoff(client, sender, m)
   elseif t == "SNP" then
     onSnapshot(client, sender, m)
   elseif t == "EV" then
