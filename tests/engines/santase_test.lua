@@ -327,3 +327,289 @@ describe("santase: closing", function()
     ok(not has(E.legal(t, 1), { k = "close" }))
   end)
 end)
+
+describe("santase: views and hidden cards", function()
+  local function known(v) local n = {} for i = 1, 24 do if v.deck[i] then n[#n + 1] = i end end return n end
+  it("after the deal a seat sees its six cards and the trump, a watcher only the trump", function()
+    local s = dealt()
+    eq(known(E.view(s, 1)), { 1, 2, 3, 7, 8, 9, 13 })
+    eq(known(E.view(s, 2)), { 4, 5, 6, 10, 11, 12, 13 })
+    eq(known(E.view(s, 0)), { 13 })
+    eq(E.view(s, 1).full, false); eq(#E.view(s, 0).hands[2], 6)
+    eq(E.hidden(s, 1), { 1, 2, 3, 7, 8, 9 })
+  end)
+  it("only the current and the last trick are visible, never an older one", function()
+    local s = dealt()
+    plays(s, { 1, "AS", 2, "9H" })
+    local v = E.view(s, 0)
+    eq(v.deck[idx(s, "AS")], "AS"); eq(v.deck[idx(s, "9H")], "9H")
+    plays(s, { 2, "JS", 1, "TS" })
+    v = E.view(s, 0)
+    eq(v.deck[idx(s, "AS")], nil); eq(v.deck[idx(s, "9H")], nil); eq(v.deck[idx(s, "TS")], "TS")
+    ok(P(s, 1, "9C"))
+    eq(E.view(s, 2).deck[idx(s, "9C")], "9C")
+  end)
+  it("a shown marriage partner and a trump taken by the nine are visible to all and not hidden", function()
+    local s = dealt()
+    ok(E.apply(s, 1, { k = "marry", i = idx(s, "QH"), c = "QH", j = idx(s, "KH"), d = "KH" }))
+    eq(E.view(s, 2).deck[idx(s, "KH")], "KH")
+    eq(#E.hidden(s, 1), 4)
+    local t = dealt()
+    plays(t, { 1, "9C", 2, "AC" })
+    ok(E.apply(t, 2, { k = "swap9", i = idx(t, "9H"), c = "9H" }))
+    eq(E.view(t, 1).deck[13], "JH"); eq(E.view(t, 0).deck[idx(t, "9H")], "9H")
+    for _, i in ipairs(E.hidden(t, 2)) do ok(i ~= 13) end
+  end)
+  it("everything is visible once the match is over", function()
+    local s = dealt()
+    E.leave(s, 2)
+    eq(#known(E.view(s, 0)), 24)
+  end)
+end)
+
+describe("santase: apply on views", function()
+  it("an unknown face is filled from the action; a face known elsewhere is refused", function()
+    local s = dealt()
+    local v = E.view(s, 1)
+    ok(P(v, 1, "AS"))
+    local i = idx(s, "9H")
+    eq(v.deck[i], nil)
+    eq({ E.apply(v, 2, { k = "play", i = i, c = "TS" }) }, { nil, "card" })
+    ok(E.apply(v, 2, { k = "play", i = i, c = "9H" }))
+    eq(v.deck[i], "9H"); eq(v.pts, { 0, 11 })
+  end)
+  it("follow-suit is checked only when the hand is known", function()
+    local s = dealt()
+    ok(E.apply(s, 1, { k = "close" })); ok(P(s, 1, "AS"))
+    local v = E.view(s, 1)
+    eq({ P(s, 2, "9H") }, { nil, "move" })
+    ok(E.apply(v, 2, { k = "play", i = idx(s, "9H"), c = "9H" }))
+  end)
+  it("show fills faces on a view and is a no-op or a refusal on the full state", function()
+    local s = dealt()
+    local v = E.view(s, 0)
+    ok(E.apply(v, 0, { k = "show", cards = { [1] = s.deck[1] } }))
+    eq(v.deck[1], s.deck[1])
+    eq({ E.apply(v, 0, { k = "show", cards = { [2] = s.deck[1] } }) }, { nil, "card" })
+    eq({ E.apply(v, 0, { k = "show", cards = { [30] = "9C" } }) }, { nil, "card" })
+    eq({ E.apply(v, 1, { k = "show", cards = {} }) }, { nil, "seat" })
+    ok(E.apply(s, 0, { k = "show", cards = { [1] = s.deck[1], [13] = "JH" } }))
+    eq({ E.apply(s, 0, { k = "show", cards = { [1] = s.deck[2] } }) }, { nil, "card" })
+    eq({ E.apply(E.new{}, 0, { k = "show", cards = {} }) }, { nil, "phase" })
+  end)
+  it("a view deals from a partial deck and learns the trump suit from a show", function()
+    local v = E.view(E.new{}, 1)
+    ok(E.apply(v, 0, { k = "deal", deck = {} }))
+    eq(v.tsuit, nil); eq(#v.stock, 12)
+    ok(E.apply(v, 0, { k = "show", cards = { [13] = "JH", [1] = "AS" } }))
+    eq(v.tsuit, "H")
+    eq(E.legal(v, 1), { { k = "play", i = 1, c = "AS" }, { k = "close" } })
+  end)
+end)
+
+describe("santase: rejection leaves the state untouched", function()
+  it("for every kind of bad action", function()
+    local s = dealt()
+    ok(E.apply(s, 1, { k = "close" }))
+    ok(P(s, 1, "AS"))
+    local bad = {
+      { 2, { k = "play", i = idx(s, "9H"), c = "9H" } },
+      { 2, { k = "play", i = idx(s, "JS"), c = "QS" } },
+      { 2, { k = "marry", i = idx(s, "KC"), c = "KC", j = idx(s, "AC"), d = "AC" } },
+      { 2, { k = "swap9", i = idx(s, "9H"), c = "9H" } },
+      { 2, { k = "close" } },
+      { 1, { k = "play", i = idx(s, "TS"), c = "TS" } },
+      { 0, { k = "deal", deck = deckOf(STD) } },
+      { 0, { k = "show", cards = { [1] = "9C" } } },
+      { 2, { k = "nope" } },
+    }
+    for n, b in ipairs(bad) do
+      local before = E.snapshot(s)
+      local r = E.apply(s, b[1], b[2])
+      eq(r, nil, "bad action " .. n)
+      eq(E.snapshot(s), before, "untouched after " .. n)
+    end
+  end)
+end)
+
+describe("santase: match, leaving, results", function()
+  it("the match ends at 11 game points", function()
+    local s = craft({ "9C" }, { "JC" }, { pts = { 40, 60 } }); s.gp = { 3, 10 }
+    eq(E.result(s), nil); eq(E.over(s), false)
+    plays(s, { 1, "9C", 2, "JC" })
+    eq(s.gp, { 3, 11 }); eq(s.phase, "match"); eq(s.winner, 2)
+    eq(E.result(s), { winners = { 2 }, losers = { 1 } }); eq(E.over(s), true); eq(E.system(s), nil)
+    eq(E.legal(s, 1), {}); eq(E.auto(s, 1), nil)
+  end)
+  it("a leaver loses the match at once, in any phase, and leaving again changes nothing", function()
+    local s = dealt()
+    E.leave(s, 1)
+    eq(E.result(s), { winners = { 2 }, losers = { 1 } }); eq(s.turn, nil); eq(E.legal(s, 1), {})
+    E.leave(s, 2)
+    eq(s.winner, 2)
+    local t = E.new{}
+    E.leave(t, 2); E.leave(t, 0)
+    eq(E.result(t), { winners = { 1 }, losers = { 2 } })
+  end)
+  it("auto plays the lowest-value legal card and nothing off turn", function()
+    local s = dealt()
+    eq(E.auto(s, 1), { k = "play", i = idx(s, "9C"), c = "9C" }); eq(E.auto(s, 2), nil)
+    ok(P(s, 1, "AS"))
+    eq(E.auto(s, 2), { k = "play", i = idx(s, "9H"), c = "9H" })
+    local t = dealt()
+    ok(E.apply(t, 1, { k = "close" })); ok(P(t, 1, "AS"))
+    eq(E.auto(t, 2), { k = "play", i = idx(t, "JS"), c = "JS" })
+    ok(E.apply(t, 2, E.auto(t, 2)))
+  end)
+end)
+
+describe("santase: snapshot", function()
+  local function plain(v, seen)
+    local t = type(v)
+    if t == "string" or t == "number" or t == "boolean" then return true end
+    if t ~= "table" or seen[v] then return false end
+    seen[v] = true
+    for k, x in pairs(v) do if not plain(k, seen) or not plain(x, seen) then return false end end
+    seen[v] = nil
+    return true
+  end
+  it("round-trips mid-hand, is plain data, and the copy plays on identically", function()
+    local s = dealt()
+    plays(s, { 1, "9C", 2, "AC" })
+    ok(E.apply(s, 2, { k = "swap9", i = idx(s, "9H"), c = "9H" }))
+    ok(E.apply(s, 2, { k = "close" }))
+    local snap = E.snapshot(s)
+    ok(plain(snap, {}))
+    local r = E.restore(snap)
+    snap.pts[1] = 99
+    ok(s.pts[1] ~= 99 and r.pts[1] ~= 99)
+    eq(E.snapshot(r), E.snapshot(s))
+    while s.phase == "play" do
+      local a = E.auto(s, s.turn)
+      ok(E.apply(s, s.turn, a)); ok(E.apply(r, r.turn, a))
+    end
+    eq(E.snapshot(r), E.snapshot(s))
+  end)
+end)
+
+-- Full state plus the views of seat 1, seat 2 and a watcher, kept in step: each view gets every
+-- action (a deal without faces) and then a show of what E.view(full, seat) lets it see.
+local seed = 1
+local function rnd(lo, hi) seed = (seed * 16807) % 2147483647; return lo + seed % (hi - lo + 1) end
+local function shuffled()
+  local d = {}
+  for n, f in ipairs(E.DECK) do d[n] = f end
+  for n = #d, 2, -1 do local m = rnd(1, n); d[n], d[m] = d[m], d[n] end
+  return d
+end
+local function newTable(first)
+  local t = { full = E.new{ first = first } }
+  t.v = { [0] = E.view(t.full, 0), [1] = E.view(t.full, 1), [2] = E.view(t.full, 2) }
+  return t
+end
+local function act(t, seat, a)
+  assert(E.apply(t.full, seat, a))
+  for p = 0, 2 do
+    local va = a.k == "deal" and { k = "deal", deck = {} } or a
+    local r, why = E.apply(t.v[p], seat, va)
+    assert(r, "view " .. p .. " refused " .. tostring(a.k) .. ": " .. tostring(why))
+    local want, cards = E.view(t.full, p).deck, {}
+    for i = 1, 24 do if want[i] and t.v[p].deck[i] == nil then cards[i] = want[i] end end
+    if next(cards) then assert(E.apply(t.v[p], 0, { k = "show", cards = cards })) end
+  end
+end
+local SAME = { "phase", "turn", "lead", "dealer", "hand", "closed", "closeOpp", "trumpI", "tsuit", "winner",
+  "pts", "ntr", "mar", "gp", "hands", "stock", "trick", "last", "res" }
+local function check(t)
+  local f = t.full
+  for p = 0, 2 do
+    local v = t.v[p]
+    for _, key in ipairs(SAME) do eq(v[key], f[key], "view " .. p .. " " .. key) end
+    if f.phase ~= "match" then
+      local ev = E.view(f, p)
+      for q = 1, 2 do
+        if q ~= p then
+          for _, i in ipairs(E.hidden(f, q)) do
+            eq(v.deck[i], nil, "view " .. p .. " sees a hidden card"); eq(ev.deck[i], nil, "E.view leaks")
+          end
+        end
+      end
+    end
+  end
+  local s = f.turn
+  if s then
+    eq(E.legal(t.v[s], s), E.legal(f, s), "legal on the view")
+    eq(E.auto(t.v[s], s), E.auto(f, s), "auto on the view")
+  end
+end
+
+describe("santase: a hand on the full state and on every view", function()
+  it("the scripted closed hand ends with the same scores everywhere", function()
+    local t = newTable(1)
+    act(t, 0, { k = "deal", deck = deckOf(STD) })
+    local s = t.full
+    act(t, 1, { k = "close" })
+    local seq = { 1, "AS", 2, "JS", 1, "9C", 2, "AC", 2, "QD", 1, "JD", 2, "TC", 1, "QH", 1, "KH", 2, "9H", 1, "TS", 2, "KC" }
+    for n = 1, #seq, 2 do
+      act(t, seq[n], { k = "play", i = idx(s, seq[n + 1]), c = seq[n + 1] }); check(t)
+    end
+    for p = 0, 2 do eq(t.v[p].pts, { 44, 16 }); eq(t.v[p].gp, { 0, 3 }) end
+  end)
+  it("an auto-played STD hand through the exhausted stock ends with the same scores everywhere", function()
+    local t = newTable(1)
+    act(t, 0, { k = "deal", deck = deckOf(STD) })
+    local exhausted = false
+    while t.full.phase == "play" do
+      act(t, t.full.turn, E.auto(t.full, t.full.turn)); check(t)
+      if #t.full.stock == 0 then exhausted = true end
+    end
+    ok(exhausted)
+    for p = 0, 2 do eq(t.v[p].res, t.full.res); eq(t.v[p].pts, t.full.pts) end
+  end)
+  it("random legal play over many hands agrees on every view and uses every declaration", function()
+    seed = 4242
+    local used, hands, matches = {}, 0, 0
+    local t = newTable(1)
+    while hands < 60 do
+      if t.full.phase == "match" then matches = matches + 1; t = newTable(rnd(1, 2)) end
+      act(t, 0, { k = "deal", deck = shuffled() }); hands = hands + 1
+      local steps = 0
+      while t.full.phase == "play" do
+        local l = E.legal(t.full, t.full.turn)
+        local a = l[rnd(1, #l)]
+        used[a.k] = true
+        act(t, t.full.turn, a); check(t)
+        steps = steps + 1; assert(steps < 40, "hand does not end")
+      end
+    end
+    ok(used.marry and used.swap9 and used.close, "marry, swap9 and close all exercised")
+    ok(matches >= 1)
+  end)
+end)
+
+describe("santase: fuzz", function()
+  it("200 hands driven only by auto all finish and matches end", function()
+    seed = 777
+    local s, hands, matches, applied = E.new{ first = 1 }, 0, 0, 0
+    while hands < 200 do
+      if s.phase == "match" then
+        ok(s.gp[s.winner] >= 11); matches = matches + 1
+        s = E.new{ first = rnd(1, 2) }
+      end
+      eq((E.system(s)), { k = "deal" })
+      ok(E.apply(s, 0, { k = "deal", deck = shuffled() })); hands = hands + 1
+      local steps = 0
+      while s.phase == "play" do
+        local seat = s.turn
+        eq(E.auto(s, 3 - seat, rnd), nil)
+        local r, why = E.apply(s, seat, E.auto(s, seat, rnd))
+        if not r then error("auto action refused: " .. tostring(why)) end
+        applied = applied + 1; steps = steps + 1
+        assert(steps <= 24, "hand does not end")
+      end
+      ok(s.phase == "hand" or s.phase == "match")
+    end
+    ok(matches >= 9, "matches ended: " .. matches)
+    ok(applied > 200 * 6)
+  end)
+end)

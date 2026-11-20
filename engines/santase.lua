@@ -47,6 +47,10 @@ ns.Engines = ns.Engines or {}
     tie, no game points (rule 3 for the next dealer).
 16. Match: first to 11 game points. A player who leaves a live match loses it.
 
+ Actions: seats 1/2 {k="play", i, c}, {k="marry", i, c, j, d}, {k="swap9", i, c}, {k="close"};
+ seat 0 {k="deal", deck}, {k="show", cards = {[i] = face}}. Hand result: s.res = {winner (0 = tie),
+ gp, reason = "66" | "fail" | "tie" | "out" (played out below 66 with unequal totals; cannot occur)}.
+
  Views: a seat sees its own hand, the cards on the table, the last completed trick, the face-up trump
  card, cards shown in a hand (marriage partner, a trump card taken from under the stock), and
  everything once the match is over. Card points, trick counts, marriages and game points are
