@@ -15,7 +15,7 @@
     <!-- Where the BelotGameEngine repository is checked out; override with -p:BelotEngineDir=... -->
     <BelotEngineDir Condition="'$(BelotEngineDir)' == ''">$(MSBuildThisFileDirectory)BelotGameEngine</BelotEngineDir>
     <!-- The engine checkout lives inside this folder by default: keep it out of this project's sources. -->
-    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <EnableDefaultItems>false</EnableDefaultItems>
   </PropertyGroup>
 
   <ItemGroup>
