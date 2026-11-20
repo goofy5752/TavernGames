@@ -470,6 +470,17 @@ function Session.stand(client)
   leave(client)
 end
 
+-- The client stops (logout or /reload): nobody stands up. A seated player keeps
+-- the seat for the offline window and gets the table back from the host's
+-- snapshot when he returns; a host's players claim the table after the silence.
+-- Only a host with nobody else seated closes its table, since nobody could hand
+-- it back. A pending request is forgotten.
+function Session.stop(client)
+  local s = client.session
+  client.pending = nil
+  if s and s.role == "host" and not Succession.candidates(s.seats, client.env.me)[1] then s:finish() end
+end
+
 -- A move by my seat -> true | nil, code: "none" (no table), "seat" (not seated),
 -- "live" (no match running) or the engine's refusal ("turn", "cell", ...).
 -- Checked on a copy first; the host applies it at once, a guest sends ACT.

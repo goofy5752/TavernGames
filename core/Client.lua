@@ -49,7 +49,7 @@ end
 function Client:stop()
   if not self.running then return end
   self.running = false
-  ns.Session.stand(self) -- STD or END; the seat change sends no HI (BYE follows)
+  ns.Session.stop(self) -- keeps the seat; END only for a host alone (no HI: BYE follows)
   self:send("GUILD", nil, { v = C.PROTOCOL, t = "BYE" })
   for timer in pairs(self.timers) do timer.cancel() end
   self.timers = {}

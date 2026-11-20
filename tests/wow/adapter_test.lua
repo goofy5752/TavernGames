@@ -216,11 +216,17 @@ describe("wow adapter: game events", function()
     eq(fired, 1); eq(env.now(), w.clock); eq(env.epoch(), Wow.EPOCH0 + 2)
   end)
 
-  it("PLAYER_LOGOUT stops the client with a BYE", function()
+  it("PLAYER_LOGOUT stops the client with a BYE and nothing else, even when seated", function()
     local w = guildWow()
+    local c = w.ns.client
+    c:openTable{ game = "ttt", access = "guild", turn = 45 }
+    w:deliver("GUILD", B, { v = 1, t = "HI", cls = "PRIEST", id = B_GUID })
+    w:deliver("WHISPER", B, { v = 1, t = "SIT", tid = c.session.tid, seat = 2 })
+    w:advance(3); eq(c.session.seats[2], B)
+    local n = #w.sent
     w:fire("PLAYER_LOGOUT")
-    eq(w.ns.client.running, false)
-    eq(w.sent[#w.sent].msg.t, "BYE")
+    eq(c.running, false)
+    eq(#w.sent, n + 1); eq(w.sent[#w.sent].msg.t, "BYE")
   end)
 
   it("classColor uses the class table and falls back to ink", function()

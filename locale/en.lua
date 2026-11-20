@@ -10,7 +10,7 @@ T["help.hall.access"] = "You decide who sits with you. “Anyone in the guild”
 T["help.hall.example"] = "You see a table with an empty dashed chair. You click the chair and you are seated. If the table is full, click it to watch."
 T["help.hall.invite"] = "Seated and waiting? Click Maria under “In the tavern now” and press “Invite”. Maria sees an invitation with three buttons. “Accept” puts her at the table. “Not now” says no just this once. “Do not disturb for 30 min” stops invitations for half an hour. If Maria is in combat or in a dungeon, the addon says no for her."
 T["help.hall.stand"] = "Had enough for today? Press “Stand up”. The table stays with the other player. They wait for a new opponent."
-T["help.hall.offline"] = "Lost your connection? Your chair waits 3 minutes. While you are away, your turns are played for you. Log back in and you sit in the same place and the game goes on. After 3 minutes the addon stands you up and the game stops."
+T["help.hall.offline"] = "Lost your connection, logged out or reloaded the interface? Your chair waits 3 minutes. While you are away, your turns are played for you. Log back in and you sit in the same place and the game goes on. After 3 minutes the addon stands you up and the game stops."
 
 -- Rules book: Tic-tac-toe
 T["help.ttt.p1"] = "The board is 3 by 3 squares. One player is X, the other is O. You take turns and put down one mark each. Three of the same mark in a row win: across, down or on a diagonal. After every game the other player starts."

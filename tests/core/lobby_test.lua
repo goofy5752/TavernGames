@@ -298,18 +298,32 @@ describe("lobby and seating", function()
     eq(b.session.tid, ctid); eq(a.session.seats, { A, false })
   end)
 
-  it("stop stands up first, without a HI before the BYE", function()
+  it("stop (logout, /reload) sends only BYE: seat and match are kept", function()
     local sim, a, b, c = setup()
     local tid = a:openTable{game="ttt", access="guild", turn=45}; sim:run(3)
     b:sit(tid, 2); c:watch(tid); sim:run(3)
+    eq(a.session.status, "live")
     local m0 = #sim.sent
     b:stop(); sim:run(1)
-    eq(a.session.seats, { A, false })
+    eq(a.session.seats, { A, B }); eq(a.session.status, "live")
     local kinds = {}
     for _, s in ipairs(sentBy(sim, B, m0)) do kinds[#kinds + 1] = s.msg.t end
-    eq(kinds, { "STD", "BYE" })
+    eq(kinds, { "BYE" })
+    c:stop(); sim:run(1)
+    kinds = {}
+    for _, s in ipairs(sentBy(sim, C, m0)) do kinds[#kinds + 1] = s.msg.t end
+    eq(kinds, { "BYE" })
+  end)
+
+  it("stop by a host alone at its table closes it: nobody could hand it back", function()
+    local sim, a, _, c = setup()
+    local tid = a:openTable{game="ttt", access="guild", turn=45}; sim:run(3)
+    c:watch(tid); sim:run(3)
+    local m0 = #sim.sent
     a:stop(); sim:run(1)
     eq(c.session, nil); eq(c.lobby:get(tid), nil)
-    eq(#sentBy(sim, A, m0, function(s) return s.msg.t == "END" end), 1)
+    local kinds = {}
+    for _, s in ipairs(sentBy(sim, A, m0)) do kinds[#kinds + 1] = s.msg.t end
+    eq(kinds, { "END", "BYE" })
   end)
 end)

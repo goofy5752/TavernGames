@@ -106,6 +106,29 @@ describe("offline seats and reconnect", function()
     sim:run(200); eq(a.session.seats[2], B) -- heard again: no auto-stand
   end)
 
+  it("a seated player who logs out (stop) and back in within 3 minutes keeps seat and board", function()
+    local sim, a, b = ttt()
+    for _, mv in ipairs({ {a,1}, {b,4}, {a,2} }) do ok(mv[1]:act{k="mark", c=mv[2]}); sim:run(1) end
+    local m0 = #sim.sent
+    b:stop(); sim:run(1)
+    eq(#sentBy(sim, B, m0, function(s) return s.msg.t ~= "BYE" end), 0)
+    eq(a.session.seats, { A, B }); eq(a.session.status, "live")
+    sim:run(120); local b2 = sim:relog(B); sim:run(2)
+    eq(a.session.seats, { A, B }); eq(a.session.status, "live")
+    eq(b2.session.mySeat, 2); eq(b2.session.role, "player"); eq(b2.session.host, A)
+    eq(b2.session.state.board, a.session.state.board); eq(b2.session.seq, a.session.seq)
+    eq(b2.session.state.board[4], 2)
+    sim:run(200); eq(a.session.seats[2], B) -- heard again: no auto-stand
+  end)
+
+  it("a seated player who logs out and stays away is stood up at 180 s", function()
+    local sim, a, b = ttt()
+    sim:run(5)
+    b:stop(); sim:run(0); sim:offline(B) -- the BYE is the last thing heard from him
+    sim:run(179); eq(a.session.seats[2], B)
+    sim:run(1); eq(a.session.seats[2], false); eq(a.session.status, "aborted")
+  end)
+
   it("a snapshot for a table I just left is answered with STD, not adopted", function()
     local sim, a, b, _, tid = ttt()
     local held
@@ -175,10 +198,16 @@ describe("graceful handoff", function()
     eq(a.session.role, "player"); eq(a.session.host, B); eq(b.session.status, "live"); eq(c.session.status, "live")
   end)
 
-  it("stop() hands the table over too", function()
+  it("a host's stop() sends no HND: the next player claims after the silence, as after a kill", function()
     local sim, a, b, c, d = fake()
+    local m0 = #sim.sent
     a:stop(); sim:run(2)
-    eq(b.session.role, "host"); eq(c.session.host, B); eq(d.session.host, B); eq(c.session.status, "live")
+    eq(#sentBy(sim, A, m0, function(s) return s.msg.t ~= "BYE" end), 0)
+    eq(b.session.role, "player"); eq(b.session.host, A)
+    sim:run(75)
+    eq(b.session.role, "host"); eq(b.session.epoch, 2); eq(b.session.seats, { A, B, C })
+    eq(c.session.host, B); eq(c.session.status, "live")
+    sim:run(20); eq(d.session.host, B)
   end)
 
   it("survives duplicated whispers", function()
