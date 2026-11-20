@@ -521,6 +521,132 @@ local function applyAnn(s, seat, a)
 end
 
 ---------------------------------------------------------------------------------------------
+-- Scoring
+---------------------------------------------------------------------------------------------
+
+local ANN_ORDER = { b = 1, s3 = 2, s4 = 3, s5 = 4, s6 = 5, s7 = 6, s8 = 7, c = 8, c9 = 9, cJ = 10 }
+
+-- > 0 when announce x beats y, 0 when they are equal; y may be nil.
+local function compareAnnounces(s, x, y)
+  if not y then return 1 end
+  if ANN_VALUE[x.t] ~= ANN_VALUE[y.t] then return ANN_VALUE[x.t] - ANN_VALUE[y.t] end
+  if x.t ~= y.t then return ANN_ORDER[x.t] - ANN_ORDER[y.t] end
+  local rx, ry = rankOf(s.deck[x.i]), rankOf(s.deck[y.i])
+  if x.t == "c" then return TRUMP_ORDER[rx] - TRUMP_ORDER[ry] end
+  return rx - ry
+end
+
+-- The announces with their points and whether they score (rule 10); nil when the card of
+-- one is unknown.
+local function settleAnnounces(s)
+  local bestFour, bestSeq
+  for _, x in ipairs(s.ann) do
+    if x.t ~= "b" then
+      if not s.deck[x.i] then return nil end
+      if x.t:sub(1, 1) == "c" then
+        if compareAnnounces(s, x, bestFour) > 0 then bestFour = x end
+      elseif compareAnnounces(s, x, bestSeq) > 0 then
+        bestSeq = x
+      end
+    end
+  end
+  local tied = false
+  for _, x in ipairs(s.ann) do
+    if x.t:sub(1, 1) == "s" and teamOf(x.s) ~= teamOf(bestSeq.s) and compareAnnounces(s, x, bestSeq) == 0 then
+      tied = true
+    end
+  end
+  local out = {}
+  for n, x in ipairs(s.ann) do
+    local on
+    if x.t == "b" then
+      on = true
+    elseif x.t:sub(1, 1) == "c" then
+      on = teamOf(x.s) == teamOf(bestFour.s)
+    else
+      on = not tied and teamOf(x.s) == teamOf(bestSeq.s)
+    end
+    out[n] = { s = x.s, t = x.t, i = x.i, v = ANN_VALUE[x.t], on = on }
+  end
+  return out
+end
+
+-- To the nearest, a half to the even number.
+local function roundHalfEven(points)
+  local q, r = math.floor(points / 10), points % 10
+  if r > 5 or (r == 5 and q % 2 == 1) then return q + 1 end
+  return q
+end
+
+local function roundPoints(b, points, winner)
+  if b == "N" then return roundHalfEven(points) end
+  local edge = b == "A" and 4 or 6
+  local q, r = math.floor(points / 10), points % 10
+  if r > edge or (r == edge and not winner) then return q + 1 end
+  return q
+end
+
+local function applyScore(s, seat)
+  if seat ~= 0 then return nil, "seat" end
+  if s.phase ~= "score" then return nil, "phase" end
+  local anns = settleAnnounces(s)
+  if not anns then return nil, "show" end
+  local b, x = s.contract.b, s.contract.x
+  local raw = { s.pts[1], s.pts[2] }
+  for _, a in ipairs(anns) do
+    if a.on then raw[teamOf(a.s)] = raw[teamOf(a.s)] + a.v end
+  end
+  local last = teamOf(s.lastWin)
+  raw[last] = raw[last] + 10
+  if b == "N" then raw[1], raw[2] = raw[1] * 2, raw[2] * 2 end
+  local valat = false
+  for team = 1, 2 do
+    if s.took[team] == 0 then
+      raw[3 - team] = raw[3 - team] + 90
+      valat = true
+    end
+  end
+
+  local pts, hang = { 0, 0 }, 0
+  local d = teamOf(s.contract.seat)
+  local o = 3 - d
+  if x > 1 then
+    local all = roundPoints(b, raw[1] + raw[2], true) * x + s.hang
+    if raw[1] > raw[2] then
+      pts[1] = all
+    elseif raw[2] > raw[1] then
+      pts[2] = all
+    else
+      hang = all
+    end
+  elseif raw[d] < raw[o] then
+    pts[o] = roundHalfEven(raw[1] + raw[2]) + s.hang
+  elseif raw[d] == raw[o] then
+    pts[o] = roundPoints(b, raw[o], true)
+    hang = s.hang + roundPoints(b, raw[d], false)
+  else
+    pts[d] = roundPoints(b, raw[d], true) + s.hang
+    pts[o] = roundPoints(b, raw[o], false)
+  end
+
+  s.res = { round = s.round, contract = copy(s.contract), raw = raw, pts = pts, hang = hang, valat = valat, ann = anns }
+  s.score[1], s.score[2] = s.score[1] + pts[1], s.score[2] + pts[2]
+  s.hang = hang
+  local winner
+  if s.score[1] >= E.TARGET and s.score[1] > s.score[2] and pts[1] > 0 and not valat then
+    winner = 1
+  elseif s.score[2] >= E.TARGET and s.score[2] > s.score[1] and pts[2] > 0 and not valat then
+    winner = 2
+  end
+  if winner then
+    s.phase, s.winner = "match", winner
+  else
+    nextDeal(s)
+  end
+  return true
+end
+
+---------------------------------------------------------------------------------------------
 -- Faces on a view
 ---------------------------------------------------------------------------------------------
 
@@ -571,6 +697,7 @@ function E.apply(s, seat, a)
   if k == "bid" then return applyBid(s, seat, a) end
   if k == "play" then return applyPlay(s, seat, a) end
   if k == "ann" then return applyAnn(s, seat, a) end
+  if k == "score" then return applyScore(s, seat) end
   if k == "show" then return applyShow(s, seat, a) end
   return nil, "action"
 end
@@ -599,11 +726,57 @@ function E.legal(s, seat)
   return out
 end
 
+-- A legal action for the seat on turn, from what its view shows: a pass in the auction;
+-- in the tricks first every announce it holds (a four before a sequence through it), then
+-- a legal card (the first, or a random one), with the belote when it is one.
+function E.auto(s, seat, random)
+  if not isSeat(seat) or s.turn ~= seat then return nil end
+  if s.phase == "bid" then return { k = "bid", b = "P" } end
+  if s.phase ~= "play" then return nil end
+  local hand, trick = facesOf(s, s.hands[seat]), facesOf(s, s.trick)
+  if not hand or not trick then return nil end
+  if canAnnounce(s) then
+    local set, used = {}, {}
+    for _, x in ipairs(availableAnnounces(s, seat)) do
+      local cards, free = announceCards(x.t, s.deck[x.i]), true
+      for _, face in ipairs(cards) do
+        if used[face] then free = false break end
+      end
+      if free then
+        set[#set + 1] = x
+        for _, face in ipairs(cards) do used[face] = true end
+      end
+    end
+    if #set > 0 then return { k = "ann", a = set } end
+  end
+  local b = s.contract.b
+  local valid = validCards(b, hand, trick)
+  local n = valid[random and random(1, #valid) or 1]
+  return { k = "play", i = s.hands[seat][n], c = hand[n], b = beloteAllowed(b, hand, trick, hand[n]) or nil }
+end
+
+-- What the table does next: {k="deal"} (the host adds the shuffled deck) or {k="score"}.
 function E.system(s)
   if s.phase == "deal" then return { k = "deal" }, s.res and 5 or 0 end
+  if s.phase == "score" then return { k = "score" }, 2 end
 end
 
 function E.over(s) return s.phase == "match" end
+
+function E.result(s)
+  if s.phase ~= "match" then return nil end
+  local w = s.winner
+  return { winners = { w, w + 2 }, losers = { 3 - w, 5 - w }, left = s.left }
+end
+
+-- A seated player left: the match is over and the leaver's team has lost.
+function E.leave(s, seat)
+  if isSeat(seat) and s.phase ~= "match" then
+    s.phase, s.turn = "match", nil
+    s.winner, s.left = 3 - teamOf(seat), seat
+  end
+  return true
+end
 
 function E.snapshot(s) return copy(s) end
 function E.restore(t) return copy(t) end
