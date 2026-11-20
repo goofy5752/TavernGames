@@ -1,8 +1,12 @@
--- Fake WoW client for testing wow/: a sandbox global table holding the game API
--- the adapter uses, the real LibStub, CallbackHandler, AceSerializer,
+-- Fake WoW client for testing wow/ and ui/: a sandbox global table holding the
+-- game API the addon uses, the real LibStub, CallbackHandler, AceSerializer,
 -- LibDeflate and AceDB loaded into it, and a fake AceAddon/AceComm that records
 -- every SendCommMessage. The wow/ files from the TOC run with the sandbox as
--- their globals, so whatever global they create is visible in `self.G`.
+-- their globals, so whatever global they create is visible in `self.G`. With
+-- `opts.ui` the ui/ files run too, over the fake widgets of frames.lua, the real
+-- LibDataBroker and a fake LibDBIcon that records Register calls.
+local Frames = require("frames")
+
 local Wow = {}
 Wow.__index = Wow
 
@@ -31,22 +35,24 @@ local function run(path, G, ...)
   return chunk(...)
 end
 
-local function wowFiles()
+-- TOC lines starting with `prefix`, in TOC order.
+local function tocFiles(prefix)
   local out = {}
   for line in io.lines("TavernGames.toc") do
     line = line:gsub("\r", ""):gsub("%s+$", "")
-    if line:match("^wow/") then out[#out + 1] = line end
+    if line:sub(1, #prefix) == prefix then out[#out + 1] = line end
   end
   return out
 end
 
 -- opts.saved: a TavernGamesDB table from an earlier session (a /reload).
+-- opts.ui: also run the ui/ files.
 function Wow.new(opts)
   opts = opts or {}
   local self = setmetatable({
     clock = 0, timers = {}, seq = 0, frames = {}, sent = {}, chat = {}, filters = {},
     roster = {}, rosterRequests = 0, inGuild = false, combat = false, instance = false,
-    dnd = false, group = {},
+    dnd = false, group = {}, money = 0, icons = {},
   }, Wow)
   local G = {}
   for _, name in ipairs(BUILTINS) do G[name] = _G[name] end
@@ -65,14 +71,12 @@ function Wow.new(opts)
       return { Cancel = function() t.cancelled = true end }
     end,
   }
-  G.CreateFrame = function()
-    local f = { events = {}, scripts = {} }
-    function f:RegisterEvent(e) self.events[e] = true end
-    function f:UnregisterEvent(e) self.events[e] = nil end
-    function f:SetScript(k, fn) self.scripts[k] = fn end
-    self.frames[#self.frames + 1] = f
-    return f
-  end
+  G.C_Timer.After = function(seconds, fn) G.C_Timer.NewTimer(seconds, fn) end
+  G.CreateFrame = Frames.factory(G, function(f) self.frames[#self.frames + 1] = f end)
+  G.UIParent = G.CreateFrame("Frame")
+  G.GameTooltip = Frames.tooltip(G.CreateFrame)
+  G.GameTooltip:Hide()
+  G.GetMoney = function() return self.money end
   G.UnitName = function(unit) if unit == "player" then return Wow.FIRST end end
   G.UnitGUID = function(unit) if unit == "player" then return Wow.GUID end end
   G.UnitClass = function() return "Маг", "MAGE", 8 end
@@ -129,12 +133,30 @@ function Wow.new(opts)
     return addon
   end
   LibStub:NewLibrary("AceComm-3.0", 1)
+  if opts.ui then
+    run("Libs/LibDataBroker-1.1/LibDataBroker-1.1.lua", G, "TavernGames")
+    local Icon = LibStub:NewLibrary("LibDBIcon-1.0", 1)
+    function Icon.Register(_, name, obj, db) self.icons[name] = { obj = obj, db = db, shown = not db.hide } end
+    function Icon.Show(_, name) self.icons[name].shown = true end
+    function Icon.Hide(_, name) self.icons[name].shown = false end
+  end
 
   self.ns = Loader.ns()
   self.wire = self.ns.Wire.new(LibStub("AceSerializer-3.0"), LibStub("LibDeflate"))
   self.baseline = {}
   for k in pairs(G) do self.baseline[k] = true end
-  for _, path in ipairs(wowFiles()) do run(path, G, "TavernGames", self.ns) end
+  for _, path in ipairs(tocFiles("wow/")) do run(path, G, "TavernGames", self.ns) end
+  if opts.ui then
+    for _, path in ipairs(tocFiles("ui/")) do run(path, G, "TavernGames", self.ns) end
+    -- From here on, reading a global the fake does not define is an error: it
+    -- catches a WoW API the fake lacks and a misspelt or out-of-scope local.
+    -- Globals that may be absent in the game too (saved variables, optional APIs).
+    local optional = { TavernGamesDB = true, CUSTOM_CLASS_COLORS = true }
+    setmetatable(G, { __index = function(_, k)
+      if optional[k] then return nil end
+      error("undefined global " .. tostring(k), 2)
+    end })
+  end
   return self
 end
 
@@ -156,6 +178,39 @@ function Wow:filtered(event, text)
   end
   return false
 end
+
+-- A mouse click on a visible, enabled button.
+function Wow:click(button, mouseButton)
+  assert(button:IsVisible(), "click on a hidden frame")
+  assert(button:IsEnabled(), "click on a disabled button")
+  local fn = button.scripts.OnClick
+  assert(fn, "the frame has no OnClick")
+  fn(button, mouseButton or "LeftButton", false)
+end
+
+-- The pointer enters a visible frame (tooltips).
+function Wow:hover(frame)
+  assert(frame:IsVisible(), "hover over a hidden frame")
+  local fn = frame.scripts.OnEnter
+  if fn then fn(frame) end
+end
+
+-- A key press while `frame` has the keyboard.
+function Wow:key(frame, key)
+  local fn = frame.scripts.OnKeyDown
+  assert(fn, "the frame has no OnKeyDown")
+  fn(frame, key)
+end
+
+-- One rendered frame: OnUpdate of every visible frame.
+function Wow:render(elapsed)
+  for _, f in ipairs(self.frames) do
+    if f.scripts.OnUpdate and f:IsVisible() then f.scripts.OnUpdate(f, elapsed or 0.02) end
+  end
+end
+
+-- Visible font strings whose text contains the plain text `needle`.
+function Wow:texts(needle) return Frames.visibleTexts(self.frames, needle) end
 
 function Wow:advance(dt)
   local target = self.clock + dt

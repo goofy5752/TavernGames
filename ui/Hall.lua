@@ -1,0 +1,660 @@
+local _, ns = ...
+
+-- The hall tab (mockup 02 option A). Left: „Отвори маса“ with the six games
+-- (Морски шах playable, the other five dimmed with „Скоро“). Centre: the floor
+-- plan of the guild's tables (HallLayout), a scroll list above 8 tables, or a
+-- message (no guild, name lookup, empty hall). Right: „В кръчмата сега“, where
+-- a click on a name offers „Покани“ while I host a table with a free seat.
+-- Footer: a refusal for 5 s; the "newer version" note once it is known.
+--
+-- Client events only schedule a redraw for the next frame (Hall.refresh), so a
+-- burst of events draws once and a drawing error never breaks the protocol code
+-- that emitted the event.
+local Theme, W, L, HallLayout = ns.Theme, ns.W, ns.L, ns.HallLayout
+
+local Hall = {
+  view = nil,              -- widgets, once the tab is built
+  mode = nil,              -- "floor" | "list" | "empty" | "noguild" | "wait"
+  selected = nil,          -- the name whose „Покани“ is offered
+  updateAvailable = false, -- a newer protocol version was seen
+}
+ns.Hall = Hall
+
+local FOOTER_SECONDS = 5
+local LEFT_W, RIGHT_W, GAP = 190, 250, 10
+local FOOTER_H, HEADER_H = 22, 28
+local TABLE_SIZE, TOP_SIZE, CHAIR_R, LABEL_R = 150, 94, 60, 80
+local GAME_H, ROW_H, PEER_H = 40, 40, 20
+
+local GAMES = {
+  { id = "ttt", players = "2" },
+  { id = "belot", players = "4", soon = true },
+  { id = "santase", players = "2", soon = true },
+  { id = "tabla", players = "2", soon = true },
+  { id = "holdem", players = "2–9", soon = true },
+  { id = "deathroll", players = "2+", soon = true },
+}
+
+local MESSAGES = { noguild = "hall.noguild", wait = "hall.wait", empty = "hall.empty" }
+
+local function firstWord(name) return name:match("^(%S+)") or name end
+
+-- The first UTF-8 character of `text`.
+local function initial(text) return text:match("^[%z\1-\127\194-\244][\128-\191]*") or "" end
+
+local function gameName(id)
+  local key = "game." .. tostring(id)
+  local s = L(key)
+  if s == key then return tostring(id) end
+  return s
+end
+
+local function firstFree(seats)
+  for i = 1, #seats do
+    if seats[i] == false then return i end
+  end
+  return nil
+end
+
+local function seatedCount(seats)
+  local n = 0
+  for i = 1, #seats do
+    if seats[i] then n = n + 1 end
+  end
+  return n
+end
+
+local function contains(list, value)
+  for i = 1, #list do
+    if list[i] == value then return true end
+  end
+  return false
+end
+
+local function classOf(client, name)
+  if name == client.env.me then return client.env.cls end
+  local p = client.presence:get(name)
+  return p and p.cls
+end
+
+-- Am I at this table (host, player or watcher)?
+local function here(client, rec)
+  local s = client.session
+  return s ~= nil and s.tid == rec.tid
+end
+
+-- My session as host with a free seat, or nil.
+local function hostingWithFreeSeat(client)
+  local s = client and client.session
+  if s and s.role == "host" and firstFree(s.seats) then return s end
+  return nil
+end
+
+local function color(fs, token) fs:SetTextColor(Theme.rgb(token)) end
+
+---------------------------------------------------------------------------
+-- Footer
+---------------------------------------------------------------------------
+
+-- One line in the hall footer for FOOTER_SECONDS; a newer line replaces it.
+function Hall.say(text)
+  local v = Hall.view
+  if not v then return end
+  v.footer:SetText(text)
+  v.footer:Show()
+  if Hall.footerTimer then Hall.footerTimer:Cancel() end
+  Hall.footerTimer = C_Timer.NewTimer(FOOTER_SECONDS, function()
+    Hall.footerTimer = nil
+    v.footer:Hide()
+  end)
+end
+
+---------------------------------------------------------------------------
+-- Clicks and tooltips
+---------------------------------------------------------------------------
+
+function Hall.clickChair(t, seat)
+  local client = ns.client
+  if client and t.rec then client:sit(t.rec.tid, seat) end
+end
+
+function Hall.clickTable(t)
+  local client, rec = ns.client, t.rec
+  if not client or not rec or here(client, rec) then return end
+  if rec.state == "live" then client:watch(rec.tid) end
+end
+
+function Hall.clickRow(r)
+  local client, rec = ns.client, r.rec
+  if not client or not rec then return end
+  if r.act == "sit" then
+    client:sit(rec.tid, firstFree(rec.seats))
+  elseif r.act == "watch" then
+    client:watch(rec.tid)
+  end
+end
+
+local function canInviteName(client, name)
+  local s = hostingWithFreeSeat(client)
+  if not s or contains(s.seats, name) then return false end
+  local p = client.presence:get(name)
+  return p ~= nil and not p.incompatible
+end
+
+function Hall.clickPeer(r)
+  local client = ns.client
+  if client and r.peerName and canInviteName(client, r.peerName) and Hall.selected ~= r.peerName then
+    Hall.selected = r.peerName
+  else
+    Hall.selected = nil
+  end
+  Hall.render()
+end
+
+function Hall.invite(name)
+  local client = ns.client
+  Hall.selected = nil
+  if client and client:invite(name) then
+    Hall.say(L("invite.sent", name))
+  else
+    Hall.say(L("invite.fail", name))
+  end
+  Hall.render()
+end
+
+function Hall.tableTooltip(tip, rec)
+  local client = ns.client
+  if not rec or not client then return end
+  tip:SetText(L("hall.host", gameName(rec.game), rec.host), Theme.rgb("gold"))
+  for i = 1, #rec.seats do
+    local name = rec.seats[i]
+    if name then tip:AddLine(name, ns.classColor(classOf(client, name))) end
+  end
+  tip:AddLine(L("access." .. tostring(rec.access)) .. " · " .. L("hall.turn", rec.turn), Theme.rgb("inkDim"))
+  if here(client, rec) then return end
+  if firstFree(rec.seats) then
+    tip:AddLine(L("hall.tip.sit"), Theme.rgb("good"))
+  elseif rec.state == "live" then
+    tip:AddLine(L("hall.tip.watch"), Theme.rgb("good"))
+  end
+end
+
+function Hall.chairTooltip(tip, rec, seat)
+  local client = ns.client
+  if not rec or not client then return end
+  local name = rec.seats[seat]
+  if name then
+    tip:SetText(name, ns.classColor(classOf(client, name)))
+  else
+    tip:SetText(L("hall.tip.sit"), Theme.rgb("good"))
+  end
+end
+
+---------------------------------------------------------------------------
+-- Widgets
+---------------------------------------------------------------------------
+
+local function pulse(frame, elapsed)
+  frame.pulseTime = (frame.pulseTime or 0) + elapsed
+  frame.glowTexture:SetAlpha(0.55 + 0.35 * math.sin(frame.pulseTime * math.pi))
+end
+
+local function tableWidget(v, i)
+  local t = v.tables[i]
+  if t then return t end
+  local f = CreateFrame("Frame", nil, v.floor)
+  f:SetSize(TABLE_SIZE, TABLE_SIZE)
+  local glow = f:CreateTexture(nil, "BACKGROUND")
+  glow:SetSize(TABLE_SIZE + 20, TABLE_SIZE + 20)
+  glow:SetPoint("CENTER", f, "CENTER")
+  glow:SetTexture(Theme.tex.glow)
+  glow:SetBlendMode("ADD")
+  f.glowTexture = glow
+
+  local top = CreateFrame("Button", nil, f)
+  top:SetSize(TOP_SIZE, TOP_SIZE)
+  top:SetPoint("CENTER", f, "CENTER")
+  top:RegisterForClicks("LeftButtonUp")
+  local wood = top:CreateTexture(nil, "BACKGROUND")
+  wood:SetAllPoints(top)
+  wood:SetTexture(Theme.tex.tabletop)
+  local felt = top:CreateTexture(nil, "BORDER")
+  felt:SetSize(TOP_SIZE - 18, TOP_SIZE - 18)
+  felt:SetPoint("CENTER", top, "CENTER")
+  felt:SetTexture(Theme.tex.chair)
+  felt:SetVertexColor(Theme.rgb("felt"))
+
+  local game = W.Label(top, "heading", "", 14)
+  game:SetJustifyH("CENTER")
+  game:SetPoint("CENTER", top, "CENTER", 0, 11)
+  local host = W.Label(top, "ui", "", 11)
+  host:SetJustifyH("CENTER")
+  host:SetPoint("CENTER", top, "CENTER", 0, -4)
+  local state = W.Label(top, "ui", "", 11)
+  state:SetJustifyH("CENTER")
+  color(state, "gold")
+  state:SetPoint("CENTER", top, "CENTER", 0, -18)
+
+  t = { frame = f, glow = glow, top = top, game = game, host = host, state = state, chairs = {} }
+  top:SetScript("OnClick", function() Hall.clickTable(t) end)
+  W.tooltip(top, function(tip) Hall.tableTooltip(tip, t.rec) end)
+  v.tables[i] = t
+  return t
+end
+
+local function chairWidget(t, i)
+  local c = t.chairs[i]
+  if c then return c end
+  local b = CreateFrame("Button", nil, t.frame)
+  b:SetSize(26, 26)
+  b:SetFrameLevel(t.top:GetFrameLevel() + 1)
+  b:RegisterForClicks("LeftButtonUp")
+  local rim = b:CreateTexture(nil, "BORDER")
+  rim:SetAllPoints(b)
+  rim:SetTexture(Theme.tex.chair)
+  rim:SetVertexColor(Theme.rgb("woodDark"))
+  local disc = b:CreateTexture(nil, "ARTWORK")
+  disc:SetPoint("CENTER", b, "CENTER")
+  local label = W.Label(t.frame, "ui", "", 11)
+  label:SetJustifyH("CENTER")
+  c = { button = b, rim = rim, disc = disc, label = label }
+  b:SetScript("OnClick", function() Hall.clickChair(t, i) end)
+  W.tooltip(b, function(tip) Hall.chairTooltip(tip, t.rec, i) end)
+  b:HookScript("OnEnter", function() if c.empty then disc:SetVertexColor(Theme.rgb("gold")) end end)
+  b:HookScript("OnLeave", function() if c.empty then disc:SetVertexColor(1, 1, 1) end end)
+  t.chairs[i] = c
+  return c
+end
+
+local function fillTable(t, rec, client)
+  t.rec, t.tid = rec, rec.tid
+  local mine = here(client, rec)
+  t.game:SetText(gameName(rec.game))
+  t.host:SetText(firstWord(rec.host))
+  t.state:SetText(L("hall.live"))
+  t.state:SetShown(rec.state == "live")
+  local n = #rec.seats
+  local spots = HallLayout.chairs(n, CHAIR_R)
+  local k = LABEL_R / CHAIR_R
+  for i = 1, n do
+    local c, name = chairWidget(t, i), rec.seats[i]
+    local x, y = spots[i][1], spots[i][2]
+    c.button:ClearAllPoints()
+    c.button:SetPoint("CENTER", t.frame, "CENTER", x, y)
+    c.label:ClearAllPoints()
+    c.label:SetPoint("CENTER", t.frame, "CENTER", x * k, y * k)
+    c.empty = not name
+    if name then
+      c.rim:Show()
+      c.disc:SetTexture(Theme.tex.chair)
+      c.disc:SetSize(22, 22)
+      c.disc:SetVertexColor(ns.classColor(classOf(client, name)))
+      c.label:SetText(firstWord(name))
+      c.label:Show()
+      c.button:SetEnabled(false)
+    else
+      c.rim:Hide()
+      c.disc:SetTexture(Theme.tex.chair_empty)
+      c.disc:SetSize(26, 26)
+      c.disc:SetVertexColor(1, 1, 1)
+      c.label:Hide()
+      c.button:SetEnabled(not mine)
+    end
+    c.button:Show()
+  end
+  for i = n + 1, #t.chairs do
+    t.chairs[i].button:Hide()
+    t.chairs[i].label:Hide()
+  end
+  t.glow:SetShown(mine)
+  t.frame:SetScript("OnUpdate", mine and pulse or nil)
+end
+
+local function rowWidget(v, i)
+  local r = v.rows[i]
+  if r then return r end
+  local content = v.list.content
+  local f = CreateFrame("Frame", nil, content)
+  f:SetSize(v.listW, ROW_H - 2)
+  f:SetPoint("TOPLEFT", content, "TOPLEFT", 0, -(i - 1) * ROW_H)
+  local mark = f:CreateTexture(nil, "ARTWORK")
+  mark:SetPoint("TOPLEFT", f, "TOPLEFT")
+  mark:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT")
+  mark:SetWidth(3)
+  mark:SetColorTexture(Theme.color.gold[1], Theme.color.gold[2], Theme.color.gold[3], 1)
+  local line = f:CreateTexture(nil, "BORDER")
+  line:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 0, -1)
+  line:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", 0, -1)
+  line:SetHeight(1)
+  line:SetColorTexture(Theme.color.brass[1], Theme.color.brass[2], Theme.color.brass[3], 0.25)
+  local icon = f:CreateTexture(nil, "ARTWORK")
+  icon:SetSize(28, 28)
+  icon:SetPoint("LEFT", f, "LEFT", 8, 0)
+  icon:SetTexture(Theme.tex.tabletop)
+  local title = W.Label(f, "ui", "", 13)
+  title:SetPoint("TOPLEFT", icon, "TOPRIGHT", 10, 2)
+  local sub = W.Label(f, "dim", "")
+  sub:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -2)
+  r = { frame = f, mark = mark, title = title, sub = sub }
+  local action = W.Button(f, "", function() Hall.clickRow(r) end, true)
+  action:SetSize(74, 22)
+  action:SetPoint("RIGHT", f, "RIGHT", -4, 0)
+  local state = W.Label(f, "dim", "", 12)
+  state:SetWidth(60)
+  state:SetPoint("RIGHT", action, "LEFT", -12, 0)
+  local seats = W.Label(f, "ui", "", 13)
+  seats:SetPoint("RIGHT", state, "LEFT", -12, 0)
+  r.action, r.state, r.seats = action, state, seats
+  v.rows[i] = r
+  return r
+end
+
+local function fillRow(r, rec, client)
+  r.rec, r.tid = rec, rec.tid
+  r.title:SetText(L("hall.host", gameName(rec.game), rec.host))
+  r.sub:SetText(L("access." .. tostring(rec.access)) .. " · " .. L("hall.turn", rec.turn))
+  r.seats:SetText(seatedCount(rec.seats) .. "/" .. #rec.seats)
+  r.state:SetText(L(rec.state == "live" and "hall.live" or "hall.waiting"))
+  local mine = here(client, rec)
+  r.mark:SetShown(mine)
+  if mine then
+    r.act = nil
+  elseif firstFree(rec.seats) then
+    r.act = "sit"
+  else
+    r.act = "watch"
+  end
+  r.action.text:SetText(r.act == "sit" and L("hall.sit") or L("hall.watch"))
+  r.action:SetShown(r.act ~= nil)
+end
+
+local function peerWidget(v, i)
+  local r = v.peers[i]
+  if r then return r end
+  local content = v.peerScroll.content
+  local b = CreateFrame("Button", nil, content)
+  b:SetSize(v.peerW, PEER_H)
+  b:SetPoint("TOPLEFT", content, "TOPLEFT", 0, -(i - 1) * PEER_H)
+  b:RegisterForClicks("LeftButtonUp")
+  local hl = b:CreateTexture(nil, "BACKGROUND")
+  hl:SetAllPoints(b)
+  hl:SetColorTexture(Theme.color.brassLight[1], Theme.color.brassLight[2], Theme.color.brassLight[3], 0.08)
+  hl:Hide()
+  b:SetScript("OnEnter", function() hl:Show() end)
+  b:SetScript("OnLeave", function() hl:Hide() end)
+  local name = W.Label(b, "ui", "", 12)
+  name:SetWidth(v.peerW - 100)
+  name:SetWordWrap(false)
+  name:SetPoint("LEFT", b, "LEFT", 2, 0)
+  local status = W.Label(b, "dim", "")
+  status:SetJustifyH("RIGHT")
+  status:SetPoint("RIGHT", b, "RIGHT", -2, 0)
+  r = { frame = b, name = name, status = status }
+  local invite = W.Button(b, L("hall.invite"), function() Hall.invite(r.peerName) end, true)
+  invite:SetSize(64, 18)
+  invite:SetPoint("RIGHT", b, "RIGHT", 0, 0)
+  invite:Hide()
+  r.invite = invite
+  b:SetScript("OnClick", function() Hall.clickPeer(r) end)
+  v.peers[i] = r
+  return r
+end
+
+local function whereIs(p, byTid)
+  if p.incompatible then return L("peers.incompatible") end
+  local rec = p.at and byTid[p.at]
+  if not rec then return L("peers.hall") end
+  if contains(rec.seats, p.name) then return L("peers.at", firstWord(rec.host)) end
+  return L("peers.watching")
+end
+
+---------------------------------------------------------------------------
+-- Drawing
+---------------------------------------------------------------------------
+
+local function renderFloor(v, recs, client)
+  local slots = HallLayout.slots(#recs, v.floorW, v.floorH)
+  for i, rec in ipairs(recs) do
+    local t = tableWidget(v, i)
+    fillTable(t, rec, client)
+    t.frame:ClearAllPoints()
+    t.frame:SetPoint("CENTER", v.floor, "TOPLEFT", slots[i][1], -slots[i][2])
+    t.frame:Show()
+  end
+  for i = #recs + 1, #v.tables do
+    v.tables[i].frame:Hide()
+    v.tables[i].frame:SetScript("OnUpdate", nil)
+  end
+end
+
+local function renderList(v, recs, client)
+  for i, rec in ipairs(recs) do
+    local r = rowWidget(v, i)
+    fillRow(r, rec, client)
+    r.frame:Show()
+  end
+  for i = #recs + 1, #v.rows do v.rows[i].frame:Hide() end
+  v.list:setContentHeight(#recs * ROW_H)
+end
+
+local function renderPeers(v, client)
+  local peers, byTid = {}, {}
+  if client then
+    peers = client.presence:list()
+    local recs = client.lobby:tables()
+    for i = 1, #recs do byTid[recs[i].tid] = recs[i] end
+  end
+  local selectedListed = false
+  for i, p in ipairs(peers) do
+    local r = peerWidget(v, i)
+    r.peerName = p.name
+    r.name:SetText(p.name)
+    r.name:SetTextColor(ns.classColor(p.cls))
+    r.status:SetText(whereIs(p, byTid))
+    local offer = Hall.selected == p.name and canInviteName(client, p.name)
+    if offer then selectedListed = true end
+    r.invite:SetShown(offer)
+    r.status:SetShown(not offer)
+    r.frame:Show()
+  end
+  for i = #peers + 1, #v.peers do v.peers[i].frame:Hide() end
+  if not selectedListed then Hall.selected = nil end
+  v.peerScroll:setContentHeight(#peers * PEER_H)
+  v.peerEmpty:SetShown(#peers == 0)
+end
+
+-- Redraws the hall now (only while it is on screen; OnShow redraws it).
+function Hall.render()
+  local v = Hall.view
+  if not v or not v.page:IsVisible() then return end
+  local client = ns.client
+  local recs, mode = {}, nil
+  if not client then
+    mode = ns.noGuild and "noguild" or "wait"
+  else
+    recs = HallLayout.order(client.lobby:tables(), client.env.me)
+    mode = #recs == 0 and "empty" or HallLayout.mode(#recs)
+  end
+  Hall.mode = mode
+  local key = MESSAGES[mode]
+  if key then v.message:SetText(L(key)) end
+  v.message:SetShown(key ~= nil)
+  v.floor:SetShown(mode == "floor")
+  v.list:SetShown(mode == "list")
+  v.hint:SetShown(mode == "floor")
+  if mode == "floor" then
+    renderFloor(v, recs, client)
+  elseif mode == "list" then
+    renderList(v, recs, client)
+  end
+  renderPeers(v, client)
+  v.note:SetShown(Hall.updateAvailable)
+end
+
+-- Redraws on the next frame; several calls in one frame draw once.
+function Hall.refresh()
+  if Hall.scheduled then return end
+  Hall.scheduled = true
+  C_Timer.After(0, function()
+    Hall.scheduled = false
+    Hall.render()
+  end)
+end
+
+---------------------------------------------------------------------------
+-- Building the tab
+---------------------------------------------------------------------------
+
+local function buildLeft(v, page, colH)
+  local left = W.Panel(page)
+  left:SetPoint("TOPLEFT", page, "TOPLEFT", 0, 0)
+  left:SetSize(LEFT_W, colH)
+  W.Label(left, "heading", L("hall.open")):SetPoint("TOPLEFT", left, "TOPLEFT", 10, -10)
+  for i, g in ipairs(GAMES) do
+    local row = CreateFrame("Button", nil, left)
+    row:SetSize(LEFT_W - 20, GAME_H - 2)
+    row:SetPoint("TOPLEFT", left, "TOPLEFT", 10, -32 - (i - 1) * GAME_H)
+    row:RegisterForClicks("LeftButtonUp")
+    local hl = row:CreateTexture(nil, "BACKGROUND")
+    hl:SetAllPoints(row)
+    hl:SetColorTexture(Theme.color.brassLight[1], Theme.color.brassLight[2], Theme.color.brassLight[3], 0.08)
+    hl:Hide()
+    row:SetScript("OnEnter", function() hl:Show() end)
+    row:SetScript("OnLeave", function() hl:Hide() end)
+    local icon = row:CreateTexture(nil, "ARTWORK")
+    icon:SetSize(28, 28)
+    icon:SetPoint("LEFT", row, "LEFT", 4, 0)
+    icon:SetTexture(Theme.tex.chair)
+    icon:SetVertexColor(Theme.rgb("felt"))
+    local rim = row:CreateTexture(nil, "OVERLAY")
+    rim:SetSize(30, 30)
+    rim:SetPoint("CENTER", icon, "CENTER")
+    rim:SetTexture(Theme.tex.ring)
+    local title = gameName(g.id)
+    local letter = W.Label(row, "heading", initial(title), 14)
+    color(letter, "cream")
+    letter:SetJustifyH("CENTER")
+    letter:SetPoint("CENTER", icon, "CENTER", 0, 0)
+    local name = W.Label(row, "ui", title, 13)
+    name:SetPoint("TOPLEFT", icon, "TOPRIGHT", 9, 1)
+    local sub = W.Label(row, "dim", L("games.players", g.players))
+    sub:SetPoint("TOPLEFT", name, "BOTTOMLEFT", 0, -1)
+    local soon = W.Label(row, "dim", L("games.soon"))
+    color(soon, "gold")
+    soon:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", -4, 5)
+    if g.soon then
+      row:SetAlpha(0.45)
+      row:SetScript("OnClick", function() if ns.HelpBook then ns.HelpBook.open("soon") end end)
+    else
+      soon:Hide()
+      row:SetScript("OnClick", function() ns.NewTableDialog.open(g.id) end)
+    end
+    v.games[i] = { id = g.id, frame = row, name = name, soon = soon }
+  end
+  local open = W.Button(left, L("hall.open"), function() ns.NewTableDialog.open("ttt") end)
+  open:SetSize(LEFT_W - 20, 28)
+  open:SetPoint("BOTTOM", left, "BOTTOM", 0, 12)
+  v.openButton = open
+end
+
+local function buildCentre(v, page, x, w, colH)
+  local centre = W.Panel(page)
+  centre:SetPoint("TOPLEFT", page, "TOPLEFT", x, 0)
+  centre:SetSize(w, colH)
+  -- Floor planks (mockup 02): lighter wood, a seam every 22 px down and 64 px across.
+  centre.fill:Hide()
+  local planks = W.tile(centre, Theme.tex.wood, Theme.texSize.wood, w - 2, colH - 2)
+  planks:SetPoint("TOPLEFT", centre, "TOPLEFT", 1, -1)
+  planks:SetPoint("BOTTOMRIGHT", centre, "BOTTOMRIGHT", -1, 1)
+  for y = 22, colH - 2, 22 do
+    local s = centre:CreateTexture(nil, "BORDER")
+    s:SetColorTexture(0, 0, 0, 0.18)
+    s:SetPoint("TOPLEFT", centre, "TOPLEFT", 1, -y)
+    s:SetSize(w - 2, 1)
+  end
+  for sx = 64, w - 2, 64 do
+    local s = centre:CreateTexture(nil, "BORDER")
+    s:SetColorTexture(0, 0, 0, 0.25)
+    s:SetPoint("TOPLEFT", centre, "TOPLEFT", sx, -1)
+    s:SetSize(1, colH - 2)
+  end
+  W.Label(centre, "heading", L("hall.title")):SetPoint("TOPLEFT", centre, "TOPLEFT", 10, -8)
+  v.hint = W.Label(centre, "dim", L("hall.hint"), 12)
+  v.hint:SetPoint("TOPRIGHT", centre, "TOPRIGHT", -10, -10)
+
+  local floor = CreateFrame("Frame", nil, centre)
+  floor:SetPoint("TOPLEFT", centre, "TOPLEFT", 0, -HEADER_H)
+  floor:SetSize(w, colH - HEADER_H)
+  v.floor, v.floorW, v.floorH = floor, w, colH - HEADER_H
+
+  local message = W.Label(centre, "ui", "", 15)
+  color(message, "inkDim")
+  message:SetJustifyH("CENTER")
+  message:SetWidth(w - 80)
+  message:SetWordWrap(true)
+  message:SetPoint("CENTER", floor, "CENTER", 0, 0)
+  v.message = message
+
+  local list = W.Scroll(centre)
+  list:SetPoint("TOPLEFT", centre, "TOPLEFT", 8, -HEADER_H)
+  list:SetPoint("BOTTOMRIGHT", centre, "BOTTOMRIGHT", -8, 8)
+  v.listW = w - 16 - 6
+  list.content:SetWidth(v.listW)
+  v.list = list
+end
+
+local function buildRight(v, page, x, colH)
+  local right = W.Panel(page)
+  right:SetPoint("TOPLEFT", page, "TOPLEFT", x, 0)
+  right:SetSize(RIGHT_W, colH)
+  W.Label(right, "heading", L("peers.title")):SetPoint("TOPLEFT", right, "TOPLEFT", 10, -10)
+  local scroll = W.Scroll(right)
+  scroll:SetPoint("TOPLEFT", right, "TOPLEFT", 8, -32)
+  scroll:SetPoint("BOTTOMRIGHT", right, "BOTTOMRIGHT", -8, 8)
+  v.peerW = RIGHT_W - 16 - 6
+  scroll.content:SetWidth(v.peerW)
+  v.peerScroll = scroll
+  v.peerEmpty = W.Label(right, "dim", L("peers.empty"), 12)
+  v.peerEmpty:SetPoint("TOPLEFT", right, "TOPLEFT", 10, -34)
+end
+
+function Hall.build(page)
+  local v = { page = page, games = {}, tables = {}, rows = {}, peers = {} }
+  Hall.view = v
+  local bodyW, bodyH = ns.MainWindow.BODY_W, ns.MainWindow.BODY_H
+  local colH = bodyH - FOOTER_H
+  local centreW = bodyW - LEFT_W - RIGHT_W - 2 * GAP
+  buildLeft(v, page, colH)
+  buildCentre(v, page, LEFT_W + GAP, centreW, colH)
+  buildRight(v, page, LEFT_W + GAP + centreW + GAP, colH)
+
+  local footer = W.Label(page, "ui", "", 13)
+  color(footer, "gold")
+  footer:SetJustifyH("CENTER")
+  footer:SetPoint("BOTTOM", page, "BOTTOM", 0, 4)
+  footer:Hide()
+  v.footer = footer
+  local note = W.Label(page, "dim", L("update.available"), 12)
+  color(note, "gold")
+  note:SetPoint("BOTTOMRIGHT", page, "BOTTOMRIGHT", -4, 4)
+  note:Hide()
+  v.note = note
+
+  page:SetScript("OnShow", Hall.render)
+  Hall.render()
+end
+
+ns.MainWindow.addTab("hall", "tab.hall", Hall.build)
+
+ns.ready(function(client)
+  client:on("peers", Hall.refresh)
+  client:on("tables", Hall.refresh)
+  client:on("session", Hall.refresh)
+  client:on("refused", function(_, why) Hall.say(L("refused." .. tostring(why))) end)
+  client:on("update", function()
+    Hall.updateAvailable = true
+    if ns.Adapter and ns.Adapter.say then ns.Adapter.say(L("update.available")) end
+    Hall.refresh()
+  end)
+  Hall.refresh()
+end)

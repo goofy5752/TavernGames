@@ -47,3 +47,9 @@ wow/Adapter.lua
 wow/Slash.lua
 
 # UI
+ui/Theme.lua
+ui/Widgets.lua
+ui/MainWindow.lua
+ui/NewTableDialog.lua
+ui/Hall.lua
+ui/Minimap.lua
