@@ -95,6 +95,14 @@ end
 local BIDS = { "C", "D", "H", "S", "N", "A" }
 local BID_RANK = { C = 1, D = 2, H = 3, S = 4, N = 5, A = 6 }
 
+-- by rank 7 8 9 T J Q K A
+local TRUMP_ORDER = { 1, 2, 7, 5, 8, 3, 4, 6 }
+local PLAIN_ORDER = { 1, 2, 3, 7, 4, 5, 6, 8 }
+local TRUMP_VALUE = { 0, 0, 14, 10, 20, 3, 4, 11 }
+local PLAIN_VALUE = { 0, 0, 0, 10, 2, 3, 4, 11 }
+
+local ANN_VALUE = { b = 20, s3 = 20, s4 = 50, s5 = 100, s6 = 100, s7 = 100, s8 = 100, c = 100, c9 = 150, cJ = 200 }
+
 local function copy(v)
   if type(v) ~= "table" then return v end
   local t = {}
@@ -105,17 +113,37 @@ end
 local function isSeat(seat) return seat == 1 or seat == 2 or seat == 3 or seat == 4 end
 local function nextSeat(seat) return seat % 4 + 1 end
 local function teamOf(seat) return 2 - seat % 2 end
+local function rankOf(face) return RANK[face:sub(1, 1)] end
+local function suitOf(face) return face:sub(2, 2) end
+
+-- The faces of a list of deck indices, or nil when one of them is unknown (a view).
+local function facesOf(s, list)
+  local out = {}
+  for n, i in ipairs(list) do
+    if not s.deck[i] then return nil end
+    out[n] = s.deck[i]
+  end
+  return out
+end
+
+local function resetPlay(s)
+  s.trick, s.lead, s.trickNo, s.last = {}, nil, 0, nil
+  s.pts, s.took, s.lastWin = { 0, 0 }, { 0, 0 }, nil
+  s.ann, s.announced = {}, false
+end
 
 function E.new(opts)
   local first = opts and opts.first
   if not isSeat(first) then first = 1 end
-  return {
+  local s = {
     phase = "deal", round = 1, first = first, turn = nil,
     deck = {}, hands = { {}, {}, {}, {} },
     bids = {}, contract = nil, passes = 0,
     score = { 0, 0 }, hang = 0, res = nil,
     winner = nil, left = nil, open = false,
   }
+  resetPlay(s)
+  return s
 end
 
 ---------------------------------------------------------------------------------------------
@@ -153,6 +181,7 @@ local function applyDeal(s, seat, a)
   dealCards(s, 1, 20)
   s.bids, s.contract, s.passes = {}, nil, 0
   s.open = false
+  resetPlay(s)
   s.phase, s.turn = "bid", s.first
   return true
 end
@@ -188,6 +217,7 @@ end
 local function startPlay(s)
   dealCards(s, 21, 32)
   s.phase, s.turn = "play", s.first
+  s.lead, s.trickNo = s.first, 1
 end
 
 local function applyBid(s, seat, a)
@@ -221,6 +251,276 @@ local function applyBid(s, seat, a)
 end
 
 ---------------------------------------------------------------------------------------------
+-- Tricks
+---------------------------------------------------------------------------------------------
+
+-- The position in the trick (faces, in play order) of the card winning it so far.
+local function winningCard(b, trick)
+  local best, led = 1, suitOf(trick[1])
+  if b == "A" or b == "N" then
+    local order = b == "A" and TRUMP_ORDER or PLAIN_ORDER
+    for n = 2, #trick do
+      if suitOf(trick[n]) == led and order[rankOf(trick[n])] > order[rankOf(trick[best])] then best = n end
+    end
+    return best
+  end
+  local bestIsTrump = led == b
+  for n = 2, #trick do
+    local face = trick[n]
+    if suitOf(face) == b then
+      if not bestIsTrump or TRUMP_ORDER[rankOf(face)] > TRUMP_ORDER[rankOf(trick[best])] then
+        best, bestIsTrump = n, true
+      end
+    elseif not bestIsTrump and suitOf(face) == led
+      and PLAIN_ORDER[rankOf(face)] > PLAIN_ORDER[rankOf(trick[best])] then
+      best = n
+    end
+  end
+  return best
+end
+
+-- The highest trump order among the trick's cards of a suit (0 when there is none).
+local function highestTrump(trick, suit)
+  local best = 0
+  for _, face in ipairs(trick) do
+    if suitOf(face) == suit and TRUMP_ORDER[rankOf(face)] > best then best = TRUMP_ORDER[rankOf(face)] end
+  end
+  return best
+end
+
+-- The positions in the hand (faces) of the cards that may be played to the trick (faces).
+local function validCards(b, hand, trick)
+  local function pick(suit, above)
+    local out = {}
+    for n, face in ipairs(hand) do
+      if (not suit or suitOf(face) == suit) and (not above or TRUMP_ORDER[rankOf(face)] > above) then
+        out[#out + 1] = n
+      end
+    end
+    return out
+  end
+  local every = pick()
+  if #trick == 0 or #hand == 1 then return every end
+  local led = suitOf(trick[1])
+  local follow = pick(led)
+  if b == "N" then return #follow > 0 and follow or every end
+  if b == "A" or b == led then
+    if #follow == 0 then return every end
+    local higher = pick(led, highestTrump(trick, led))
+    return #higher > 0 and higher or follow
+  end
+  if #follow > 0 then return follow end
+  local trumps = pick(b)
+  if #trumps == 0 then return every end
+  if #trick > 1 and winningCard(b, trick) == #trick - 1 then return every end
+  local best = highestTrump(trick, b)
+  if best > 0 then
+    local higher = pick(b, best)
+    return #higher > 0 and higher or every
+  end
+  return trumps
+end
+
+local function cardValue(b, face)
+  local trump = b == "A" or b == suitOf(face)
+  return (trump and TRUMP_VALUE or PLAIN_VALUE)[rankOf(face)]
+end
+
+-- Whether playing `face` may declare a belote. `hand` (faces, the played card included) may
+-- be nil on a view: then holding the other card is not checked.
+local function beloteAllowed(b, hand, trick, face)
+  local r, suit = rankOf(face), suitOf(face)
+  if r ~= RANK.Q and r ~= RANK.K then return false end
+  if b == "N" then return false end
+  if b == "A" then
+    if #trick > 0 and suitOf(trick[1]) ~= suit then return false end
+  elseif suit ~= b then
+    return false
+  end
+  if not hand then return true end
+  local other = (r == RANK.Q and "K" or "Q") .. suit
+  for _, x in ipairs(hand) do
+    if x == other then return true end
+  end
+  return false
+end
+
+local function applyPlay(s, seat, a)
+  if not isSeat(seat) then return nil, "seat" end
+  if s.phase ~= "play" then return nil, "phase" end
+  if s.turn ~= seat then return nil, "turn" end
+  local i, face, pos = a.i, a.c, nil
+  local cards = s.hands[seat]
+  for n, x in ipairs(cards) do
+    if x == i then pos = n break end
+  end
+  if not pos or not IS_FACE[face] then return nil, "card" end
+  if s.deck[i] then
+    if s.deck[i] ~= face then return nil, "card" end
+  else
+    for _, x in pairs(s.deck) do
+      if x == face then return nil, "card" end
+    end
+  end
+  local b = s.contract.b
+  local trick = facesOf(s, s.trick)
+  if not trick then return nil, "show" end
+  local known = s.deck[i]
+  s.deck[i] = face
+  local hand = facesOf(s, cards)
+  s.deck[i] = known
+  if hand then
+    local allowed = false
+    for _, n in ipairs(validCards(b, hand, trick)) do
+      if n == pos then allowed = true break end
+    end
+    if not allowed then return nil, "rule" end
+  end
+  if a.b and not beloteAllowed(b, hand, trick, face) then return nil, "belot" end
+
+  s.deck[i] = face
+  table.remove(cards, pos)
+  s.trick[#s.trick + 1] = i
+  trick[#trick + 1] = face
+  s.announced = false
+  if a.b then s.ann[#s.ann + 1] = { s = seat, t = "b", i = i } end
+  if #trick < 4 then
+    s.turn = nextSeat(seat)
+    return true
+  end
+  local winner = (s.lead + winningCard(b, trick) - 2) % 4 + 1
+  local team = teamOf(winner)
+  for _, x in ipairs(trick) do s.pts[team] = s.pts[team] + cardValue(b, x) end
+  s.took[team] = s.took[team] + 1
+  s.last = { cards = s.trick, lead = s.lead, win = winner }
+  s.trick = {}
+  if s.trickNo == 8 then
+    s.lastWin, s.turn, s.lead = winner, nil, nil
+    s.phase, s.open = "score", true
+  else
+    s.trickNo = s.trickNo + 1
+    s.lead, s.turn = winner, winner
+  end
+  return true
+end
+
+---------------------------------------------------------------------------------------------
+-- Announces
+---------------------------------------------------------------------------------------------
+
+local function canAnnounce(s)
+  return s.phase == "play" and s.trickNo == 1 and s.contract.b ~= "N" and not s.announced
+end
+
+-- What the seat may announce, in the C# engine's order: the fours, the sequences of the
+-- cards outside them, then the sequences through a four's card. nil when a face is unknown.
+local function availableAnnounces(s, seat)
+  local hand = facesOf(s, s.hands[seat])
+  if not hand then return nil end
+  local at, has = {}, { C = {}, D = {}, H = {}, S = {} }
+  for n, face in ipairs(hand) do
+    at[face] = s.hands[seat][n]
+    has[suitOf(face)][rankOf(face)] = true
+  end
+  local out, four, anyFour = {}, {}, false
+  for r = RANK["9"], RANK.A do
+    if has.C[r] and has.D[r] and has.H[r] and has.S[r] then
+      four[r], anyFour = true, true
+      out[#out + 1] = { t = r == RANK.J and "cJ" or r == RANK["9"] and "c9" or "c", i = at[RANKS[r] .. "S"] }
+    end
+  end
+  local function runs(suit, through)
+    local len, hit = 0, false
+    for r = 1, 9 do
+      if r <= 8 and has[suit][r] and (through or not four[r]) then
+        len, hit = len + 1, hit or four[r]
+      else
+        if len >= 3 and (not through or hit) then
+          out[#out + 1] = { t = "s" .. len, i = at[RANKS[r - 1] .. suit] }
+        end
+        len, hit = 0, false
+      end
+    end
+  end
+  for _, suit in ipairs(SUITS) do runs(suit, false) end
+  if anyFour then
+    for _, suit in ipairs(SUITS) do runs(suit, true) end
+  end
+  return out
+end
+
+-- The faces an announce of type t with top card `face` is made of.
+local function announceCards(t, face)
+  local r, out = rankOf(face), {}
+  if t:sub(1, 1) == "c" then
+    for _, suit in ipairs(SUITS) do out[#out + 1] = RANKS[r] .. suit end
+  else
+    for k = r - tonumber(t:sub(2)) + 1, r do out[#out + 1] = RANKS[k] .. suitOf(face) end
+  end
+  return out
+end
+
+-- Every non-empty set of announces from `avail` in which no card is used twice.
+local function announceChoices(s, avail)
+  local out = {}
+  if not avail then return out end
+  local function extend(from, set, used)
+    for n = from, #avail do
+      local cards, free = announceCards(avail[n].t, s.deck[avail[n].i]), true
+      for _, face in ipairs(cards) do
+        if used[face] then free = false break end
+      end
+      if free then
+        local set2, used2 = {}, {}
+        for k, x in ipairs(set) do set2[k] = x end
+        for face in pairs(used) do used2[face] = true end
+        set2[#set2 + 1] = { t = avail[n].t, i = avail[n].i }
+        for _, face in ipairs(cards) do used2[face] = true end
+        out[#out + 1] = set2
+        extend(n + 1, set2, used2)
+      end
+    end
+  end
+  extend(1, {}, {})
+  return out
+end
+
+local function applyAnn(s, seat, a)
+  if not isSeat(seat) then return nil, "seat" end
+  if s.phase ~= "play" then return nil, "phase" end
+  if s.turn ~= seat then return nil, "turn" end
+  if not canAnnounce(s) then return nil, "phase" end
+  local list = a.a
+  if type(list) ~= "table" or #list == 0 then return nil, "announce" end
+  local avail = availableAnnounces(s, seat)
+  local inHand = {}
+  for _, i in ipairs(s.hands[seat]) do inHand[i] = true end
+  local used, seen, add = {}, {}, {}
+  for n, x in ipairs(list) do
+    if type(x) ~= "table" or type(x.t) ~= "string" or x.t == "b" or not ANN_VALUE[x.t] then
+      return nil, "announce"
+    end
+    if not inHand[x.i] or seen[x.t .. x.i] then return nil, "announce" end
+    seen[x.t .. x.i] = true
+    if avail then
+      local offered = false
+      for _, y in ipairs(avail) do
+        if y.t == x.t and y.i == x.i then offered = true break end
+      end
+      if not offered then return nil, "announce" end
+      for _, face in ipairs(announceCards(x.t, s.deck[x.i])) do
+        if used[face] then return nil, "announce" end
+        used[face] = true
+      end
+    end
+    add[n] = { s = seat, t = x.t, i = x.i }
+  end
+  for _, x in ipairs(add) do s.ann[#s.ann + 1] = x end
+  s.announced = true
+  return true
+end
+
+---------------------------------------------------------------------------------------------
 -- Faces on a view
 ---------------------------------------------------------------------------------------------
 
@@ -247,6 +547,10 @@ function E.view(s, seat)
   if isSeat(seat) then
     for _, i in ipairs(s.hands[seat]) do keep[i] = true end
   end
+  for _, i in ipairs(s.trick) do keep[i] = true end
+  if s.last then
+    for _, i in ipairs(s.last.cards) do keep[i] = true end
+  end
   for i = 1, 32 do
     if not keep[i] then v.deck[i] = nil end
   end
@@ -265,6 +569,8 @@ function E.apply(s, seat, a)
   local k = a.k
   if k == "deal" then return applyDeal(s, seat, a) end
   if k == "bid" then return applyBid(s, seat, a) end
+  if k == "play" then return applyPlay(s, seat, a) end
+  if k == "ann" then return applyAnn(s, seat, a) end
   if k == "show" then return applyShow(s, seat, a) end
   return nil, "action"
 end
@@ -274,6 +580,21 @@ function E.legal(s, seat)
   if not isSeat(seat) or s.turn ~= seat then return out end
   if s.phase == "bid" then
     for _, b in ipairs(availableBids(s, seat)) do out[#out + 1] = { k = "bid", b = b } end
+  elseif s.phase == "play" then
+    local hand, trick = facesOf(s, s.hands[seat]), facesOf(s, s.trick)
+    if not hand or not trick then return out end
+    local b = s.contract.b
+    for _, n in ipairs(validCards(b, hand, trick)) do
+      out[#out + 1] = { k = "play", i = s.hands[seat][n], c = hand[n] }
+      if beloteAllowed(b, hand, trick, hand[n]) then
+        out[#out + 1] = { k = "play", i = s.hands[seat][n], c = hand[n], b = true }
+      end
+    end
+    if canAnnounce(s) then
+      for _, set in ipairs(announceChoices(s, availableAnnounces(s, seat))) do
+        out[#out + 1] = { k = "ann", a = set }
+      end
+    end
   end
   return out
 end
