@@ -5,7 +5,7 @@ local _, ns = ...
 -- below 2^53, so all of it is exact.
 --   rotr/shr: multiply, divide, floor, %
 --   add mod 2^32: plain sum, then % 2^32
---   xor: byte by byte through one 256x256 table (built once at load)
+--   xor: nibble by nibble through one 16x16 table (built once at load)
 --   and: x AND y = (x + y - (x XOR y)) / 2
 local Sha256 = {}
 ns.Sha256 = Sha256
@@ -14,32 +14,26 @@ local floor, byte, char, format, concat = math.floor, string.byte, string.char, 
 
 local W32 = 4294967296 -- 2^32
 
--- XOR8[a * 256 + b] = a XOR b for bytes a, b. Each entry uses the one for
--- (a/2, b/2), which has a smaller index, so a single forward pass fills it.
-local XOR8 = {}
-for a = 0, 255 do
-  local ha = floor(a / 2)
-  for b = 0, 255 do
-    local low = (a + b) % 2
-    if a == 0 and b == 0 then
-      XOR8[0] = 0
-    else
-      XOR8[a * 256 + b] = low + 2 * XOR8[ha * 256 + floor(b / 2)]
+-- XOR4[a * 16 + b] = a XOR b for nibbles a, b (256 entries). Each entry uses
+-- the one for (a/2, b/2), which has a smaller index, so one forward pass fills it.
+local XOR4 = { [0] = 0 }
+for a = 0, 15 do
+  for b = 0, 15 do
+    if a + b > 0 then
+      XOR4[a * 16 + b] = (a + b) % 2 + 2 * XOR4[floor(a / 2) * 16 + floor(b / 2)]
     end
   end
 end
 
+-- XOR of two words, one nibble at a time from the low end.
 local function bxor(x, y)
-  local xa, ya = x % 256, y % 256
-  local r = XOR8[xa * 256 + ya]
-  x, y = (x - xa) / 256, (y - ya) / 256
-  xa, ya = x % 256, y % 256
-  r = r + XOR8[xa * 256 + ya] * 256
-  x, y = (x - xa) / 256, (y - ya) / 256
-  xa, ya = x % 256, y % 256
-  r = r + XOR8[xa * 256 + ya] * 65536
-  x, y = (x - xa) / 256, (y - ya) / 256
-  return r + XOR8[x * 256 + y] * 16777216
+  local r, p = 0, 1
+  for _ = 1, 7 do
+    local xa, ya = x % 16, y % 16
+    r = r + XOR4[xa * 16 + ya] * p
+    x, y, p = (x - xa) / 16, (y - ya) / 16, p * 16
+  end
+  return r + XOR4[x * 16 + y] * p
 end
 
 local function band(x, y)
