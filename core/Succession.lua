@@ -187,6 +187,7 @@ local function becomeHost(s, oldHost, oldHeard)
     end
   end
   if s.status == "live" and s:seatedCount() < s:engine().minSeats then s:applyUnsent(0, { k = "abort" }) end
+  s:hook("hostChanged")
   s:armTimers() -- a fresh full turn
   local members = s:members()
   for i = 1, #members do s:snapshotTo(members[i]) end
@@ -220,6 +221,7 @@ function Succession.follow(s, host, epoch, seats)
   if s.role == "host" then Succession.demote(s) end
   s.role = s.mySeat and "player" or "watcher"
   s.host, s.epoch, s.stale, s.lastSyn = host, epoch, true, nil
+  s:hook("hostChanged")
   Succession.watchHost(s)
   ns.Session.emit(s.client)
 end

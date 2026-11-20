@@ -110,6 +110,46 @@ describe("rolls", function()
     sim.nextRolls = {40}; ok(b:roll()); sim:run(1); eq(c.session.state.rolls, {{seat=2, n=40, max=100, src="seen"}})
   end)
 
+  it("a sighting from an earlier game does not confirm a claim in the next", function()
+    local sim, a, b = setup(2)
+    sim.nextRolls = {100, 57, 1}; ok(a:roll()); sim:run(1)
+    ok(b:roll()); sim:run(1); ok(a:roll()); sim:run(1); eq(a.session.state.loser, 1)
+    ok(a:startGame()); sim:run(1); sim.nextRolls = {100}; ok(a:roll()); sim:run(1)
+    -- game 2, seat 2 on turn at 100: the same seat, max and n as its seen roll of game 1
+    a:receive("WHISPER", B, {v=1, t="ACT", tid=a.session.tid, a={k="roll", n=57, max=100}}); sim:run(3)
+    eq(a.session.state.rolls[2], {seat=2, n=57, max=100, src="claim"}); sim:run(6)
+    eq(ns.Rolls.check(a.session, 2), "unseen")
+  end)
+
+  it("a resync into a newer game shows no verdict of the previous one", function()
+    local sim, a, b = setup(2)
+    b:rollSeen("Иван", 57, 1, 100); a.session:play(1, {k="roll", n=5, max=100, src="seen"}); sim:run(6)
+    eq(ns.Rolls.check(b.session, 1), "mismatch")
+    a.session:play(2, {k="roll", n=1, max=5, src="seen"}); sim:run(1)
+    sim:offline(B); ok(a:startGame()); sim:run(1)                    -- b misses the start
+    a.session:play(2, {k="roll", n=50, max=100, src="ask"}); sim:run(1)
+    sim:online(B); a.session:play(1, {k="roll", n=20, max=50, src="ask"}); sim:run(2)
+    eq(b.session.state.rolls[1], {seat=2, n=50, max=100, src="ask"}); eq(ns.Rolls.check(b.session, 1), nil)
+  end)
+
+  it("host leaves while my roll is in flight: as the next host I roll again at once", function()
+    local sim, a, b, c = setup(3)
+    sim.nextRolls = {57, 30, 20}; a:roll(); sim:run(1)
+    sim.canSee = function(from, to) return from == to end
+    ok(b:roll()); sim:run(1)                      -- the claim is held by a
+    a:stand(); sim:run(1); eq(b.session.role, "host")
+    ok(b:roll()); sim:run(1); eq(c.session.state.rolls[2], {seat=2, n=20, max=57, src="seen"})
+  end)
+
+  it("host leaves while my roll is in flight: with the next host I roll again at once", function()
+    local sim, a, b, c = setup(3)
+    sim.nextRolls = {57, 40, 30, 20}; a:roll(); sim:run(1); b:roll(); sim:run(1)
+    sim.canSee = function(from, to) return from == to end
+    ok(c:roll()); sim:run(1)                      -- the claim is held by a
+    a:stand(); sim:run(1); eq(c.session.host, B)
+    ok(c:roll()); sim:run(4); eq(b.session.state.rolls[3], {seat=3, n=20, max=40, src="claim"})
+  end)
+
   it("rollSeen is announced as an event even with no table", function()
     local sim = Sim.new()
     local d = sim:add(D, { cls = "DRUID" }); sim:run(1)

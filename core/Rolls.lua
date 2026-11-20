@@ -11,10 +11,12 @@ local _, ns = ...
 --
 -- Session fields (local, never sent):
 --   rollLog    sightings {seat, n, max, at}, newest last, at most ROLL_LOG
---   rollCheck  index in state.rolls -> "ok" | "unseen" | "mismatch" (reset on start)
+--   rollCheck  index in state.rolls -> "ok" | "unseen" | "mismatch"
 --   rolling    {seen = bool} while my roll is under way (seen: it showed up in chat)
 --   rollStuck  true when my server roll never showed up (the UI says: type /roll)
 --   claim      {seat, n, max}: the member's claim the host holds (host only)
+-- All five start empty with every new game (the start event, or a snapshot of
+-- another game than the one I had); a host change drops `rolling` and `claim`.
 local Rolls = {}
 ns.Rolls = Rolls
 
@@ -183,9 +185,30 @@ local function act(s, seat, a)
   return nil
 end
 
+-- A new game: no verdict, sighting, roll under way or claim of the last one
+-- carries over (a sighting of game 1 must never confirm a claim in game 2).
+local function resetGame(s)
+  s.rollCheck, s.rollLog = {}, {}
+  s.rolling, s.rollStuck, s.claim = nil, false, nil
+end
+
+local function sameRoll(x, y)
+  return x.seat == y.seat and x.n == y.n and x.max == y.max and x.src == y.src
+end
+
+-- The snapshot state `now` continues the game of `prev`: same start number and
+-- prev's rolls are the first rolls of `now`.
+local function sameGame(prev, now)
+  if not prev or not now or prev.start ~= now.start or #now.rolls < #prev.rolls then return false end
+  for i = 1, #prev.rolls do
+    if not sameRoll(prev.rolls[i], now.rolls[i]) then return false end
+  end
+  return true
+end
+
 local function applied(s, seat, a)
   if seat == 0 then
-    if a.k == "start" then s.rollCheck = {} end
+    if a.k == "start" then resetGame(s) end
     return
   end
   if a.k ~= "roll" then return end
@@ -197,6 +220,17 @@ end
 ns.Ext.rolls = {
   act = act,
   applied = applied,
+  -- A snapshot replaced my state: another game's roll state is dropped.
+  adopted = function(s, prev)
+    if not sameGame(prev, s.state) then resetGame(s) end
+  end,
+  -- My host changed (I took over, or I follow another): a claim held by the old
+  -- host is gone with it, so the roll under way is dropped and the player may
+  -- press „Хвърли“ again at once (a second server roll; the new host plays the
+  -- first one it sees). A host that steps down drops the claim it held.
+  hostChanged = function(s)
+    s.rolling, s.claim = nil, nil
+  end,
   auto = function(s)
     Rolls.roll(s.client)
     return true

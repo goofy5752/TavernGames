@@ -13,6 +13,8 @@ local copy = ns.Util.copy
 -- Extensions ns.Ext[x], x in engine.ext (a name not registered is skipped): hook
 -- calls `name` on every one that has it and returns the first non-nil result;
 -- filterAct passes a member's action through their act hooks until one drops it.
+-- Hooks: act, applied, auto (see the shared contracts), adopted(s, prevState)
+-- after a snapshot replaced my state, hostChanged(s) when my table changed host.
 function Session:hook(name, ...)
   local ext, out = self:engine().ext or {}, nil
   for i = 1, #ext do
