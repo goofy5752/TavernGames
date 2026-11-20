@@ -82,6 +82,56 @@ function W.Label(parent, style, text, size)
   return fs
 end
 
+-- `text` wrapped in an inline color code for r, g, b (0..1).
+function W.paint(text, r, g, b)
+  local function byte(x) return math.floor(x * 255 + 0.5) end
+  return string.format("|cff%02x%02x%02x%s|r", byte(r), byte(g), byte(b), text)
+end
+
+-- r, g, b of a player's class color (ink when the class is unknown).
+function W.nameColor(client, name)
+  local cls
+  if client and name == client.env.me then
+    cls = client.env.cls
+  elseif client then
+    local p = client.presence:get(name)
+    cls = p and p.cls
+  end
+  return ns.classColor(cls)
+end
+
+-- `text` (default: the name) in the player's class color, for inline use.
+function W.colored(client, name, text)
+  return W.paint(text or name, W.nameColor(client, name))
+end
+
+-- The display name of a game id (the id itself when it has no locale entry).
+function W.gameName(id)
+  local key = "game." .. tostring(id)
+  local s = L(key)
+  if s == key then return tostring(id) end
+  return s
+end
+
+-- A `px` wide line along each side of `frame`, tinted by setColor(r, g, b, a).
+-- Returns {top, bottom, left, right, setColor}.
+function W.edges(frame, px, layer)
+  local set = {}
+  local function line(p1, p2, horizontal)
+    local t = frame:CreateTexture(nil, layer or "BORDER")
+    t:SetColorTexture(1, 1, 1, 1)
+    t:SetPoint(p1, frame, p1); t:SetPoint(p2, frame, p2)
+    if horizontal then t:SetHeight(px) else t:SetWidth(px) end
+    set[#set + 1] = t
+  end
+  line("TOPLEFT", "TOPRIGHT", true); line("BOTTOMLEFT", "BOTTOMRIGHT", true)
+  line("TOPLEFT", "BOTTOMLEFT", false); line("TOPRIGHT", "BOTTOMRIGHT", false)
+  function set.setColor(r, g, b, a)
+    for i = 1, 4 do set[i]:SetVertexColor(r, g, b, a or 1) end
+  end
+  return set
+end
+
 -- A dark translucent panel with a thin brass edge (mockup `.panel`).
 function W.Panel(parent)
   local f = CreateFrame("Frame", nil, parent)

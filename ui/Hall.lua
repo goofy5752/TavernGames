@@ -42,12 +42,7 @@ local function firstWord(name) return name:match("^(%S+)") or name end
 -- The first UTF-8 character of `text`.
 local function initial(text) return text:match("^[%z\1-\127\194-\244][\128-\191]*") or "" end
 
-local function gameName(id)
-  local key = "game." .. tostring(id)
-  local s = L(key)
-  if s == key then return tostring(id) end
-  return s
-end
+local gameName = W.gameName
 
 local function firstFree(seats)
   for i = 1, #seats do
@@ -71,21 +66,7 @@ local function contains(list, value)
   return false
 end
 
-local function classOf(client, name)
-  if name == client.env.me then return client.env.cls end
-  local p = client.presence:get(name)
-  return p and p.cls
-end
-
--- r, g, b of a player's class color (ink when the class is unknown).
-local function nameColor(client, name) return ns.classColor(classOf(client, name)) end
-
--- `text` (default: the name) in the player's class color, for inline use.
-local function colored(client, name, text)
-  local r, g, b = nameColor(client, name)
-  local function byte(x) return math.floor(x * 255 + 0.5) end
-  return string.format("|cff%02x%02x%02x%s|r", byte(r), byte(g), byte(b), text or name)
-end
+local nameColor, colored = W.nameColor, W.colored
 
 -- Am I at this table (host, player or watcher)?
 local function here(client, rec)

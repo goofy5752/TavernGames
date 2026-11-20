@@ -52,7 +52,7 @@ function Wow.new(opts)
   local self = setmetatable({
     clock = 0, timers = {}, seq = 0, frames = {}, sent = {}, chat = {}, filters = {},
     roster = {}, rosterRequests = 0, inGuild = false, combat = false, instance = false,
-    dnd = false, group = {}, money = 0, icons = {},
+    dnd = false, group = {}, money = 0, icons = {}, sounds = {},
   }, Wow)
   local G = {}
   for _, name in ipairs(BUILTINS) do G[name] = _G[name] end
@@ -108,6 +108,8 @@ function Wow.new(opts)
   G.ERR_CHAT_PLAYER_NOT_FOUND_S = "No player named '%s' is currently playing."
   G.ERR_FRIEND_OFFLINE_S = "%s has gone offline."
   G.RAID_CLASS_COLORS = { MAGE = { r = 0.25, g = 0.78, b = 0.92 } }
+  G.SOUNDKIT = { TELL_MESSAGE = 3081 }
+  G.PlaySound = function(id, channel) self.sounds[#self.sounds + 1] = { id, channel } end
   G.SlashCmdList = {}
   G.InitiateTrade = forbidden("InitiateTrade")
   G.C_TradeInfo = { SetTradeMoney = forbidden("C_TradeInfo.SetTradeMoney") }

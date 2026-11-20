@@ -53,3 +53,6 @@ ui/MainWindow.lua
 ui/NewTableDialog.lua
 ui/Hall.lua
 ui/Minimap.lua
+ui/TableFrame.lua
+ui/games/TicTacToeView.lua
+ui/InviteToast.lua

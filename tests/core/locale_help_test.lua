@@ -50,7 +50,7 @@ describe("locale and help", function()
     eq(H.get("nope"), nil)
   end)
 
-  it("every quoted label in the hall and soon help is a UI label, and no help title copies one", function()
+  it("every quoted label in the hall, ttt and soon help is a UI label, and no help title copies one", function()
     local QUOTES = { bg = { "„", "“" }, en = { "“", "”" } }
     for lang, q in pairs(QUOTES) do
       local ui = {}
@@ -59,7 +59,7 @@ describe("locale and help", function()
       end
       local checked = 0
       for k, text in pairs(T[lang]) do
-        if k:match("^help%.hall%.") or k == "help.soon.example" then
+        if k:match("^help%.hall%.") or k:match("^help%.ttt%.") or k == "help.soon.example" then
           local pos = 1
           while true do
             local a, b = text:find(q[1], pos, true)
@@ -74,7 +74,7 @@ describe("locale and help", function()
           end
         end
       end
-      ok(checked >= 13, lang .. ": only " .. checked .. " quoted labels found")
+      ok(checked >= 14, lang .. ": only " .. checked .. " quoted labels found")
       for k, v in pairs(T[lang]) do
         if k:match("^help%.") and k:match("%.title$") then ok(not ui[v], lang .. " " .. k .. " copies a UI label") end
       end
