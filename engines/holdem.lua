@@ -1,0 +1,553 @@
+--[==[ Texas Hold'em: No-Limit cash table, chips only (pure Lua 5.1).
+
+RULES
+ 1. A 9-chair table, a hand needs 2+ playing seats (occupied, chips > 0, not leaving). Options: stack =
+    starting chips 1000 / 2000 / 5000 (default 1000); blinds = big blind 10 / 20 / 50 with the small blind
+    half of it, i.e. 5/10, 10/20, 25/50 (default 10 = 5/10). No antes, no gold, no buy-in, no rebuy.
+ 2. Seats: {k="join", seat=s} at seat 0 seats a player on an empty chair with the starting stack; he is dealt
+    in from the next hand. E.leave(state, s) (or {k="leave", seat=s} at seat 0): a seat in the current hand
+    is folded at once (its chips in the pot stay there) and removed when the hand ends; any other seat is
+    removed at once. A seat with 0 chips after a hand sits out (seats[s].out = true) until it leaves.
+ 3. Button: the first hand's button is the first playing seat at or after opts.first (default 1); every
+    next hand it moves to the next playing seat clockwise (seat numbers upwards, 9 wraps to 1).
+ 4. Blinds: small blind = first playing seat left of the button, big blind = the next one; heads-up the
+    button posts the small blind. A player short of his blind posts all he has and is all-in. Preflop the
+    amount to call is always the full big blind and the first raise must be at least one big blind more.
+ 5. Dealing, by deck index (n = players in the hand, dealt clockwise starting left of the button): first
+    card to each player = 1..n, second card = n+1..2n; burn 2n+1, flop 2n+2..2n+4, burn 2n+5, turn 2n+6,
+    burn 2n+7, river 2n+8.
+ 6. First to act: preflop the player left of the big blind (heads-up: the button); on flop, turn and river
+    the first live player left of the button (heads-up: the big blind). Then clockwise.
+ 7. On his turn a player may: fold (always); check (nothing to call); call (all he has if short);
+    bet {to} (no bet on this street yet, to >= big blind); raise {to} (to >= current bet + the last full
+    raise size); allin (all his chips as a bet/raise). `to` is his total bet on this street; no cap.
+ 8. An all-in raise smaller than a full raise does not change the minimum raise size and does not reopen
+    the betting: a player who already acted on this street may raise again only if the bet grew by at least
+    the full raise size since his last action (several short all-ins together can reopen it). Nobody may
+    bet or raise when no other live player has chips behind.
+ 9. A street ends when every live player with chips has acted and matched the bet, or when at most one
+    live player has chips and he has matched every other live bet. With nobody left to bet, the remaining
+    streets are dealt one by one without betting.
+10. Everyone but one folds: he wins every pot at once, nobody shows, his cards stay hidden.
+11. Showdown: every live hand is shown (no mucking). The last bettor/raiser of the river shows first,
+    else the first live player left of the button; then clockwise. Best five of seven (holdem_eval.lua).
+12. Pots: contributions are layered by size. A layer only one player paid into is an uncalled bet and goes
+    back to him. A pot is won only by live players who paid its whole layer; folded chips stay in the pot
+    (a layer that only folded players paid into, which only a leave can cause, joins the pot below it).
+    Consecutive layers with the same live players make one pot. Each pot is split among its best live hands;
+    odd chips go one at a time to those winners in order from the first seat left of the button.
+13. state.last, the record of the finished hand: { hand = n, contrib = {[seat] = chips put in minus chips
+    returned, for every seat dealt in}, won = {[seat] = chips won from pots}, pots = {{amount, eligible =
+    {seats}, winners = {seats}}, ...} (main pot first), shown = {seats in showdown order} ({} without a
+    showdown), cat = {[seat] = hand category}, left = {[seat] = chips a leaver took} }.
+    sum(won) == sum(contrib) always.
+14. A cash table has no match end: E.result is nil, E.over is false. E.auto: check if possible, else fold.
+
+HAND HANDSHAKE (the deck comes from the fairness layer, so the engine cannot deal on its own)
+ - phase "idle"/"done": E.system returns {k="hand"} once 2+ seats can play. The host applies it: the button
+   moves, the blinds are posted, state.order (the hand's seats in dealing order) is fixed, phase "deal".
+   state.order is who takes part in the commit-reveal shuffle.
+ - phase "deal": E.system returns nil. The host runs the shuffle and applies {k="deal", deck = faces}, the
+   full deck (deck[i] = E.DECK[p[i]]). A member applies {k="deal"} without the deck (or with a partial
+   one) to its view, then {k="show", cards = {[i] = face}} with its own two cards. Phase "bet".
+   If leaves fold all but one player meanwhile, that hand is already settled (phase "done") and the deal
+   is refused with "phase": the host drops that shuffle.
+ - phase "bet": the seat on turn (state.turn) acts; the host's turn timer applies E.auto.
+ - phase "street": E.system returns {k="street", cards = {[i] = face}} = the next street's faces (flop,
+   turn or river); applied everywhere, it deals that street.
+ - phase "showdown": E.system returns {k="showdown", cards = {[i] = face}} = the board and every live hand;
+   applied everywhere, it settles the pots. Phase "done", state.last is the record.
+ - {k="show", cards} at seat 0 fills faces on a view; on the full state it only checks them.
+]==]
+local _, ns = ...
+ns.Engines = ns.Engines or {}
+local H = ns.HoldemEval
+
+local E = { id = "holdem", minSeats = 2, maxSeats = 9, start = "host",
+  HAND_DELAY = 4, IDLE_DELAY = 2, STREET_DELAY = 1 }
+ns.Engines.holdem = E
+
+local CHAIRS = 9
+E.DECK = {}
+for _, su in ipairs({ "C", "D", "H", "S" }) do
+  for _, r in ipairs({ "2", "3", "4", "5", "6", "7", "8", "9", "T", "J", "Q", "K", "A" }) do
+    E.DECK[#E.DECK + 1] = r .. su
+  end
+end
+
+E.options = {
+  { id = "stack", choices = { 1000, 2000, 5000 }, default = 1000 },
+  { id = "blinds", choices = { 10, 20, 50 }, default = 10 },   -- big blind; small blind = half
+}
+
+local function copy(v)
+  if type(v) ~= "table" then return v end
+  local t = {}
+  for k, x in pairs(v) do t[k] = copy(x) end
+  return t
+end
+
+local function isInt(x) return type(x) == "number" and x % 1 == 0 end
+
+local function choice(id, v)
+  for _, o in ipairs(E.options) do
+    if o.id == id then
+      for _, c in ipairs(o.choices) do if c == v then return v end end
+      return o.default
+    end
+  end
+end
+
+-- first seat after `from` (exclusive) clockwise over the 9 chairs that satisfies pred
+local function nextSeat(from, pred)
+  for d = 1, CHAIRS do
+    local i = (from + d - 1) % CHAIRS + 1
+    if pred(i) then return i end
+  end
+end
+
+local function playingFn(s)
+  return function(i) local st = s.seats[i]; return st and st.chips > 0 and not st.leaving end
+end
+local function countPlaying(s)
+  local n, f = 0, playingFn(s)
+  for i = 1, CHAIRS do if f(i) then n = n + 1 end end
+  return n
+end
+
+local function inHand(s) return s.phase == "deal" or s.phase == "bet" or s.phase == "street" or s.phase == "showdown" end
+local function live(s, i) local p = s.p[i]; return p ~= nil and not p.folded end
+local function canAct(s, i) local p = s.p[i]; return p ~= nil and not p.folded and not p.allin end
+local function needs(s, i)
+  local p = s.p[i]
+  return canAct(s, i) and (not p.acted or p.bet < s.bet)
+end
+
+function E.new(opts)
+  opts = opts or {}
+  local o = type(opts.opt) == "table" and opts.opt or {}
+  local stack, bb = choice("stack", o.stack), choice("blinds", o.blinds)
+  local first = opts.first
+  if not isInt(first) or first < 1 or first > CHAIRS then first = 1 end
+  local s = {
+    stack = stack, bb = bb, sb = math.floor(bb / 2), first = first,
+    seats = {}, phase = "idle", hand = 0, button = nil, sbSeat = nil, bbSeat = nil,
+    order = {}, p = {}, deck = {}, board = {}, shown = {}, ptr = 0, street = 0,
+    bet = 0, minRaise = bb, turn = nil, aggr = nil, last = nil,
+  }
+  for i = 1, CHAIRS do
+    s.seats[i] = (type(opts.seats) == "table" and opts.seats[i]) and { chips = stack, out = false, leaving = false } or false
+  end
+  return s
+end
+
+-- ---------------------------------------------------------------- cards
+
+-- Validates cards = {[i] = face}: indices in range (and in `allowed` when given), valid faces, no clash
+-- with a known face at that index or the same face known at another index. Fills on success.
+local function fillCards(s, cards, allowed)
+  if type(cards) ~= "table" then return nil, "card" end
+  local where = {}
+  for i, f in pairs(s.deck) do where[f] = i end
+  local seen = {}
+  for i, f in pairs(cards) do
+    if not isInt(i) or i < 1 or i > #E.DECK or (allowed and not allowed[i]) then return nil, "card" end
+    if not H.valid(f) then return nil, "card" end
+    if s.deck[i] ~= nil and s.deck[i] ~= f then return nil, "card" end
+    if (where[f] and where[f] ~= i) or (seen[f] and seen[f] ~= i) then return nil, "card" end
+    seen[f] = i
+  end
+  for i, f in pairs(cards) do s.deck[i] = f end
+  return true
+end
+
+local function streetIdx(s)
+  if s.street == 0 then return { s.ptr + 1, s.ptr + 2, s.ptr + 3 } end
+  return { s.ptr + 1 }
+end
+
+local function showdownIdx(s)
+  local idx = {}
+  for _, i in ipairs(s.board) do idx[#idx + 1] = i end
+  for _, seat in ipairs(s.order) do
+    if live(s, seat) then
+      for _, i in ipairs(s.p[seat].cards) do idx[#idx + 1] = i end
+    end
+  end
+  return idx
+end
+
+local function facesOf(s, idx)
+  local t = {}
+  for _, i in ipairs(idx) do t[i] = s.deck[i] end
+  return t
+end
+
+-- ---------------------------------------------------------------- settlement
+
+local function sameSet(a, b)
+  if #a ~= #b then return false end
+  for k = 1, #a do if a[k] ~= b[k] then return false end end
+  return true
+end
+
+-- scores: nil when everyone else folded; else {[seat] = score} for every live seat
+local function finish(s, scores, cats, showOrder)
+  local c, levels, seenL = {}, {}, {}
+  for _, i in ipairs(s.order) do
+    c[i] = s.p[i].total
+    if c[i] > 0 and not seenL[c[i]] then seenL[c[i]] = true; levels[#levels + 1] = c[i] end
+  end
+  table.sort(levels)
+  local pots, refund, prev = {}, {}, 0
+  for _, L in ipairs(levels) do
+    local payers, eligible = {}, {}
+    for _, i in ipairs(s.order) do
+      if c[i] >= L then
+        payers[#payers + 1] = i
+        if live(s, i) then eligible[#eligible + 1] = i end
+      end
+    end
+    local amt, top = (L - prev) * #payers, pots[#pots]
+    if #payers == 1 then
+      refund[payers[1]] = (refund[payers[1]] or 0) + amt       -- uncalled
+    elseif #eligible == 0 and top then
+      top.amount = top.amount + amt                             -- dead chips join the pot below
+    else
+      if #eligible == 0 then
+        for _, i in ipairs(s.order) do if live(s, i) then eligible[#eligible + 1] = i end end
+      end
+      if top and sameSet(top.eligible, eligible) then top.amount = top.amount + amt
+      else pots[#pots + 1] = { amount = amt, eligible = eligible } end
+    end
+    prev = L
+  end
+  local won = {}
+  for _, pot in ipairs(pots) do
+    local winners = {}
+    if scores then
+      local best = -1
+      for _, i in ipairs(pot.eligible) do if scores[i] > best then best = scores[i] end end
+      for _, i in ipairs(pot.eligible) do if scores[i] == best then winners[#winners + 1] = i end end
+    else
+      winners = copy(pot.eligible)
+    end
+    pot.winners = winners
+    local share = math.floor(pot.amount / #winners)
+    local odd = pot.amount - share * #winners
+    for k, i in ipairs(winners) do
+      won[i] = (won[i] or 0) + share + (k <= odd and 1 or 0)
+    end
+  end
+  local contrib = {}
+  for _, i in ipairs(s.order) do
+    contrib[i] = c[i] - (refund[i] or 0)
+    local st = s.seats[i]
+    st.chips = st.chips + (refund[i] or 0) + (won[i] or 0)
+  end
+  s.shown = {}
+  for _, i in ipairs(showOrder or {}) do s.shown[i] = true end
+  s.last = { hand = s.hand, contrib = contrib, won = won, pots = pots, shown = showOrder or {},
+    cat = cats or {}, left = {} }
+  for i = 1, CHAIRS do
+    local st = s.seats[i]
+    if st and st.leaving then
+      s.last.left[i] = st.chips
+      s.seats[i] = false
+    elseif st then
+      st.out = st.chips == 0
+    end
+  end
+  s.phase, s.turn = "done", nil
+end
+
+-- After any change inside a hand: settle a fold-win, close the street, or move the turn.
+-- from: the seat to search clockwise after; nil keeps the current turn while it still has to act.
+local function progress(s, from)
+  local nLive, actors = 0, {}
+  for _, i in ipairs(s.order) do
+    if live(s, i) then nLive = nLive + 1 end
+    if canAct(s, i) then actors[#actors + 1] = i end
+  end
+  if nLive == 1 then return finish(s, nil) end
+  if s.phase ~= "bet" then return end
+  local closed
+  if #actors == 0 then
+    closed = true
+  elseif #actors == 1 then
+    local me, maxOther = actors[1], 0
+    for _, i in ipairs(s.order) do
+      if i ~= me and live(s, i) and s.p[i].bet > maxOther then maxOther = s.p[i].bet end
+    end
+    closed = s.p[me].bet >= maxOther
+  else
+    closed = true
+    for _, i in ipairs(actors) do if needs(s, i) then closed = false end end
+  end
+  if closed then
+    s.turn = nil
+    s.phase = s.street == 3 and "showdown" or "street"
+    return
+  end
+  if from == nil and s.turn and needs(s, s.turn) then return end
+  s.turn = nextSeat(from or s.turn, function(i) return needs(s, i) end)
+end
+
+-- ---------------------------------------------------------------- table actions
+
+local function startHand(s)
+  if s.phase ~= "idle" and s.phase ~= "done" then return nil, "phase" end
+  if countPlaying(s) < 2 then return nil, "players" end
+  local playing = playingFn(s)
+  local button = s.button and nextSeat(s.button, playing) or nextSeat(s.first - 1, playing)
+  local order, i = {}, button
+  repeat
+    i = nextSeat(i, playing)
+    order[#order + 1] = i
+  until i == button
+  s.button, s.order, s.p = button, order, {}
+  for _, seat in ipairs(order) do
+    s.p[seat] = { bet = 0, total = 0, folded = false, allin = false, acted = false, at = 0, cards = {} }
+  end
+  if #order == 2 then s.sbSeat, s.bbSeat = button, order[1]
+  else s.sbSeat, s.bbSeat = order[1], order[2] end
+  local function post(seat, amount)
+    local p, st = s.p[seat], s.seats[seat]
+    local x = math.min(amount, st.chips)
+    st.chips, p.bet, p.total = st.chips - x, p.bet + x, p.total + x
+    if st.chips == 0 then p.allin = true end
+  end
+  post(s.sbSeat, s.sb)
+  post(s.bbSeat, s.bb)
+  s.hand = s.hand + 1
+  s.deck, s.board, s.shown, s.ptr, s.street = {}, {}, {}, 0, 0
+  s.bet, s.minRaise, s.turn, s.aggr = s.bb, s.bb, nil, nil
+  s.phase = "deal"
+  return true
+end
+
+local function deal(s, a)
+  if s.phase ~= "deal" then return nil, "phase" end
+  if a.deck ~= nil then
+    if type(a.deck) ~= "table" then return nil, "card" end
+    local saved = s.deck
+    s.deck = {}
+    local okFill = fillCards(s, a.deck)
+    if not okFill then s.deck = saved; return nil, "card" end
+  else
+    s.deck = {}
+  end
+  local n = #s.order
+  for j, seat in ipairs(s.order) do s.p[seat].cards = { j, n + j } end
+  s.ptr = 2 * n + 1          -- the first burn card
+  s.phase = "bet"
+  progress(s, s.bbSeat)
+  return true
+end
+
+local function street(s, a)
+  if s.phase ~= "street" then return nil, "phase" end
+  local idx = streetIdx(s)
+  if a.cards ~= nil then
+    local allowed = {}
+    for _, i in ipairs(idx) do allowed[i] = true end
+    local okFill, why = fillCards(s, a.cards, allowed)
+    if not okFill then return nil, why end
+  end
+  for _, i in ipairs(idx) do s.board[#s.board + 1] = i end
+  s.ptr = s.ptr + #idx + 1   -- next burn card
+  s.street = s.street + 1
+  for _, i in ipairs(s.order) do
+    local p = s.p[i]
+    p.bet, p.acted, p.at = 0, false, 0
+  end
+  s.bet, s.minRaise, s.aggr, s.turn = 0, s.bb, nil, nil
+  s.phase = "bet"
+  progress(s, s.button)
+  return true
+end
+
+local function showdown(s, a)
+  if s.phase ~= "showdown" then return nil, "phase" end
+  local idx = showdownIdx(s)
+  local cards = a.cards or {}
+  local allowed = {}
+  for _, i in ipairs(idx) do
+    allowed[i] = true
+    if s.deck[i] == nil and (type(cards) ~= "table" or cards[i] == nil) then return nil, "card" end
+  end
+  local okFill, why = fillCards(s, cards, allowed)
+  if not okFill then return nil, why end
+  local scores, cats, order = {}, {}, {}
+  for _, seat in ipairs(s.order) do
+    if live(s, seat) then
+      local f = {}
+      for _, i in ipairs(s.board) do f[#f + 1] = s.deck[i] end
+      for _, i in ipairs(s.p[seat].cards) do f[#f + 1] = s.deck[i] end
+      scores[seat], cats[seat] = H.best(f)
+    end
+  end
+  local first = (s.aggr and live(s, s.aggr)) and s.aggr or nextSeat(s.button, function(i) return live(s, i) end)
+  local i = first
+  repeat
+    order[#order + 1] = i
+    i = nextSeat(i, function(x) return live(s, x) end)
+  until i == first
+  finish(s, scores, cats, order)
+  return true
+end
+
+local function leave(s, seat)
+  if not isInt(seat) or seat < 1 or seat > CHAIRS or not s.seats[seat] then return nil, "seat" end
+  local st, p = s.seats[seat], s.p[seat]
+  if inHand(s) and p then
+    if st.leaving then return true end
+    st.leaving = true
+    if not p.folded then
+      p.folded = true
+      progress(s, s.turn == seat and seat or nil)
+    end
+  else
+    s.seats[seat] = false
+  end
+  return true
+end
+
+-- ---------------------------------------------------------------- player actions
+
+local function otherHasChips(s, seat)
+  for _, i in ipairs(s.order) do
+    if i ~= seat and canAct(s, i) then return true end
+  end
+  return false
+end
+
+local function canRaise(s, seat)
+  local p, st = s.p[seat], s.seats[seat]
+  if st.chips <= s.bet - p.bet then return false end
+  if p.acted and s.bet - p.at < s.minRaise then return false end
+  return otherHasChips(s, seat)
+end
+
+local function act(s, seat, a)
+  if not isInt(seat) or seat < 1 or seat > CHAIRS then return nil, "seat" end
+  if s.phase ~= "bet" then return nil, "phase" end
+  if s.turn ~= seat then return nil, "turn" end
+  local p, st, k = s.p[seat], s.seats[seat], a.k
+  local toCall, maxTo = s.bet - p.bet, p.bet + st.chips
+  local function put(x)
+    st.chips, p.bet, p.total = st.chips - x, p.bet + x, p.total + x
+    if st.chips == 0 then p.allin = true end
+  end
+  if k == "fold" then
+    p.folded = true
+  elseif k == "check" then
+    if toCall > 0 then return nil, "action" end
+  elseif k == "call" then
+    if toCall <= 0 then return nil, "action" end
+    put(math.min(toCall, st.chips))
+  elseif k == "bet" or k == "raise" or k == "allin" then
+    if not canRaise(s, seat) then return nil, "action" end
+    local to
+    if k == "allin" then
+      to = maxTo
+    else
+      if (k == "bet") ~= (s.bet == 0) then return nil, "action" end
+      to = a.to
+      local min = k == "bet" and s.bb or s.bet + s.minRaise
+      if not isInt(to) or to < min or to > maxTo then return nil, "amount" end
+    end
+    put(to - p.bet)
+    if to - s.bet >= s.minRaise then s.minRaise = to - s.bet end
+    s.bet, s.aggr = to, seat
+  else
+    return nil, "action"
+  end
+  p.acted, p.at = true, s.bet
+  progress(s, seat)
+  return true
+end
+
+-- ---------------------------------------------------------------- contract
+
+function E.apply(s, seat, a)
+  if type(a) ~= "table" then return nil, "action" end
+  local k = a.k
+  if k == "hand" or k == "deal" or k == "street" or k == "showdown" or k == "show"
+     or k == "join" or k == "leave" then
+    if seat ~= 0 then return nil, "seat" end
+    if k == "hand" then return startHand(s) end
+    if k == "deal" then return deal(s, a) end
+    if k == "street" then return street(s, a) end
+    if k == "showdown" then return showdown(s, a) end
+    if k == "show" then return fillCards(s, a.cards) end
+    if k == "leave" then return leave(s, a.seat) end
+    if not isInt(a.seat) or a.seat < 1 or a.seat > CHAIRS or s.seats[a.seat] then return nil, "seat" end
+    s.seats[a.seat] = { chips = s.stack, out = false, leaving = false }
+    return true
+  end
+  return act(s, seat, a)
+end
+
+function E.leave(s, seat)
+  leave(s, seat)
+  return true
+end
+
+function E.legal(s, seat)
+  if s.phase ~= "bet" or s.turn == nil or s.turn ~= seat then return {} end
+  local p, st = s.p[seat], s.seats[seat]
+  local out = { { k = "fold" } }
+  out[2] = (s.bet - p.bet > 0) and { k = "call" } or { k = "check" }
+  if canRaise(s, seat) then
+    local maxTo = p.bet + st.chips
+    local min = s.bet == 0 and s.bb or s.bet + s.minRaise
+    if min < maxTo then out[#out + 1] = { k = s.bet == 0 and "bet" or "raise", to = min, max = maxTo } end
+    out[#out + 1] = { k = "allin" }
+  end
+  return out
+end
+
+function E.auto(s, seat)
+  if s.phase ~= "bet" or s.turn == nil or s.turn ~= seat then return nil end
+  if s.bet - s.p[seat].bet > 0 then return { k = "fold" } end
+  return { k = "check" }
+end
+
+function E.system(s)
+  if s.phase == "idle" or s.phase == "done" then
+    if countPlaying(s) >= 2 then return { k = "hand" }, s.phase == "done" and E.HAND_DELAY or E.IDLE_DELAY end
+  elseif s.phase == "street" then
+    return { k = "street", cards = facesOf(s, streetIdx(s)) }, E.STREET_DELAY
+  elseif s.phase == "showdown" then
+    return { k = "showdown", cards = facesOf(s, showdownIdx(s)) }, E.STREET_DELAY
+  end
+end
+
+function E.view(s, seat)
+  local v = copy(s)
+  local vis = {}
+  for _, i in ipairs(s.board) do vis[i] = true end
+  for st in pairs(s.shown) do
+    for _, i in ipairs(s.p[st].cards) do vis[i] = true end
+  end
+  if seat and s.p[seat] then
+    for _, i in ipairs(s.p[seat].cards) do vis[i] = true end
+  end
+  v.deck = {}
+  for i, f in pairs(s.deck) do if vis[i] then v.deck[i] = f end end
+  return v
+end
+
+function E.hidden(s, seat)
+  local p = s.p[seat]
+  if not p or s.shown[seat] then return {} end
+  return copy(p.cards)
+end
+
+function E.result() return nil end
+function E.over() return false end
+function E.snapshot(s) return copy(s) end
+function E.restore(t) return copy(t) end
+
+return E

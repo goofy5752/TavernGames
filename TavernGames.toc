@@ -39,6 +39,7 @@ core/Wire.lua
 # Engines
 engines/tictactoe.lua
 engines/holdem_eval.lua
+engines/holdem.lua
 
 # Locale
 locale/bg.lua

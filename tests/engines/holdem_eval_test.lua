@@ -43,6 +43,12 @@ describe("holdem_eval", function()
     eq(cat("2C 2D 2H 2S AC AD AH"), H.QUADS); eq(cat("AC 3C 5C 7C 9C JC KC"), H.FLUSH)
     ties("AC 3C 5C 7C 9C JC KC", "AC 9C 7C 5C JC KC 2D"); beats("AC KC 9C 7C 5C 2C 3C", "AC KC 9C 7C 4C 2C 3C")
     eq(cat("AC 2D 3H 4S 5C KD KH"), H.STRAIGHT)
+    beats("AC AD KH KS 2C 2D QH", "AH AS KD KC 3C 3D JH")          -- three pairs: the best kicker plays
+    beats("9H 9D 9S 4C 4D 4H 2C", "8H 8D 8S AC AD 2H 3S")          -- the trips decide a full house
+    beats("2H 3H 4H 5H 6H 7H 8H", "2S 3S 4S 5S 6S AD KD")
+    eq(cat("TS JS QS KS AS 9S 8S"), H.SFLUSH); beats("TS JS QS KS AS 2C 3C", "9S TS JS QS KS 2C 3C")
+    eq(cat("6H 7H 8H 9H TD JC 2H"), H.FLUSH); beats("6H 7H 8H 9H TD JC 2H", "6S 7C 8D 9C TS JD 2C")
+    ties("QC QD 5H 5S 5C 9D 9H", "9C 9S 5H 5S 5C QD QH")           -- the best pair fills the house
   end)
   it("board plays: both players use the five community cards", function()
     local board = "TC JD QH KS AC"
