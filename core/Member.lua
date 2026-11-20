@@ -64,7 +64,8 @@ function Member.adopt(client, sender, m)
   client.session = s
   -- The extensions hear of a new host and of the state this snapshot replaced.
   if prevHost and prevHost ~= sender then s:hook("hostChanged") end
-  s:hook("adopted", prevState)
+  s:hook("adopted", prevState, m)
+  s:armAuto()
   if not s.pingTimer then s:schedulePing() end
   Succession.watchHost(s)
   -- A table I hosted until now, or one adopted before any TBL: list it as the host's.
@@ -123,6 +124,7 @@ local function onEvent(client, sender, m)
   s.seq = m.q
   s.deadline = type(m.left) == "number" and client.env.now() + m.left or nil
   s:hook("applied", m.seat, m.a)
+  s:armAuto()
   Session.emit(client)
 end
 

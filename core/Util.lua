@@ -42,6 +42,14 @@ function Util.seatOf(seats, name)
   return nil
 end
 
+-- Is `value` one of the elements of the array `list`?
+function Util.contains(list, value)
+  for i = 1, #list do
+    if list[i] == value then return true end
+  end
+  return false
+end
+
 -- 123456 -> "12g 34s 56c"; zero parts are omitted; 0 -> "0c".
 function Util.money(copper)
   copper = math.floor(copper or 0)

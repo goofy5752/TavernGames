@@ -28,7 +28,7 @@ ns.Ext = {} -- extensions by name (see Session:hook)
 
 local C = ns.Const
 local Succession = ns.Succession
-local copy, byteLess, seatOf = ns.Util.copy, ns.Util.byteLess, ns.Util.seatOf
+local copy, byteLess, seatOf, contains = ns.Util.copy, ns.Util.byteLess, ns.Util.seatOf, ns.Util.contains
 Session.seatOf = seatOf
 
 local ACCESS = { guild = true, invite = true, group = true }
@@ -36,12 +36,12 @@ local ACCESS = { guild = true, invite = true, group = true }
 -- Point-to-point messages: honoured only when they arrive by WHISPER.
 local WHISPERED = {
   SIT = true, WAT = true, STD = true, SNO = true, SNP = true, EV = true,
-  ACT = true, SYN = true, PNG = true, TCK = true, HND = true,
+  ACT = true, SYN = true, PNG = true, TCK = true, HND = true, SED = true, PRV = true, PRQ = true,
 }
 
 local TIMERS = {
   "announceTimer", "heartbeatTimer", "tickTimer", "pingTimer", "turnTimer", "systemTimer",
-  "sweepTimer", "silenceTimer",
+  "sweepTimer", "silenceTimer", "fairTimer", "askTimer", "autoTimer",
 }
 
 -- message, emit and refuse are shared with core/Member.lua and core/Succession.lua.
@@ -50,13 +50,6 @@ local function message(t, fields)
   return fields
 end
 Session.message = message
-
-local function contains(list, value)
-  for i = 1, #list do
-    if list[i] == value then return true end
-  end
-  return false
-end
 
 local function emit(client)
   client.events:emit("session", client.session)
@@ -111,7 +104,8 @@ function Session:left()
 end
 
 -- Ordered event (seat, a) on seats/state/status, host and members alike. Seat 0
--- carries the table events sit/stand/start/abort or an engine system action.
+-- carries the table events sit/stand/start/abort, an event an extension's
+-- `table` hook applies, or an engine system action.
 -- Returns true, or nil when the event does not fit (nothing is changed).
 function Session:apply(seat, a)
   if type(a) ~= "table" then return nil end
@@ -131,9 +125,11 @@ function Session:apply(seat, a)
     self.status, self.deadline = "aborted", nil
   else
     if self.status ~= "live" or type(seat) ~= "number" then return nil end
-    local trial = copy(self.state)
-    if not engine.apply(trial, seat, a) then return nil end
-    self.state = trial
+    if seat ~= 0 or not self:hook("table", a) then
+      local trial = copy(self.state)
+      if not engine.apply(trial, seat, a) then return nil end
+      self.state = trial
+    end
   end
   self:noteResult()
   return true
@@ -190,8 +186,11 @@ function Session:recordChanged()
   emit(self.client)
 end
 
--- After a game event: the engine's pending system action and the turn timer,
--- whose expiry plays Engine.auto for the seat on turn. Not live: no timers.
+-- After a game event: the engine's pending system action (one that needs
+-- randomness goes to the extensions' `need`, never to play) and the turn timer,
+-- whose expiry plays Engine.auto for the seat on turn; with engine.view only
+-- for my own seat (another hand is played by its owner, Session:armAuto).
+-- Not live: no timers.
 function Session:armTimers()
   if self.turnTimer then self.turnTimer.cancel(); self.turnTimer = nil end
   if self.systemTimer then self.systemTimer.cancel(); self.systemTimer = nil end
@@ -202,12 +201,13 @@ function Session:armTimers()
   if action then
     self.systemTimer = client:after(delay or 0, function()
       self.systemTimer = nil
-      self:play(0, action)
+      if action.need then self:hook("need", action) else self:play(0, action) end
     end)
   end
   local seat = self.state.turn
   if seat then
     self.deadline = client.env.now() + self.turn
+    if engine.view and seat ~= self.mySeat then return end
     self.turnTimer = client:after(self.turn, function()
       self.turnTimer = nil
       local auto = engine.auto(self.state, seat, client.env.random)
@@ -291,8 +291,8 @@ end
 function Session:snapshotTo(name)
   self.client:send("WHISPER", name, message("SNP", {
     tid = self.tid, e = self.epoch, q = self.seq, tbl = self:record(),
-    st = self.state and self:engine().snapshot(self.state), left = self:left(),
-    inv = self:invitedList(),
+    st = self:snapshotFor(name), left = self:left(),
+    inv = self:invitedList(), fr = self:hook("snap"),
   }))
 end
 

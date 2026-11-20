@@ -7,14 +7,20 @@ local _, ns = ...
 -- starts those) and playAuto. Session:apply calls newGame and noteResult;
 -- Session:onAct passes a member's action through filterAct before playing it;
 -- a new host (core/Succession.lua) applies its catch-up events with applyUnsent.
+-- A game whose engine has `view` is held as my seat's view on every client:
+-- snapshots are cut per recipient (snapshotFor) and a member's own clock plays
+-- its own hand on timeout (armAuto).
 local Session = ns.Session
-local copy = ns.Util.copy
+local copy, seatOf = ns.Util.copy, ns.Util.seatOf
 
 -- Extensions ns.Ext[x], x in engine.ext (a name not registered is skipped): hook
 -- calls `name` on every one that has it and returns the first non-nil result;
 -- filterAct passes a member's action through their act hooks until one drops it.
--- Hooks: act, applied, auto (see the shared contracts), adopted(s, prevState)
--- after a snapshot replaced my state, hostChanged(s) when my table changed host.
+-- Hooks: act, applied, auto (see the shared contracts), adopted(s, prevState, m)
+-- after the snapshot m replaced my state, hostChanged(s) when my table changed
+-- host; need(s, action) (host: a system action that needs randomness),
+-- table(s, a) -> true (a seat-0 event the extension applied itself), snap(s)
+-- -> the SNP field `fr`.
 function Session:hook(name, ...)
   local ext, out = self:engine().ext or {}, nil
   for i = 1, #ext do
@@ -55,10 +61,38 @@ local function occupied(seats)
 end
 
 -- The engine state of a new game: `first` when that seat is occupied, else the
--- lowest occupied seat begins.
+-- lowest occupied seat begins. With engine.view: my seat's view of it.
 function Session:newGame(first)
   local seats, lowest = occupied(self.seats)
-  return self:engine().new({ first = seats[first] and first or lowest, seats = seats, opt = copy(self.opt) })
+  local engine = self:engine()
+  local state = engine.new({ first = seats[first] and first or lowest, seats = seats, opt = copy(self.opt) })
+  if engine.view then return engine.view(state, self.mySeat or 0) end
+  return state
+end
+
+-- The SNP state for `name` -> table | nil (no state): with engine.view cut to
+-- what that seat (0 for a watcher) may see of mine.
+function Session:snapshotFor(name)
+  if not self.state then return nil end
+  local engine = self:engine()
+  if not engine.view then return engine.snapshot(self.state) end
+  return engine.snapshot(engine.view(self.state, seatOf(self.seats, name) or 0))
+end
+
+-- Member: after every applied EV and every adopted snapshot. In a live game
+-- whose engine has `view`, on my own turn with a deadline, my client makes my
+-- automatic move when the deadline passes (the host cannot: it does not see my
+-- hand) unless the table moved on or I became its host meanwhile.
+function Session:armAuto()
+  if self.autoTimer then self.autoTimer.cancel(); self.autoTimer = nil end
+  local client, st = self.client, self.state
+  if not (self.mySeat and self.status == "live" and st and self:engine().view) then return end
+  if st.turn ~= self.mySeat or not self.deadline then return end
+  local seq = self.seq
+  self.autoTimer = client:after(math.max(0, self.deadline - client.env.now()), function()
+    self.autoTimer = nil
+    if client.session == self and self.seq == seq and self.role ~= "host" then Session.playAuto(client) end
+  end)
 end
 
 -- The engine's result turned from nil to a value: event "result" (once).
@@ -74,9 +108,12 @@ function Session:noteResult()
   self.resultSeen = r and true or false
 end
 
--- A game has ended and the next may start: engine.over, else a result is known.
-local function over(engine, state)
-  if engine.over then return engine.over(state) end
+-- The game has ended and the next may start -> bool: any truthy engine.over,
+-- else a known result; false without a state.
+function Session:gameOver()
+  local engine, state = self:engine(), self.state
+  if not state then return false end
+  if engine.over then return engine.over(state) and true or false end
   return engine.result ~= nil and engine.result(state) ~= nil
 end
 
@@ -90,7 +127,7 @@ function Session.startGame(client)
   local engine = s:engine()
   if engine.start ~= "host" then return nil, "mode" end
   if s:seatedCount() < engine.minSeats then return nil, "short" end
-  if s.status == "live" and not over(engine, s.state) then return nil, "live" end
+  if s.status == "live" and not s:gameOver() then return nil, "live" end
   local seats, first = occupied(s.seats)
   if engine.nextFirst and s.state then first = engine.nextFirst(s.state, seats) or first end
   s:event(0, { k = "start", first = first })
