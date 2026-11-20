@@ -1,9 +1,11 @@
---[==[ Texas Hold'em: No-Limit cash table, chips only (pure Lua 5.1).
+--[==[ Texas Hold'em: No-Limit / Pot-Limit cash table, chips only (pure Lua 5.1).
 
 RULES
- 1. A 9-chair table, a hand needs 2+ playing seats (occupied, chips > 0, not leaving). Options: stack =
-    starting chips 1000 / 2000 / 5000 (default 1000); blinds = big blind 10 / 20 / 50 with the small blind
-    half of it, i.e. 5/10, 10/20, 25/50 (default 10 = 5/10). No antes, no gold, no buy-in, no rebuy.
+ 1. A 9-chair table, a hand needs 2+ playing seats (occupied, chips > 0, not leaving). Options:
+    betting = "nl" No Limit / "pl" Pot Limit (default "nl"); blinds = big blind 10 / 20 / 50 / 100 / 200 with
+    the small blind half of it, i.e. 5/10, 10/20, 25/50, 50/100, 100/200 (default 10 = 5/10); stack = the
+    starting stack in big blinds 50 / 100 / 200 (default 100), starting chips = stack x big blind (state.stack,
+    e.g. 100 x 20 = 2000). An unknown value falls back to the default. No antes, no gold, no buy-in, no rebuy.
  2. Seats: {k="join", seat=s} at seat 0 seats a player on an empty chair with the starting stack; he is dealt
     in from the next hand. E.leave(state, s) (or {k="leave", seat=s} at seat 0): a seat in the current hand
     is folded at once (its chips in the pot stay there) and removed when the hand ends; any other seat is
@@ -22,7 +24,19 @@ RULES
     the first live player left of the button (heads-up: the big blind). Then clockwise.
  7. On his turn a player may: fold (always); check (nothing to call); call (all he has if short);
     bet {to} (no bet on this street yet, to >= big blind); raise {to} (to >= current bet + the last full
-    raise size); allin (all his chips as a bet/raise). `to` is his total bet on this street; no cap.
+    raise size); allin (all his chips as a bet/raise). `to` is his total bet on this street.
+    The cap on `to` (minimum raises are the same in both modes):
+    - No Limit: his whole stack, to <= bet + chips (his bet on this street plus his chips behind).
+    - Pot Limit: the call plus the pot after the call. With pot = the sum of every dealt-in seat's chips put
+      in this hand (all streets, this street's bets and folded players' chips included) and toCall = the
+      current bet - his bet: maxTo = min(his bet + chips, current bet + pot + toCall). So at 5/10 preflop the
+      first to act may raise to 35 (10 + 15 + 10), heads-up the button to 30 (10 + 15 + 5), the big blind
+      after a limp to 30 (10 + 20 + 0); a bet into an unopened street is at most the pot (0 + pot + 0).
+      allin is allowed only when his bet + chips <= that cap (all-in for less than the pot is fine); above
+      it allin is refused ("amount") and the raise up to the cap is his biggest option. A bet/raise above
+      the cap is refused ("amount"). The cap is never below the minimum raise: a full raise size is at most
+      the raiser's bet, already in the pot, and pot + toCall holds at least a big blind whenever a seat that
+      can act faces it.
  8. An all-in raise smaller than a full raise does not change the minimum raise size and does not reopen
     the betting: a player who already acted on this street may raise again only if the bet grew by at least
     the full raise size since his last action (several short all-ins together can reopen it). Nobody may
@@ -78,8 +92,9 @@ for _, su in ipairs({ "C", "D", "H", "S" }) do
 end
 
 E.options = {
-  { id = "stack", choices = { 1000, 2000, 5000 }, default = 1000 },
-  { id = "blinds", choices = { 10, 20, 50 }, default = 10 },   -- big blind; small blind = half
+  { id = "betting", choices = { "nl", "pl" }, default = "nl" },        -- No Limit / Pot Limit
+  { id = "blinds", choices = { 10, 20, 50, 100, 200 }, default = 10 }, -- big blind; small blind = half
+  { id = "stack", choices = { 50, 100, 200 }, default = 100 },         -- starting stack in big blinds
 }
 
 local function copy(v)
@@ -128,11 +143,12 @@ end
 function E.new(opts)
   opts = opts or {}
   local o = type(opts.opt) == "table" and opts.opt or {}
-  local stack, bb = choice("stack", o.stack), choice("blinds", o.blinds)
+  local bb = choice("blinds", o.blinds)
+  local stack = choice("stack", o.stack) * bb          -- starting chips
   local first = opts.first
   if not isInt(first) or first < 1 or first > CHAIRS then first = 1 end
   local s = {
-    stack = stack, bb = bb, sb = math.floor(bb / 2), first = first,
+    stack = stack, bb = bb, sb = math.floor(bb / 2), betting = choice("betting", o.betting), first = first,
     seats = {}, phase = "idle", hand = 0, button = nil, sbSeat = nil, bbSeat = nil,
     order = {}, p = {}, deck = {}, board = {}, shown = {}, ptr = 0, street = 0,
     bet = 0, minRaise = bb, turn = nil, aggr = nil, last = nil,
@@ -433,12 +449,26 @@ local function canRaise(s, seat)
   return otherHasChips(s, seat)
 end
 
+-- The highest total `to` the seat may bet/raise to (rule 7): his whole stack in No Limit; in Pot Limit
+-- also at most the bet plus the pot after his call. Second value: may he go all-in (stack within the cap).
+local function raiseCap(s, seat)
+  local p = s.p[seat]
+  local stackTo = p.bet + s.seats[seat].chips
+  if s.betting ~= "pl" then return stackTo, true end
+  local pot = 0
+  for _, i in ipairs(s.order) do pot = pot + s.p[i].total end
+  local toCall = s.bet - p.bet
+  local potTo = s.bet + pot + toCall
+  if stackTo <= potTo then return stackTo, true end
+  return potTo, false
+end
+
 local function act(s, seat, a)
   if not isInt(seat) or seat < 1 or seat > CHAIRS then return nil, "seat" end
   if s.phase ~= "bet" then return nil, "phase" end
   if s.turn ~= seat then return nil, "turn" end
   local p, st, k = s.p[seat], s.seats[seat], a.k
-  local toCall, maxTo = s.bet - p.bet, p.bet + st.chips
+  local toCall = s.bet - p.bet
   local function put(x)
     st.chips, p.bet, p.total = st.chips - x, p.bet + x, p.total + x
     if st.chips == 0 then p.allin = true end
@@ -452,8 +482,10 @@ local function act(s, seat, a)
     put(math.min(toCall, st.chips))
   elseif k == "bet" or k == "raise" or k == "allin" then
     if not canRaise(s, seat) then return nil, "action" end
+    local maxTo, allinOK = raiseCap(s, seat)
     local to
     if k == "allin" then
+      if not allinOK then return nil, "amount" end
       to = maxTo
     else
       if (k == "bet") ~= (s.bet == 0) then return nil, "action" end
@@ -500,14 +532,16 @@ end
 
 function E.legal(s, seat)
   if s.phase ~= "bet" or s.turn == nil or s.turn ~= seat then return {} end
-  local p, st = s.p[seat], s.seats[seat]
+  local p = s.p[seat]
   local out = { { k = "fold" } }
   out[2] = (s.bet - p.bet > 0) and { k = "call" } or { k = "check" }
   if canRaise(s, seat) then
-    local maxTo = p.bet + st.chips
+    local maxTo, allinOK = raiseCap(s, seat)
     local min = s.bet == 0 and s.bb or s.bet + s.minRaise
-    if min < maxTo then out[#out + 1] = { k = s.bet == 0 and "bet" or "raise", to = min, max = maxTo } end
-    out[#out + 1] = { k = "allin" }
+    if min < maxTo or (min == maxTo and not allinOK) then
+      out[#out + 1] = { k = s.bet == 0 and "bet" or "raise", to = min, max = maxTo }
+    end
+    if allinOK then out[#out + 1] = { k = "allin" } end
   end
   return out
 end
