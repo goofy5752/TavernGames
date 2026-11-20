@@ -6,6 +6,14 @@
 # Libs
 
 # Core
+core/Const.lua
+core/Util.lua
+core/Names.lua
+core/Emitter.lua
+core/Bus.lua
+core/Trace.lua
+core/Presence.lua
+core/Client.lua
 
 # Engines
 engines/tictactoe.lua
