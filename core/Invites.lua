@@ -2,7 +2,8 @@ local _, ns = ...
 
 -- Invitations to a table. Host side: client:invite(name) whispers INV, adds the
 -- name to the session's invited set (the access list of an "invite" table) and
--- waits for INR. Invitee side: an INV is either declined at once (INR "auto"
+-- waits for INR; on an "invite" table the seated players hear the name (INA)
+-- so that whoever claims the table next lets the same people in. Invitee side: an INV is either declined at once (INR "auto"
 -- with a reason, no "invite" event) or shown until it is answered, runs out
 -- after INVITE_SECONDS (INR "auto" "timeout") or goes stale because its table
 -- filled or closed ("inviteGone"). A "yes" sits down through the lobby record.
@@ -85,7 +86,25 @@ function Invites:send(name)
   end)
   self.sent[name] = entry
   client:send("WHISPER", name, message("INV", { tid = s.tid, g = s.game, h = client.env.me, s = copy(s.seats) }))
+  -- Seated players may become host: they learn the new name at once (INA), so
+  -- an invited watcher is still let in after a claim. Newcomers get it in SNP.
+  if s.access == "invite" then
+    local note = message("INA", { tid = s.tid, e = s.epoch, n = name })
+    for i = 1, #s.seats do
+      local p = s.seats[i]
+      if p and p ~= client.env.me then client:send("WHISPER", p, note) end
+    end
+  end
   return true
+end
+
+-- INA from my current host at my epoch: one more name for the invited set.
+function Invites:onAdded(sender, m)
+  local s = self.client.session
+  if not s or s.role == "host" or s.tid ~= m.tid or s.host ~= sender or s.epoch ~= m.e then return end
+  if type(m.n) ~= "string" then return end
+  s.invited = s.invited or {}
+  s.invited[m.n] = true
 end
 
 function Invites:onAnswer(sender, m)
@@ -179,12 +198,11 @@ function Invites:answer(tid, answer)
   ns.Session.request(client, "SIT", tid, seat)
 end
 
--- A v=1 message (already validated by the client); INV and INR count only by WHISPER.
+local HANDLERS = { INV = Invites.onInvite, INR = Invites.onAnswer, INA = Invites.onAdded }
+
+-- A v=1 message (already validated by the client); INV, INR and INA count only by WHISPER.
 function Invites:receive(channel, sender, m)
-  if (m.t ~= "INV" and m.t ~= "INR") or channel ~= "WHISPER" or type(m.tid) ~= "string" then return end
-  if m.t == "INV" then
-    self:onInvite(sender, m)
-  else
-    self:onAnswer(sender, m)
-  end
+  local handler = HANDLERS[m.t]
+  if not handler or channel ~= "WHISPER" or type(m.tid) ~= "string" then return end
+  handler(self, sender, m)
 end

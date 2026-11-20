@@ -53,6 +53,7 @@ function Client:stop()
   self:send("GUILD", nil, { v = C.PROTOCOL, t = "BYE" })
   for timer in pairs(self.timers) do timer.cancel() end
   self.timers = {}
+  self.invites:drop(false) -- a shown invitation does not outlive the client
 end
 
 function Client:peerOffline(name)
