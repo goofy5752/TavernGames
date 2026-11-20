@@ -19,9 +19,8 @@ local _, ns = ...
 --   hostSilent (true while a member has not heard its host for SILENT_AFTER s),
 --   opt (the table options resolved by ns.Games.resolve; {} for a game without)
 -- and session:record() -> TBL fields. Every change emits "session"(session|nil);
--- an EV from the host that the engine rejects emits "desync"(tid); a game whose
--- engine.result turns non-nil emits "result"({tid, game, opt, seats, winners,
--- losers, at}) once. Engines may name extensions (ns.Ext, see Session:hook).
+-- an EV from the host that the engine rejects emits "desync"(tid). Extensions
+-- (ns.Ext), the "result" event, startGame and playAuto: core/Lifecycle.lua.
 local Session = {}
 Session.__index = Session
 ns.Session = Session
@@ -111,51 +110,6 @@ function Session:left()
   return math.max(0, self.deadline - self.client.env.now())
 end
 
--- Extensions ns.Ext[x], x in engine.ext (a name not registered is skipped): hook
--- calls `name` on every one that has it and returns the first non-nil result;
--- filterAct passes a member's action through their act hooks until one drops it.
-function Session:hook(name, ...)
-  local ext, out = self:engine().ext or {}, nil
-  for i = 1, #ext do
-    local x = ns.Ext[ext[i]]
-    local r = x and x[name] and x[name](self, ...)
-    if out == nil then out = r end
-  end
-  return out
-end
-
-function Session:filterAct(seat, a)
-  local ext = self:engine().ext or {}
-  for i = 1, #ext do
-    local x = ns.Ext[ext[i]]
-    if a ~= nil and x and x.act then a = x.act(self, seat, a) end
-  end
-  return a
-end
-
--- Seat -> true when occupied, and the lowest occupied seat.
-local function occupied(seats)
-  local out, lowest = {}, nil
-  for i = 1, #seats do
-    out[i] = seats[i] ~= false
-    lowest = lowest or (out[i] and i or nil)
-  end
-  return out, lowest
-end
-
--- The engine's result turned from nil to a value: event "result" (once).
-local function noteResult(s)
-  local engine = s:engine()
-  local r = s.state and engine.result and engine.result(s.state)
-  if r and not s.resultSeen then
-    s.client.events:emit("result", {
-      tid = s.tid, game = s.game, opt = copy(s.opt), seats = copy(s.seats),
-      winners = copy(r.winners), losers = copy(r.losers), at = s.client.env.epoch(),
-    })
-  end
-  s.resultSeen = r and true or false
-end
-
 -- Ordered event (seat, a) on seats/state/status, host and members alike. Seat 0
 -- carries the table events sit/stand/start/abort or an engine system action.
 -- Returns true, or nil when the event does not fit (nothing is changed).
@@ -172,10 +126,7 @@ function Session:apply(seat, a)
       if self.status == "live" and self.state and engine.leave then engine.leave(self.state, a.seat) end
     end
   elseif k == "start" then
-    local seats, lowest = occupied(self.seats)
-    local first = seats[a.first] and a.first or lowest
-    self.state = engine.new({ first = first, seats = seats, opt = copy(self.opt) })
-    self.status = "live"
+    self.state, self.status = self:newGame(a.first), "live"
   elseif k == "abort" then
     self.status, self.deadline = "aborted", nil
   else
@@ -184,7 +135,7 @@ function Session:apply(seat, a)
     if not engine.apply(trial, seat, a) then return nil end
     self.state = trial
   end
-  noteResult(self)
+  self:noteResult()
   return true
 end
 
@@ -265,10 +216,9 @@ function Session:armTimers()
   end
 end
 
--- The next ordered event: applied here, then whispered to every member except
--- `skip`, then the extensions' `applied`. A sit, or a stand that leaves the turn
--- where it was, leaves the running turn alone; every other event re-arms the
--- timers (abort stops them). Returns false when the event does not apply.
+-- The next ordered event: applied, whispered to every member except `skip`, then
+-- the extensions' `applied`; false when it does not apply. A sit, or a stand that
+-- keeps the turn, leaves the running turn alone; others re-arm (abort stops them).
 function Session:event(seat, a, skip, auto)
   local turn = self.state and self.state.turn
   if not self:apply(seat, a) then return false end
@@ -292,7 +242,6 @@ function Session:play(seat, a, auto)
   if self:event(seat, a, nil, auto) then emit(self.client) end
 end
 
--- A game the host starts (engine.start == "host") never starts by itself.
 function Session:startIfFull()
   if self.status == "live" or self:engine().start == "host" then return end
   for i = 1, #self.seats do
@@ -409,7 +358,6 @@ function Session:onStand(sender)
   end
 end
 
--- A member's move, through the extensions' act hooks first (nil: dropped).
 function Session:onAct(sender, a)
   local seat = seatOf(self.seats, sender)
   if not seat or self.status ~= "live" or type(a) ~= "table" then return end
@@ -542,43 +490,6 @@ function Session.act(client, a)
     client:send("WHISPER", s.host, message("ACT", { tid = s.tid, a = a }))
   end
   return true
-end
-
--- A game has ended and the next may start: engine.over, else a result is known.
-local function over(engine, state)
-  if engine.over then return engine.over(state) end
-  return engine.result ~= nil and engine.result(state) ~= nil
-end
-
--- Host of a game the host starts: the next game begins -> true | nil, code:
--- "none", "nothost", "mode" (the game starts by itself), "short" (fewer than
--- minSeats seated), "live" (a game is running and not over).
-function Session.startGame(client)
-  local s = client.session
-  if not s then return nil, "none" end
-  if s.role ~= "host" then return nil, "nothost" end
-  local engine = s:engine()
-  if engine.start ~= "host" then return nil, "mode" end
-  if s:seatedCount() < engine.minSeats then return nil, "short" end
-  if s.status == "live" and not over(engine, s.state) then return nil, "live" end
-  local seats, first = occupied(s.seats)
-  if engine.nextFirst and s.state then first = engine.nextFirst(s.state, seats) or first end
-  s:event(0, { k = "start", first = first })
-  s:recordChanged()
-  return true
-end
-
--- My automatic move -> true | nil, code as Session.act ("turn": none to make).
--- An extension's auto hook may make it instead.
-function Session.playAuto(client)
-  local s = client.session
-  if not s then return nil, "none" end
-  if not s.mySeat then return nil, "seat" end
-  if s.status ~= "live" then return nil, "live" end
-  if s:hook("auto") then return true end
-  local a = s:engine().auto(s.state, s.mySeat, client.env.random)
-  if not a then return nil, "turn" end
-  return Session.act(client, a)
 end
 
 -- Spec 6.2: a SIT/WAT of another protocol version for a table I host.

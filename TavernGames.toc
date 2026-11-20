@@ -29,6 +29,7 @@ core/Lobby.lua
 core/Succession.lua
 core/Session.lua
 core/Member.lua
+core/Lifecycle.lua
 core/Invites.lua
 core/Client.lua
 core/Bots.lua
