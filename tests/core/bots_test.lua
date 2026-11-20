@@ -1,0 +1,98 @@
+local Sim = require("sim")
+local ns = Sim.ns
+local Bots, E = ns.Bots, ns.Engines and ns.Engines.ttt
+
+local A = "Иван Петров"
+local STARTERS = { "Бот Иванов", "Bot Barleybrew", "Бот Петрова" }
+
+local function seated(seats, name)
+  for i = 1, #seats do
+    if seats[i] == name then return true end
+  end
+  return false
+end
+
+describe("bots", function()
+  it("one human plays a whole match against a bot without touching the guild channel", function()
+    local sim = Sim.new()
+    local a, envA = sim:add(A, { cls = "MAGE" }); local bots = Bots.enable(a, envA, sim.makeEnv)
+    sim:run(1) -- let the bots' HI reach a's Presence before inviting
+    local tid = a:openTable{ game = "ttt", access = "invite", turn = 45 }; ok(a:invite("Бот Иванов")); sim:run(5)
+    eq(a.session.seats[2], "Бот Иванов")
+    for _ = 1, 400 do
+      local s = a.session
+      if s.state and s.state.phase == "match" then break end
+      if s.state and s.state.phase == "play" and s.state.turn == 1 then a:act(E.auto(s.state, 1)) end
+      sim:run(1)
+    end
+    eq(a.session.state.phase, "match")
+    eq(sim:count(function(m) return m.channel == "GUILD" and m.from ~= A end), 0)
+    eq(sim:count(function(m) return m.channel == "GUILD" and m.msg.tid == tid
+      and m.msg.s and (m.msg.s[1] == "Бот Иванов" or m.msg.s[2] == "Бот Иванов") end), 0)
+    eq(sim:count(function(m) return m.channel == "WHISPER" and m.target == "Бот Иванов" end), 0)
+    ok(#bots.list == 3)
+  end)
+
+  it("a bot can host and invite me", function()
+    local sim = Sim.new()
+    local a, envA = sim:add(A, { cls = "MAGE" }); local bots = Bots.enable(a, envA, sim.makeEnv)
+    sim:run(1)
+    local got
+    a:on("invite", function(inv) got = inv end)
+    local tid = bots:inviteMe(); sim:run(2)
+    ok(got, "no invite event")
+    ok(seated(STARTERS, got.host), "host is not a bot: " .. tostring(got.host))
+    eq(got.tid, tid); eq(got.game, "ttt")
+    eq(a.lobby:get(tid).access, "invite")
+    a:answerInvite(tid, "yes"); sim:run(3)
+    eq(a.session.tid, tid); eq(a.session.mySeat, 2)
+    eq(sim:count(function(m) return m.channel == "GUILD" and m.msg.tid == tid end), 0)
+    eq(sim:count(function(m) return m.channel == "GUILD" and m.msg.t == "HI" and m.msg.at == tid end), 0)
+  end)
+
+  it("hostTable spawns extra bots up to 12", function()
+    local sim = Sim.new()
+    local a, envA = sim:add(A, { cls = "MAGE" }); local bots = Bots.enable(a, envA, sim.makeEnv)
+    for _ = 1, 9 do ok(bots:hostTable()) end
+    sim:run(3)
+    eq(#a.lobby:tables(), 9); eq(#bots.list, 9)
+    ok(a.presence:get("Бот Номер9"), "spawned bot unknown")
+    for _ = 10, 12 do ok(bots:hostTable()) end
+    eq(bots:hostTable(), nil); eq(#bots.list, 12)
+    sim:run(3)
+    eq(#a.lobby:tables(), 12)
+    eq(sim:count(function(m) return m.channel == "GUILD" and m.msg.t == "TBL" end), 0)
+  end)
+
+  it("disable restores env.send and removes the bots from presence", function()
+    local sim = Sim.new()
+    local a, envA = sim:add(A, { cls = "MAGE" })
+    local orig = envA.send
+    local bots = Bots.enable(a, envA, sim.makeEnv)
+    bots:hostTable()
+    sim:run(1)
+    ok(envA.send ~= orig); ok(a.presence:get("Бот Иванов") ~= nil)
+    eq(#a.lobby:tables(), 1)
+    Bots.disable(bots); sim:run(1)
+    ok(envA.send == orig)
+    for _, n in ipairs(STARTERS) do eq(a.presence:get(n), nil, n) end
+    eq(#a.lobby:tables(), 0)
+  end)
+
+  it("disable while seated at a bot table leaves it without a word on the guild channel", function()
+    local sim = Sim.new()
+    local a, envA = sim:add(A, { cls = "MAGE" }); local bots = Bots.enable(a, envA, sim.makeEnv)
+    local tid = a:openTable{ game = "ttt", access = "invite", turn = 45 }; sim:run(1)
+    ok(a:invite("Бот Петрова")); sim:run(3)
+    eq(a.session.seats[2], "Бот Петрова")
+    local mark = #sim.sent
+    Bots.disable(bots); sim:run(2)
+    eq(a.session, nil); eq(a.lobby:get(tid), nil)
+    local guild = 0
+    for i = mark + 1, #sim.sent do
+      local m = sim.sent[i]
+      if m.channel == "GUILD" and m.msg.tid == tid then guild = guild + 1 end
+    end
+    eq(guild, 0)
+  end)
+end)

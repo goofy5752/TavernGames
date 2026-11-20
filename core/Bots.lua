@@ -1,0 +1,224 @@
+local _, ns = ...
+
+-- Bot mode: local fake players, each a full Client on a private Bus shared with
+-- the human client, so one person can try every feature alone. Bots never reach
+-- the real guild channel: enable() wraps env.send so that
+--   * a WHISPER to a bot goes only to the bus;
+--   * a GUILD message goes to the real send and to the bus, except that one whose
+--     tid is a bot table (a bot as host, in its seats or in its invited set) goes
+--     to the bus only, and a HI whose `at` is a bot-hosted table goes out for
+--     real with `at` cleared (a copy) and to the bus unchanged;
+--   * everything else is unchanged.
+-- A bot's WHISPER reaches the human or another bot through the bus (anything
+-- else is dropped); a bot's GUILD reaches the human and the other bots only.
+-- Deliveries are flushed through env.after(0, ...).
+--
+-- Behaviour: a bot accepts an invitation after ACCEPT_AFTER s, on its turn
+-- plays Engine.auto after MOVE_AFTER s, and in phase "match" asks for a
+-- rematch after REMATCH_AFTER s.
+local Bots = {}
+Bots.__index = Bots
+ns.Bots = Bots
+
+local C = ns.Const
+local copy = ns.Util.copy
+
+local MAX_BOTS = 12
+local STARTERS = { { "Бот Иванов", "PRIEST" }, { "Bot Barleybrew", "WARRIOR" }, { "Бот Петрова", "MAGE" } }
+local SPARE_CLASSES = { "ROGUE", "HUNTER", "WARLOCK", "DRUID", "PALADIN", "SHAMAN", "PRIEST", "WARRIOR", "MAGE" }
+local ACCEPT_AFTER, MOVE_AFTER, REMATCH_AFTER = 1, 1.5, 2
+
+local function hasBot(self, seats)
+  for i = 1, #(seats or {}) do
+    if seats[i] and self.isBot[seats[i]] then return true end
+  end
+  return false
+end
+
+-- Is `tid` a bot table? -> involved (bot host, seat or invitee), hosted (bot host).
+function Bots:tableKind(tid)
+  local involved, hosted = false, false
+  for i = 1, #self.list do
+    local s = self.list[i].session
+    if s and s.tid == tid then
+      involved = true
+      if s.role == "host" then hosted = true end
+    end
+  end
+  local rec = self.client.lobby:get(tid)
+  if rec then
+    if self.isBot[rec.host] then involved, hosted = true, true end
+    if hasBot(self, rec.seats) then involved = true end
+  end
+  local s = self.client.session
+  if s and s.tid == tid then
+    if hasBot(self, s.seats) then involved = true end
+    for name in pairs(s.invited or {}) do
+      if self.isBot[name] then involved = true end
+    end
+  end
+  return involved, hosted
+end
+
+function Bots:schedule()
+  if self.flushQueued then return end
+  self.flushQueued = true
+  self.env.after(0, function()
+    self.flushQueued = false
+    self.bus:flush()
+  end)
+end
+
+function Bots:busSend(from, channel, target, msg)
+  self.bus:send(from, channel, target, msg)
+  self:schedule()
+end
+
+-- The human client's env.send while bot mode is on.
+local function humanSend(self)
+  local orig, me = self.orig, self.env.me
+  return function(channel, target, msg)
+    if channel == "WHISPER" then
+      if self.isBot[target] then return self:busSend(me, channel, target, msg) end
+      return orig(channel, target, msg)
+    end
+    if channel ~= "GUILD" or type(msg) ~= "table" then return orig(channel, target, msg) end
+    if type(msg.tid) == "string" and (self:tableKind(msg.tid)) then
+      return self:busSend(me, channel, target, msg)
+    end
+    if msg.t == "HI" and type(msg.at) == "string" and select(2, self:tableKind(msg.at)) then
+      local real = copy(msg)
+      real.at = nil
+      orig(channel, target, real)
+    else
+      orig(channel, target, msg)
+    end
+    self:busSend(me, channel, target, msg)
+  end
+end
+
+-- The next thing `bot` wants to do at its table -> action, delay | nil.
+local function nextAction(bot)
+  local s = bot.session
+  if not s or not s.mySeat or s.status ~= "live" or not s.state then return nil end
+  local st = s.state
+  if st.phase == "match" then
+    if st.rematch and not st.rematch[s.mySeat] then return { k = "rematch" }, REMATCH_AFTER end
+    return nil
+  end
+  if st.turn ~= s.mySeat then return nil end
+  local a = ns.Engines[s.game].auto(st, s.mySeat)
+  if a then return a, MOVE_AFTER end
+  return nil
+end
+
+local function behave(bot)
+  bot:on("invite", function(inv)
+    bot:after(ACCEPT_AFTER, function()
+      local r = bot.invites.received
+      if r and r.tid == inv.tid then bot:answerInvite(inv.tid, "yes") end
+    end)
+  end)
+  -- One pending step at a time; what to do is decided again when it fires.
+  local step
+  bot:on("session", function()
+    if step then return end
+    local a, delay = nextAction(bot)
+    if not a then return end
+    step = bot:after(delay, function()
+      step = nil
+      local now = nextAction(bot)
+      if now then bot:act(now) end
+    end)
+  end)
+  -- Nobody came to my invite-only table: close it.
+  bot:on("inviteAnswer", function(_, answer)
+    local s = bot.session
+    if answer ~= "yes" and s and s.role == "host" and s.access == "invite" and s:seatedCount() == 1 then
+      bot:stand()
+    end
+  end)
+end
+
+function Bots:spawn(name, cls)
+  local env = self.makeEnv(name, cls)
+  env.send = function(channel, target, msg)
+    if channel == "WHISPER" then
+      if target == self.env.me or self.isBot[target] then self:busSend(name, channel, target, msg) end
+    elseif channel == "GUILD" then
+      self:busSend(name, channel, nil, msg)
+    end
+  end
+  local bot = ns.Client.new(env)
+  self.list[#self.list + 1] = bot
+  self.isBot[name] = true
+  self.bus:join(name, function(channel, sender, msg) bot:receive(channel, sender, msg) end)
+  behave(bot)
+  bot:start()
+  return bot
+end
+
+-- An idle bot (no table, nothing pending), spawning one while fewer than MAX_BOTS exist.
+function Bots:idle()
+  for i = 1, #self.list do
+    local bot = self.list[i]
+    if not bot.session and not bot.pending and not bot.invites.received then return bot end
+  end
+  if #self.list >= MAX_BOTS then return nil end
+  local n = #self.list + 1
+  return self:spawn("Бот Номер" .. n, SPARE_CLASSES[(n - 1) % #SPARE_CLASSES + 1])
+end
+
+-- An idle bot opens a guild table and waits -> tid | nil (all MAX_BOTS busy).
+function Bots:hostTable()
+  if self.disabled then return nil end
+  local bot = self:idle()
+  if not bot then return nil end
+  return (bot:openTable{ game = "ttt", access = "guild", turn = C.TURN_DEFAULT })
+end
+
+-- An idle bot opens an invite-only table and invites me -> tid | nil.
+function Bots:inviteMe()
+  if self.disabled then return nil end
+  local bot = self:idle()
+  if not bot then return nil end
+  local tid = bot:openTable{ game = "ttt", access = "invite", turn = C.TURN_DEFAULT }
+  if not tid then return nil end
+  -- After the pending deliveries, so the bot has heard my HI.
+  bot:after(0, function()
+    if not bot:invite(self.env.me) and bot.session and bot.session:seatedCount() == 1 then bot:stand() end
+  end)
+  return tid
+end
+
+-- client: the human Client; env: its env (send is wrapped); makeEnv(name, cls) -> env.
+function Bots.enable(client, env, makeEnv)
+  local self = setmetatable({
+    client = client, env = env, makeEnv = makeEnv, orig = env.send,
+    bus = ns.Bus.new(), list = {}, isBot = {}, flushQueued = false, disabled = false,
+  }, Bots)
+  self.bus:join(env.me, function(channel, sender, msg) client:receive(channel, sender, msg) end)
+  env.send = humanSend(self)
+  for i = 1, #STARTERS do self:spawn(STARTERS[i][1], STARTERS[i][2]) end
+  return self
+end
+
+-- Leaves any bot table, stops every bot (their BYE reaches only me), forgets
+-- the bot tables and restores env.send.
+function Bots.disable(self)
+  if self.disabled then return end
+  local client = self.client
+  local s = client.session
+  if s and (self:tableKind(s.tid)) then client:stand() end
+  self.bus:flush()
+  for i = 1, #self.list do self.list[i]:stop() end
+  self.bus:flush()
+  for _, rec in ipairs(client.lobby:tables()) do
+    if self.isBot[rec.host] or hasBot(self, rec.seats) then client.lobby:remove(rec.tid) end
+  end
+  for name in pairs(self.isBot) do client:peerOffline(name) end
+  self.disabled = true
+  self.env.send = self.orig
+  for name in pairs(self.isBot) do self.bus:leave(name) end
+  self.bus:leave(self.env.me)
+end

@@ -18,11 +18,17 @@ core/Succession.lua
 core/Session.lua
 core/Invites.lua
 core/Client.lua
+core/Bots.lua
+core/Locale.lua
+core/Help.lua
+core/HallLayout.lua
 
 # Engines
 engines/tictactoe.lua
 
 # Locale
+locale/bg.lua
+locale/en.lua
 
 # WoW
 
