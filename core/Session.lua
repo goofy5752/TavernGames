@@ -1,14 +1,20 @@
 local _, ns = ...
 
 -- The table this client is at, as host or as member (player or watcher), and the
--- seating protocol around it: SIT/WAT/STD requests checked by the host, SNO
--- refusals, ordered seat events (EV seat 0) with an SNP snapshot for each
--- newcomer, and the host's coalesced TBL announce. Game play: Task 5.
+-- protocol around it. Seating: SIT/WAT/STD requests checked by the host, SNO
+-- refusals, an SNP snapshot for each newcomer, the host's coalesced TBL announce.
+-- Play: the host orders every table and game event (EV, q = seq + 1), checks each
+-- ACT through the engine, runs the turn timer (an automatic move on expiry) and
+-- the engine's system actions; members apply events strictly in order and heal a
+-- gap with SYN -> SNP. Heartbeats: TCK from the host, PNG from members.
 --
 -- client.session is nil or a Session with the public fields
 --   tid, role ("host"|"player"|"watcher"), mySeat, host, epoch, seq, seats,
---   state, status, deadline
--- and session:record() -> TBL fields. Every change emits "session"(session|nil).
+--   state (engine state, nil until the first start),
+--   status ("open"|"live"|"aborted"; "aborted" is kept until the next start),
+--   deadline (env.now()-based end of the current turn, or nil)
+-- and session:record() -> TBL fields. Every change emits "session"(session|nil);
+-- an EV from the host that the engine rejects emits "desync"(tid).
 local Session = {}
 Session.__index = Session
 ns.Session = Session
@@ -17,6 +23,14 @@ local C = ns.Const
 local copy, byteLess = ns.Util.copy, ns.Util.byteLess
 
 local ACCESS = { guild = true, invite = true, group = true }
+
+-- Point-to-point messages: honoured only when they arrive by WHISPER.
+local WHISPERED = {
+  SIT = true, WAT = true, STD = true, SNO = true, SNP = true, EV = true,
+  ACT = true, SYN = true, PNG = true, TCK = true,
+}
+
+local TIMERS = { "announceTimer", "heartbeatTimer", "tickTimer", "pingTimer", "turnTimer", "systemTimer" }
 
 local function message(t, fields)
   fields.v, fields.t = C.PROTOCOL, t
@@ -45,18 +59,74 @@ local function refuse(client, tid, why)
   client.events:emit("refused", tid, why)
 end
 
+function Session:cancelTimers()
+  for i = 1, #TIMERS do
+    local key = TIMERS[i]
+    if self[key] then self[key].cancel(); self[key] = nil end
+  end
+end
+
 -- The client's session ended or was left: no table, `at` cleared.
 local function leave(client)
+  if client.session then client.session:cancelTimers() end
   client.session = nil
   client.presence:setAt(nil)
   emit(client)
 end
 
+function Session:engine()
+  return ns.Engines[self.game]
+end
+
 function Session:record()
   return {
     tid = self.tid, g = self.game, h = self.host, e = self.epoch, ac = self.access,
-    tn = self.turn, st = self.state, s = copy(self.seats), w = self.watchers,
+    tn = self.turn, st = self.status == "live" and "live" or "open", s = copy(self.seats),
+    w = self.watchers,
   }
+end
+
+function Session:seatedCount()
+  local n = 0
+  for i = 1, #self.seats do
+    if self.seats[i] then n = n + 1 end
+  end
+  return n
+end
+
+-- Seconds left on the current turn, or nil.
+function Session:left()
+  if not self.deadline then return nil end
+  return math.max(0, self.deadline - self.client.env.now())
+end
+
+-- Ordered event (seat, a) on seats/state/status, host and members alike. Seat 0
+-- carries the table events sit/stand/start/abort or an engine system action.
+-- Returns true, or nil when the event does not fit (nothing is changed).
+function Session:apply(seat, a)
+  if type(a) ~= "table" then return nil end
+  local k = seat == 0 and a.k
+  if k == "sit" or k == "stand" then
+    if type(a.seat) ~= "number" or self.seats[a.seat] == nil then return nil end
+    if k == "sit" then
+      if type(a.name) ~= "string" then return nil end
+      self.seats[a.seat] = a.name
+    else
+      self.seats[a.seat] = false
+    end
+    return true
+  elseif k == "start" then
+    self.state, self.status = self:engine().new({ first = 1 }), "live"
+    return true
+  elseif k == "abort" then
+    self.status, self.deadline = "aborted", nil
+    return true
+  end
+  if self.status ~= "live" or type(seat) ~= "number" then return nil end
+  local trial = copy(self.state)
+  if not self:engine().apply(trial, seat, a) then return nil end
+  self.state = trial
+  return true
 end
 
 ---------------------------------------------------------------------------
@@ -110,19 +180,79 @@ function Session:recordChanged()
   emit(self.client)
 end
 
--- Ordered table event `a` (seat 0) to every member except `skip`.
-function Session:event(a, skip)
+-- After a game event: the engine's pending system action and the turn timer,
+-- whose expiry plays Engine.auto for the seat on turn. Not live: no timers.
+function Session:armTimers()
+  if self.turnTimer then self.turnTimer.cancel(); self.turnTimer = nil end
+  if self.systemTimer then self.systemTimer.cancel(); self.systemTimer = nil end
+  self.deadline = nil
+  if self.status ~= "live" then return end
+  local client, engine = self.client, self:engine()
+  local action, delay = engine.system(self.state)
+  if action then
+    self.systemTimer = client:after(delay or 0, function()
+      self.systemTimer = nil
+      self:play(0, action)
+    end)
+  end
+  local seat = self.state.turn
+  if seat then
+    self.deadline = client.env.now() + self.turn
+    self.turnTimer = client:after(self.turn, function()
+      self.turnTimer = nil
+      local auto = engine.auto(self.state, seat)
+      if auto then self:play(seat, auto, true) end
+    end)
+  end
+end
+
+-- The next ordered event: applied here, then whispered to every member except
+-- `skip`. Sit/stand leave the running turn alone; every other event re-arms the
+-- timers (abort stops them). Returns false when the event does not apply.
+function Session:event(seat, a, skip, auto)
+  if not self:apply(seat, a) then return false end
   self.seq = self.seq + 1
-  local m = message("EV", { tid = self.tid, e = self.epoch, q = self.seq, seat = 0, a = a })
+  local k = seat == 0 and a.k
+  if k ~= "sit" and k ~= "stand" then self:armTimers() end
+  local m = message("EV", {
+    tid = self.tid, e = self.epoch, q = self.seq, seat = seat, a = a,
+    auto = auto or nil, left = self:left(),
+  })
   local members = self:members()
   for i = 1, #members do
     if members[i] ~= skip then self.client:send("WHISPER", members[i], m) end
   end
+  return true
+end
+
+-- A game action by `seat` (0 = system); dropped silently if the engine refuses it.
+function Session:play(seat, a, auto)
+  if self:event(seat, a, nil, auto) then emit(self.client) end
+end
+
+function Session:startIfFull()
+  if self.status == "live" then return end
+  for i = 1, #self.seats do
+    if not self.seats[i] then return end
+  end
+  self:event(0, { k = "start" })
+end
+
+-- TCK{q} to every member every PING_EVERY seconds.
+function Session:scheduleTick()
+  self.tickTimer = self.client:after(C.PING_EVERY, function()
+    self.tickTimer = nil
+    local m = message("TCK", { tid = self.tid, e = self.epoch, q = self.seq })
+    local members = self:members()
+    for i = 1, #members do self.client:send("WHISPER", members[i], m) end
+    self:scheduleTick()
+  end)
 end
 
 function Session:snapshotTo(name)
   self.client:send("WHISPER", name, message("SNP", {
-    tid = self.tid, e = self.epoch, q = self.seq, tbl = self:record(), st = nil, left = nil,
+    tid = self.tid, e = self.epoch, q = self.seq, tbl = self:record(),
+    st = self.state and self:engine().snapshot(self.state), left = self:left(),
   }))
 end
 
@@ -161,22 +291,25 @@ function Session:onRequest(sender, kind, seat)
       self.watcherSet[sender] = nil
       self.watchers = self.watchers - 1
     end
-    self.seats[seat] = sender
-    self:event({ k = "sit", seat = seat, name = sender }, sender)
+    self:event(0, { k = "sit", seat = seat, name = sender }, sender)
   else
     self.watcherSet[sender] = true
     self.watchers = self.watchers + 1
   end
   self:snapshotTo(sender)
+  if kind == "SIT" then self:startIfFull() end
   self:recordChanged()
 end
 
+-- A seated player leaving a live match below minSeats aborts it (no winner).
 function Session:onStand(sender)
   local seat = seatOf(self.seats, sender)
   if seat then
-    self.seats[seat] = false
-    self:event({ k = "stand", seat = seat, why = "left" }, sender)
-    if not self:anySeated() then return self:finish() end
+    self:event(0, { k = "stand", seat = seat, why = "left" }, sender)
+    if self:seatedCount() == 0 then return self:finish() end
+    if self.status == "live" and self:seatedCount() < self:engine().minSeats then
+      self:event(0, { k = "abort" })
+    end
     self:recordChanged()
   elseif self.watcherSet[sender] then
     self.watcherSet[sender] = nil
@@ -185,21 +318,43 @@ function Session:onStand(sender)
   end
 end
 
-function Session:anySeated()
-  for i = 1, #self.seats do
-    if self.seats[i] then return true end
-  end
-  return false
+function Session:onAct(sender, a)
+  local seat = seatOf(self.seats, sender)
+  if seat and self.status == "live" then self:play(seat, a) end
+end
+
+function Session:onSync(sender)
+  if seatOf(self.seats, sender) or self.watcherSet[sender] then self:snapshotTo(sender) end
 end
 
 -- The last seated player is gone: END on GUILD, the session ends for everyone.
 function Session:finish()
   local client = self.client
-  if self.announceTimer then self.announceTimer.cancel(); self.announceTimer = nil end
-  if self.heartbeatTimer then self.heartbeatTimer.cancel(); self.heartbeatTimer = nil end
+  self:cancelTimers()
   client:send("GUILD", nil, message("END", { tid = self.tid, e = self.epoch }))
   client.lobby:remove(self.tid)
   leave(client)
+end
+
+---------------------------------------------------------------------------
+-- Member side
+---------------------------------------------------------------------------
+
+-- PNG to the host every PING_EVERY seconds.
+function Session:schedulePing()
+  self.pingTimer = self.client:after(C.PING_EVERY, function()
+    self.pingTimer = nil
+    self.client:send("WHISPER", self.host, message("PNG", { tid = self.tid }))
+    self:schedulePing()
+  end)
+end
+
+-- SYN{have} to the host, at most one per SYN_MIN_GAP seconds.
+function Session:requestSync()
+  local now = self.client.env.now()
+  if self.lastSyn and now - self.lastSyn < C.SYN_MIN_GAP then return end
+  self.lastSyn = now
+  self.client:send("WHISPER", self.host, message("SYN", { tid = self.tid, have = self.seq }))
 end
 
 ---------------------------------------------------------------------------
@@ -225,12 +380,13 @@ function Session.open(client, opts)
   client.session = setmetatable({
     client = client,
     tid = tid, role = "host", mySeat = 1, host = env.me, epoch = 1, seq = 0,
-    seats = seats, state = "open", status = "ok", deadline = nil,
+    seats = seats, state = nil, status = "open", deadline = nil,
     game = opts.game, access = opts.access, turn = turn, watchers = 0,
     watcherSet = {}, -- name -> true
     invited = {},    -- name -> true, for access "invite" (filled by Task 7)
   }, Session)
   client.presence:setAt(tid)
+  client.session:scheduleTick()
   client.session:recordChanged()
   return tid
 end
@@ -263,6 +419,24 @@ function Session.stand(client)
   leave(client)
 end
 
+-- A move by my seat -> true | nil, code: "none" (no table), "seat" (not seated),
+-- "live" (no match running) or the engine's refusal ("turn", "cell", ...).
+-- Checked on a copy first; the host applies it at once, a guest sends ACT.
+function Session.act(client, a)
+  local s = client.session
+  if not s then return nil, "none" end
+  if not s.mySeat then return nil, "seat" end
+  if s.status ~= "live" then return nil, "live" end
+  local ok, code = s:engine().apply(copy(s.state), s.mySeat, a)
+  if not ok then return nil, code end
+  if s.role == "host" then
+    s:play(s.mySeat, a)
+  else
+    client:send("WHISPER", s.host, message("ACT", { tid = s.tid, a = a }))
+  end
+  return true
+end
+
 -- Spec 6.2: a SIT/WAT of another protocol version for a table I host.
 function Session.refuseVersion(client, sender, tid)
   local s = client.session
@@ -277,21 +451,26 @@ local function adopt(client, sender, m)
   local seat = seatOf(t.s, me)
   local s = client.session or setmetatable({ client = client }, Session)
   s.tid, s.role, s.mySeat, s.host = m.tid, seat and "player" or "watcher", seat, sender
-  s.epoch, s.seq, s.seats, s.state = m.e, m.q, copy(t.s), t.st
-  s.status, s.deadline = "ok", nil
+  s.epoch, s.seq, s.seats = m.e, m.q, copy(t.s)
   s.game, s.access, s.turn, s.watchers = t.g, t.ac, t.tn, t.w or 0
+  s.state = type(m.st) == "table" and ns.Engines[t.g].restore(m.st) or nil
+  s.status = t.st == "live" and "live" or (s.state and "aborted" or "open")
+  s.deadline = type(m.left) == "number" and client.env.now() + m.left or nil
   client.pending = nil
   client.session = s
+  if not s.pingTimer then s:schedulePing() end
   client.presence:setAt(s.tid)
   emit(client)
 end
 
 local function onSnapshot(client, sender, m)
-  if type(m.e) ~= "number" or type(m.q) ~= "number" or not ns.Lobby.valid(m.tbl)
-      or m.tbl.tid ~= m.tid or m.tbl.h ~= sender then return end
+  local t = m.tbl
+  if type(m.e) ~= "number" or type(m.q) ~= "number" or not ns.Lobby.valid(t)
+      or t.tid ~= m.tid or t.h ~= sender or not ns.Engines[t.g]
+      or (t.st == "live" and type(m.st) ~= "table") then return end
   local s, p = client.session, client.pending
   if s and s.role ~= "host" and s.tid == m.tid and s.host == sender then
-    adopt(client, sender, m)
+    if m.e >= s.epoch then adopt(client, sender, m) end
   elseif not s and p and p.tid == m.tid and p.host == sender then
     adopt(client, sender, m)
   elseif not s or s.tid ~= m.tid then
@@ -300,21 +479,30 @@ local function onSnapshot(client, sender, m)
   end
 end
 
-local function onEvent(client, sender, m)
+-- My session when `m` (EV/TCK) comes from its host at my epoch or later, else nil.
+local function fromHost(client, sender, m)
   local s = client.session
-  if not s or s.role == "host" or s.tid ~= m.tid or s.host ~= sender or m.e ~= s.epoch then return end
-  -- Task 5: a gap (q > seq + 1) asks the host for a snapshot (SYN).
-  if m.q ~= s.seq + 1 then return end
-  s.seq = m.q
-  local a = m.a
-  if m.seat == 0 and type(a) == "table" and type(a.seat) == "number" and s.seats[a.seat] ~= nil then
-    if a.k == "sit" and type(a.name) == "string" then
-      s.seats[a.seat] = a.name
-    elseif a.k == "stand" then
-      s.seats[a.seat] = false
-    end
+  if not s or s.role == "host" or s.tid ~= m.tid or s.host ~= sender then return nil end
+  if type(m.e) ~= "number" or m.e < s.epoch or type(m.q) ~= "number" then return nil end
+  return s
+end
+
+local function onEvent(client, sender, m)
+  local s = fromHost(client, sender, m)
+  if not s or m.q <= s.seq then return end
+  if m.q > s.seq + 1 then return s:requestSync() end
+  if not s:apply(m.seat, m.a) then
+    client.events:emit("desync", s.tid)
+    return s:requestSync()
   end
+  s.seq = m.q
+  s.deadline = type(m.left) == "number" and client.env.now() + m.left or nil
   emit(client)
+end
+
+local function onTick(client, sender, m)
+  local s = fromHost(client, sender, m)
+  if s and m.q > s.seq then s:requestSync() end
 end
 
 local function onRefusal(client, sender, m)
@@ -339,7 +527,8 @@ local function onEnd(client, sender, m)
   end
 end
 
--- A v=1 message (already validated by the client).
+-- A v=1 message (already validated by the client). PNG needs nothing here:
+-- Presence already noted that the sender was heard.
 function Session.receive(client, channel, sender, m)
   local t = m.t
   if t == "HI" then
@@ -350,20 +539,27 @@ function Session.receive(client, channel, sender, m)
     return
   end
   if type(m.tid) ~= "string" then return end
-  if t == "SIT" or t == "WAT" or t == "STD" then
-    local s = client.session
-    local hosting = s and s.role == "host" and s.tid == m.tid
-    if t == "STD" then
-      if hosting then s:onStand(sender) end
-    elseif hosting then
+  if WHISPERED[t] and channel ~= "WHISPER" then return end
+  local s = client.session
+  local hosting = s and s.role == "host" and s.tid == m.tid
+  if t == "SIT" or t == "WAT" then
+    if hosting then
       s:onRequest(sender, t, m.seat)
     else
       client:send("WHISPER", sender, message("SNO", { tid = m.tid, why = "gone" }))
     end
+  elseif t == "STD" then
+    if hosting then s:onStand(sender) end
+  elseif t == "ACT" then
+    if hosting then s:onAct(sender, m.a) end
+  elseif t == "SYN" then
+    if hosting then s:onSync(sender) end
   elseif t == "SNP" then
     onSnapshot(client, sender, m)
   elseif t == "EV" then
     onEvent(client, sender, m)
+  elseif t == "TCK" then
+    onTick(client, sender, m)
   elseif t == "SNO" then
     onRefusal(client, sender, m)
   elseif t == "END" then

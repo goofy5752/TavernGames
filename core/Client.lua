@@ -68,6 +68,9 @@ function Client:watch(tid) ns.Session.request(self, "WAT", tid) end
 -- Stands up or stops watching.
 function Client:stand() ns.Session.stand(self) end
 
+-- A move by my seat -> true | nil, code (see Session.act).
+function Client:act(action) return ns.Session.act(self, action) end
+
 function Client:receive(channel, sender, msg)
   if not self.running then return end
   if self.env.log then self.env.log("in", channel, sender, msg) end
@@ -79,9 +82,9 @@ function Client:receive(channel, sender, msg)
       self.updateSeen = true
       self.events:emit("update")
     end
-    -- A SIT/WAT with a string tid also gets the "version" refusal; every other
-    -- v ~= 1 message stops here.
-    if (msg.t == "SIT" or msg.t == "WAT") and type(msg.tid) == "string" then
+    -- A whispered SIT/WAT with a string tid also gets the "version" refusal;
+    -- every other v ~= 1 message stops here.
+    if channel == "WHISPER" and (msg.t == "SIT" or msg.t == "WAT") and type(msg.tid) == "string" then
       ns.Session.refuseVersion(self, sender, msg.tid)
     end
     return

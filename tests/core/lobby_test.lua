@@ -44,8 +44,8 @@ describe("lobby and seating", function()
     eq(b.lobby:get(tid).seats, {A, false}); b:sit(tid, 2); sim:run(3)
     eq(c.lobby:get(tid).seats, {A, B}); eq(b.session.mySeat, 2); eq(b.session.role, "player")
     eq(c.presence:get(B).at, tid)
-    eq(b.session.seats, {A, B}); eq(b.session.host, A); eq(b.session.state, "open")
-    eq(b.session:record(), { tid = tid, g = "ttt", h = A, e = 1, ac = "guild", tn = 45, st = "open", s = { A, B }, w = 0 })
+    eq(b.session.seats, {A, B}); eq(b.session.host, A); eq(b.session.status, "live") -- full: started (Task 5)
+    eq(b.session:record(), { tid = tid, g = "ttt", h = A, e = 1, ac = "guild", tn = 45, st = "live", s = { A, B }, w = 0 })
     eq(#b.lobby:tables(), 1); eq(b.lobby:tables()[1].tid, tid)
   end)
 
@@ -56,7 +56,7 @@ describe("lobby and seating", function()
     b:on("session", function(s) seen[#seen + 1] = s and s.role or "none" end)
     local tables = 0; b:on("tables", function() tables = tables + 1 end)
     b:watch(tid); sim:run(1); b:sit(tid, 2); sim:run(1); b:stand()
-    eq(seen, { "watcher", "player", "none" }); eq(b.session, nil)
+    eq(seen, { "watcher", "player", "player", "none" }); eq(b.session, nil) -- the 2nd "player": start
     sim:run(3); ok(tables >= 1); eq(b.lobby:get(tid).seats, { A, false })
   end)
 
@@ -237,16 +237,17 @@ describe("lobby and seating", function()
     c:watch(tid); sim:run(1); eq(c.session.seq, 0)
     local m0 = #sim.sent
     b:sit(tid, 2); sim:run(1)
-    eq(c.session.seats, { A, B }); eq(c.session.seq, 1); eq(b.session.seq, 1)
-    local ev = sentBy(sim, A, m0, function(s) return s.msg.t == "EV" end)
+    -- the sit fills the table, so a start event (q 2, Task 5) follows it
+    eq(c.session.seats, { A, B }); eq(c.session.seq, 2); eq(b.session.seq, 2)
+    local ev = sentBy(sim, A, m0, function(s) return s.msg.t == "EV" and s.msg.a.k == "sit" end)
     eq(#ev, 1); eq(ev[1].target, C)
     eq(ev[1].msg.seat, 0); eq(ev[1].msg.q, 1); eq(ev[1].msg.e, 1); eq(ev[1].msg.a, { k = "sit", seat = 2, name = B })
     local snp = sentBy(sim, A, m0, function(s) return s.msg.t == "SNP" end)
     eq(#snp, 1); eq(snp[1].target, B); eq(snp[1].msg.q, 1); eq(snp[1].msg.tbl.s, { A, B })
     local m1 = #sim.sent
     b:stand(); sim:run(1)
-    eq(c.session.seats, { A, false }); eq(c.session.seq, 2); eq(a.session.seats, { A, false })
-    ev = sentBy(sim, A, m1, function(s) return s.msg.t == "EV" end)
+    eq(c.session.seats, { A, false }); eq(c.session.seq, 4); eq(a.session.seats, { A, false }) -- stand, abort
+    ev = sentBy(sim, A, m1, function(s) return s.msg.t == "EV" and s.msg.a.k == "stand" end)
     eq(#ev, 1); eq(ev[1].target, C); eq(ev[1].msg.a, { k = "stand", seat = 2, why = "left" })
   end)
 
