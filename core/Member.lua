@@ -49,6 +49,7 @@ function Member.adopt(client, sender, m)
   s.tid, s.role, s.mySeat, s.host = m.tid, seat and "player" or "watcher", seat, sender
   s.epoch, s.seq, s.seats = m.e, m.q, copy(t.s)
   s.game, s.access, s.turn, s.watchers = t.g, t.ac, t.tn, t.w or 0
+  s.opt = ns.Games.resolve(t.g, t.o)
   s.state = type(m.st) == "table" and ns.Engines[t.g].restore(m.st) or nil
   s.status = t.st == "live" and "live" or (s.state and "aborted" or "open")
   s.deadline = type(m.left) == "number" and client.env.now() + m.left or nil

@@ -23,6 +23,7 @@ core/Names.lua
 core/Emitter.lua
 core/Bus.lua
 core/Trace.lua
+core/Games.lua
 core/Presence.lua
 core/Lobby.lua
 core/Succession.lua

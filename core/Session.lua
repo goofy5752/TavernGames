@@ -16,7 +16,8 @@ local _, ns = ...
 --   state (engine state, nil until the first start),
 --   status ("open"|"live"|"aborted"; "aborted" is kept until the next start),
 --   deadline (env.now()-based end of the current turn, or nil),
---   hostSilent (true while a member has not heard its host for SILENT_AFTER s)
+--   hostSilent (true while a member has not heard its host for SILENT_AFTER s),
+--   opt (the table options resolved by ns.Games.resolve; {} for a game without)
 -- and session:record() -> TBL fields. Every change emits "session"(session|nil);
 -- an EV from the host that the engine rejects emits "desync"(tid).
 local Session = {}
@@ -89,7 +90,7 @@ function Session:record()
   return {
     tid = self.tid, g = self.game, h = self.host, e = self.epoch, ac = self.access,
     tn = self.turn, st = self.status == "live" and "live" or "open", s = copy(self.seats),
-    w = self.watchers,
+    w = self.watchers, o = next(self.opt) ~= nil and copy(self.opt) or nil,
   }
 end
 
@@ -381,15 +382,17 @@ end
 -- Client entry points
 ---------------------------------------------------------------------------
 
--- opts {game, access, turn} -> tid | nil, code ("busy" "game" "access" "turn").
+-- opts {game, access, turn, opt} -> tid | nil, code ("busy" "game" "access" "turn" "opt").
 function Session.open(client, opts)
   opts = opts or {}
   if client.session then return nil, "busy" end
-  local engine = type(opts.game) == "string" and ns.Engines and ns.Engines[opts.game]
+  local engine = ns.Games.engine(opts.game)
   if not engine then return nil, "game" end
   if not ACCESS[opts.access] then return nil, "access" end
   local turn = opts.turn == nil and C.TURN_DEFAULT or opts.turn
   if not contains(C.TURN_CHOICES, turn) then return nil, "turn" end
+  local opt = ns.Games.resolve(opts.game, opts.opt)
+  if not opt then return nil, "opt" end
 
   local env = client.env
   local tid = env.me .. "#" .. env.epoch()
@@ -401,7 +404,7 @@ function Session.open(client, opts)
     client = client,
     tid = tid, role = "host", mySeat = 1, host = env.me, epoch = 1, seq = 0,
     seats = seats, state = nil, status = "open", deadline = nil, hostSilent = false,
-    game = opts.game, access = opts.access, turn = turn, watchers = 0,
+    game = opts.game, access = opts.access, turn = turn, opt = opt, watchers = 0,
     watcherSet = {}, -- name -> true
     lastHeard = {},  -- member name -> env.now() of its last message
     invited = {},    -- name -> true, for access "invite" (client:invite; travels in SNP/HND)
@@ -422,6 +425,8 @@ function Session.request(client, kind, tid, seat)
   if not host then
     local rec = client.lobby:get(tid)
     if not rec then return refuse(client, tid, "gone") end
+    -- A game I do not have: nothing to ask for.
+    if not ns.Games.engine(rec.game) then return refuse(client, tid, "version") end
     host = rec.host
     local p = { tid = tid, host = host }
     client.pending = p

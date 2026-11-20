@@ -1,4 +1,5 @@
 local Sim = require("sim")
+require("fake_engine") -- 3-seat records for the epoch-tie test
 
 local A, B, C = "Иван Петров", "Мария Стоянова", "Kiro Barley"
 local NEW = "Нов Клиент"
@@ -212,16 +213,16 @@ describe("lobby and seating", function()
   it("equal epoch tie reads the claimant's seat from the known record, not its own claim", function()
     local _, _, b = setup()
     local D, E, F, G = "Пешо Тодоров", "Гошо Тестов", "Тошо Петков", "Чужд Човек"
-    b:receive("GUILD", E, tbl{ tid = "X#1", h = E, e = 1, s = { D, E, F } })
+    b:receive("GUILD", E, tbl{ tid = "X#1", g = "fake", h = E, e = 1, s = { D, E, F } })
     eq(b.lobby:get("X#1").host, E)
     -- F sits at seat 3 of the known record and moves itself to seat 1 in its claim
-    b:receive("GUILD", F, tbl{ tid = "X#1", h = F, e = 1, s = { F, E, D } })
+    b:receive("GUILD", F, tbl{ tid = "X#1", g = "fake", h = F, e = 1, s = { F, E, D } })
     eq(b.lobby:get("X#1").host, E)
     -- G is not seated at all and claims seat 1
-    b:receive("GUILD", G, tbl{ tid = "X#1", h = G, e = 1, s = { G, E, F } })
+    b:receive("GUILD", G, tbl{ tid = "X#1", g = "fake", h = G, e = 1, s = { G, E, F } })
     eq(b.lobby:get("X#1").host, E)
     -- D really sits lower than E: its tie claim wins
-    b:receive("GUILD", D, tbl{ tid = "X#1", h = D, e = 1, s = { D, E, F } })
+    b:receive("GUILD", D, tbl{ tid = "X#1", g = "fake", h = D, e = 1, s = { D, E, F } })
     eq(b.lobby:get("X#1").host, D)
   end)
 

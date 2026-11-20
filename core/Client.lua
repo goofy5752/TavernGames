@@ -60,7 +60,7 @@ function Client:peerOffline(name)
   self.presence:remove(name)
 end
 
--- opts {game, access, turn} -> tid | nil, code ("busy" "game" "access" "turn").
+-- opts {game, access, turn, opt} -> tid | nil, code ("busy" "game" "access" "turn" "opt").
 function Client:openTable(opts) return ns.Session.open(self, opts) end
 
 -- Refusals arrive as the event "refused"(tid, why).
