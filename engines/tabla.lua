@@ -199,7 +199,7 @@ end
 -- Every legal full move for s.turn with dice s.left: list of {p, steps, dice, n}, deduped by the
 -- resulting position. n = dice used (a winning move counts as using all of them).
 -- Doubles are generated with non-increasing from-points (any order of equal dice reaches the same
--- positions); only a mother-pinning step may break that order, since it ends the move.
+-- positions); only a game-winning step (a mother pin) may break that order, since it ends the move.
 local function gen(s)
   local me, var, dice = s.turn, s.var, s.left
   local double = true
@@ -212,7 +212,7 @@ local function gen(s)
       for _, d in ipairs(distinct(rem)) do
         for from = 25, lo, -1 do
           local n, to = step(var, p, me, from, d)
-          if n and double and from > maxFrom and n.won ~= 2 then n = nil end
+          if n and double and from > maxFrom and not n.won then n = nil end
           if n then
             any = true
             steps[#steps + 1] = { from, to }; used[#used + 1] = d
