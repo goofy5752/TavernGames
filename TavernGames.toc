@@ -47,6 +47,7 @@ engines/deathroll.lua
 engines/santase.lua
 engines/holdem_eval.lua
 engines/holdem.lua
+engines/tabla.lua
 
 # Locale
 locale/bg.lua
