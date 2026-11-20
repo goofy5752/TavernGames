@@ -8,6 +8,8 @@ RULES
     in from the next hand. E.leave(state, s) (or {k="leave", seat=s} at seat 0): a seat in the current hand
     is folded at once (its chips in the pot stay there) and removed when the hand ends; any other seat is
     removed at once. A seat with 0 chips after a hand sits out (seats[s].out = true) until it leaves.
+    When a chair is vacated its record of the last hand is flagged gone: whoever sits there next sees none
+    of those cards (E.view, E.hidden).
  3. Button: the first hand's button is the first playing seat at or after opts.first (default 1); every
     next hand it moves to the next playing seat clockwise (seat numbers upwards, 9 wraps to 1).
  4. Blinds: small blind = first playing seat left of the button, big blind = the next one; heads-up the
@@ -254,6 +256,7 @@ local function finish(s, scores, cats, showOrder)
     if st and st.leaving then
       s.last.left[i] = st.chips
       s.seats[i] = false
+      s.p[i].gone = true          -- kept for the table display, no longer anyone's own hand
     elseif st then
       st.out = st.chips == 0
     end
@@ -409,6 +412,7 @@ local function leave(s, seat)
     end
   else
     s.seats[seat] = false
+    if p then p.gone = true end   -- last hand's record of this chair belongs to nobody now
   end
   return true
 end
@@ -531,8 +535,9 @@ function E.view(s, seat)
   for st in pairs(s.shown) do
     for _, i in ipairs(s.p[st].cards) do vis[i] = true end
   end
-  if seat and s.p[seat] then
-    for _, i in ipairs(s.p[seat].cards) do vis[i] = true end
+  local own = seat and s.p[seat]
+  if own and not own.gone then
+    for _, i in ipairs(own.cards) do vis[i] = true end
   end
   v.deck = {}
   for i, f in pairs(s.deck) do if vis[i] then v.deck[i] = f end end
@@ -541,7 +546,7 @@ end
 
 function E.hidden(s, seat)
   local p = s.p[seat]
-  if not p or s.shown[seat] then return {} end
+  if not p or p.gone or s.shown[seat] then return {} end
   return copy(p.cards)
 end
 

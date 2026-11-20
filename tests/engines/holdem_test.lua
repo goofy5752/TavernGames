@@ -392,6 +392,20 @@ describe("holdem seats", function()
     local s = mk({ 1, 2 }); start(s); ok(E.apply(s, 0, { k = "join", seat = 4 })); E.leave(s, 4)
     eq(s.seats[4], false); eq(s.phase, "bet")
   end)
+  it("a newcomer on a freed chair sees nothing of the previous player's hand", function()
+    -- the previous player folded and stood up between hands
+    local s = mk({ 1, 2, 3 }); start(s, { [1] = "AS AD", [2] = "3C 6C", [3] = "KS KD" })
+    acts(s, { { 1, "raise", 30 }, { 2, "fold" }, { 3, "fold" } }); eq(s.phase, "done")
+    E.leave(s, 2); ok(E.apply(s, 0, { k = "join", seat = 2 }))
+    eq(E.view(s, 2).deck, {}); eq(E.hidden(s, 2), {}); eq(E.view(s, 1).deck, { [3] = "AS", [6] = "AD" })
+    -- the previous player left during the hand and was removed when it ended
+    s = mk({ 1, 2, 3 }); start(s, { [1] = "AS AD", [2] = "3C 6C", [3] = "KS KD" })
+    E.leave(s, 2); acts(s, { { 1, "raise", 30 }, { 3, "fold" } }); eq(s.seats[2], false)
+    eq(E.view(s, 2).deck, {}); eq(E.hidden(s, 2), {})
+    ok(E.apply(s, 0, { k = "join", seat = 2 })); eq(E.view(s, 2).deck, {}); eq(E.hidden(s, 2), {})
+    -- a seat that stays keeps seeing its own folded cards until the next hand
+    eq(E.view(s, 3).deck, { [2] = "KS", [5] = "KD" }); eq(E.hidden(s, 3), { 2, 5 })
+  end)
   it("a busted seat sits out until it leaves", function()
     local s = mk({ 1, 2, 3 }, { stacks = { [1] = 100 } })
     start(s, { [1] = "2C 3D", [2] = "AS AD", [3] = "7H 8D" }, "KC QS 9D 4C 5H")
@@ -466,9 +480,33 @@ local function fuzz(seed, hands, withViews)
   local views = {}
   if withViews then for i = 0, 9 do views[i] = E.view(s, i) end end
   local function check(cond, msg) if not cond then error(msg, 2) end end
+  -- Leak check independent of the engine's seat records: every sitting gets a player id, every dealt
+  -- index remembers the player it went to; a chair sees only the cards of the player sitting in it now.
+  local owner, pids, dealtTo = {}, 0, {}
+  for _, i in ipairs(seatList) do pids = pids + 1; owner[i] = pids end
+  local viewOwner = {}
+  for _, i in ipairs(seatList) do viewOwner[i] = owner[i] end
+  local function leakCheck(sv, v)
+    local me = (sv ~= 0 and s.seats[sv]) and owner[sv] or nil
+    local vis = {}
+    for _, i in ipairs(s.board) do vis[i] = true end
+    for st in pairs(s.shown) do for _, i in ipairs(s.p[st].cards) do vis[i] = true end end
+    for i, pid in pairs(dealtTo) do if pid == me then vis[i] = true end end
+    for i in pairs(v.deck) do check(vis[i], "chair " .. sv .. " sees deck[" .. i .. "]") end
+    for _, i in ipairs(E.hidden(s, sv)) do
+      check(me ~= nil and dealtTo[i] == me, "hidden of chair " .. sv .. " lists deck[" .. i .. "]")
+    end
+  end
   local function apply(seat, a)
     local r, why = E.apply(s, seat, a)
     check(r, "rejected " .. tostring(a.k) .. " at seat " .. seat .. ": " .. tostring(why))
+    if a.k == "join" then pids = pids + 1; owner[a.seat] = pids end
+    if a.k == "hand" then dealtTo = {} end
+    if a.k == "deal" then
+      for _, seat2 in ipairs(s.order) do
+        for _, i in ipairs(s.p[seat2].cards) do dealtTo[i] = owner[seat2] end
+      end
+    end
     for sv, v in pairs(views) do
       if a.k == "deal" then
         check(E.apply(v, 0, { k = "deal" }), "view deal")
@@ -479,8 +517,11 @@ local function fuzz(seed, hands, withViews)
       else
         check(E.apply(v, seat, a), "view " .. sv .. " rejected " .. a.k)
       end
+      -- a client that stood up is gone (its view kept what it saw); whoever sits next starts from a snapshot
+      local occupant = (sv ~= 0 and s.seats[sv]) and owner[sv] or nil
+      if occupant ~= viewOwner[sv] then v = E.view(s, sv); views[sv], viewOwner[sv] = v, occupant end
       eq(v, E.view(s, sv), "view " .. sv .. " diverged")
-      assertViewClean(s, sv, v)
+      leakCheck(sv, v)
     end
   end
   while played < hands do
@@ -495,6 +536,7 @@ local function fuzz(seed, hands, withViews)
     for i = 1, 9 do
       if playing < 2 and not s.seats[i] then apply(0, { k = "join", seat = i }); injected = injected + s.stack; playing = playing + 1 end
     end
+    for sv = 0, 9 do leakCheck(sv, E.view(s, sv)) end   -- the window where a newcomer sits on a freed chair
     local a, delay = E.system(s); check(a and a.k == "hand" and delay > 0, "no hand due")
     apply(0, a); check(E.system(s) == nil, "system acts during the shuffle")
     stats.players[#s.order] = true
