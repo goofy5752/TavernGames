@@ -333,6 +333,11 @@ describe("ui: invite toast", function()
     eq(T.accept.text:GetText(), L("invite.accept")); eq(T.notNow.text:GetText(), L("invite.notNow"))
     eq(T.snooze.text:GetText(), L("invite.snooze"))
     eq(T.snooze.text:GetText(), "Не ме безпокой 30 мин")
+    -- frame.tga nine-slice: a 12 px source band drawn 12 px wide, like every framed window.
+    local corner = T.border.pieces[1]
+    eq(corner:GetTexture(), w.ns.Theme.tex.frame)
+    eq({ corner:GetSize() }, { 12, 12 })
+    eq(corner.texCoord, { 0, 12 / 64, 0, 12 / 64 })
     eq(#w.sounds, 1)
     w:render(0.02); eq(T.bar:GetWidth(), T.BAR_W)
     w:advance(15); w:render(0.02)

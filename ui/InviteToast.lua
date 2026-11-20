@@ -23,7 +23,7 @@ local InviteToast = {
 InviteToast.BAR_W = InviteToast.WIDTH - 28
 ns.InviteToast = InviteToast
 
-local PAD, EDGE = 14, 10
+local PAD, EDGE = 14, 12 -- EDGE: the brass frame band (media/frame.tga has a 12 px band)
 local NOTICE_SECONDS = 5
 local ACCEPT_WATCH = 10 -- seconds after „Приемам“ during which a refusal still lands on the toast
 local AUTO = { combat = true, instance = true, busy = true, snooze = true, timeout = true }
@@ -50,7 +50,7 @@ local function build()
   wood:SetPoint("TOPLEFT", f, "TOPLEFT", 3, -3)
   wood:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -3, 3)
   wood:SetVertexColor(0.7, 0.7, 0.7)
-  W.nine(f, Theme.tex.frame, Theme.texSize.frame, 12, EDGE, "BORDER", true)
+  InviteToast.border = W.nine(f, Theme.tex.frame, Theme.texSize.frame, EDGE, EDGE, "BORDER", true)
 
   local title = W.Label(f, "heading", "", 15)
   title:SetTextColor(Theme.rgb("brassLight"))
