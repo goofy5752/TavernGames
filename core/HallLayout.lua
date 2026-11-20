@@ -34,6 +34,22 @@ function HallLayout.slots(n, w, h)
   return out
 end
 
+-- The nameplates of n seats on a felt w wide -> {{x, y, pw}, …} (TOPLEFT
+-- offsets and plate width), rows: n columns up to two seats, two for four,
+-- three otherwise; plates 190 wide in at most two columns, else 165.
+function HallLayout.plates(n, w)
+  local out = {}
+  if n <= 0 then return out, 0 end
+  local cols = n <= 2 and n or (n == 4 and 2 or 3)
+  local pw = cols <= 2 and 190 or 165
+  for i = 1, n do
+    local col, row = (i - 1) % cols, math.floor((i - 1) / cols)
+    local x = cols == 1 and (w - pw) / 2 or 10 + col * (w - 20 - pw) / (cols - 1)
+    out[i] = { x, -10 - 32 * row, pw }
+  end
+  return out, math.ceil(n / cols)
+end
+
 -- Chair offsets from the table centre on a circle of radius r (y up): seat 1 at
 -- the top, the others clockwise.
 function HallLayout.chairs(seats, r)

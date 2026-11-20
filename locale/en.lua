@@ -136,6 +136,11 @@ T["table.free"] = "free seat"
 T["table.watchers"] = "Watching: %d"
 T["table.clock"] = "%d:%02d"
 T["table.pick"] = "Whom to invite?"
+T["table.start"] = "Start"
+T["table.again"] = "New game"
+T["table.waitingMore"] = "Waiting for more players…"
+T["table.pressStart"] = "Is everyone here? Press “Start”."
+T["table.waitingHost"] = "Waiting for the host to start…"
 
 -- Tic-tac-toe board
 T["ttt.x"] = "X"

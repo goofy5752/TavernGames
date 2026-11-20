@@ -230,6 +230,74 @@ describe("ui: table frame", function()
   end)
 end)
 
+describe("ui: table frame, host-started games", function()
+  -- I host an invite-only Death Roll table with the start number 100.
+  local function drTable()
+    local w = withBots()
+    w.ns.client:openTable{ game = "deathroll", access = "invite", turn = 45, opt = { start = 100 } }
+    w:advance(0)
+    return w, w.ns.TableFrame.view
+  end
+
+  local function visiblePlates(v)
+    local shown = 0
+    for _, p in ipairs(v.plates) do if p.frame:IsVisible() then shown = shown + 1 end end
+    return shown
+  end
+
+  it("five plates in two rows; alone: „Чакаме още играчи…“ and a disabled „Започни“", function()
+    local w, v = drTable()
+    eq(#w:texts("Чакаме още играчи…"), 1)
+    eq(visiblePlates(v), 5)
+    eq(v.plates[4].frame:GetWidth(), 165)
+    eq(v.plates[4].frame.points[1], { "TOPLEFT", v.area, "TOPLEFT", 10, -42 })
+    ok(v.startButton:IsVisible(), "no Започни"); eq(v.startButton:IsEnabled(), false)
+    eq(v.startButton.text:GetText(), "Започни")
+    eq(#w:texts("Начално число 100"), 1)
+  end)
+
+  it("with a second player „Започни“ starts the game and goes away; after the game it reads „Нова игра“", function()
+    local w, v = drTable()
+    local L, client = w.ns.L, w.ns.client
+    w:click(v.inviteButton)
+    local row
+    for _, r in ipairs(v.picker.rows) do
+      if r.frame:IsVisible() and r.name:GetText() == BOT then row = r end
+    end
+    assert(row, "no row for the bot in the picker")
+    w:click(row.frame)
+    w:advance(2)
+    eq(client.session.seats[2], BOT)
+    ok(v.banner:IsVisible(), "no banner"); eq(v.bannerText:GetText(), L("table.pressStart"))
+    eq(L("table.pressStart"), "Всички ли са тук? Натисни „Започни“.")
+    ok(v.startButton:IsVisible(), "no Започни"); eq(v.startButton:IsEnabled(), true)
+    eq(v.startButton.text:GetText(), "Започни")
+    eq(v.line.points[1][2], v.startButton) -- the news line sits right of „Започни“
+    w:click(v.startButton); w:advance(0)
+    eq(client.session.status, "live")
+    eq(v.startButton:IsVisible(), false); eq(v.banner:IsVisible(), false)
+    eq(v.line.points[1][2], v.inviteButton)
+    client.session:play(1, { k = "roll", n = 1, max = 100, src = "ask" }); w:advance(0)
+    ok(v.startButton:IsVisible(), "no Нова игра"); eq(v.startButton.text:GetText(), "Нова игра")
+    eq(v.startButton:IsEnabled(), true)
+    eq(v.banner:IsVisible(), false) -- the view says who lost
+  end)
+
+  it("a guest at a host-started table sees „Чакаме домакина да започне…“ and no start button", function()
+    local w = withBots()
+    w:slash("bots host dr"); w:advance(0); w:advance(0)
+    local rec = w.ns.client.lobby:tables()[1]
+    eq(rec.game, "deathroll")
+    w.ns.client:sit(rec.tid, 2)
+    w:advance(1)
+    local s, v, L = w.ns.client.session, w.ns.TableFrame.view, w.ns.L
+    eq(s.role, "player"); eq(s.status, "open")
+    eq(L("table.waitingHost"), "Чакаме домакина да започне…")
+    eq(#w:texts(L("table.waitingHost")), 1)
+    eq(v.startButton:IsVisible(), false)
+  end)
+end)
+
 describe("ui: Морски шах view", function()
   local E
 

@@ -136,6 +136,11 @@ T["table.free"] = "свободно място"
 T["table.watchers"] = "Гледат: %d"
 T["table.clock"] = "%d:%02d"
 T["table.pick"] = "Кого да поканиш?"
+T["table.start"] = "Започни"
+T["table.again"] = "Нова игра"
+T["table.waitingMore"] = "Чакаме още играчи…"
+T["table.pressStart"] = "Всички ли са тук? Натисни „Започни“."
+T["table.waitingHost"] = "Чакаме домакина да започне…"
 
 -- Морски шах board
 T["ttt.x"] = "Х"
