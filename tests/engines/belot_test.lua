@@ -841,3 +841,156 @@ describe("belot whole deals", function()
     for seat = 0, 4 do eq(t.views[seat].score, s.score); eq(t.views[seat].winner, s.winner) end
   end)
 end)
+
+---------------------------------------------------------------------------------------------
+-- Parity with the C# engine: tests/fixtures/belot/*.lua are whole matches played by
+-- NikolayIT/BelotGameEngine (see tools/belot-parity). Every deal is replayed here and every
+-- legal-bid set, legal-card set, belote option, offered announce, trick winner, scoring
+-- announce and score must be what the C# engine reported.
+---------------------------------------------------------------------------------------------
+local FIXTURES = "tests/fixtures/belot/"
+
+local function sortedFaces(str)
+  local out = {}
+  for face in str:gmatch("%w%w") do out[#out + 1] = face end
+  table.sort(out)
+  return table.concat(out, " ")
+end
+
+-- Plays one fixture match through `act(seat, action)` on the state returned by `state()`.
+local function replay(m, state, act, strict)
+  for r, round in ipairs(m.rounds) do
+    local s = state()
+    local where = m.name .. " deal " .. r
+    eq(s.phase, "deal", where); eq(s.round, r, where); eq(s.first, round.first, where)
+    local deck = {}
+    for face in round.deck:gmatch("%w%w") do deck[#deck + 1] = face end
+    act(0, { k = "deal", deck = deck })
+
+    for n, str in ipairs(round.bids) do
+      local seat, b, legal = str:match("^(%d)(%a)/(%a+)$")
+      seat, s = tonumber(seat), state()
+      eq(s.phase, "bid", where); eq(s.turn, seat, where .. " bid " .. n)
+      eq(legalBids(E.view(s, seat), seat), legal, where .. " bid " .. n)
+      if strict then
+        for x in ("PCDHSNAXR"):gmatch(".") do
+          if not legal:find(x, 1, true) then eq({ E.apply(s, seat, { k = "bid", b = x }) }, { nil, "bid" }) end
+        end
+      end
+      act(seat, { k = "bid", b = b })
+    end
+
+    if round.contract then
+      s = state()
+      eq(s.phase, "play", where); eq(s.contract, round.contract, where)
+      for n, str in ipairs(round.plays) do
+        local at = where .. " play " .. n
+        local seat, face, belote, legal, belotes = str:match("^(%d)(%w%w)(%+?)/(%w+)/(%w*)$")
+        seat, s = tonumber(seat), state()
+        eq(s.turn, seat, at)
+
+        -- what the seat may do, from its own view
+        local cards, withBelote, offered = "", "", {}
+        for _, a in ipairs(E.legal(E.view(s, seat), seat)) do
+          if a.k == "play" then
+            if a.b then withBelote = withBelote .. a.c else cards = cards .. a.c end
+          elseif #a.a == 1 then
+            offered[#offered + 1] = a.a[1].t .. ":" .. s.deck[a.a[1].i]
+          end
+        end
+        eq(sortedFaces(cards), sortedFaces(legal), at)
+        eq(sortedFaces(withBelote), sortedFaces(belotes), at)
+        local wantOffered, declared = ((round.anns[n] or "/")):match("^(.*)/(.*)$")
+        eq(table.concat(offered, ","), wantOffered, at)
+        if declared ~= "" then
+          local list = {}
+          for t, top in declared:gmatch("(%w+):(%w+)") do list[#list + 1] = { t = t, i = idx(s, top) } end
+          act(seat, { k = "ann", a = list })
+          s = state()
+        end
+
+        if strict then
+          for _, i in ipairs(s.hands[seat]) do
+            local c = s.deck[i]
+            if not legal:find(c, 1, true) then
+              eq({ E.apply(s, seat, { k = "play", i = i, c = c }) }, { nil, "rule" }, at)
+            elseif not belotes:find(c, 1, true) then
+              eq({ E.apply(s, seat, { k = "play", i = i, c = c, b = true }) }, { nil, "belot" }, at)
+            end
+          end
+        end
+        act(seat, { k = "play", i = idx(s, face), c = face, b = belote == "+" or nil })
+        if n % 4 == 0 then eq(state().last.win, tonumber(round.wins:sub(n / 4, n / 4)), at) end
+      end
+      s = state()
+      eq(s.phase, "score", where)
+      act(0, { k = "score" })
+      s = state()
+      local scored = {}
+      for n, x in ipairs(s.res.ann) do
+        scored[n] = x.s .. " " .. x.t .. " " .. s.deck[x.i] .. " " .. (x.on and 1 or 0)
+      end
+      eq(scored, round.scored, where)
+    end
+
+    s = state()
+    eq(s.res.raw, round.raw, where); eq(s.res.pts, round.pts, where); eq(s.res.valat, round.valat, where)
+    eq(s.res.hang, round.hang, where); eq(s.hang, round.hang, where); eq(s.score, round.total, where)
+    eq(E.over(s), r == #m.rounds, where)
+  end
+  local s = state()
+  eq(s.winner, m.winner, m.name); eq(s.score, m.score, m.name); eq(s.hang, m.hang, m.name)
+  eq(E.result(s).winners, m.winner == 1 and { 1, 3 } or { 2, 4 }, m.name)
+end
+
+describe("belot parity with BelotGameEngine", function()
+  local index = dofile(FIXTURES .. "index.lua")
+  it("has at least 50 fixture matches covering the rare situations", function()
+    ok(#index >= 50, "only " .. #index .. " fixtures")
+    local tags, deals = {}, 0
+    for _, name in ipairs(index) do
+      local m = dofile(FIXTURES .. name .. ".lua")
+      deals = deals + #m.rounds
+      for _, tag in ipairs(m.tags) do tags[tag] = true end
+    end
+    ok(deals >= 300, "only " .. deals .. " deals")
+    for _, tag in ipairs {
+      "contract C", "contract D", "contract H", "contract S", "contract N", "contract A",
+      "contract suit x2", "contract suit x4", "contract N x2", "contract N x4", "contract A x2", "contract A x4",
+      "bid over a doubled contract", "passed out", "passed out with points hanging",
+      "inside suit", "inside N", "inside A", "inside x2", "inside x4",
+      "hanging suit", "hanging N", "hanging A", "hanging x2", "hanging x4", "hanging points collected",
+      "valat suit", "valat N", "valat A", "valat x2", "valat by the declarer", "valat against the declarer",
+      "over 151 on a valat: the match goes on", "leader over 151 scored nothing: the match goes on",
+      "over 151 and tied: the match goes on", "passed out with a team over 151", "both teams over 151 at the end",
+      "b scores", "belote suit", "belote A", "two belotes in a deal",
+      "s3 scores", "s4 scores", "s5 scores", "s6 scores", "s7 scores", "s8 scores",
+      "s3 does not score", "s4 does not score", "s5 does not score", "s8 does not score",
+      "c scores", "c9 scores", "cJ scores", "c does not score", "c9 does not score",
+      "fours in both teams", "sequences in both teams", "tied sequences cancel",
+      "a four and a sequence offered", "a declaration sharing a card is dropped", "combinations not declared",
+      "rounding suit: winner at the edge", "rounding suit: loser at the edge",
+      "rounding A: winner at the edge", "rounding A: loser at the edge",
+    } do
+      ok(tags[tag], "no fixture covers: " .. tag)
+    end
+  end)
+  for n, name in ipairs(index) do
+    it(name .. " replays to the same decisions and scores", function()
+      local m = dofile(FIXTURES .. name .. ".lua")
+      eq(m.name, name)
+      local s = E.new { first = m.first }
+      replay(m, function() return s end, function(seat, a)
+        local okay, why = E.apply(s, seat, a)
+        ok(okay, name .. ": " .. a.k .. " rejected: " .. tostring(why))
+      end, true)
+    end)
+    if n % 6 == 1 then
+      it(name .. " replays the same on every seat's view", function()
+        local t = newTable(dofile(FIXTURES .. name .. ".lua").first)
+        replay(dofile(FIXTURES .. name .. ".lua"), function() return t.full end, t.act, false)
+        for seat = 0, 4 do eq(t.views[seat].score, t.full.score); eq(t.views[seat].winner, t.full.winner) end
+      end)
+    end
+  end
+end)

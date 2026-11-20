@@ -57,19 +57,33 @@
 -- 14. Undoubled: declarer's total > the other: both teams score their rounded totals, the
 --     declarer's team also takes the hanging points. Smaller („вътре“): the defenders score
 --     the rounded sum of both totals plus the hanging points. Equal („висяща“): the
---     defenders score their rounded total, the declarer's rounded total is added to the
---     hanging points.
--- 15. Doubled (x2) / redoubled (x4): the team with the bigger total scores the rounded sum
---     of both totals times the multiplier, plus the hanging points; on equal totals all of
---     that hangs.
+--     defenders score their total rounded as the bigger one, the declarer's total rounded
+--     as the smaller one is added to the hanging points.
+-- 15. Doubled (x2) / redoubled (x4): the team with the bigger total scores the sum of both
+--     totals, rounded by the contract's rule as a bigger total, times the multiplier, plus
+--     the hanging points; on equal totals all of that hangs.
 -- 16. Match: after a deal a team wins when it has 151+ and more than the other team and it
 --     scored in that deal, unless the deal was a валат („с капо не се излиза“) or passed out.
 -- 17. Leaving ends the match; the leaver's team loses.
 --
+-- STATE AND ACTIONS
 -- Cards live in state.deck (deck index -> face); hands, tricks and announces hold deck
 -- indices. E.view hides every face a seat may not see: it sees its own hand, the current
 -- trick and the last taken trick, and everything once the eight tricks are played or the
 -- match is over.
+--   phase "deal":  seat 0 {k="deal", deck={32 faces}} (on a view: no deck)       -> "bid"
+--   phase "bid":   the seat on turn {k="bid", b="P"|"C"|"D"|"H"|"S"|"N"|"A"|"X"|"R"}
+--                  -> "play", or "deal" again when passed out
+--   phase "play":  the seat on turn, optionally once in the first trick before its card,
+--                  {k="ann", a={{t="s3".."s8"|"c"|"c9"|"cJ", i=deck index}, ...}}, then
+--                  {k="play", i=deck index, c=face, b=true for a belote}         -> "score"
+--   phase "score": seat 0 {k="score"} (a view must have been shown the announces' cards;
+--                  E.view shows everything by now)                    -> "deal" or "match"
+--   any phase:     seat 0 {k="show", cards={[deck index]=face}} fills faces on a view
+-- state.res is the last deal's result: raw (team totals), pts (game points), hang, valat,
+-- contract (nil when passed out), ann (every announce with its points v and whether it
+-- scored, on). state.score, state.hang, state.winner (team) and state.left (the seat that
+-- left) describe the match.
 
 local _, ns = ...
 ns.Engines = ns.Engines or {}
