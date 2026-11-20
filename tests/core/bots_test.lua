@@ -166,8 +166,10 @@ describe("bots for any game", function()
 
   it("one human plays Death Roll against two bots: real rolls for me, table rolls for them, nobody invited", function()
     local sim, a = setup()
-    ok(a:openTable{ game = "deathroll", access = "invite", turn = 45, opt = { start = 100 } })
-    ok(a:invite("Бот Иванов")); ok(a:invite("Bot Barleybrew")); sim:run(5); eq(a.session:seatedCount(), 3)
+    local tid = a:openTable{ game = "deathroll", access = "invite", turn = 45, opt = { start = 100 } }; ok(tid)
+    ok(a:invite("Бот Иванов")); ok(a:invite("Bot Barleybrew"))
+    local mark = #sim.sent -- the real TBL and its END (once a bot was invited) are out
+    sim:run(5); eq(a.session:seatedCount(), 3)
     ok(a:startGame()); sim.nextRolls, sim.nextRandom = { 50, 20, 5, 1 }, { 40, 30, 15, 10, 4, 2 }
     for _ = 1, 200 do
       local st = a.session.state; if st.phase == "over" then break end
@@ -177,6 +179,15 @@ describe("bots for any game", function()
     for _, r in ipairs(st.rolls) do eq(r.src, r.seat == 1 and "seen" or "ask") end
     eq(sim.groupInvites, {}); eq(sim:count(function(m) return m.channel == "GUILD" and m.from ~= A end), 0)
     for _, r in ipairs(sim.rolled) do eq(r.from, A) end
+    -- Nothing of the bot table (its SIT/ACT/EV/SNP/TBL, a HI placing me there,
+    -- a bot's name) reached the real side after the bots were invited.
+    local words, real = { tid, STARTERS[1], STARTERS[2], STARTERS[3] }, 0
+    for i = mark + 1, #sim.sent do
+      local m = sim.sent[i]
+      ok(not mentions(m.msg, words), "leak in " .. tostring(m.msg.t) .. " on " .. m.channel)
+      real = real + 1
+    end
+    ok(real > 0, "A sent nothing for real") -- its HIs went out, without `at`
   end)
 
   it("a bot hosts Death Roll, I sit, it starts by itself and sees my rolls", function()
