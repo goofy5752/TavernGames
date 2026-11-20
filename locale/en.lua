@@ -20,9 +20,19 @@ T["help.ttt.time"] = "Every turn has a clock. If your time runs out, the addon p
 T["help.ttt.draw"] = "The board is full and there is no three in a row? That is a draw. Nobody gets a point."
 T["help.ttt.rematch"] = "The match is over and you want more? You both press “Rematch” and a new match starts at 0 : 0."
 
+-- Rules book: Death Roll
+T["help.deathroll.p1"] = "Death Roll is a game of pure luck for two to five players. The first one rolls from 1 to the starting number. The next one rolls from 1 to whatever came up. Whoever rolls 1 loses."
+T["help.deathroll.example"] = "Ivan and Maria play from 1000. Ivan rolls 642. Maria rolls from 1 to 642 and gets 87. Ivan gets 12, Maria gets 3. Ivan rolls from 1 to 3 and gets 1. Ivan loses and buys the round."
+T["help.deathroll.ladder"] = "This is what the ladder looks like. Every number is in the colour of whoever rolled it."
+T["help.deathroll.roll"] = "When it is your turn, you press “Roll”. The addon makes a real /roll for you, the number comes from the server and everyone sees it in chat. The host presses “Start” once there are at least two of you, and after that “New game”."
+T["help.deathroll.group"] = "Another player's /roll is seen only in a group or nearby. That is why, as soon as you sit down, the host invites you to a group and the addon accepts for you. If you are already in another group, just stand next to each other."
+T["help.deathroll.time"] = "If your time runs out, the table rolls for you. You do not lose by default, unless a 1 comes up."
+T["help.deathroll.tags"] = "A question mark next to a number means you did not see it in chat. The tag “· table” means the table rolled it: that is how bots roll."
+T["help.deathroll.leave"] = "If someone stands up in the middle, the others go on without them. If you are left alone, the game ends without a loser."
+
 -- Rules book: coming soon
-T["help.soon.p"] = "Coming soon: Death Roll, Belot, Santase, Backgammon and Texas Hold'em, and playing for a stake with a ledger of debts."
-T["help.soon.example"] = "For now the tavern plays Tic-tac-toe. The other games sit dimmed in the list, marked “Soon”. As soon as they are ready, their rules will appear here, in the book."
+T["help.soon.p"] = "Coming soon: Santase, Belot, Backgammon and Texas Hold'em, and playing for a stake with a ledger of debts."
+T["help.soon.example"] = "For now the tavern plays Tic-tac-toe and Death Roll. The other games sit dimmed in the list, marked “Soon”. As soon as they are ready, their rules will appear here, in the book."
 
 -- First-run intro
 T["intro.hall.text"] = "This is the guild's tavern. Every round table is a game. On the right you see who is here now."
@@ -144,6 +154,26 @@ T["table.waitingHost"] = "Waiting for the host to start…"
 T["start.short"] = "Not enough players yet."
 T["start.live"] = "The game is still on."
 T["start.failed"] = "The game did not start."
+
+-- Death Roll view; “Roll” and “· table” are quoted by the rules book
+T["deathroll.roll"] = "Roll"
+T["deathroll.range"] = "from 1 to %d"
+T["deathroll.rolling"] = "Rolling…"
+T["deathroll.stuck"] = "That did not work. Type /roll %d in chat."
+T["deathroll.waitFor"] = "Wait for %s…"
+T["deathroll.lost"] = "%s rolled 1 and loses!"
+T["deathroll.void"] = "The game ended without a loser."
+T["deathroll.you"] = "You"
+T["deathroll.startLabel"] = "start"
+T["deathroll.nextGame"] = "from the next game"
+T["deathroll.tag.table"] = "· table"
+T["deathroll.caption"] = "The numbers come from the real /roll in chat, so nobody can fix them. Whoever rolls 1 loses."
+T["deathroll.tip.unseen"] = "I did not see this roll in chat. We are probably not in the same group."
+T["deathroll.tip.mismatch"] = "Careful: I saw a different number for this roll in chat."
+T["deathroll.tip.table"] = "The table rolled this, not /roll: for a bot, when time ran out, or when /roll does not work."
+T["deathroll.group.missing"] = "You are not in a group with %s. Rolls are seen only in a group or nearby."
+T["deathroll.group.notleader"] = "You are not the leader of your group. Ask the leader to invite the others."
+T["deathroll.group.full"] = "Your group is full. Whoever is nearby will still see the rolls."
 
 -- Tic-tac-toe board
 T["ttt.x"] = "X"

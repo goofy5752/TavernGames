@@ -70,6 +70,7 @@ ui/Hall.lua
 ui/Minimap.lua
 ui/TableFrame.lua
 ui/games/TicTacToeView.lua
+ui/games/DeathRollView.lua
 ui/InviteToast.lua
 ui/HelpBook.lua
 ui/Intro.lua
