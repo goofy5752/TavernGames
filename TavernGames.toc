@@ -45,6 +45,8 @@ core/Wire.lua
 engines/tictactoe.lua
 engines/deathroll.lua
 engines/santase.lua
+engines/holdem_eval.lua
+engines/holdem.lua
 
 # Locale
 locale/bg.lua
