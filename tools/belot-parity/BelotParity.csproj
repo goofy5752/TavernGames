@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Generates tests/fixtures/belot/*.lua by playing matches on the unmodified C# engine
+    (NikolayIT/BelotGameEngine, MIT). See README.md for how to get the engine and rebuild.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <RollForward>Major</RollForward>
+    <Nullable>disable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>BelotParity</RootNamespace>
+    <AssemblyName>BelotParity</AssemblyName>
+    <!-- Where the BelotGameEngine repository is checked out; override with -p:BelotEngineDir=... -->
+    <BelotEngineDir Condition="'$(BelotEngineDir)' == ''">$(MSBuildThisFileDirectory)BelotGameEngine</BelotEngineDir>
+    <!-- The engine checkout lives inside this folder by default: keep it out of this project's sources. -->
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="Program.cs" />
+    <ProjectReference Include="$(BelotEngineDir)\src\Belot.Engine\Belot.Engine.csproj" />
+  </ItemGroup>
+
+</Project>
