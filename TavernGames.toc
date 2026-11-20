@@ -42,6 +42,7 @@ core/Wire.lua
 
 # Engines
 engines/tictactoe.lua
+engines/santase.lua
 
 # Locale
 locale/bg.lua
