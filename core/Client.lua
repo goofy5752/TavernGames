@@ -79,6 +79,13 @@ function Client:startGame() return ns.Session.startGame(self) end
 -- My automatic move -> true | nil, code (see Session.playAuto).
 function Client:playAuto() return ns.Session.playAuto(self) end
 
+-- My roll in a game with server rolls -> true | nil, code (see Rolls.roll).
+function Client:roll() return ns.Rolls.roll(self) end
+
+-- A server roll seen in chat (`shown` normalized, my own as env.me); emits
+-- "rollSeen"(shown, n, lo, hi) first, always (see Rolls.seen).
+function Client:rollSeen(shown, n, lo, hi) ns.Rolls.seen(self, shown, n, lo, hi) end
+
 -- Host of a table with a free seat: invite `name` -> true | nil, code
 -- ("nothost" "unknown" "seated" "pending"). The answer arrives as "inviteAnswer".
 function Client:invite(name) return self.invites:send(name) end

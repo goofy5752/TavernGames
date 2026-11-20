@@ -20,7 +20,13 @@ function Sim.new(ns)
     guids = {},       -- name -> guid (stable across relogs)
     guidCount = 0,
     nextRandom = {},  -- results for env.random, first to last; when empty: hi
+    options = {},     -- name -> the opts of sim:add (reused by sim:relog)
+    nextRolls = {},   -- results for env.roll, first to last; when empty: hi
+    rolled = {},      -- every env.roll: { from, lo, hi, n }
   }, Sim)
+  -- Whose server rolls `to` sees in chat, and the name it sees for `from`.
+  self.canSee = function() return true end
+  self.rollName = function(from) return self.ns.Names.first(from) end
   self.bus = self.ns.Bus.new()
   self.makeEnv = function(name, cls) return self:newEnv(name, { cls = cls }) end
   return self
@@ -82,8 +88,35 @@ function Sim:join(name, env)
   return client
 end
 
+-- The fakes of a human player's client (sim:add, never sim.makeEnv):
+-- env.roll unless opts.roll == false. The roll shows up in chat (rollSeen) on
+-- the next drain for every client sim.canSee lets see it: as the full name for
+-- the roller, as sim.rollName for the others.
+function Sim:addFakes(env, opts)
+  local sim, name = self, env.me
+  if opts.roll ~= false then
+    env.roll = function(lo, hi)
+      local n = table.remove(sim.nextRolls, 1) or hi
+      sim.rolled[#sim.rolled + 1] = { from = name, lo = lo, hi = hi, n = n }
+      env.after(0, function()
+        local names = {}
+        for to in pairs(sim.clients) do names[#names + 1] = to end
+        table.sort(names, sim.ns.Util.byteLess)
+        for _, to in ipairs(names) do
+          if sim.canSee(name, to) then
+            sim.clients[to]:rollSeen(to == name and name or sim.rollName(name), n, lo, hi)
+          end
+        end
+      end)
+    end
+  end
+end
+
 function Sim:add(name, opts)
+  opts = opts or {}
+  self.options[name] = opts
   local env = self:newEnv(name, opts)
+  self:addFakes(env, opts)
   return self:join(name, env), env
 end
 
@@ -93,8 +126,12 @@ function Sim:relog(name)
   self.offlineSet[name] = nil -- a relog is online again
   old.dead = true
   self.bus:leave(name)
-  local env = self:newEnv(name, { cls = old.cls, db = old.db })
+  local opts = {}
+  for k, v in pairs(self.options[name] or {}) do opts[k] = v end
+  opts.cls, opts.db = old.cls, old.db
+  local env = self:newEnv(name, opts)
   env.status, env.inGroup = old.status, old.inGroup
+  if self.options[name] then self:addFakes(env, opts) end
   return self:join(name, env)
 end
 

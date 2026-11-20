@@ -31,4 +31,9 @@ ns.Const = {
   SYN_MIN_GAP = 5,
   PENDING_SECONDS = 10, -- an unanswered SIT/WAT is given up ("gone") after this long
   TRACE_LINES = 200,
+
+  ROLL_CLAIM_WAIT = 3,  -- the host waits this long to see a roll a member claims, then takes the claim
+  ROLL_VERIFY_WAIT = 5, -- an unconfirmed recorded roll is checked against my sightings after this long
+  ROLL_ECHO_WAIT = 3,   -- my server roll that has not shown up in chat by then is reported stuck
+  ROLL_LOG = 20,        -- roll sightings kept per table
 }
