@@ -6,7 +6,7 @@
 
 **Architecture:** Game engines are pure Lua (`engines/`). All lobby/presence/session logic (`core/`) is written against an injected `env` (send, clock, timers, player status), so several simulated clients run in one Lua process over an in-memory bus and are unit-tested outside WoW. One thin adapter (`wow/`) binds `env` to AceComm/C_Timer/game events; `ui/` only renders core state and calls core methods. The same in-memory bus powers bot mode in game.
 
-**Tech Stack:** Lua 5.1, WoW Forever client (`## Interface: 16001`), Ace3 subset (LibStub, CallbackHandler-1.0, AceAddon-3.0, AceComm-3.0 + ChatThrottleLib, AceSerializer-3.0, AceDB-3.0), LibDeflate, LibDataBroker-1.1, LibDBIcon-1.0, Python 3.14 + Pillow (texture generation), self-written Lua test runner.
+**Tech Stack:** Lua 5.1, WoW Forever client (`## Interface: 16001`), Ace3 subset (LibStub, CallbackHandler-1.0, AceAddon-3.0, AceComm-3.0 + ChatThrottleLib, AceSerializer-3.0, AceDB-3.0), LibDeflate, LibDataBroker-1.1, LibDBIcon-1.0, Python 3.14 + Pillow (texture generation), self-written Lua test runner (busted-style `describe/it`; meets the intent of spec 6.5, since busted cannot be installed on Windows without luarocks; the user approved this plan).
 
 **Spec:** `docs/superpowers/specs/2026-11-20-tavern-games-design.md` (sections 5.1, 5.2, 5.3 Морски шах, 5.3а, 6.1, 6.2, 6.5, 6.6, 7 stage 1, 10). Mockups: `docs/mockups/01-visual-direction.html` (option A), `02-hub.html` (option A), `03-games.html` (`.ttt` panel).
 
@@ -91,7 +91,7 @@ Stage 1 presentation of stage 2 features: the tabs **Класация / Тефт
 | `after(seconds, fn)` | fn → `{cancel=fn}` | one-shot timer |
 | `status()` | fn → `{combat=bool, instance=bool, busy=bool}` | |
 | `inGroup(guid)` | fn → bool | is that player in my party/raid |
-| `db` | table | `{lang, introDone, busy, snoozeUntil, debug, minimap}` |
+| `db` | table | `{lang, introDone, busy, snoozeUntil, debug, minimap}` (in game a routing proxy over AceDB, Task 10) |
 | `log(dir, channel, peer, msg)` | fn | trace hook, `dir` `"in"`/`"out"` |
 
 **Messages** (`v=1` on all; `G` = GUILD, `W` = WHISPER; `→h` = to host):
@@ -114,11 +114,11 @@ Stage 1 presentation of stage 2 features: the tabs **Класация / Тефт
 | `SNP` | W | `tid, e, q, tbl, st, left` | snapshot: `tbl` = TBL record, `st` = `Engine.snapshot` |
 | `PNG` | W→h | `tid` | member heartbeat |
 | `TCK` | W | `tid, e, q` | host heartbeat |
-| `HND` | W | `tid, e, to` | graceful handoff; followed by `SNP` at epoch `e` |
+| `HND` | W | `tid, e, to` | graceful handoff, whispered by the old host to every member; the successor `to` (not the old host) then whispers `SNP` at epoch `e` |
 
-Frozen across protocol versions: the fields `v`, `t`, and `SNO.why="version"`. Table/system events (`seat=0`): `{k="sit",seat,name}`, `{k="stand",seat,why}` (`why` `"left"/"offline"`), `{k="start"}`, `{k="abort"}`, plus engine system actions.
+Frozen across protocol versions: the fields `v`, `t`, `tid` (on `SIT`, `WAT`, `SNO`), and `SNO.why="version"`. Table/system events (`seat=0`): `{k="sit",seat,name}`, `{k="stand",seat,why}` (`why` `"left"/"offline"`), `{k="start"}`, `{k="abort"}`, plus engine system actions.
 
-**Test commands:** `bash t.sh` runs everything; `bash t.sh <file-or-dir>` runs a subset. Success ends with `N passed, 0 failed` and exit code 0. Test names below written with a `--[[ ... ]]` body state their assertions in words; the implementer writes them out as real assertions with exactly those values before implementing.
+**Test commands:** `bash t.sh` runs everything; `bash t.sh <file-or-dir>` runs a subset. Success ends with `N passed, 0 failed` and exit code 0. Test names below written with a `--[[ ... ]]` body state their assertions in words; the implementer writes them out as real assertions with exactly those values before implementing. The runner fails any test that makes zero assertions (Task 1), so no test body may be left empty.
 
 ---
 
@@ -128,7 +128,7 @@ Frozen across protocol versions: the fields `v`, `t`, and `SNO.why="version"`. T
 - Create: `t.sh`, `.gitignore`, `TavernGames.toc`, `tests/run.lua`, `tests/helpers/loader.lua`, `tests/runner_test.lua`, `tests/toc_test.lua`, `tests/fixtures/failing.lua`
 
 **Interfaces:**
-- Produces (globals inside test files): `describe(name, fn)`, `it(name, fn)`, `eq(actual, expected, msg)` (deep equality), `ok(value, msg)`, `raises(fn, pattern)`, and `Loader`.
+- Produces (globals inside test files): `describe(name, fn)`, `it(name, fn)`, `eq(actual, expected, msg)` (deep equality), `ok(value, msg)`, `raises(fn, pattern)`, and `Loader`. Each `eq`/`ok`/`raises` call counts as an assertion; an `it` that finishes with zero assertions fails with `no assertions`. A test file that errors while loading counts as one failure.
 - Produces: `Loader.ns() -> ns` — reads `TavernGames.toc` and, for every line starting with `core/`, `engines/` or `locale/`, in TOC order, runs `loadfile(path)("TavernGames", ns)`. `Loader.lib(path)` runs a `Libs/` file in the global environment (used by Task 9 only).
 - Produces: `t.sh` — picks the interpreter in this order: `tools/lua/lua5.1.exe`, `luajit`, `lua5.1`, `lua` on PATH; writes `tests/.files.txt` (`find engines core locale wow ui -name '*.lua' | sort`, missing directories ignored); runs `tests/run.lua` with the given files (directories expanded to `*_test.lua`) or all `tests/**/*_test.lua`.
 
@@ -141,12 +141,15 @@ describe("runner", function()
   it("catches errors", function() raises(function() error("boom") end, "boom") end)
 end)
 -- tests/fixtures/failing.lua
-describe("x", function() it("fails", function() eq(1, 2) end) end)
+describe("x", function()
+  it("fails", function() eq(1, 2) end)
+  it("asserts nothing", function() end)   -- must fail: zero assertions
+end)
 ```
 
 - [ ] **Step 3: Run `bash t.sh tests/runner_test.lua`.** Expected: fails, `tests/run.lua` missing.
-- [ ] **Step 4: Implement `tests/run.lua`, `tests/helpers/loader.lua`, `t.sh`.** `run.lua` takes file paths as arguments, adds `tests/helpers/?.lua` to `package.path`, prints `FAIL <describe> / <it>: <message>` per failure, a last line `N passed, M failed`, and calls `os.exit(M > 0 and 1 or 0)`.
-- [ ] **Step 5: Verify.** `bash t.sh tests/runner_test.lua` → `2 passed, 0 failed`. `bash t.sh tests/fixtures/failing.lua; echo $?` → `0 passed, 1 failed` then `1`.
+- [ ] **Step 4: Implement `tests/run.lua`, `tests/helpers/loader.lua`, `t.sh`.** `run.lua` takes file paths as arguments, adds `tests/helpers/?.lua` to `package.path`, prints `FAIL <describe> / <it>: <message>` per failure (`no assertions` for a test that asserted nothing), a last line `N passed, M failed`, and calls `os.exit(M > 0 and 1 or 0)`.
+- [ ] **Step 5: Verify.** `bash t.sh tests/runner_test.lua` → `2 passed, 0 failed`. `bash t.sh tests/fixtures/failing.lua; echo $?` → `FAIL x / asserts nothing: no assertions`, `0 passed, 2 failed`, then `1`.
 - [ ] **Step 6: Create `TavernGames.toc`** with the header fields from Global Constraints and the section comments `# Libs`, `# Core`, `# Engines`, `# Locale`, `# WoW`, `# UI` (forward-slash paths; each later task appends its files under the right comment). Create `.gitignore`: `tools/lua/`, `tests/.files.txt`, `__pycache__/`, `*.zip`.
 - [ ] **Step 7: Write `tests/toc_test.lua`** with three cases: every `.lua` path in the TOC exists; every path in `tests/.files.txt` is in the TOC; every listed non-`Libs/` file compiles (`loadfile` returns a function). This is the syntax gate for `ui/` and `wow/`. Run `bash t.sh` → `5 passed, 0 failed`.
 - [ ] **Step 8: Commit (only if the user has authorized commits in this session).** `chore: test runner, loader and TOC skeleton`
@@ -192,7 +195,10 @@ describe("tictactoe", function()
   it("match ends at 3 wins and rematch needs both seats", function() --[[ three X wins with "next" between:
     phase "match", winner 1, score {3,0}; rematch by seat 1 -> phase still "match";
     rematch by seat 2 -> phase "play", score {0,0}, round 1, turn 2 ]] end)
-  it("legal lists 9 marks for the seat on turn and none for the other", function() end)
+  it("legal lists 9 marks for the seat on turn and none for the other", function()
+    local s = E.new{}; local l = E.legal(s, 1)
+    eq(#l, 9); eq(l[1], {k="mark", c=1}); eq(l[9], {k="mark", c=9}); eq(E.legal(s, 2), {})
+  end)
   it("auto picks the lowest empty cell", function()
     local s = E.new{}; play(s, {1,1, 2,2}); eq(E.auto(s, 1), {k="mark", c=3}); eq(E.auto(s, 2), nil)
   end)
@@ -215,15 +221,15 @@ end)
 - Test: `tests/core/foundations_test.lua`, `tests/core/presence_test.lua`; Modify: `TavernGames.toc`
 
 **Interfaces:**
-- `ns.Const`: `PROTOCOL=1`, `PREFIX="TAVG"`, `VERSION="0.1.0"`, `TURN_DEFAULT=45`, `TURN_CHOICES={30,45,60,90}`, `INVITE_SECONDS=30`, `SNOOZE_SECONDS=1800`, `OFFLINE_STAND_SECONDS=180`, `PING_EVERY=30`, `SILENT_AFTER=75`, `CLAIM_STAGGER=15`, `TBL_HEARTBEAT=60`, `TBL_EXPIRE=150`, `TBL_MIN_GAP=2`, `HI_HEARTBEAT=120`, `PEER_EXPIRE=300`, `LIST_MODE_ABOVE=8`, `MAX_WATCHERS=8`, `SYN_MIN_GAP=5`, `TRACE_LINES=200`.
+- `ns.Const`: `PROTOCOL=1`, `PREFIX="TAVG"`, `VERSION="0.1.0"`, `TURN_DEFAULT=45`, `TURN_CHOICES={30,45,60,90}`, `INVITE_SECONDS=30`, `SNOOZE_SECONDS=1800`, `OFFLINE_STAND_SECONDS=180`, `PING_EVERY=30`, `SILENT_AFTER=75`, `CLAIM_STAGGER=15`, `TBL_HEARTBEAT=60`, `TBL_EXPIRE=150`, `TBL_MIN_GAP=2`, `HI_HEARTBEAT=120`, `HI_MIN_GAP=2`, `PEER_EXPIRE=300`, `LIST_MODE_ABOVE=8`, `MAX_WATCHERS=8`, `SYN_MIN_GAP=5`, `TRACE_LINES=200`.
 - `ns.Util.copy(t) -> t` (deep), `ns.Util.same(a, b) -> bool` (deep), `ns.Util.money(copper) -> string` (`123456 → "12g 34s 56c"`, `500000 → "50g"`, `0 → "0c"`; zero parts omitted).
 - `ns.Names.normalize(raw) -> string|nil` — trim; strip one trailing `-Realm` where Realm contains no space and no hyphen; nil for empty or non-string.
 - `ns.Emitter.new() -> e`; `e:on(event, fn)`; `e:emit(event, ...)`.
 - `ns.Bus.new() -> bus`; `bus:join(name, receive)` with `receive(channel, sender, msg)`; `bus:leave(name)`; `bus:send(from, channel, target, msg)` queues a deep copy (GUILD → every joined name except `from`; WHISPER → `target` only, dropped if not joined); `bus:flush()` delivers FIFO until the queue is empty; `bus.filter = fn(from, to, channel, msg) -> list of msgs` (default `{msg}`; tests use it to drop or duplicate).
 - `ns.Trace.new(limit) -> tr`; `tr:add(dir, channel, peer, msg)`; `tr:lines() -> {string}`; `tr.print` (fn or nil, called with each new line).
-- `ns.Client.new(env) -> client`; `client:start()` (GUILD `HI` with `re=true`, starts heartbeats); `client:stop()` (stands if seated, GUILD `BYE`, cancels every timer); `client:receive(channel, sender, msg)`; `client:on(event, fn)`; `client:peerOffline(name)`. `receive` drops non-table messages, messages without `v`/`t`, and messages from its own name; for `v ~= 1` it only records the peer as `incompatible` and, when `v > 1`, emits `"update"` once per client lifetime.
-- `client.presence:list() -> { {name, cls, guid, at, incompatible}, ... }` sorted by name bytes; `client.presence:get(name)`. Emits `"peers"` on change. A `HI` with `re=true` is answered by a WHISPER `HI` (`re=false`). `HI` repeats on GUILD every 120 s; a peer silent for 300 s, or reported by `peerOffline`/`BYE`, is removed.
-- `Sim.new() -> sim`; `sim:add(name, opts) -> client, env` (`opts`: `cls`, `status`, `group` = list of names, `db`; builds an `env` on a fake clock, joins the bus, calls `start`); `sim.makeEnv(name, cls) -> env`; `sim:run(seconds)` (advances the clock in 1 s steps, firing due timers, then flushing the bus); `sim:offline(name)` / `sim:online(name)` (the bus drops everything to and from the name); `sim:relog(name) -> client` (fresh Client with the same name); `sim.sent` = array of `{from, channel, target, msg}`; `sim:count(pred) -> n`.
+- `ns.Client.new(env) -> client`; `client:start()` (GUILD `HI` with `re=true`, starts heartbeats); `client:stop()` (stands if seated, GUILD `BYE`, cancels every timer); `client:receive(channel, sender, msg)`; `client:on(event, fn)`; `client:peerOffline(name)`. `receive` drops non-table messages, messages without `v`/`t`, and messages from its own name; for `v ~= 1` it only records the peer as `incompatible` and, when `v > 1`, emits `"update"` once per client lifetime. The one exception: a `v ~= 1` message with `t` `SIT` or `WAT` and a string `tid` is additionally handed to the session for the version refusal (Task 4); Presence still drops every other `v ~= 1` message.
+- `client.presence:list() -> { {name, cls, guid, at, incompatible}, ... }` sorted by name bytes; `client.presence:get(name)`. Emits `"peers"` on change. A `HI` with `re=true` is answered by a WHISPER `HI` (`re=false`). `HI` repeats on GUILD every 120 s with `re=false`. Whenever the client's own `at` changes (from Task 4 on: sit, watch, stand, session end) it sends a GUILD `HI` with `re=false`, coalesced to at most one per 2 s, so peers always know where it sits. A peer silent for 300 s, or reported by `peerOffline`/`BYE`, is removed.
+- `Sim.new() -> sim`; `sim:add(name, opts) -> client, env` (`opts`: `cls`, `status`, `group` = list of names, `db`; builds an `env` on a fake clock, joins the bus, calls `start`); `sim.makeEnv(name, cls) -> env`; `sim.bus` (the shared `Bus`; tests set `sim.bus.filter`); `sim:now()`; `sim:run(seconds)` (advances the clock, both `now` and `epoch`, in 1 s steps, firing due timers, then flushing the bus); `sim:offline(name)` / `sim:online(name)` (the bus drops everything to and from the name); `sim:relog(name) -> client` (fresh Client with the same name); `sim.sent` = array of `{at, from, channel, target, msg}` (`at` = `sim:now()` at the send); `sim:count(pred) -> n`.
 
 - [ ] **Step 1: Write the failing tests.**
 
@@ -236,7 +242,8 @@ end)
 it("bus copies, orders, filters", function() --[[ mutating msg after send does not change what is delivered;
   two sends arrive in order; filter returning {m, m} delivers twice; whisper to an unknown name is dropped ]] end)
 it("money formats", function() eq(U.money(123456), "12g 34s 56c"); eq(U.money(500000), "50g"); eq(U.money(0), "0c") end)
-it("trace keeps the last 200 lines", function() end)
+it("trace keeps the last 200 lines", function() --[[ tr = Trace.new(200); tr.print counts calls; 201 tr:add("out", "WHISPER", "P"..i, {v=1, t="HI"})
+  for i = 1..201: #tr:lines() == 200; lines()[1] contains "P2", lines()[200] contains "P201"; print called 201 times ]] end)
 it("newcomer learns everyone by whisper, not by a guild burst", function()
   local sim = Sim.new(); sim:add("Иван Петров", {cls="MAGE"}); sim:add("Мария Стоянова", {cls="PRIEST"}); sim:run(1)
   local n0 = sim:count(function(m) return m.channel == "GUILD" end)
@@ -244,13 +251,20 @@ it("newcomer learns everyone by whisper, not by a guild burst", function()
   eq(#c.presence:list(), 2); eq(c.presence:get("Иван Петров").cls, "MAGE")
   eq(sim:count(function(m) return m.channel == "GUILD" end) - n0, 1)
 end)
-it("drops a peer on BYE, on peerOffline and after 300 s of silence", function() end)
+it("drops a peer on BYE, on peerOffline and after 300 s of silence", function() --[[ sim with a, b, c, d; sim:run(1): a knows B, C, D;
+  sim:offline(D); sim:run(301) -> a.presence:get(D) == nil, B and C still listed; b:stop(); sim:run(1) -> get(B) == nil;
+  a:peerOffline(C) -> get(C) == nil at once; #a.presence:list() == 0 ]] end)
 it("flags a newer protocol once and lists the peer as incompatible", function()
   local seen = 0; a:on("update", function() seen = seen + 1 end)
   a:receive("GUILD", "Нов Клиент", {v=2, t="HI"}); a:receive("GUILD", "Нов Клиент", {v=2, t="ZZZ"})
   eq(seen, 1); eq(a.presence:get("Нов Клиент").incompatible, true)
 end)
-it("ignores garbage: a string, a table without t, its own name", function() end)
+it("ignores garbage: a string, a table without t, its own name", function()
+  -- a = sim:add(A) in a fresh sim, as in the test above
+  a:receive("GUILD", "Гошо Тестов", "hello"); a:receive("GUILD", "Гошо Тестов", {v=1})
+  a:receive("GUILD", A, {v=1, t="HI", cls="MAGE"})
+  eq(a.presence:get("Гошо Тестов"), nil); eq(a.presence:get(A), nil); eq(#a.presence:list(), 0)
+end)
 ```
 
 - [ ] **Step 2: Run `bash t.sh tests/core`.** Expected: FAIL, modules missing.
@@ -272,6 +286,8 @@ it("ignores garbage: a string, a table without t, its own name", function() end)
   - `client.session` — nil, or `{tid, role ("host"|"player"|"watcher"), mySeat, host, epoch, seq, seats, state, status, deadline}`; `session:record() -> TBL fields`. Emits `"session"` on any change (argument: the session or nil).
 - Rules:
   - A player is at one table at most (seated or watching). The host checks a request in this order: table exists (`"gone"`), requester known to Presence and compatible (`"version"`), requester not at another table per Presence `at` (`"busy"`), access (`"access"`: `guild` = any Presence peer; `invite` = in the table's invited set; `group` = `env.inGroup(peer.guid)`), seat free (`"taken"`), watcher limit 8 (`"full"`). Watching is subject to the same access rule as sitting.
+  - Version refusal (spec 6.2): a `v ~= 1` `SIT` or `WAT` whose string `tid` is a table I host is answered with a whispered `SNO{v=1, tid, why="version"}`; nothing else changes.
+  - Every sit, watch, stand or session end changes the client's own `at`, which triggers the coalesced GUILD `HI` from Task 3.
   - Seating changes are ordered events (`EV` seat 0 `sit`/`stand`); the newcomer additionally gets an `SNP`.
   - The host announces `TBL` on GUILD on every record change, coalesced to one per 2 s per table, and every 60 s; a newcomer's `HI re=true` is answered with a whispered `TBL`. Others drop a table after 150 s without `TBL`, or on `END`.
   - A `TBL` is accepted when the sender equals its `h` field and (`e` is greater than the known epoch, or equal with the same host). Equal epoch from a different host: the claimant with the lower seat index in `s` wins.
@@ -292,7 +308,10 @@ it("cannot sit at two tables", function() --[[ why == "busy" ]] end)
 it("ten quick changes produce at most one TBL per 2 s", function() --[[ GUILD TBL count for tid within sim:run(2) <= 1 ]] end)
 it("table disappears on END and after 150 s of silence", function() --[[ a:stand() -> gone; host offline -> gone after sim:run(151) ]] end)
 it("late joiner gets the table by whisper", function() --[[ sim:add after open; lobby:get(tid) ~= nil after sim:run(1) ]] end)
-it("ignores TBL whose sender is not its host field", function() --[[ c:receive("GUILD", C, {v=1,t="TBL",tid=tid,h=A,e=9,...}); epoch stays 1 ]] end)
+it("ignores TBL whose sender is not its host field", function() --[[ b:receive("GUILD", C, {v=1,t="TBL",tid=tid,h=A,e=9,...})
+  (C is not b's own name, so the sender ~= h check is what drops it); b.lobby:get(tid).epoch == 1 and .host == A ]] end)
+it("refuses a newer client's SIT with 'version'", function() --[[ a:receive("WHISPER", "Нов Клиент", {v=2,t="SIT",tid=tid,seat=2}); sim:run(1):
+  exactly one entry in sim.sent from A, WHISPER to "Нов Клиент", msg.t == "SNO", msg.tid == tid, msg.why == "version"; a.session.seats == {A, false} ]] end)
 it("watcher is counted and limited to 8", function() --[[ record.watchers == 8; the ninth WAT -> "full" ]] end)
 ```
 
@@ -312,11 +331,11 @@ it("watcher is counted and limited to 8", function() --[[ record.watchers == 8; 
 - Rules:
   - When all seats are filled the host emits `{k="start"}` (engine `new` with `first=1`); status `"live"`, record state `"live"`.
   - Host: validates each `ACT` (the sender must hold a seat; the action goes through `Engine.apply` on the real state), assigns `q = seq + 1`, whispers `EV` to every other seated player and watcher. An invalid `ACT` is dropped silently.
-  - Members: `q == seq + 1` → apply; `q <= seq` → ignore; `q > seq + 1` → discard and send `SYN` (at most one per 5 s). `EV`/`SNP`/`TCK` are accepted only from the current host and with `e >= epoch`. If an `EV` from the host fails `Engine.apply`, emit `"desync"` and send `SYN`.
+  - Members: `q == seq + 1` → apply; `q <= seq` → ignore; `q > seq + 1` → discard and send `SYN` (at most one per 5 s). `EV`/`SNP`/`TCK` are accepted only from the current host and with `e >= epoch` (Task 6 adds higher-epoch adoption from seated senders; an `EV` from a non-host is never applied). If an `EV` from the host fails `Engine.apply`, emit `"desync"` and send `SYN`.
   - `TCK` every 30 s carries `q`; a member behind it sends `SYN`. Members send `PNG` every 30 s.
   - Turn timer: after every event that leaves `state.turn` set, the host arms `turn` seconds; on expiry it emits `Engine.auto(state, seat)` as that seat's event with `auto=true`. `left` in the `EV` gives members the countdown.
   - When `Engine.system(state)` returns an action, the host emits it (seat 0) after the returned delay.
-  - A seated player standing while `"live"` → `stand` then `abort` events, status `"aborted"`, record state `"open"`. No winner is recorded (stage 1 has no stakes).
+  - A seated player standing while `"live"` → `stand` event. If the seated players then number fewer than `Engine.minSeats`, an `abort` event follows: status `"aborted"`, record state `"open"`. Otherwise the match continues and the emptied seat's turns are played by the turn timer. For ttt (2 of 2) any stand aborts. No winner is recorded (stage 1 has no stakes).
 
 - [ ] **Step 1: Write the failing tests.**
 
@@ -339,7 +358,9 @@ it("turn timeout plays the first empty cell, flagged auto, no loss", function()
   sim:run(46); eq(a.session.state.board[1], 1); eq(a.session.status, "live"); eq(b.session.state.turn, 2)
 end)
 it("no auto action while waiting for rematch", function() --[[ phase "match"; sim:run(120); phase still "match" ]] end)
-it("rematch by both restarts 0:0 with the other seat first", function() end)
+it("rematch by both restarts 0:0 with the other seat first", function() --[[ X wins three rounds (sim:run(4) after each round);
+  a:act{k="rematch"}; sim:run(1) -> phase still "match" on a, b, c; b:act{k="rematch"}; sim:run(1) -> on a, b and c:
+  phase "play", score {0,0}, round 1, turn 2 ]] end)
 it("standing mid-match aborts without a winner and reopens the chair", function() --[[ a.session.status "aborted"; c.lobby:get(tid).state "open"; seats {A, false} ]] end)
 ```
 
@@ -357,18 +378,20 @@ it("standing mid-match aborts without a winner and reopens the chair", function(
 - Consumes: Task 5 session; `Const.SILENT_AFTER`, `CLAIM_STAGGER`, `OFFLINE_STAND_SECONDS`.
 - Produces: `ns.Succession.candidates(seats, oldHost) -> {name, ...}` (seated players in ascending seat index, old host excluded); `ns.Succession.wins(seats, hostA, hostB) -> hostA|hostB` (the one with the lower seat index). `session.hostSilent` (bool, for the UI banner).
 - Rules:
-  - **Offline seat:** the host tracks `lastHeard` per seated player (any message from them). `peerOffline`/`BYE` does not shorten the wait. When `now − lastHeard ≥ 180` the host emits `stand` with `why="offline"` (then `abort` if live). Until then their turns are played by the turn timer. A watcher silent for 75 s is dropped.
+  - **Offline seat:** the host tracks `lastHeard` per seated player (any message from them). `peerOffline`/`BYE` does not shorten the wait. When `now − lastHeard ≥ 180` the host emits `stand` with `why="offline"` (then `abort` if live and fewer than `minSeats` remain seated, Task 5). Until then their turns are played by the turn timer. A watcher silent for 75 s is dropped.
   - **Reconnect:** when the host receives `HI` from a name seated at its table, it whispers `SNP`; a client receiving an `SNP` for a table where its own name holds a seat adopts the session.
-  - **Graceful host leave** (`stand`/`stop` with another seated player): the host emits its own `stand` event, then whispers `HND{e=epoch+1, to=first candidate}` and an `SNP` at the new epoch to all members, then leaves. The successor becomes host, re-arms a full turn timer, announces `TBL`. For a 2-seat game this aborts the match (a seat emptied) but the table lives on under the new host.
+  - **Graceful host leave** (`stand`/`stop` with another seated player): the host emits its own `stand` event, then whispers `HND{e=epoch+1, to=first candidate}` to every member (seated players and watchers), then leaves. Each member sets `host = HND.to`, `epoch = HND.e`. The successor becomes host and itself whispers an `SNP` at the new epoch to all members, re-arms a full turn timer, announces `TBL`. A member that gets the successor's `SNP` before the `HND` accepts it when `SNP.tbl.h == sender` and the sender is seated. When fewer than `minSeats` remain seated (ttt) the match aborts, but the table lives on under the new host; otherwise (fake engine, 2 of 3) play continues.
   - **Host silence:** a member that hears nothing from the host for 75 s sets `hostSilent`. The candidate at rank `k` (0-based) claims after `75 + 15·k` s of silence: epoch + 1, whispers an `SNP` built from its own state to all members, announces `TBL`, re-arms a full turn timer. The old host keeps its seat and falls under the offline-seat rule (`lastHeard` = its last message).
-  - **Convergence:** any table message with a higher epoch than mine makes me a member of that sender (a host demotes itself and sends `SYN`). The same epoch from two hosts → `Succession.wins`; the loser demotes and sends `SYN`. Messages with a lower epoch are ignored.
+  - **Convergence:** a higher epoch than mine is adopted only from a sender who holds a seat in my current `seats`, and only via `TBL`, `SNP`, `HND` or `TCK` (never via `EV`; an `EV` from a non-host is never applied). Adopting makes me a member of that sender (a host demotes itself and sends `SYN`); a higher epoch from anyone else is ignored. The same epoch from two hosts → `Succession.wins`; the loser demotes and sends `SYN`. Messages with a lower epoch are ignored.
   - Watchers never become host. If no seated candidate is left, the table expires from the lobby after 150 s and watchers' sessions end.
 
-- [ ] **Step 1: Write the failing tests.** `fake_engine.lua` registers `ns.Engines.fake` in tests only: 4 seats, action `{k="inc"}` increments `state.n`, turn rotates 1→2→3→4, `auto` returns `{k="inc"}`, never ends.
+- [ ] **Step 1: Write the failing tests.** `fake_engine.lua` registers `ns.Engines.fake` in tests only: `minSeats=2`, `maxSeats=3`, action `{k="inc"}` increments `state.n`, turn rotates 1→2→3, `auto` returns `{k="inc"}`, never ends.
 
 ```lua
 it("offline player's turns are auto-played, then he is stood up at 180 s", function()
-  sim:offline(B); sim:run(179); eq(a.session.seats[2], B); sim:run(2)
+  -- ttt, a hosts, b seat 2, live; the 180 s count starts at B's last message, not at sim:offline
+  local last = 0; for _, s in ipairs(sim.sent) do if s.from == B then last = s.at end end
+  sim:offline(B); sim:run(179 - (sim:now() - last)); eq(a.session.seats[2], B); sim:run(2)
   eq(a.session.seats[2], false); eq(a.session.status, "aborted")
 end)
 it("relog within 3 minutes restores seat, board and score", function()
@@ -378,8 +401,12 @@ end)
 it("host stands mid-turn: next player becomes host, timer restarts, no move lost or doubled", function()
   -- fake engine, a b c seated, d watches; three incs; a:stand(); sim:run(2)
   eq(b.session.role, "host"); eq(b.session.epoch, 2); eq(d.session.host, B); eq(d.lobby:get(tid).host, B)
-  eq(c.session.state.n, 3); sim:run(46); eq(c.session.state.n, 4)   -- one auto move after a full fresh turn
+  eq(c.session.state.n, 3); eq(c.session.status, "live")   -- 2 of 3 still seated >= minSeats: no abort
+  sim:run(46); eq(c.session.state.n, 4)   -- one auto move after a full fresh turn
 end)
+it("a higher epoch from a non-seated sender is ignored", function() --[[ fake engine, a b c seated, d watches;
+  b:receive("WHISPER", D, {v=1,t="SNP",tid=tid,e=9,q=99,tbl={...,h=D,e=9},st=...}) and the same as TBL on GUILD;
+  b.session.host == A, b.session.epoch == 1, b.session.seq unchanged ]] end)
 it("host vanishes mid-turn: guest claims after 75 s and play continues", function()
   -- ttt, a hosts, b seat 2, c watches; a:act mark 1; then
   sim:offline(A); sim:run(76); eq(b.session.role, "host"); eq(b.session.hostSilent, false)
@@ -420,11 +447,15 @@ it("auto-decline reasons, in order", function()
   eq(I.autoReason({instance=true}, 0, 100, false), "instance"); eq(I.autoReason({}, 0, 100, true), "busy")
   eq(I.autoReason({}, 200, 100, false), "snooze"); eq(I.autoReason({}, 200, 200, false), nil)
 end)
-it("invitee in combat: no toast event, host hears ('auto','combat')", function() end)
+it("invitee in combat: no toast event, host hears ('auto','combat')", function() --[[ b added with status {combat=true};
+  a opens an invite table, ok(a:invite(B)); sim:run(1): b's "invite" handler called 0 times; a's "inviteAnswer" got (B, "auto", "combat") ]] end)
 it("unanswered invite times out at 30 s", function() --[[ host sees ("auto","timeout"); invitee sees inviteGone ]] end)
 it("snooze lasts 30 minutes", function() --[[ second invite within 1800 s -> why "snooze", no "invite"; after sim:run(1801) a new invite shows ]] end)
-it("stale yes after the chair was taken is refused 'taken'", function() end)
-it("yes after the table closed is refused 'gone'", function() end)
+it("stale yes after the chair was taken is refused 'taken'", function() --[[ a opens a guild table, invites B; sim:run(1);
+  c:sit(tid, 2); sim:run(1); b:answerInvite(tid, "yes"); sim:run(1): b's "refused" got (tid, "taken"); b.session == nil;
+  a.session.seats == {A, C}; b saw "inviteGone"(tid) ]] end)
+it("yes after the table closed is refused 'gone'", function() --[[ a opens an invite table, invites B; sim:run(1); a:stand(); sim:run(1);
+  b:answerInvite(tid, "yes"); sim:run(1): b's "refused" got (tid, "gone"); b.session == nil; b saw "inviteGone"(tid) ]] end)
 ```
 
 - [ ] **Step 2: Run `bash t.sh tests/core/invites_test.lua`.** Expected: FAIL.
@@ -440,7 +471,7 @@ it("yes after the table closed is refused 'gone'", function() end)
 
 **Interfaces:**
 - `ns.Bots.enable(client, env, makeEnv) -> bots`; `ns.Bots.disable(bots)`; `bots:hostTable()` (an idle bot opens a guild table and waits; when all bots are busy a new one named `"Бот Номер" .. n` is spawned, up to 12 bots in total); `bots:inviteMe()` (an idle bot opens an invite-only table and invites `env.me`); `bots.list` = clients. `makeEnv(name, cls) -> env` is supplied by the caller (Sim in tests, the adapter in game). Starting bots: `"Бот Иванов"` PRIEST, `"Bot Barleybrew"` WARRIOR, `"Бот Петрова"` MAGE.
-  - Routing (over a private `Bus`): `enable` wraps `env.send` — a WHISPER to a bot goes only to the bus; GUILD goes to the real send **and** the bus; everything else is unchanged. Bot sends: WHISPER to `env.me` → `client:receive`; to another bot → bus; elsewhere → dropped. Bot GUILD → `client:receive` and the other bots only, **never the real guild channel**. Delivery happens through `env.after(0, flush)`.
+  - Routing (over a private `Bus`): `enable` wraps `env.send` — a WHISPER to a bot goes only to the bus; GUILD goes to the real send **and** the bus, except that a GUILD message whose `tid` belongs to a table with a bot as host, in its seats or in its invited set goes to the bus only, and a `HI` whose `at` is a bot-hosted table goes to the real send with `at` cleared (a copy) and to the bus unchanged; no bot name or bot table ever reaches the real guild channel. Everything else is unchanged. Bot sends: WHISPER to `env.me` → `client:receive`; to another bot → bus; elsewhere → dropped. Bot GUILD → `client:receive` and the other bots only, **never the real guild channel**. Delivery happens through `env.after(0, flush)`.
   - Behaviour: accept an invite after 1 s; on its turn act `Engine.auto` after 1.5 s; in phase `"match"` send `rematch` after 2 s.
 - `ns.Locale.set(lang)` (`"bg"`/`"en"`), `ns.Locale.lang()`, `ns.Locale.tables` (`{bg=..., en=...}`), `ns.L(key, ...) -> string` (`string.format` when extra arguments are given; a missing key returns the key).
 - `ns.Help.topics` = ordered list of `{id, title, blocks}`; stage 1 ids `"hall"`, `"ttt"`, `"soon"`. A block is `{kind="p"|"example"|"board", key=<locale key>, board=<9 cells, kind "board">, line=<{a,b,c}>}`. `ns.Help.get(id)`. `ns.Help.intro` = 4 steps of `{title, text}` locale keys: hall → sitting → invites → the ⓘ book.
@@ -457,22 +488,35 @@ it("yes after the table closed is refused 'gone'", function() end)
 ```lua
 it("one human plays a whole match against a bot without touching the guild channel", function()
   local a, envA = sim:add(A, {cls="MAGE"}); local bots = Bots.enable(a, envA, sim.makeEnv)
-  local tid = a:openTable{game="ttt", access="invite", turn=45}; a:invite("Бот Иванов"); sim:run(5)
+  sim:run(1)   -- let the bots' HI reach a's Presence before inviting
+  local tid = a:openTable{game="ttt", access="invite", turn=45}; ok(a:invite("Бот Иванов")); sim:run(5)
   eq(a.session.seats[2], "Бот Иванов")
   -- loop up to 400 s: when it is seat 1's turn, a:act(E.auto(state, 1)); sim:run(1)
   eq(a.session.state.phase, "match")
   eq(sim:count(function(m) return m.channel == "GUILD" and m.from ~= A end), 0)
+  eq(sim:count(function(m) return m.channel == "GUILD" and m.msg.tid == tid
+    and m.msg.s and (m.msg.s[1] == "Бот Иванов" or m.msg.s[2] == "Бот Иванов") end), 0)   -- bot table stays on the bot bus
 end)
 it("a bot can host and invite me", function() --[[ bots:inviteMe(); sim:run(2); "invite" event whose host is a bot name ]] end)
 it("hostTable spawns extra bots up to 12", function() --[[ nine calls -> #a.lobby:tables() == 9 after sim:run(3) ]] end)
-it("disable restores env.send and removes the bots from presence", function() end)
-it("bg and en have the same keys and the same number of % placeholders per key", function() end)
-it("every help block and intro key exists in both languages; topics are hall, ttt, soon", function() end)
+it("disable restores env.send and removes the bots from presence", function() --[[ keep orig = envA.send before enable; after enable
+  and sim:run(1): envA.send ~= orig, a.presence:get("Бот Иванов") ~= nil; Bots.disable(bots); sim:run(1): envA.send == orig;
+  a.presence:get(n) == nil for "Бот Иванов", "Bot Barleybrew", "Бот Петрова" ]] end)
+it("bg and en have the same keys and the same number of % placeholders per key", function() --[[ T = ns.Locale.tables;
+  next(T.bg) ~= nil; ok(T.en[k], k) for every k in T.bg and ok(T.bg[k], k) for every k in T.en; per key, the count of
+  "%" placeholders (after removing "%%") is eq in bg and en ]] end)
+it("every help block and intro key exists in both languages; topics are hall, ttt, soon", function() --[[ ids of ns.Help.topics ==
+  {"hall","ttt","soon"}; #ns.Help.intro == 4; every block key, topic title and intro title/text key is a string in T.bg and T.en;
+  "ttt" has exactly one "board" block with 9 cells and a 3-cell line ]] end)
 it("L formats and falls back to the key", function() eq(ns.L("no.such.key"), "no.such.key") end)
 it("hall switches to list above 8 tables", function() eq(H.mode(8), "floor"); eq(H.mode(9), "list") end)
 it("8 slots are distinct and inside the floor", function() --[[ slots(8, 560, 420): 8 unique points, 0 < x < 560, 0 < y < 420 ]] end)
 it("seat 1 is at the top", function() --[[ chairs(2, 40): [1] == (0, 40), [2] == (0, -40), tolerance 1e-6 ]] end)
-it("my table comes first, then open, then live", function() end)
+it("my table comes first, then open, then live", function()
+  local r = function(tid, st, s) return {tid=tid, state=st, seats=s} end
+  local out = H.order({r("b#2","live",{A,false}), r("c#3","open",{"X",false}), r("a#1","live",{"X","Y"}), r("d#4","open",{"Z",false})}, A)
+  eq({out[1].tid, out[2].tid, out[3].tid, out[4].tid}, {"b#2", "c#3", "d#4", "a#1"})
+end)
 ```
 
 - [ ] **Step 2: Run `bash t.sh tests/core`.** Expected: the three new files FAIL.
@@ -494,12 +538,13 @@ it("my table comes first, then open, then live", function() end)
 - [ ] **Step 3: Write the failing test `tests/core/wire_test.lua`** (loads LibStub, AceSerializer-3.0 and LibDeflate with `Loader.lib`; if a library needs a WoW global at load time, stub exactly that global at the top of this test file):
 
 ```lua
+local m = {v=1, t="TBL", tid="Иван Петров#1763650000", s={"Иван Петров", false}, e=1}   -- file scope: used by tests 1 and 3
 it("round-trips Cyrillic names and nested tables", function()
-  local m = {v=1, t="TBL", tid="Иван Петров#1763650000", s={"Иван Петров", false}, e=1}
   eq(wire:unpack(wire:pack(m)), m)
 end)
 it("snapshot above 255 bytes survives pack/unpack", function()
-  -- snap = SNP with 2 seats and 8 extra names "Александър Константинопольски N" in tbl
+  -- snap = SNP with 2 seats, 8 distinct Cyrillic watcher names in tbl and a field of about 400 bytes of
+  -- non-repeating Cyrillic prose written inline, so the packed size stays above 255 after deflate
   ok(#wire:pack(snap) > 255); eq(wire:unpack(wire:pack(snap)), snap)
 end)
 it("packed text has no NUL byte", function() ok(not wire:pack(m):find("%z")) end)
@@ -518,19 +563,19 @@ it("garbage returns nil instead of raising", function() eq(wire:unpack("not a me
 
 **Interfaces:**
 - Consumes: `Client.new(env)`, `Wire.new`, `Bots.enable`, `Trace`, `Locale`.
-- Produces (for `ui/`): `ns.addon` (AceAddon object), `ns.client` (nil until the own name is known), `ns.db` (AceDB over `TavernGamesDB`; `global`: `lang`, `introDone`, `busy`, `debug`, `minimap={hide=false}`; `char`: `snoozeUntil`), `ns.ready(fn)` (runs `fn(client)` once the client exists), `ns.classColor(cls) -> r, g, b`, `ns.bots` (nil or the bots object).
+- Produces (for `ui/`): `ns.addon` (AceAddon object), `ns.client` (nil until the own name is known), `ns.db` (a routing proxy over AceDB on `TavernGamesDB`, the same object passed as `env.db`: reads and writes of `snoozeUntil`, `busy`, `debug` go to AceDB `char`, and of `lang`, `introDone`, `minimap={hide=false}` to AceDB `global`; both persist across reloads), `ns.ready(fn)` (runs `fn(client)` once the client exists), `ns.classColor(cls) -> r, g, b`, `ns.bots` (nil or the bots object).
 - Behaviour:
   - Comm: `RegisterComm("TAVG")`; accept only the distributions `GUILD` and `WHISPER`; sender through `Names.normalize`; `wire:unpack` returning nil → drop. Send through `SendCommMessage` (AceComm splits above 255 bytes), priority `ALERT` for `EV`/`ACT`/`SNP`, `NORMAL` otherwise.
   - `env.now = GetTime`, `env.epoch = GetServerTime`, `env.after` over `C_Timer.NewTimer`, `status` from `InCombatLockdown()`, `IsInInstance()`, `db.busy or UnitIsDND("player")`, `inGroup(guid)` over `IsGUIDInGroup`, `log` into a `Trace` whose `print` is set while `db.debug` is on.
   - **Own full name** (`UnitName` gives only the first name on Forever): request the guild roster and find the entry whose GUID equals `UnitGUID("player")`; if not found within 5 s, send `{v=1, t="WHO", id=<guid>}` on GUILD and take the sender of the echo whose `id` matches. Only then create the Client and call `start()`. Not in a guild → no Client; the UI shows `L("hall.noguild")`; bot mode still works with `UnitName("player")` as the name.
   - A guild member going offline (roster update or the "has gone offline" system line) → `client:peerOffline(name)`. `PLAYER_LOGOUT` → `client:stop()`.
   - Suppress the system "player not found" line for names the addon whispered in the last 5 s (chat message event filter; use whichever filter API the client provides).
-  - `/tavern` toggles the main window; `/tavern bots` toggles three bots; `/tavern bots host`; `/tavern bots invite`; `/tavern debug` toggles `db.debug` (lines such as `TAVG > WHISPER Име Фамилия: EV q=7` in the default chat frame, visible only to the player); `/tavern intro`; `/tavern reset` (clears `lang` and `introDone`); `/tavern probe` prints: the resolved own name, `IsInInstance()`, whether `C_TradeInfo.SetTradeMoney`, `SetSendMailMoney` and `issecretvalue` exist, five `math.random(1, 1000000)` samples, and sends one packed 600-byte test whisper to itself, reporting `echo OK` or `echo LOST` after 5 s.
+  - `/tavern` toggles the main window; `/tavern bots` toggles three bots; `/tavern bots host`; `/tavern bots invite`; `/tavern debug` toggles `db.debug` (lines such as `TAVG > WHISPER Име Фамилия: EV q=7` in the default chat frame, visible only to the player); `/tavern intro`; `/tavern reset` (clears `lang` and `introDone`); `/tavern probe` prints: the resolved own name, `IsInInstance()`, whether `InitiateTrade`, `C_TradeInfo.SetTradeMoney`, `SetSendMailMoney`, `SendMail` and `issecretvalue` exist, five `math.random(1, 1000000)` samples, and sends one packed 600-byte test whisper to itself, reporting `echo OK` or `echo LOST` after 5 s together with the `IsInInstance()` value at send time (the instance-messaging result).
 
 - [ ] **Step 1: Ask the user for the Forever `Interface\AddOns` path and their OK, then link the repo into it:** `cmd /c mklink /J "<AddOns>\TavernGames" D:\Programming\TavernGames`.
 - [ ] **Step 2: Implement `wow/Adapter.lua` and `wow/Slash.lua`; add them to the TOC with their locale keys.** Run `bash t.sh` → all pass (compile gate, locale parity).
-- [ ] **Step 3: In-game checks, one character.** With `/console scriptErrors 1`, `/reload` shows no error. `/tavern probe` prints the own name as two words without a realm and `echo OK`. `/tavern debug` then `/tavern bots`: the trace shows `HI` from three bots, and no outgoing GUILD line carries a bot's name.
-- [ ] **Step 4: In-game checks, two guild characters with the addon.** With `/tavern debug` on both: each trace shows the other's `HI` under the full two-word name, and each receives the other's whispered `HI` reply. Enter a dungeon on one and run `/tavern probe` (does the echo arrive, does the other client still see its GUILD `HI`). Write the findings — name format, instance behaviour, `math.random` samples, trade/mail API presence — into the notes file (spec §10).
+- [ ] **Step 3: In-game checks, one character.** With `/console scriptErrors 1`, `/reload` shows no error. `/tavern probe` prints the own name as two words without a realm and `echo OK`. `/tavern debug` then `/tavern bots`: the trace shows `HI` from three bots, and no outgoing GUILD line carries a bot's name; invite „Бот Иванов“ to an invite-only table and check again: no outgoing GUILD `TBL`/`END` for that table.
+- [ ] **Step 4: In-game checks, two guild characters with the addon.** With `/tavern debug` on both: each trace shows the other's `HI` under the full two-word name, and each receives the other's whispered `HI` reply. Enter a dungeon on one and run `/tavern probe` (does the echo arrive, does the other client still see its GUILD `HI`). Write the findings — name format, instance behaviour, `math.random` samples, trade/mail API presence (`InitiateTrade`, `C_TradeInfo.SetTradeMoney`, `SetSendMailMoney`, `SendMail`), the in-instance echo result — into the notes file (spec §10), as an early signal for stage 2.
 - [ ] **Step 5: Commit (only if the user has authorized commits in this session).** `feat: WoW adapter, slash commands, risk probes`
 
 ### Task 11: Theme, widgets, main window, hall
@@ -608,6 +653,6 @@ it("garbage returns nil instead of raising", function() eq(wire:unpack("not a me
 ## Self-review (applied)
 
 - **Spec coverage:** 5.1 visuals → Tasks 9, 11; 5.2 hall, list mode above 8, invite toast, gold display → Tasks 7, 8, 11, 12; 5.3 Морски шах → Tasks 2, 12; 5.3а book, ⓘ on the title bar and on every table, first-run intro → Tasks 8, 13; 6.1 layers → File Structure; 6.2 comm, protocol version with a polite refusal, host authority, snapshot on reconnect, automatic action on timeout → Tasks 3–6, 9, 10; 6.5 bots and debug → Tasks 8, 10; 6.6 language choice → Task 13; §10 early risks → Task 10 `/tavern probe`. Deliberately absent (later stages): ledger, stakes, Сметки, Класация/Тефтер/История, commit-reveal, `/roll`.
-- **Gaps fixed during review:** added the bag-gold display (spec 5.2) to Task 11; added the GUID (`id`) to `HI` so „Групата ми“ is checked by GUID instead of unreliable unit names; added the `TBL` coalescing test for the anti-spam anti-goal; added the "player not found" whisper-error filter; added a 4-seat fake engine because tic-tac-toe has a single successor candidate and cannot exercise split brain; made `bots:hostTable()` spawn extra bots so list mode (9 tables) can be checked by one person; intro step 3 is „покани“ because payment does not exist in stage 1.
+- **Gaps fixed during review:** added the bag-gold display (spec 5.2) to Task 11; added the GUID (`id`) to `HI` so „Групата ми“ is checked by GUID instead of unreliable unit names; added the `TBL` coalescing test for the anti-spam anti-goal; added the "player not found" whisper-error filter; added a 3-seat fake engine (`minSeats=2`, so a host standing does not abort) because tic-tac-toe has a single successor candidate and cannot exercise split brain; made `bots:hostTable()` spawn extra bots so list mode (9 tables) can be checked by one person; intro step 3 is „покани“ because payment does not exist in stage 1.
 - **Type consistency:** the refusal event is `"refused"(tid, why)` everywhere; engine methods are `new/apply/legal/auto/system/snapshot/restore`; session fields are `role/mySeat/host/epoch/seq/seats/state/status/deadline/hostSilent`; `env.inGroup` takes a GUID in Tasks 3, 4, 10; `Succession.wins(seats, hostA, hostB)` matches its test.
 - **Proportion:** function bodies are left to the implementer; prose is spent only on rules the tests do not determine (order of the sit checks, claim timing, bot message routing, own-name discovery).
