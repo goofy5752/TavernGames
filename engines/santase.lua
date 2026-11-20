@@ -54,8 +54,9 @@ ns.Engines = ns.Engines or {}
  Views: a seat sees its own hand, the cards on the table, the last completed trick, the face-up trump
  card, cards shown in a hand (marriage partner, a trump card taken from under the stock), and
  everything once the match is over. Card points, trick counts, marriages and game points are
- public numbers. E.system returns {k="deal"} when a hand must be dealt; the fairness layer attaches
- the deck (on a full state the deal must be a permutation of E.DECK; on a view any known subset).
+ public numbers. Randomness: E.system returns {k="deal", need="deck"} when a hand must be dealt; the
+ supplier applies it without need and with the deck (apply refuses an action carrying need with "need"):
+ on a full state a permutation of E.DECK; on a view any known subset, no deck = an empty one.
 ]]
 
 local E = { id = "santase", minSeats = 2, maxSeats = 2, GOAL = 11, TARGET = 66, options = {} }
@@ -237,6 +238,7 @@ end
 
 local function deal(s, a)
   local d = a.deck
+  if d == nil and not s.full then d = {} end
   if type(d) ~= "table" then return nil, "deck" end
   for k in pairs(d) do if not isIndex(k) then return nil, "deck" end end
   local seen = {}
@@ -299,6 +301,7 @@ end
 
 function E.apply(s, seat, a)
   if type(a) ~= "table" then return nil, "action" end
+  if a.need ~= nil then return nil, "need" end
   local k = a.k
   if k == "deal" or k == "show" then
     if seat ~= 0 then return nil, "seat" end
@@ -365,8 +368,8 @@ function E.auto(s, seat)
 end
 
 function E.system(s)
-  if s.phase == "deal" then return { k = "deal" }, 0 end
-  if s.phase == "hand" then return { k = "deal" }, 3 end
+  if s.phase == "deal" then return { k = "deal", need = "deck" }, 0 end
+  if s.phase == "hand" then return { k = "deal", need = "deck" }, 3 end
 end
 
 function E.view(s, seat)

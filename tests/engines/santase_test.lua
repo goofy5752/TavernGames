@@ -81,7 +81,7 @@ describe("santase: deck and deal", function()
   end)
   it("waits for a deal, then deals 3+3, turns the trump and stacks the stock", function()
     local s = E.new{ first = 1 }
-    eq(s.phase, "deal"); eq(s.turn, nil); eq({ E.system(s) }, { { k = "deal" }, 0 })
+    eq(s.phase, "deal"); eq(s.turn, nil); eq({ E.system(s) }, { { k = "deal", need = "deck" }, 0 })
     ok(E.apply(s, 0, { k = "deal", deck = deckOf(STD) }))
     eq(s.phase, "play"); eq(s.dealer, 2); eq(s.turn, 1); eq(s.lead, 1); eq(s.hand, 1)
     eq(s.hands[1], { 1, 2, 3, 7, 8, 9 }); eq(s.hands[2], { 4, 5, 6, 10, 11, 12 })
@@ -105,6 +105,12 @@ describe("santase: deck and deal", function()
     eq(s.phase, "deal")
     ok(E.apply(s, 0, { k = "deal", deck = deckOf(STD) }))
     eq({ E.apply(s, 0, { k = "deal", deck = deckOf(STD) }) }, { nil, "phase" })
+  end)
+  it("asks for a deck with a need marker and refuses a marked action", function()
+    local s = E.new{ first = 1 }; eq({ E.system(s) }, { { k = "deal", need = "deck" }, 0 })
+    eq({ E.apply(s, 0, { k = "deal", need = "deck", deck = deckOf(STD) }) }, { nil, "need" })
+    eq({ E.apply(s, 0, { k = "deal" }) }, { nil, "deck" })               -- a full state wants the whole deck
+    local v = E.view(s, 1); ok(E.apply(v, 0, { k = "deal" })); eq(v.deck, {}); eq(#v.hands[1], 6)
   end)
 end)
 
@@ -183,7 +189,7 @@ describe("santase: end of the hand and scoring", function()
     local s = craft({ "9C" }, { "JC" }, { pts = { 65, 53 } })
     plays(s, { 1, "9C", 2, "JC" })
     eq(s.phase, "hand"); eq(s.gp, { 0, 0 }); eq(s.res, { winner = 0, gp = 0, reason = "tie" })
-    eq(s.dealer, 2); eq(s.turn, nil); eq({ E.system(s) }, { { k = "deal" }, 3 })
+    eq(s.dealer, 2); eq(s.turn, nil); eq({ E.system(s) }, { { k = "deal", need = "deck" }, 3 })
     ok(E.apply(s, 0, { k = "deal", deck = deckOf(STD) }))
     eq(s.hand, 2); eq(s.dealer, 2); eq(s.turn, 1); eq(s.res, nil); eq(s.pts, { 0, 0 })
   end)
@@ -596,7 +602,7 @@ describe("santase: fuzz", function()
         ok(s.gp[s.winner] >= 11); matches = matches + 1
         s = E.new{ first = rnd(1, 2) }
       end
-      eq((E.system(s)), { k = "deal" })
+      eq((E.system(s)), { k = "deal", need = "deck" })
       ok(E.apply(s, 0, { k = "deal", deck = shuffled() })); hands = hands + 1
       local steps = 0
       while s.phase == "play" do
