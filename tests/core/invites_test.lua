@@ -171,6 +171,16 @@ describe("invites", function()
     eq(a.session.seats, { A, C }); eq(gone, { { tid } })
   end)
 
+  it("two invitees who say yes in the same tick are both seated, the second at the next free seat", function()
+    local sim, a, b, c = setup()
+    local rb, rc = record(b, "refused"), record(c, "refused")
+    local tid = a:openTable{game="fake", access="invite", turn=45}; sim:run(3)
+    ok(a:invite(B)); ok(a:invite(C)); sim:run(1)
+    b:answerInvite(tid, "yes"); c:answerInvite(tid, "yes"); sim:run(3) -- both ask for seat 2
+    eq(a.session.seats, { A, B, C }); eq(b.session.mySeat, 2); eq(c.session.mySeat, 3)
+    eq(rb, {}); eq(rc, {})
+  end)
+
   it("yes after the table closed is refused 'gone'", function()
     local sim, a, b = setup()
     local refused, gone = record(b, "refused"), record(b, "inviteGone")

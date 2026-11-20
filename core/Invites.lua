@@ -64,6 +64,19 @@ end
 -- Host side
 ---------------------------------------------------------------------------
 
+-- Host: the seat an invited player's SIT gets. Invitees who say yes at the same
+-- moment all ask for the first free seat of their lobby record; whoever comes
+-- second gets the lowest free seat instead of "taken". SIT cannot say that it
+-- answers an invitation, so the rule covers any SIT from a name in my invited
+-- set for an occupied seat; a SIT from anyone else, or for a seat that does
+-- not exist, is left as it is (refused "taken" by Session:check).
+function Invites.seatFor(s, sender, seat)
+  if s.invited and s.invited[sender] and type(seat) == "number" and type(s.seats[seat]) == "string" then
+    return freeSeat(s.seats) or seat
+  end
+  return seat
+end
+
 -- -> true | nil, code ("nothost" "unknown" "seated" "pending").
 function Invites:send(name)
   local client = self.client

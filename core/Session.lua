@@ -309,11 +309,8 @@ function Session:check(sender, kind, seat)
   if not peer or peer.incompatible then return "version" end
   if peer.at ~= nil and peer.at ~= self.tid then return "busy" end
   if not self:allows(peer) then return "access" end
-  if kind == "SIT" then
-    if type(seat) ~= "number" or self.seats[seat] ~= false then return "taken" end
-  elseif self.watchers >= C.MAX_WATCHERS then
-    return "full"
-  end
+  if kind ~= "SIT" then return self.watchers >= C.MAX_WATCHERS and "full" or nil end
+  if type(seat) ~= "number" or self.seats[seat] ~= false then return "taken" end
   return nil
 end
 
@@ -322,6 +319,8 @@ function Session:onRequest(sender, kind, seat)
   if seatOf(self.seats, sender) or (kind == "WAT" and self.watcherSet[sender]) then
     return self:snapshotTo(sender)
   end
+  -- An invitee whose seat was taken a moment ago gets another free one.
+  if kind == "SIT" then seat = ns.Invites.seatFor(self, sender, seat) end
   local why = self:check(sender, kind, seat)
   if why then
     return self.client:send("WHISPER", sender, message("SNO", { tid = self.tid, why = why }))

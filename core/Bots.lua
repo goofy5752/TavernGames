@@ -20,9 +20,8 @@ local _, ns = ...
 -- bot that hosts Death Roll sees my server rolls. A bot has no env.roll and no
 -- env.groupInvite: its rolls are table rolls (src "ask").
 --
--- Behaviour: a bot accepts an invitation after ACCEPT_AFTER s (refused "taken"
--- because another bot took that seat first, it sits at a free seat
--- SIT_RETRY_AFTER s later, at most SIT_RETRIES times), on its turn makes its
+-- Behaviour: a bot accepts an invitation after ACCEPT_AFTER s (two bots that
+-- accept at once both get a seat: see Invites.seatFor), on its turn makes its
 -- automatic move (client:playAuto) after MOVE_AFTER s, in phase "match" asks
 -- for a rematch after REMATCH_AFTER s, and as host of a game the host starts
 -- (engine.start == "host") starts it START_AFTER s after a change that leaves
@@ -38,8 +37,6 @@ local MAX_BOTS = 12
 local STARTERS = { { "Бот Иванов", "PRIEST" }, { "Bot Barleybrew", "WARRIOR" }, { "Бот Петрова", "MAGE" } }
 local SPARE_CLASSES = { "ROGUE", "HUNTER", "WARLOCK", "DRUID", "PALADIN", "SHAMAN", "PRIEST", "WARRIOR", "MAGE" }
 local ACCEPT_AFTER, MOVE_AFTER, REMATCH_AFTER, START_AFTER = 1, 1.5, 2, 2
--- A lobby record catches up within one TBL gap (at most one TBL per table per 2 s).
-local SIT_RETRY_AFTER, SIT_RETRIES = 2, 3
 
 local function hasBot(self, seats)
   for i = 1, #(seats or {}) do
@@ -139,13 +136,6 @@ local function humanSend(self)
   end
 end
 
-local function freeSeat(seats)
-  for i = 1, #(seats or {}) do
-    if seats[i] == false then return i end
-  end
-  return nil
-end
-
 -- Host of a game the host starts, which client:startGame would start now: at
 -- least minSeats seated and no game running (none yet, or the last one over:
 -- engine.over, else a known result, as in core/Lifecycle.lua).
@@ -175,27 +165,10 @@ local function nextAction(bot)
 end
 
 local function behave(bot)
-  -- The table whose invitation I accepted, and how many more SITs it may take.
-  local accepted
   bot:on("invite", function(inv)
     bot:after(ACCEPT_AFTER, function()
       local r = bot.invites.received
-      if r and r.tid == inv.tid then
-        accepted = { tid = inv.tid, left = SIT_RETRIES }
-        bot:answerInvite(inv.tid, "yes")
-      end
-    end)
-  end)
-  -- Two bots that accept at once ask for the same seat of a stale lobby record;
-  -- the one refused sits at a free seat once the record has caught up.
-  bot:on("refused", function(tid, why)
-    if why ~= "taken" or not accepted or accepted.tid ~= tid or accepted.left <= 0 then return end
-    accepted.left = accepted.left - 1
-    bot:after(SIT_RETRY_AFTER, function()
-      if bot.session or bot.pending or bot.invites.received then return end
-      local rec = bot.lobby:get(tid)
-      local seat = rec and freeSeat(rec.seats)
-      if seat then bot:sit(tid, seat) end
+      if r and r.tid == inv.tid then bot:answerInvite(inv.tid, "yes") end
     end)
   end)
   -- One pending step at a time; what to do is decided again when it fires.
