@@ -21,6 +21,7 @@ core/Const.lua
 core/Util.lua
 core/Sha256.lua
 core/Deck.lua
+core/Fair.lua
 core/Names.lua
 core/Emitter.lua
 core/Bus.lua
