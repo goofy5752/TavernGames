@@ -48,6 +48,7 @@ engines/santase.lua
 engines/holdem_eval.lua
 engines/holdem.lua
 engines/tabla.lua
+engines/belot.lua
 
 # Locale
 locale/bg.lua
