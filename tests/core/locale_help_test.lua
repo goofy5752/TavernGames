@@ -66,7 +66,7 @@ describe("locale and help", function()
       end
       local checked = 0
       for k, text in pairs(T[lang]) do
-        if k:match("^help%.hall%.") or k:match("^help%.ttt%.") or k:match("^help%.deathroll%.") or k =="help.soon.example" then
+        if k:match("^help%.hall%.") or k:match("^help%.ttt%.") or k:match("^help%.deathroll%.") or k == "help.soon.example" then
           local pos = 1
           while true do
             local a, b = text:find(q[1], pos, true)
@@ -94,6 +94,11 @@ describe("locale and help", function()
     eq(T.bg["help.soon.p"], "Скоро идват Сантасе, Белот, Табла и Тексас Холдем, и игра на залог с тефтер на дълговете.")
     eq(T.bg["help.deathroll.example"], "Иван и Мария играят от 1000. Иван хвърля 642. Мария хвърля от 1 до 642 и вади 87. Иван вади 12, Мария вади 3. Иван хвърля от 1 до 3 и вади 1. Иван губи и черпи.")
     eq(T.en["deathroll.roll"], "Roll")
+    -- The Death Roll topic explains both marks after the name and when „Нова игра“ comes.
+    ok(T.bg["help.deathroll.tags"]:find("Въпросителна след името", 1, true), "no „?“ in tags")
+    ok(T.bg["help.deathroll.tags"]:find("на думата на играча", 1, true), "„?“ is not the player's word")
+    ok(T.bg["help.deathroll.tags"]:find("Червена удивителна", 1, true), "no red „!“ in tags")
+    ok(T.bg["help.deathroll.roll"]:find("Щом играта свърши, домакинът натиска „Нова игра“", 1, true), "„Нова игра“ unclear")
   end)
 
   it("L formats and falls back to the key", function()

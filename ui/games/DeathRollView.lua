@@ -44,7 +44,7 @@ end
 -- while the game runs, last, {kind="next", seat, name} for the player on turn.
 function View.cells(s)
   local st, out = s.state, {}
-  local playing = st.phase == "play"
+  local playing = not s:gameOver()
   local room = MAX_CELLS - (playing and 2 or 1)
   local rolls, from = st.rolls, 1
   if #rolls <= room then
@@ -182,6 +182,7 @@ local function drawCells(f, s, cells, client)
       cell.number:SetAlpha(alpha)
       cell.label:SetText(labelText(c, s))
       cell.tip = c.tag and TIPS[c.tag] or nil
+      if not cell.tip then hideTip(cell) end
       widths[i] = math.max(cell.number:GetStringWidth(), cell.label:GetStringWidth()) + 4
       cell.frame:SetWidth(widths[i])
       cell.frame:Show()
@@ -221,41 +222,44 @@ local function layout(f, widths)
 end
 
 -- Host who cannot invite: why; else who is not in my group; else nil.
-local function groupText(s)
+-- Names (first words) in class colour inside the line's own colour.
+local function groupText(s, client)
   local why = s.role == "host" and s.partyWhy and GROUP_WHY[s.partyWhy]
   if why then return L(why) end
   local missing = Party.missing(s)
   if #missing == 0 then return nil end
   local firsts = {}
-  for i = 1, #missing do firsts[i] = W.firstWord(missing[i]) end
+  for i = 1, #missing do firsts[i] = W.colored(client, missing[i], W.firstWord(missing[i])) end
   return L("deathroll.group.missing", table.concat(firsts, ", "))
 end
 
--- The line at the bottom when there is no button: whom we wait for, who lost,
--- or that nobody did -> text, color (nil: none).
+-- The line at the bottom when there is no button: whom we wait for, who lost
+-- (Session:gameOver and the engine's result), or that nobody did -> text,
+-- color (nil: none). The name is in class colour inside the line's colour.
 local function statusLine(s, myTurn, client)
   local st = s.state
-  if st.phase == "over" then
-    if not st.loser then return L("deathroll.void"), Theme.color.inkDim end
-    local loser = s.seats[st.loser]
-    if loser then return L("deathroll.lost", loser), Theme.color.gold end
+  if s:gameOver() then
+    local result = E.result(st)
+    if not result then return L("deathroll.void"), Theme.color.inkDim end
+    local loser = s.seats[result.losers[1]]
+    if loser then return L("deathroll.lost", W.colored(client, loser)), Theme.color.gold end
     return nil
   end
   if s.status ~= "live" or myTurn then return nil end
   local name = s.seats[st.turn]
   if not name then return nil end
-  return L("deathroll.waitFor", name), { W.nameColor(client, name) }
+  return L("deathroll.waitFor", W.colored(client, name)), Theme.color.ink
 end
 
 function View.update(f, s)
   local client, st = ns.client, s.state
   layout(f, drawCells(f, s, View.cells(s), client))
 
-  local group = groupText(s)
+  local group = groupText(s, client)
   f.group:SetText(group or "")
   f.group:SetShown(group ~= nil)
 
-  local myTurn = s.status == "live" and st.phase == "play" and s.mySeat ~= nil and st.turn == s.mySeat
+  local myTurn = s.status == "live" and not s:gameOver() and s.mySeat ~= nil and st.turn == s.mySeat
   local rolling = s.rolling ~= nil
   f.rollButton:SetShown(myTurn)
   f.range:SetShown(myTurn)

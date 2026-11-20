@@ -33,6 +33,22 @@ end
 
 local MAGE, PRIEST = { 0.25, 0.78, 0.92, 1 }, { 1, 1, 1, 1 }
 
+-- `text` without inline colour codes (|cAARRGGBB … |r).
+local function plain(text) return (text:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")) end
+
+-- Visible font strings whose text, colour codes stripped, contains the plain `needle`.
+local function plainTexts(w, needle)
+  local out = {}
+  for _, f in ipairs(w.frames) do
+    for _, r in ipairs(f.regions) do
+      if r.objectType == "FontString" and r.text and r:IsVisible() and plain(r.text):find(needle, 1, true) then
+        out[#out + 1] = r
+      end
+    end
+  end
+  return out
+end
+
 -- I host a Death Roll table from 100; „Бот Иванов“ sits through the „Покани“
 -- picker and I press „Започни“: my turn first.
 local function play()
@@ -115,7 +131,9 @@ describe("ui: Death Roll view", function()
     eq(V.cells[2].label:GetText(), "Ти")
     eq(V.cells[3].number:GetText(), "?"); eq(V.cells[3].number:GetAlpha(), 0.35)
     eq(color(V.cells[3].number), rgb(w, "oMark")); eq(V.cells[3].label:GetText(), "Бот")
-    eq(#w:texts("Изчакай Бот Иванов…"), 1); eq(V.rollButton:IsVisible(), false)
+    local wait = plainTexts(w, "Изчакай Бот Иванов…")
+    eq(#wait, 1); eq(wait[1]:GetText(), "Изчакай |cffffffffБот Иванов|r…")
+    eq(V.rollButton:IsVisible(), false)
     eq(#w:texts(L("deathroll.caption")), 1)
     w:advance(2)
     cells = View.cells(w.ns.client.session)
@@ -174,8 +192,11 @@ describe("ui: Death Roll view", function()
     w:advance(0)
     cells = View.cells(s)
     eq(#cells, 7); eq(cells[1].kind, "more"); eq(cells[7].n, 1)
-    eq(#w:texts("Бот Иванов хвърли 1 и губи!"), 1)
-    eq(color(w:texts("Бот Иванов хвърли 1 и губи!")[1]), rgb(w, "gold"))
+    local lost = plainTexts(w, "Бот Иванов хвърли 1 и губи!")
+    eq(#lost, 1); eq(color(lost[1]), rgb(w, "gold"))
+    -- the loser's name in his class colour (PRIEST) inside the gold line
+    eq(lost[1]:GetText(), "|cffffffffБот Иванов|r хвърли 1 и губи!")
+    eq(lost[1]:GetText(), w.ns.L("deathroll.lost", w.ns.W.colored(w.ns.client, BOT)))
     eq(V.rollButton:IsVisible(), false)
     eq(select(2, V.cells[7].number:GetFont()), 34); eq(color(V.cells[7].number), rgb(w, "oMark"))
     eq(V.cells[7].number:GetText(), "1")
@@ -198,15 +219,17 @@ describe("ui: Death Roll view", function()
     hello(w, B, "Player-1-00000002")
     w:deliver("WHISPER", B, { v = 1, t = "SIT", tid = tid, seat = 3 }); w:advance(0)
     eq(w.ns.client.session.seats[3], B)
-    local line = w:texts("Не си в група с")
-    eq(#line, 1); eq(line[1]:GetText():sub(1, #"Не си в група с Мария"), "Не си в група с Мария")
-    eq(line[1]:GetText(), L("deathroll.group.missing", "Мария"))
+    local line = plainTexts(w, "Не си в група с")
+    eq(#line, 1); eq(plain(line[1]:GetText()):sub(1, #"Не си в група с Мария"), "Не си в група с Мария")
+    -- „Мария“ in her class colour (PRIEST, white here) inside the oMark line.
+    eq(line[1]:GetText(), L("deathroll.group.missing", "|cffffffffМария|r"))
+    eq(line[1]:GetText(), L("deathroll.group.missing", w.ns.W.colored(w.ns.client, B, "Мария")))
     eq(color(line[1]), rgb(w, "oMark"))
     w.party = { grouped = true, leader = false, raid = false, size = 2 }
     hello(w, C, "Player-1-00000003")
     w:deliver("WHISPER", C, { v = 1, t = "SIT", tid = tid, seat = 4 }); w:advance(0)
     eq(w.ns.client.session.partyWhy, "notleader")
-    eq(#w:texts(L("deathroll.group.notleader")), 1); eq(#w:texts("Не си в група с"), 0)
+    eq(#w:texts(L("deathroll.group.notleader")), 1); eq(#plainTexts(w, "Не си в група с"), 0)
     ok(V:IsVisible(), "view hidden")
   end)
 

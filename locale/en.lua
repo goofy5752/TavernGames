@@ -24,10 +24,10 @@ T["help.ttt.rematch"] = "The match is over and you want more? You both press “
 T["help.deathroll.p1"] = "Death Roll is a game of pure luck for two to five players. The first one rolls from 1 to the starting number. The next one rolls from 1 to whatever came up. Whoever rolls 1 loses."
 T["help.deathroll.example"] = "Ivan and Maria play from 1000. Ivan rolls 642. Maria rolls from 1 to 642 and gets 87. Ivan gets 12, Maria gets 3. Ivan rolls from 1 to 3 and gets 1. Ivan loses and buys the round."
 T["help.deathroll.ladder"] = "This is what the ladder looks like. Every number is in the colour of whoever rolled it."
-T["help.deathroll.roll"] = "When it is your turn, you press “Roll”. The addon makes a real /roll for you, the number comes from the server and everyone sees it in chat. The host presses “Start” once there are at least two of you, and after that “New game”."
+T["help.deathroll.roll"] = "When it is your turn, you press “Roll”. The addon makes a real /roll for you, the number comes from the server and everyone sees it in chat. The host presses “Start” once there are at least two of you. When a game is over, the host presses “New game” and the next one starts."
 T["help.deathroll.group"] = "Another player's /roll is seen only in a group or nearby. That is why, as soon as you sit down, the host invites you to a group and the addon accepts for you. If you are already in another group, just stand next to each other."
-T["help.deathroll.time"] = "If your time runs out, the table rolls for you. You do not lose by default, unless a 1 comes up."
-T["help.deathroll.tags"] = "A question mark next to a number means you did not see it in chat. The tag “· table” means the table rolled it: that is how bots roll."
+T["help.deathroll.time"] = "If your time runs out, the table rolls for you. You do not lose by forfeit, unless a 1 comes up."
+T["help.deathroll.tags"] = "A question mark after the name means this roll was not seen in chat. If the host did not see it, the number is the player's word. A red exclamation mark after the name means your chat showed a different number from the table's. The tag “· table” means the table rolled it: that is how bots roll."
 T["help.deathroll.leave"] = "If someone stands up in the middle, the others go on without them. If you are left alone, the game ends without a loser."
 
 -- Rules book: coming soon

@@ -125,7 +125,7 @@ describe("ui: rules book", function()
     end
     eq(numbers, { "1000", "642", "87", "12", "3", "1" })
     eq({ ladder.numbers[6]:GetTextColor() }, rgba(w, "red"))
-    ok(not (ladder.numbers[5]:GetTextColor() == Theme.color.red[1]), "only the last one is red")
+    for i = 1, 5 do eq({ ladder.numbers[i]:GetTextColor() }, rgba(w, "woodDark"), "number " .. i) end
     eq(#ladder.arrows, 5)
     for _, a in ipairs(ladder.arrows) do eq(a:GetText(), "›") end
     -- ⓘ on a Death Roll table opens this topic.

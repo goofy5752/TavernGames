@@ -6,7 +6,8 @@ local _, ns = ...
 -- "example" as an indented italic block with a brass rule on its left, "board"
 -- as a 3x3 mini board (26 px cells) whose `line` cells are gold, with its text
 -- beside it, "ladder" as its text over a row of numbers in the paper heading
--- face with „›“ in brass between them and the last one in red. The footer link „Покажи въведението пак“ starts the intro again.
+-- face with „›“ in brass between them and the last one in red. The footer
+-- link „Покажи въведението пак“ starts the intro again.
 local Theme, W, L = ns.Theme, ns.W, ns.L
 
 local HelpBook = {
