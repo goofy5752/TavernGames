@@ -58,8 +58,9 @@ end
 -- Spec rule: the sender must be the record's host, and the epoch must be newer,
 -- or equal with the same host. A newer epoch (a claim or a handoff) counts only
 -- from a sender seated in the known record, as on the session side
--- (Succession.authority). Equal epoch from another host: the claimant with the
--- lower seat index in its own seats wins.
+-- (Succession.authority). Equal epoch from another host: the claimant wins only
+-- if it sits lower than the known host in the known record. Its own claimed
+-- seats are never consulted, so reordering them or claiming unseated gets nothing.
 function Lobby:accepts(sender, m)
   if sender ~= m.h then return false end
   local known = self.records[m.tid]
@@ -67,7 +68,7 @@ function Lobby:accepts(sender, m)
   if m.e > known.epoch then return seatIndex(known.seats, sender) ~= math.huge end
   if m.e < known.epoch then return false end
   if m.h == known.host then return true end
-  return seatIndex(m.s, m.h) < seatIndex(known.seats, known.host)
+  return seatIndex(known.seats, m.h) < seatIndex(known.seats, known.host)
 end
 
 -- Same pattern as Presence: one timer per table, re-armed for the remainder.

@@ -209,6 +209,22 @@ describe("lobby and seating", function()
     b:receive("GUILD", D, { v = 1, t = "END", tid = "X#1", e = 2 }); eq(b.lobby:get("X#1"), nil)
   end)
 
+  it("equal epoch tie reads the claimant's seat from the known record, not its own claim", function()
+    local _, _, b = setup()
+    local D, E, F, G = "Пешо Тодоров", "Гошо Тестов", "Тошо Петков", "Чужд Човек"
+    b:receive("GUILD", E, tbl{ tid = "X#1", h = E, e = 1, s = { D, E, F } })
+    eq(b.lobby:get("X#1").host, E)
+    -- F sits at seat 3 of the known record and moves itself to seat 1 in its claim
+    b:receive("GUILD", F, tbl{ tid = "X#1", h = F, e = 1, s = { F, E, D } })
+    eq(b.lobby:get("X#1").host, E)
+    -- G is not seated at all and claims seat 1
+    b:receive("GUILD", G, tbl{ tid = "X#1", h = G, e = 1, s = { G, E, F } })
+    eq(b.lobby:get("X#1").host, E)
+    -- D really sits lower than E: its tie claim wins
+    b:receive("GUILD", D, tbl{ tid = "X#1", h = D, e = 1, s = { D, E, F } })
+    eq(b.lobby:get("X#1").host, D)
+  end)
+
   it("refuses a newer client's SIT with 'version'", function()
     local sim, a = setup()
     local tid = a:openTable{game="ttt", access="guild", turn=45}; sim:run(3)
