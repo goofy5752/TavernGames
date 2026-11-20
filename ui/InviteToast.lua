@@ -114,7 +114,8 @@ function InviteToast.show(inv)
   t.tick()
   t.frame:Show()
   t.frame:Raise()
-  PlaySound(SOUNDKIT.TELL_MESSAGE, "SFX")
+  local sound = SOUNDKIT and SOUNDKIT.TELL_MESSAGE -- absent on some clients
+  if sound then PlaySound(sound, "SFX") end
 end
 
 -- A line on the toast in place of the invitation, for NOTICE_SECONDS.

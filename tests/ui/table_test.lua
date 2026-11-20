@@ -418,4 +418,16 @@ describe("ui: invite toast", function()
     eq(T.frame:IsShown(), false)
     eq(#w.sounds, 1)
   end)
+
+  it("shows without a sound and without an error when the sound constant is missing", function()
+    for _, kit in ipairs({ {}, false }) do
+      local w = guildWow()
+      local T = w.ns.InviteToast
+      w.G.SOUNDKIT = kit or nil
+      w:member(B)
+      w:deliver("WHISPER", B, { v = 1, t = "INV", tid = B .. "#1", g = "ttt", h = B, s = { B, false } })
+      w:advance(0)
+      ok(T.frame:IsShown(), "no toast"); eq(#w.sounds, 0)
+    end
+  end)
 end)

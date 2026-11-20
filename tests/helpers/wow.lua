@@ -154,7 +154,7 @@ function Wow.new(opts)
     -- From here on, reading a global the fake does not define is an error: it
     -- catches a WoW API the fake lacks and a misspelt or out-of-scope local.
     -- Globals that may be absent in the game too (saved variables, optional APIs).
-    local optional = { TavernGamesDB = true, CUSTOM_CLASS_COLORS = true }
+    local optional = { TavernGamesDB = true, CUSTOM_CLASS_COLORS = true, SOUNDKIT = true }
     setmetatable(G, { __index = function(_, k)
       if optional[k] then return nil end
       error("undefined global " .. tostring(k), 2)
