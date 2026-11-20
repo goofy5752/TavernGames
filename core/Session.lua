@@ -8,7 +8,8 @@ local _, ns = ...
 -- the engine's system actions; members apply events strictly in order and heal a
 -- gap with SYN -> SNP. Heartbeats: TCK from the host, PNG from members.
 -- Offline seats, host handoff, host silence and convergence between competing
--- hosts live in core/Succession.lua.
+-- hosts live in core/Succession.lua; the member side (SNP, EV, TCK, SNO, END,
+-- PNG/SYN) in core/Member.lua.
 --
 -- client.session is nil or a Session with the public fields
 --   tid, role ("host"|"player"|"watcher"), mySeat, host, epoch, seq, seats,
@@ -24,7 +25,8 @@ ns.Session = Session
 
 local C = ns.Const
 local Succession = ns.Succession
-local copy, byteLess = ns.Util.copy, ns.Util.byteLess
+local copy, byteLess, seatOf = ns.Util.copy, ns.Util.byteLess, ns.Util.seatOf
+Session.seatOf = seatOf
 
 local ACCESS = { guild = true, invite = true, group = true }
 
@@ -39,10 +41,12 @@ local TIMERS = {
   "sweepTimer", "silenceTimer",
 }
 
+-- message, emit and refuse are shared with core/Member.lua and core/Succession.lua.
 local function message(t, fields)
   fields.v, fields.t = C.PROTOCOL, t
   return fields
 end
+Session.message = message
 
 local function contains(list, value)
   for i = 1, #list do
@@ -51,20 +55,15 @@ local function contains(list, value)
   return false
 end
 
-local function seatOf(seats, name)
-  for i = 1, #seats do
-    if seats[i] == name then return i end
-  end
-  return nil
-end
-
 local function emit(client)
   client.events:emit("session", client.session)
 end
+Session.emit = emit
 
 local function refuse(client, tid, why)
   client.events:emit("refused", tid, why)
 end
+Session.refuse = refuse
 
 function Session:cancelTimers()
   for i = 1, #TIMERS do
@@ -246,6 +245,14 @@ function Session:startIfFull()
   self:event(0, { k = "start" })
 end
 
+-- Host: a live match with fewer than minSeats seated players is aborted (no
+-- winner). Returns true when it emitted the abort event.
+function Session:abortIfShort()
+  if self.status ~= "live" or self:seatedCount() >= self:engine().minSeats then return false end
+  self:event(0, { k = "abort" })
+  return true
+end
+
 -- TCK{q} to every member every PING_EVERY seconds.
 function Session:scheduleTick()
   self.tickTimer = self.client:after(C.PING_EVERY, function()
@@ -337,9 +344,7 @@ function Session:onStand(sender)
   if seat then
     self:event(0, { k = "stand", seat = seat, why = "left" }, sender)
     if self:seatedCount() == 0 then return self:finish() end
-    if self.status == "live" and self:seatedCount() < self:engine().minSeats then
-      self:event(0, { k = "abort" })
-    end
+    self:abortIfShort()
     self:recordChanged()
   elseif self.watcherSet[sender] then
     self.watcherSet[sender] = nil
@@ -370,36 +375,6 @@ function Session:finish()
   client:send("GUILD", nil, message("END", { tid = self.tid, e = self.epoch }))
   client.lobby:remove(self.tid)
   leave(client)
-end
-
----------------------------------------------------------------------------
--- Member side
----------------------------------------------------------------------------
-
--- PNG to the host every PING_EVERY seconds; while stale, the snapshot request again.
-function Session:schedulePing()
-  self.pingTimer = self.client:after(C.PING_EVERY, function()
-    self.pingTimer = nil
-    if self.stale then
-      self:requestSync()
-    else
-      self.client:send("WHISPER", self.host, message("PNG", { tid = self.tid }))
-    end
-    self:schedulePing()
-  end)
-end
-
--- Asks the host for a snapshot, at most once per SYN_MIN_GAP seconds: SYN{have},
--- or WAT from a watcher whose new host does not know it yet (see Succession).
-function Session:requestSync()
-  local now = self.client.env.now()
-  if self.lastSyn and now - self.lastSyn < C.SYN_MIN_GAP then return end
-  self.lastSyn = now
-  if self.stale and not self.mySeat then
-    self.client:send("WHISPER", self.host, message("WAT", { tid = self.tid }))
-  else
-    self.client:send("WHISPER", self.host, message("SYN", { tid = self.tid, have = self.seq }))
-  end
 end
 
 ---------------------------------------------------------------------------
@@ -438,6 +413,7 @@ function Session.open(client, opts)
 end
 
 -- kind "SIT" (with seat) or "WAT"; the answer is an SNP or the event "refused".
+-- Unanswered for PENDING_SECONDS: given up ("gone"), so a late SNP is refused.
 function Session.request(client, kind, tid, seat)
   local s = client.session
   if s and (s.tid ~= tid or s.role == "host") then return refuse(client, tid, "busy") end
@@ -447,7 +423,13 @@ function Session.request(client, kind, tid, seat)
     local rec = client.lobby:get(tid)
     if not rec then return refuse(client, tid, "gone") end
     host = rec.host
-    client.pending = { tid = tid, host = host }
+    local p = { tid = tid, host = host }
+    client.pending = p
+    client:after(C.PENDING_SECONDS, function()
+      if client.pending ~= p then return end
+      client.pending, client.gaveUp = nil, tid
+      refuse(client, tid, "gone")
+    end)
   end
   local m = kind == "SIT" and { tid = tid, seat = seat } or { tid = tid }
   client:send("WHISPER", host, message(kind, m))
@@ -507,110 +489,6 @@ function Session.refuseVersion(client, sender, tid)
   end
 end
 
--- Member: session from a snapshot (new, or replacing the current one; a host
--- that lost its table to `sender` steps down first).
-local function adopt(client, sender, m)
-  local t, me = m.tbl, client.env.me
-  local seat = seatOf(t.s, me)
-  local s = client.session or setmetatable({ client = client }, Session)
-  if s.role == "host" then Succession.demote(s) end
-  s.tid, s.role, s.mySeat, s.host = m.tid, seat and "player" or "watcher", seat, sender
-  s.epoch, s.seq, s.seats = m.e, m.q, copy(t.s)
-  s.game, s.access, s.turn, s.watchers = t.g, t.ac, t.tn, t.w or 0
-  s.state = type(m.st) == "table" and ns.Engines[t.g].restore(m.st) or nil
-  s.status = t.st == "live" and "live" or (s.state and "aborted" or "open")
-  s.deadline = type(m.left) == "number" and client.env.now() + m.left or nil
-  s.stale = nil
-  s.invited = {}
-  s:addInvited(m.inv)
-  client.pending, client.gaveUp = nil, nil
-  client.session = s
-  if not s.pingTimer then s:schedulePing() end
-  Succession.watchHost(s)
-  -- A table I hosted until now, or one adopted before any TBL: list it as the host's.
-  if not client.lobby:get(s.tid) then
-    client.lobby:receive("WHISPER", sender, message("TBL", copy(t)))
-  end
-  client.presence:setAt(s.tid)
-  emit(client)
-end
-
-local function onSnapshot(client, sender, m)
-  local t = m.tbl
-  if type(m.e) ~= "number" or type(m.q) ~= "number" or not ns.Lobby.valid(t)
-      or t.tid ~= m.tid or t.h ~= sender or not ns.Engines[t.g]
-      or (t.st == "live" and type(m.st) ~= "table") then return end
-  local s, p = client.session, client.pending
-  if s and s.tid == m.tid then
-    -- My table: a new host's snapshot always; my own host's unless it is older
-    -- than what I have (a stale member has nothing worth keeping).
-    local kind = Succession.authority(s, sender, m.e)
-    if kind == "new" or (kind == "current" and (s.stale or m.q >= s.seq)) then
-      adopt(client, sender, m)
-    end
-  elseif not s and ((p and p.tid == m.tid and p.host == sender)
-      or (client.gaveUp ~= m.tid and seatOf(t.s, client.env.me))) then
-    -- The answer to my request, or (after a relog) a table I still hold a seat at.
-    adopt(client, sender, m)
-  else
-    -- Seated or listed after I gave up waiting or went elsewhere: free the place again.
-    client:send("WHISPER", sender, message("STD", { tid = m.tid }))
-  end
-end
-
--- Events are taken only from my host, at exactly my epoch, in order. An epoch
--- is never adopted from an EV, and a stale member waits for its snapshot.
-local function onEvent(client, sender, m)
-  local s = client.session
-  if not s or s.role == "host" or s.tid ~= m.tid or s.host ~= sender or s.stale then return end
-  if m.e ~= s.epoch or type(m.q) ~= "number" or m.q <= s.seq then return end
-  if m.q > s.seq + 1 then return s:requestSync() end
-  if not s:apply(m.seat, m.a) then
-    client.events:emit("desync", s.tid)
-    return s:requestSync()
-  end
-  s.seq = m.q
-  s.deadline = type(m.left) == "number" and client.env.now() + m.left or nil
-  emit(client)
-end
-
-local function onTick(client, sender, m)
-  local s = client.session
-  if not s or s.tid ~= m.tid or type(m.q) ~= "number" then return end
-  local kind = Succession.authority(s, sender, m.e)
-  if kind == "new" then
-    Succession.follow(s, sender, m.e)
-    s:requestSync()
-  elseif kind == "current" and (s.stale or m.q > s.seq) then
-    s:requestSync()
-  end
-end
-
-local function onRefusal(client, sender, m)
-  if type(m.why) ~= "string" then return end
-  local s, p = client.session, client.pending
-  if p and p.tid == m.tid and p.host == sender then
-    client.pending = nil
-    refuse(client, m.tid, m.why)
-  elseif s and s.role ~= "host" and s.tid == m.tid and s.host == sender then
-    -- "gone": I am not at its table any more. Stale: the new host did not take me in.
-    -- Anything else I can live with, e.g. a watcher asking for a taken chair.
-    if m.why == "gone" or s.stale then leave(client) end
-    refuse(client, m.tid, m.why)
-  end
-end
-
-local function onEnd(client, sender, m)
-  local s, p = client.session, client.pending
-  if s and s.role ~= "host" and s.tid == m.tid and s.host == sender
-      and type(m.e) == "number" and m.e >= s.epoch then
-    leave(client)
-  elseif p and p.tid == m.tid and p.host == sender then
-    client.pending = nil
-    refuse(client, m.tid, "gone")
-  end
-end
-
 -- A v=1 message (already validated by the client).
 function Session.receive(client, channel, sender, m)
   local t = m.t
@@ -643,15 +521,8 @@ function Session.receive(client, channel, sender, m)
     Succession.onTable(client, channel, sender, m)
   elseif t == "HND" then
     Succession.onHandoff(client, sender, m)
-  elseif t == "SNP" then
-    onSnapshot(client, sender, m)
-  elseif t == "EV" then
-    onEvent(client, sender, m)
-  elseif t == "TCK" then
-    onTick(client, sender, m)
-  elseif t == "SNO" then
-    onRefusal(client, sender, m)
-  elseif t == "END" then
-    onEnd(client, sender, m)
+  else
+    local handle = ns.Member.handlers[t] -- SNP EV TCK SNO END (core/Member.lua)
+    if handle then handle(client, sender, m) end
   end
 end

@@ -34,6 +34,14 @@ function Util.byteLess(a, b)
   return #a < #b
 end
 
+-- Index of `name` in a seat list (names or false), or nil.
+function Util.seatOf(seats, name)
+  for i = 1, #seats do
+    if seats[i] == name then return i end
+  end
+  return nil
+end
+
 -- 123456 -> "12g 34s 56c"; zero parts are omitted; 0 -> "0c".
 function Util.money(copper)
   copper = math.floor(copper or 0)

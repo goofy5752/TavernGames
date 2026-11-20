@@ -28,5 +28,6 @@ ns.Const = {
   LIST_MODE_ABOVE = 8,
   MAX_WATCHERS = 8,
   SYN_MIN_GAP = 5,
+  PENDING_SECONDS = 10, -- an unanswered SIT/WAT is given up ("gone") after this long
   TRACE_LINES = 200,
 }

@@ -17,18 +17,7 @@ local Succession = {}
 ns.Succession = Succession
 
 local C = ns.Const
-local byteLess = ns.Util.byteLess
-
-local function seatOf(seats, name)
-  for i = 1, #seats do
-    if seats[i] == name then return i end
-  end
-  return nil
-end
-
-local function emit(client)
-  client.events:emit("session", client.session)
-end
+local byteLess, seatOf = ns.Util.byteLess, ns.Util.seatOf
 
 local function cancel(s, key)
   if s[key] then s[key].cancel(); s[key] = nil end
@@ -97,9 +86,7 @@ function Succession.sweep(s)
       changed, stood = true, true
     end
   end
-  if stood and s.status == "live" and s:seatedCount() < s:engine().minSeats then
-    s:event(0, { k = "abort" })
-  end
+  if stood then s:abortIfShort() end
   local silent = {}
   for name in pairs(s.watcherSet) do
     if now - (s.lastHeard[name] or now) >= C.SILENT_AFTER then silent[#silent + 1] = name end
@@ -136,7 +123,7 @@ local function armSilence(s, wait)
     local quiet = client.env.now() - s.hostHeard
     if quiet >= C.SILENT_AFTER and not s.hostSilent then
       s.hostSilent = true
-      emit(client)
+      ns.Session.emit(client)
     end
     local rank = seatOf(Succession.candidates(s.seats, s.host), client.env.me)
     -- Seated: my turn to claim. Watching: the table is given up with its lobby record.
@@ -166,7 +153,7 @@ function Succession.heard(s, sender, m)
     s.hostHeard = now
     if s.hostSilent then
       s.hostSilent = false
-      emit(s.client)
+      ns.Session.emit(s.client)
     end
   end
 end
@@ -236,7 +223,7 @@ function Succession.follow(s, host, epoch, seats)
   s.role = s.mySeat and "player" or "watcher"
   s.host, s.epoch, s.stale, s.lastSyn = host, epoch, true, nil
   Succession.watchHost(s)
-  emit(s.client)
+  ns.Session.emit(s.client)
 end
 
 -- The host stands with `to` (the first candidate) still seated: its own stand
@@ -244,9 +231,7 @@ end
 function Succession.handoff(s, to)
   local client = s.client
   s:event(0, { k = "stand", seat = s.mySeat, why = "left" })
-  if s.status == "live" and s:seatedCount() < s:engine().minSeats then
-    s:event(0, { k = "abort" })
-  end
+  s:abortIfShort()
   local m = { v = C.PROTOCOL, t = "HND", tid = s.tid, e = s.epoch + 1, to = to, inv = s:invitedList() }
   local members = s:members()
   for i = 1, #members do client:send("WHISPER", members[i], m) end
