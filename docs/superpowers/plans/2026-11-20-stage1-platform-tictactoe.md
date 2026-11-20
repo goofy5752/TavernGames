@@ -125,6 +125,58 @@ Lobby rule: a `TBL` at a higher epoch than the known record replaces it only whe
 
 Frozen across protocol versions: the fields `v`, `t`, `tid` (on `SIT`, `WAT`, `SNO`), and `SNO.why="version"`. Table/system events (`seat=0`): `{k="sit",seat,name}`, `{k="stand",seat,why}` (`why` `"left"/"offline"`), `{k="start"}`, `{k="abort"}`, plus engine system actions.
 
+#### Stage A additions
+
+**Engine contract, optional additions** (an engine without them behaves as in stage 1):
+
+| field | meaning |
+|---|---|
+| `E.start` | `"host"`: the game starts only on `client:startGame()`; absent: starts when every seat is filled |
+| `E.options` | array of `{id, choices = {...}, default}`; the chosen values travel as `TBL.o` and reach `E.new` as `opts.opt` |
+| `E.new(opts)` | `opts.first` (seat), `opts.seats` (array of booleans, `true` = occupied at start), `opts.opt` (resolved options) |
+| `E.auto(state, seat, random)` | third argument `random(lo, hi) -> integer` (the session passes `env.random`) |
+| `E.leave(state, seat)` | called on a `stand` event while live; must not fail |
+| `E.result(state)` | `nil`, or `{winners = {seat,...}, losers = {seat,...}}` once a game has ended with an outcome |
+| `E.over(state)` | `true` when the game has ended and a new one may start; absent: over = `E.result(state) ~= nil` (read through `Session:gameOver()`; `Session:canStart()` decides the start button; both in `core/Lifecycle.lua`) |
+| `E.nextFirst(prevState, occupied)` | seat that starts the next game (host only; default: lowest occupied seat) |
+| `E.needsGroup` | `true`: players must share a group (extension `party`) |
+| `E.ext` | array of names in `ns.Ext` |
+
+Death Roll has 2-5 seats (one party, never a raid). `Games.PLAYABLE = {ttt, deathroll}` gates the games: the Holdem, Santase, Belot and Tabla engines exist but are only shown, not openable, until they are enabled stage by stage.
+
+**`ns.Ext[name]`** = a table of optional hooks:
+
+| hook | meaning |
+|---|---|
+| `act(s, seat, a) -> a2 or nil` | host only, on a member's `ACT` before it is played; `nil` drops or holds it |
+| `applied(s, seat, a)` | host and members, after every applied event (table events have `seat == 0`) |
+| `auto(s) -> true or nil` | any seated client, "make my automatic move"; `true` = handled |
+| `adopted(s, prevState)` | after a snapshot replaced my state |
+| `hostChanged(s)` | my table changed host |
+
+**`env` additions** (all optional; a bot's env has only `random`):
+
+| field | meaning |
+|---|---|
+| `random(lo, hi)` | integer in `lo..hi` (`math.random` in game) |
+| `roll(lo, hi)` | make a server roll (`RandomRoll`); absent when the client has no such function |
+| `group()` | `{grouped, leader, raid, size}` of my own group |
+| `groupInvite(name)` | invite the full name into my group |
+
+**Protocol additions** (`v=1`, no new `t`):
+
+| where | addition | meaning |
+|---|---|---|
+| `TBL` (and `SNP.tbl`) | `o` | table options `{id = value}`; omitted when the engine has none |
+| `EV` seat 0 | `{k="start", first}` | `first` = seat that begins; absent or not occupied: lowest occupied seat |
+| `ACT`, Death Roll | `{k="roll", n, max}` | "I rolled `n` in `1..max`" (the roller's claim) |
+| `ACT`, Death Roll | `{k="roll", max, src="ask"}` | "roll for me" (a bot, or a client without `RandomRoll`) |
+| `EV`, Death Roll | `{k="roll", n, max, src}` | `src` `"seen"` (host saw the server roll), `"claim"` (host could not see it), `"ask"`, `"timeout"` |
+
+An invited player who asks for a taken seat is seated at the lowest free seat.
+
+**Client events added:** `"result"({tid, game, opt, seats, winners, losers, at})` (`seats` = names by seat at that moment, `at` = `env.epoch()`), `"rollSeen"(shown, n, lo, hi)`.
+
 **Test commands:** `bash t.sh` runs everything; `bash t.sh <file-or-dir>` runs a subset. Success ends with `N passed, 0 failed` and exit code 0. Test names below written with a `--[[ ... ]]` body state their assertions in words; the implementer writes them out as real assertions with exactly those values before implementing. The runner fails any test that makes zero assertions (Task 1), so no test body may be left empty.
 
 ---
