@@ -56,12 +56,15 @@ function Lobby:changed()
 end
 
 -- Spec rule: the sender must be the record's host, and the epoch must be newer,
--- or equal with the same host. Equal epoch from another host: the claimant with
--- the lower seat index in its own seats wins.
+-- or equal with the same host. A newer epoch (a claim or a handoff) counts only
+-- from a sender seated in the known record, as on the session side
+-- (Succession.authority). Equal epoch from another host: the claimant with the
+-- lower seat index in its own seats wins.
 function Lobby:accepts(sender, m)
   if sender ~= m.h then return false end
   local known = self.records[m.tid]
-  if not known or m.e > known.epoch then return true end
+  if not known then return true end
+  if m.e > known.epoch then return seatIndex(known.seats, sender) ~= math.huge end
   if m.e < known.epoch then return false end
   if m.h == known.host then return true end
   return seatIndex(m.s, m.h) < seatIndex(known.seats, known.host)

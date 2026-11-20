@@ -174,6 +174,24 @@ describe("lobby and seating", function()
     eq(b.lobby:get(tid).epoch, 2)
   end)
 
+  it("a higher epoch from another host is taken only if he sits at the known table", function()
+    local sim, a, b = setup()
+    local tid = a:openTable{game="ttt", access="guild", turn=45}; sim:run(3)
+    -- C is not seated at A's table: his claim is ignored, A's TBLs still count
+    b:receive("GUILD", C, tbl{ tid = tid, h = C, e = 5, s = { C, false } })
+    eq(b.lobby:get(tid).host, A); eq(b.lobby:get(tid).epoch, 1)
+    b:receive("GUILD", A, tbl{ tid = tid, h = A, e = 1, s = { A, C } })
+    eq(b.lobby:get(tid).seats, { A, C })
+    -- seated now: his claim at a higher epoch wins
+    b:receive("GUILD", C, tbl{ tid = tid, h = C, e = 2, s = { false, C } })
+    eq(b.lobby:get(tid).host, C); eq(b.lobby:get(tid).epoch, 2)
+    -- A no longer sits there: A cannot take it back
+    b:receive("GUILD", A, tbl{ tid = tid, h = A, e = 3, s = { A, C } })
+    eq(b.lobby:get(tid).host, C)
+    -- END from the known host still closes it
+    b:receive("GUILD", C, { v = 1, t = "END", tid = tid, e = 2 }); eq(b.lobby:get(tid), nil)
+  end)
+
   it("equal epoch from another host: the lower seat index wins", function()
     local sim, _, b = setup()
     local D, E = "Пешо Тодоров", "Гошо Тестов"
