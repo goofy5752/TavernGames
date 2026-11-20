@@ -166,6 +166,8 @@ describe("ui: hall", function()
     eq(c1.disc:GetTexture(), w.ns.Theme.tex.chair)
     eq({ c1.disc:GetVertexColor() }, { 0.25, 0.78, 0.92, 1 })
     eq(c1.label:GetText(), "Мария")
+    eq({ c1.label:GetTextColor() }, { 0.25, 0.78, 0.92, 1 })
+    eq(t.host:GetText(), "Мария"); eq({ t.host:GetTextColor() }, { 0.25, 0.78, 0.92, 1 })
     eq(c2.disc:GetTexture(), w.ns.Theme.tex.chair_empty); eq(c2.label:IsVisible(), false)
     w:click(c2.button)
     local sit = lastSent(w, "SIT")
@@ -179,7 +181,7 @@ describe("ui: hall", function()
     tbl(w, B)
     local t, tip = w.ns.Hall.view.tables[1], w.G.GameTooltip
     w:hover(t.top)
-    eq(tip.lines, { "Морски шах при Мария Стоянова", B, "Всеки от гилдията · 45 с на ход",
+    eq(tip.lines, { "Морски шах при |cff40c7ebМария Стоянова|r", B, "Всеки от гилдията · 45 с на ход",
                     "Кликни празния стол, за да седнеш" })
     w:hover(t.chairs[1].button); eq(tip.lines, { B })
     w:hover(t.chairs[2].button); eq(tip.lines, { "Кликни празния стол, за да седнеш" })
@@ -218,6 +220,7 @@ describe("ui: hall", function()
     local w = guildWow()
     w.ns.MainWindow.show()
     local view = w.ns.Hall.view
+    hi(w, "Гост 1", "WARRIOR")
     for i = 1, 8 do tbl(w, "Гост " .. i) end
     eq(w.ns.Hall.mode, "floor"); eq(visible(view.tables), 8)
     ok(view.floor:IsVisible(), "floor hidden"); eq(view.list:IsVisible(), false)
@@ -225,7 +228,8 @@ describe("ui: hall", function()
     eq(w.ns.Hall.mode, "list"); eq(view.floor:IsVisible(), false); ok(view.list:IsVisible(), "list hidden")
     eq(visible(view.rows), 9)
     local first, last = view.rows[1], view.rows[9]
-    eq(first.title:GetText(), "Морски шах при Гост 1")
+    eq(first.title:GetText(), "Морски шах при |cffc79c6eГост 1|r")
+    eq(view.rows[2].title:GetText(), "Морски шах при |cfff3e2c0Гост 2|r") -- no class known: ink
     eq(first.seats:GetText(), "1/2"); eq(first.state:GetText(), "чака"); eq(first.action.text:GetText(), "Седни")
     eq(last.seats:GetText(), "2/2"); eq(last.state:GetText(), "тече"); eq(last.action.text:GetText(), "Гледай")
     w:click(first.action)
@@ -242,14 +246,15 @@ describe("ui: hall", function()
     w.ns.MainWindow.show()
     local D = "Дара Колева"
     local tid = tbl(w, D, { D, C }, "live")
-    hi(w, B, "MAGE"); hi(w, C, "WARRIOR", tid); hi(w, "Яна Жекова", "MAGE", tid)
+    hi(w, D, "WARRIOR", tid); hi(w, B, "MAGE"); hi(w, C, "WARRIOR", tid); hi(w, "Яна Жекова", "MAGE", tid)
     local rows, byName = w.ns.Hall.view.peers, {}
     for _, r in ipairs(rows) do
       if r.frame:IsVisible() then byName[r.name:GetText()] = r end
     end
     eq(byName[B].status:GetText(), "в залата")
     eq({ byName[B].name:GetTextColor() }, { 0.25, 0.78, 0.92, 1 })
-    eq(byName[C].status:GetText(), "на маса при Дара")
+    eq(byName[C].status:GetText(), "на маса при |cffc79c6eДара|r")
+    eq({ byName[C].name:GetTextColor() }, { 0.78, 0.61, 0.43, 1 })
     eq(byName["Яна Жекова"].status:GetText(), "гледа")
   end)
 

@@ -4,7 +4,6 @@ local _, ns = ...
 local T = ns.Locale.tables.en
 
 -- Rules book: the hall
-T["help.hall.title"] = "The hall"
 T["help.hall.p1"] = "The hall is the guild's tavern. Every round table is one game. The chairs around the table are the players' places."
 T["help.hall.open"] = "Want to play? Under “Open a table” click “Tic-tac-toe”. Choose who may sit and how many seconds each turn has. Click “Open” and your table is in the hall."
 T["help.hall.access"] = "You decide who sits with you. “Anyone in the guild”: whoever comes first sits. “Invited only”: only the people you invite sit. “My group”: only the people in your group sit."
@@ -14,7 +13,6 @@ T["help.hall.stand"] = "Had enough for today? Press “Stand up”. The table st
 T["help.hall.offline"] = "Lost your connection? Your chair waits 3 minutes. While you are away, your turns are played for you. Log back in and you sit in the same place and the game goes on. After 3 minutes the addon stands you up and the game stops."
 
 -- Rules book: Tic-tac-toe
-T["help.ttt.title"] = "Tic-tac-toe"
 T["help.ttt.p1"] = "The board is 3 by 3 squares. One player is X, the other is O. You take turns and put down one mark each. Three of the same mark in a row win: across, down or on a diagonal. After every game the other player starts."
 T["help.ttt.example"] = "Ivan is X, Maria is O. They take turns. Ivan lines up three X in a row and wins the game. Whoever wins 3 games first wins the match."
 T["help.ttt.board"] = "Here is Ivan's winning row. The three squares light up in gold."
@@ -23,12 +21,10 @@ T["help.ttt.draw"] = "The board is full and there is no three in a row? That is 
 T["help.ttt.rematch"] = "The match is over and you want more? You both press “Rematch” and a new match starts at 0 : 0."
 
 -- Rules book: coming soon
-T["help.soon.title"] = "Coming soon"
 T["help.soon.p"] = "Coming soon: Death Roll, Belot, Santase, Backgammon and Texas Hold'em, and playing for a stake with a ledger of debts."
 T["help.soon.example"] = "For now the tavern plays Tic-tac-toe. The other games sit dimmed in the list, marked “Soon”. As soon as they are ready, their rules will appear here, in the book."
 
 -- First-run intro
-T["intro.hall.title"] = "The hall"
 T["intro.hall.text"] = "This is the guild's tavern. Every round table is a game. On the right you see who is here now."
 T["intro.sit.title"] = "Sitting down"
 T["intro.sit.text"] = "See an empty dashed chair? Click it and you are playing. At a table that is already playing, you can watch."
@@ -116,3 +112,9 @@ T["dialog.seconds"] = "%d s"
 T["dialog.open"] = "Open"
 T["dialog.cancel"] = "Cancel"
 T["dialog.failed"] = "The table did not open. Try again."
+
+-- Button labels the rules book quotes; the invite toast and the table frame use these keys
+T["invite.accept"] = "Accept"
+T["invite.notNow"] = "Not now"
+T["invite.snooze"] = "Do not disturb for 30 min"
+T["table.stand"] = "Stand up"

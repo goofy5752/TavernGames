@@ -77,6 +77,16 @@ local function classOf(client, name)
   return p and p.cls
 end
 
+-- r, g, b of a player's class color (ink when the class is unknown).
+local function nameColor(client, name) return ns.classColor(classOf(client, name)) end
+
+-- `text` (default: the name) in the player's class color, for inline use.
+local function colored(client, name, text)
+  local r, g, b = nameColor(client, name)
+  local function byte(x) return math.floor(x * 255 + 0.5) end
+  return string.format("|cff%02x%02x%02x%s|r", byte(r), byte(g), byte(b), text or name)
+end
+
 -- Am I at this table (host, player or watcher)?
 local function here(client, rec)
   local s = client.session
@@ -165,10 +175,10 @@ end
 function Hall.tableTooltip(tip, rec)
   local client = ns.client
   if not rec or not client then return end
-  tip:SetText(L("hall.host", gameName(rec.game), rec.host), Theme.rgb("gold"))
+  tip:SetText(L("hall.host", gameName(rec.game), colored(client, rec.host)), Theme.rgb("gold"))
   for i = 1, #rec.seats do
     local name = rec.seats[i]
-    if name then tip:AddLine(name, ns.classColor(classOf(client, name))) end
+    if name then tip:AddLine(name, nameColor(client, name)) end
   end
   tip:AddLine(L("access." .. tostring(rec.access)) .. " · " .. L("hall.turn", rec.turn), Theme.rgb("inkDim"))
   if here(client, rec) then return end
@@ -184,7 +194,7 @@ function Hall.chairTooltip(tip, rec, seat)
   if not rec or not client then return end
   local name = rec.seats[seat]
   if name then
-    tip:SetText(name, ns.classColor(classOf(client, name)))
+    tip:SetText(name, nameColor(client, name))
   else
     tip:SetText(L("hall.tip.sit"), Theme.rgb("good"))
   end
@@ -271,6 +281,7 @@ local function fillTable(t, rec, client)
   local mine = here(client, rec)
   t.game:SetText(gameName(rec.game))
   t.host:SetText(firstWord(rec.host))
+  t.host:SetTextColor(nameColor(client, rec.host))
   t.state:SetText(L("hall.live"))
   t.state:SetShown(rec.state == "live")
   local n = #rec.seats
@@ -288,8 +299,9 @@ local function fillTable(t, rec, client)
       c.rim:Show()
       c.disc:SetTexture(Theme.tex.chair)
       c.disc:SetSize(22, 22)
-      c.disc:SetVertexColor(ns.classColor(classOf(client, name)))
+      c.disc:SetVertexColor(nameColor(client, name))
       c.label:SetText(firstWord(name))
+      c.label:SetTextColor(nameColor(client, name))
       c.label:Show()
       c.button:SetEnabled(false)
     else
@@ -351,7 +363,7 @@ end
 
 local function fillRow(r, rec, client)
   r.rec, r.tid = rec, rec.tid
-  r.title:SetText(L("hall.host", gameName(rec.game), rec.host))
+  r.title:SetText(L("hall.host", gameName(rec.game), colored(client, rec.host)))
   r.sub:SetText(L("access." .. tostring(rec.access)) .. " · " .. L("hall.turn", rec.turn))
   r.seats:SetText(seatedCount(rec.seats) .. "/" .. #rec.seats)
   r.state:SetText(L(rec.state == "live" and "hall.live" or "hall.waiting"))
@@ -400,11 +412,11 @@ local function peerWidget(v, i)
   return r
 end
 
-local function whereIs(p, byTid)
+local function whereIs(client, p, byTid)
   if p.incompatible then return L("peers.incompatible") end
   local rec = p.at and byTid[p.at]
   if not rec then return L("peers.hall") end
-  if contains(rec.seats, p.name) then return L("peers.at", firstWord(rec.host)) end
+  if contains(rec.seats, p.name) then return L("peers.at", colored(client, rec.host, firstWord(rec.host))) end
   return L("peers.watching")
 end
 
@@ -450,7 +462,7 @@ local function renderPeers(v, client)
     r.peerName = p.name
     r.name:SetText(p.name)
     r.name:SetTextColor(ns.classColor(p.cls))
-    r.status:SetText(whereIs(p, byTid))
+    r.status:SetText(whereIs(client, p, byTid))
     local offer = Hall.selected == p.name and canInviteName(client, p.name)
     if offer then selectedListed = true end
     r.invite:SetShown(offer)

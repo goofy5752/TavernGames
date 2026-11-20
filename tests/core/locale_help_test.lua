@@ -50,6 +50,37 @@ describe("locale and help", function()
     eq(H.get("nope"), nil)
   end)
 
+  it("every quoted label in the hall and soon help is a UI label, and no help title copies one", function()
+    local QUOTES = { bg = { "„", "“" }, en = { "“", "”" } }
+    for lang, q in pairs(QUOTES) do
+      local ui = {}
+      for k, v in pairs(T[lang]) do
+        if not k:match("^help%.") and not k:match("^intro%.") then ui[v] = true end
+      end
+      local checked = 0
+      for k, text in pairs(T[lang]) do
+        if k:match("^help%.hall%.") or k == "help.soon.example" then
+          local pos = 1
+          while true do
+            local a, b = text:find(q[1], pos, true)
+            if not a then break end
+            local c, d = text:find(q[2], b + 1, true)
+            ok(c, lang .. " " .. k .. ": unclosed quote")
+            if not c then break end
+            local label = text:sub(b + 1, c - 1)
+            ok(ui[label], lang .. " " .. k .. ": „" .. label .. "“ is not a UI label")
+            checked = checked + 1
+            pos = d + 1
+          end
+        end
+      end
+      ok(checked >= 13, lang .. ": only " .. checked .. " quoted labels found")
+      for k, v in pairs(T[lang]) do
+        if k:match("^help%.") and k:match("%.title$") then ok(not ui[v], lang .. " " .. k .. " copies a UI label") end
+      end
+    end
+  end)
+
   it("pinned texts are used verbatim", function()
     eq(T.bg["help.ttt.example"], "Иван е Х, Мария е О. Редуват се. Иван нарежда три Х в редица и печели играта. Който пръв спечели 3 игри, печели мача.")
     eq(T.bg["help.hall.example"], "Виждаш маса с празен стол с пунктир. Кликаш на стола и вече седиш. Ако масата е пълна, кликни на нея, за да гледаш.")
@@ -61,7 +92,7 @@ describe("locale and help", function()
     eq(ns.Locale.lang(), "bg")
     T.bg["test.fmt"], T.en["test.fmt"] = "%s сяда на %d", "%s sits at %d"
     eq(ns.L("test.fmt", "Иван", 2), "Иван сяда на 2")
-    eq(ns.L("help.ttt.title"), T.bg["help.ttt.title"])
+    eq(ns.L("game.ttt"), T.bg["game.ttt"])
     ns.Locale.set("en"); eq(ns.Locale.lang(), "en")
     eq(ns.L("test.fmt", "Ivan", 2), "Ivan sits at 2")
     ns.Locale.set("xx"); eq(ns.Locale.lang(), "en")
