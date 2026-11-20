@@ -1,0 +1,16 @@
+## Interface: 16001
+## Title: Tavern Games
+## Version: 0.1.0
+## SavedVariables: TavernGamesDB
+
+# Libs
+
+# Core
+
+# Engines
+
+# Locale
+
+# WoW
+
+# UI
