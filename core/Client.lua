@@ -10,6 +10,9 @@ local C = ns.Const
 function Client.new(env)
   local self = setmetatable({ env = env, events = ns.Emitter.new(), timers = {}, running = false }, Client)
   self.presence = ns.Presence.new(self)
+  self.lobby = ns.Lobby.new(self)
+  self.session = nil -- see core/Session.lua
+  self.pending = nil -- { tid, host } of an unanswered SIT/WAT
   return self
 end
 
@@ -44,16 +47,26 @@ end
 
 function Client:stop()
   if not self.running then return end
-  -- Task 4: stand up first when seated or watching.
+  self.running = false
+  ns.Session.stand(self) -- STD or END; the seat change sends no HI (BYE follows)
   self:send("GUILD", nil, { v = C.PROTOCOL, t = "BYE" })
   for timer in pairs(self.timers) do timer.cancel() end
   self.timers = {}
-  self.running = false
 end
 
 function Client:peerOffline(name)
   self.presence:remove(name)
 end
+
+-- opts {game, access, turn} -> tid | nil, code ("busy" "game" "access" "turn").
+function Client:openTable(opts) return ns.Session.open(self, opts) end
+
+-- Refusals arrive as the event "refused"(tid, why).
+function Client:sit(tid, seat) ns.Session.request(self, "SIT", tid, seat) end
+function Client:watch(tid) ns.Session.request(self, "WAT", tid) end
+
+-- Stands up or stops watching.
+function Client:stand() ns.Session.stand(self) end
 
 function Client:receive(channel, sender, msg)
   if not self.running then return end
@@ -66,9 +79,14 @@ function Client:receive(channel, sender, msg)
       self.updateSeen = true
       self.events:emit("update")
     end
-    -- Task 4: a SIT/WAT with a string tid is also handed to the session for the
-    -- "version" refusal; every other v ~= 1 message stops here.
+    -- A SIT/WAT with a string tid also gets the "version" refusal; every other
+    -- v ~= 1 message stops here.
+    if (msg.t == "SIT" or msg.t == "WAT") and type(msg.tid) == "string" then
+      ns.Session.refuseVersion(self, sender, msg.tid)
+    end
     return
   end
   self.presence:receive(channel, sender, msg)
+  self.lobby:receive(channel, sender, msg)
+  ns.Session.receive(self, channel, sender, msg)
 end

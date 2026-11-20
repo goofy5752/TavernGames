@@ -13,6 +13,8 @@ core/Emitter.lua
 core/Bus.lua
 core/Trace.lua
 core/Presence.lua
+core/Lobby.lua
+core/Session.lua
 core/Client.lua
 
 # Engines

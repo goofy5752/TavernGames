@@ -24,6 +24,16 @@ function Util.same(a, b)
   return true
 end
 
+-- Plain byte order of two strings (string `<` goes through strcoll).
+function Util.byteLess(a, b)
+  local n = math.min(#a, #b)
+  for i = 1, n do
+    local x, y = a:byte(i), b:byte(i)
+    if x ~= y then return x < y end
+  end
+  return #a < #b
+end
+
 -- 123456 -> "12g 34s 56c"; zero parts are omitted; 0 -> "0c".
 function Util.money(copper)
   copper = math.floor(copper or 0)

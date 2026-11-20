@@ -8,15 +8,7 @@ ns.Presence = Presence
 
 local C = ns.Const
 
--- Plain byte order (string `<` goes through strcoll).
-local function byteLess(a, b)
-  local n = math.min(#a, #b)
-  for i = 1, n do
-    local x, y = a:byte(i), b:byte(i)
-    if x ~= y then return x < y end
-  end
-  return #a < #b
-end
+local byteLess = ns.Util.byteLess
 
 local function public(p)
   return { name = p.name, cls = p.cls, guid = p.guid, at = p.at, incompatible = p.incompatible }
@@ -60,9 +52,11 @@ function Presence:start()
 end
 
 -- Own seat changed: GUILD HI, at most one per HI_MIN_GAP seconds, latest `at` wins.
+-- A stopped client only records it; its BYE already tells everyone.
 function Presence:setAt(tid)
   if tid == self.at then return end
   self.at = tid
+  if not self.client.running then return end
   if self.pendingHi then return end
   local wait = self.lastHi and (self.lastHi + C.HI_MIN_GAP - self.client.env.now()) or 0
   if wait <= 0 then
