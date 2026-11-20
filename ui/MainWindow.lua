@@ -210,7 +210,10 @@ local function selectTab(id)
 end
 
 -- Opens the window on `tabId` (default: the tab shown last, else the first).
+-- On the first run the language choice and the intro (ui/Intro.lua) come
+-- first; they open the window when they are done.
 function MainWindow.show(tabId)
+  if ns.Intro and ns.Intro.pending() then return ns.Intro.firstRun(tabId) end
   if not MainWindow.frame then build() end
   local id = tabId or MainWindow.current or MainWindow.order[1]
   MainWindow.frame:Show()

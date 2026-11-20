@@ -52,7 +52,7 @@ function Wow.new(opts)
   local self = setmetatable({
     clock = 0, timers = {}, seq = 0, frames = {}, sent = {}, chat = {}, filters = {},
     roster = {}, rosterRequests = 0, inGuild = false, combat = false, instance = false,
-    dnd = false, group = {}, money = 0, icons = {}, sounds = {},
+    dnd = false, group = {}, money = 0, icons = {}, sounds = {}, reloads = 0,
   }, Wow)
   local G = {}
   for _, name in ipairs(BUILTINS) do G[name] = _G[name] end
@@ -111,6 +111,7 @@ function Wow.new(opts)
   G.SOUNDKIT = { TELL_MESSAGE = 3081 }
   G.PlaySound = function(id, channel) self.sounds[#self.sounds + 1] = { id, channel } end
   G.SlashCmdList = {}
+  G.ReloadUI = function() self.reloads = self.reloads + 1 end
   G.InitiateTrade = forbidden("InitiateTrade")
   G.C_TradeInfo = { SetTradeMoney = forbidden("C_TradeInfo.SetTradeMoney") }
   G.SetSendMailMoney = forbidden("SetSendMailMoney")
@@ -166,6 +167,10 @@ end
 function Wow:init() if self.addon.OnInitialize then self.addon:OnInitialize() end end
 function Wow:enable() if self.addon.OnEnable then self.addon:OnEnable() end end
 function Wow:boot() self:init(); self:enable() end
+
+-- The first run is over (language chosen, intro seen): the main window opens
+-- directly instead of the language dialog.
+function Wow:firstRunDone() self.ns.db.lang, self.ns.db.introDone = "bg", true end
 
 function Wow:fire(event, ...)
   for _, f in ipairs(self.frames) do

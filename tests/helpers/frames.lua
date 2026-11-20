@@ -103,6 +103,14 @@ function FontString:GetStringWidth()
   local _, n = (self.text or ""):gsub("[^\128-\191]", "")
   return n * (self.font and self.font[2] or 12) * 0.5
 end
+-- Wrapped height: as many lines as the text needs at the width set (one line
+-- when no width is set), 1.25 x the font size each.
+function FontString:GetStringHeight()
+  local size = self.font and self.font[2] or 12
+  local lines = 1
+  if self.width and self.width > 0 then lines = math.max(1, math.ceil(self:GetStringWidth() / self.width)) end
+  return lines * size * 1.25
+end
 
 -- Frames
 local Frame = setmetatable({}, { __index = Region })

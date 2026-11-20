@@ -58,7 +58,7 @@ T["probe.echo.lost"] = "echo LOST: %d bytes, IsInInstance at send: %s"
 -- Main window and hall
 T["tab.hall"] = "Hall"
 T["main.gold"] = "In your bags:"
-T["info.tip"] = "Rules book"
+T["book.title"] = "Rules book"
 T["minimap.tip"] = "Click to open the tavern."
 T["game.ttt"] = "Tic-tac-toe"
 T["game.belot"] = "Belot"
@@ -149,3 +149,27 @@ T["invite.auto.instance"] = "%s is in a dungeon."
 T["invite.auto.busy"] = "%s is busy."
 T["invite.auto.snooze"] = "%s does not want invitations right now."
 T["invite.auto.timeout"] = "%s did not answer."
+
+-- Rules book window
+T["book.intro"] = "Show the intro again"
+
+-- First-run language choice (the same in both languages) and the intro cards
+T["lang.title"] = "Език / Language"
+T["lang.bg"] = "Български"
+T["lang.en"] = "English"
+T["intro.next"] = "Next"
+T["intro.back"] = "Back"
+T["intro.skip"] = "Skip"
+T["intro.count"] = "%d/%d"
+
+-- Settings tab
+T["tab.settings"] = "Settings"
+T["settings.lang"] = "Language"
+T["settings.reload"] = "The new language comes after a reload of the interface."
+T["settings.reloadNow"] = "Reload"
+T["settings.busy"] = "Busy (no invitations)"
+T["settings.minimap"] = "Minimap button"
+T["settings.intro"] = "Show the intro"
+T["settings.about"] = "About the addon"
+T["settings.version"] = "Addon version: %s"
+T["settings.protocol"] = "Protocol version: %d"

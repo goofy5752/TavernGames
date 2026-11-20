@@ -14,6 +14,10 @@ local STYLES = {
   ui = { font = "ui", size = 13, color = "ink" },
   dim = { font = "ui", size = 11, color = "inkDim" },
   italic = { font = "italic", size = 13, color = "ink" },
+  -- Dark ink on cream paper (the rules book, the intro), without a shadow.
+  paper = { font = "ui", size = 13, color = "woodDark", flat = true },
+  paperItalic = { font = "italic", size = 13, color = "woodDark", flat = true },
+  paperHeading = { font = "heading", size = 18, color = "red", flat = true },
 }
 
 -- Nine-slice of the texture at `path` (pixel size `size`, a number or {w, h})
@@ -69,14 +73,19 @@ function W.tile(frame, path, texSize, w, h, layer)
   return t
 end
 
--- A FontString in one of the styles "heading" | "ui" | "dim" | "italic".
+-- A FontString in one of the styles "heading" | "ui" | "dim" | "italic", or
+-- "paper" | "paperItalic" | "paperHeading" for text on cream paper.
 function W.Label(parent, style, text, size)
   local s = STYLES[style] or STYLES.ui
   local fs = parent:CreateFontString(nil, "OVERLAY")
   fs:SetFont(Theme.font[s.font], size or s.size, "")
   fs:SetTextColor(Theme.rgb(s.color))
-  fs:SetShadowOffset(1, -1)
-  fs:SetShadowColor(0, 0, 0, 0.8)
+  if s.flat then
+    fs:SetShadowOffset(0, 0)
+  else
+    fs:SetShadowOffset(1, -1)
+    fs:SetShadowColor(0, 0, 0, 0.8)
+  end
   fs:SetJustifyH("LEFT")
   if text then fs:SetText(text) end
   return fs
@@ -130,6 +139,16 @@ function W.edges(frame, px, layer)
     for i = 1, 4 do set[i]:SetVertexColor(r, g, b, a or 1) end
   end
   return set
+end
+
+-- Cream paper inside the brass frame (media/frame.tga, a 12 px band drawn
+-- 12 px wide) over all of `frame`. Returns the paper texture and the nine-slice.
+function W.paper(frame)
+  local paper = frame:CreateTexture(nil, "BACKGROUND")
+  paper:SetPoint("TOPLEFT", frame, "TOPLEFT", 4, -4)
+  paper:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -4, 4)
+  paper:SetColorTexture(Theme.rgb("cream"))
+  return paper, W.nine(frame, Theme.tex.frame, Theme.texSize.frame, 12, 12, "BORDER", true)
 end
 
 -- A dark translucent panel with a thin brass edge (mockup `.panel`).
@@ -192,7 +211,7 @@ function W.Info(parent, topicId)
   t:SetTexture(Theme.tex.info)
   b.icon = t
   b.topic = topicId
-  W.tooltip(b, function(tip) tip:SetText(L("info.tip")) end)
+  W.tooltip(b, function(tip) tip:SetText(L("book.title")) end)
   b:HookScript("OnEnter", function() t:SetVertexColor(Theme.rgb("gold")) end)
   b:HookScript("OnLeave", function() t:SetVertexColor(1, 1, 1) end)
   b:SetScript("OnClick", function(self)

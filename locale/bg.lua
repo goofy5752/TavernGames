@@ -58,7 +58,7 @@ T["probe.echo.lost"] = "echo LOST: %d байта, IsInInstance при праща
 -- Main window and hall
 T["tab.hall"] = "Зала"
 T["main.gold"] = "В чантата:"
-T["info.tip"] = "Книжка с правила"
+T["book.title"] = "Книжка с правила"
 T["minimap.tip"] = "Кликни, за да отвориш кръчмата."
 T["game.ttt"] = "Морски шах"
 T["game.belot"] = "Белот"
@@ -149,3 +149,27 @@ T["invite.auto.instance"] = "%s е в подземие."
 T["invite.auto.busy"] = "%s е зает."
 T["invite.auto.snooze"] = "%s не иска покани сега."
 T["invite.auto.timeout"] = "%s не отговори."
+
+-- Rules book window
+T["book.intro"] = "Покажи въведението пак"
+
+-- First-run language choice (the same in both languages) and the intro cards
+T["lang.title"] = "Език / Language"
+T["lang.bg"] = "Български"
+T["lang.en"] = "English"
+T["intro.next"] = "Напред"
+T["intro.back"] = "Назад"
+T["intro.skip"] = "Пропусни"
+T["intro.count"] = "%d/%d"
+
+-- Settings tab
+T["tab.settings"] = "Настройки"
+T["settings.lang"] = "Език"
+T["settings.reload"] = "Новият език идва след презареждане на интерфейса."
+T["settings.reloadNow"] = "Презареди"
+T["settings.busy"] = "Зает съм (не приемам покани)"
+T["settings.minimap"] = "Бутон до миникартата"
+T["settings.intro"] = "Покажи въведението"
+T["settings.about"] = "За аддона"
+T["settings.version"] = "Версия на аддона: %s"
+T["settings.protocol"] = "Версия на протокола: %d"

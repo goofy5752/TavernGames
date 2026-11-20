@@ -10,6 +10,7 @@ local function guildWow()
   w.roster = { { name = ME .. "-Forever", online = true, guid = Wow.GUID } }
   w.G.RAID_CLASS_COLORS.PRIEST = { r = 1, g = 1, b = 1 }
   w:boot()
+  w:firstRunDone()
   w:fire("GUILD_ROSTER_UPDATE")
   w:fire("PLAYER_LOGIN")
   return w
