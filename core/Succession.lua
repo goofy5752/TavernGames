@@ -186,9 +186,7 @@ local function becomeHost(s, oldHost, oldHeard)
       s.lastHeard[name] = (name == oldHost and oldHeard) or now
     end
   end
-  if s.status == "live" and s:seatedCount() < s:engine().minSeats and s:apply(0, { k = "abort" }) then
-    s.seq = s.seq + 1
-  end
+  if s.status == "live" and s:seatedCount() < s:engine().minSeats then s:applyUnsent(0, { k = "abort" }) end
   s:armTimers() -- a fresh full turn
   local members = s:members()
   for i = 1, #members do s:snapshotTo(members[i]) end
@@ -249,9 +247,7 @@ function Succession.onHandoff(client, sender, m)
   if m.to ~= client.env.me then return Succession.follow(s, m.to, m.e) end
   if not s.mySeat then return end -- watchers never become host
   local seat = seatOf(s.seats, sender)
-  if seat and s:apply(0, { k = "stand", seat = seat, why = "left" }) then
-    s.seq = s.seq + 1 -- its stand never reached me
-  end
+  if seat then s:applyUnsent(0, { k = "stand", seat = seat, why = "left" }) end -- its stand never reached me
   s.epoch = m.e
   s.invited = s.invited or {}
   s:addInvited(m.inv) -- invitations sent after my snapshot

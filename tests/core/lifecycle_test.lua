@@ -80,6 +80,26 @@ describe("game lifecycle", function()
     ok(a:startGame()); sim:run(1); eq(d.session.state.players, {1,2,3,4}); eq(d.session.state.turn, 1); eq(#ra, 1)
   end)
 
+  it("the winner in seat 2 begins the next game", function()
+    local sim, a, b, c = running()
+    ok(a:act{k="inc", by=0}); sim:run(1); ok(b:act{k="inc", by=1}); sim:run(1); ok(c:act{k="inc", by=1}); sim:run(1)
+    ok(a:act{k="inc", by=0}); sim:run(1); ok(b:act{k="inc", by=1}); sim:run(1)
+    eq(a.session.state.winner, 2)
+    ok(a:startGame()); sim:run(1); eq(a.session.state.turn, 2); eq(c.session.state.turn, 2)
+  end)
+
+  it("a new host's catch-up stand and short-table abort reach the applied hook", function()
+    local sim, a, b = clients()
+    local tid = a:openTable{game="pick", access="guild", turn=45}; sim:run(3)
+    b:sit(tid, 2); sim:run(1); ok(a:startGame()); sim:run(1)
+    local seq = b.session.seq
+    -- the HND arrives, the host's own stand before it never did
+    b:receive("WHISPER", A, {v=1, t="HND", tid=tid, e=2, to=B})
+    eq(b.session.role, "host"); eq(b.session.status, "aborted"); eq(b.session.seq, seq + 2)
+    local log = b.session.appliedLog
+    eq({log[#log - 1], log[#log]}, {"stand", "abort"})
+  end)
+
   it("a player leaves a three-player game: play goes on without his turns, and aborts below two", function()
     local sim, a, b, c = running()
     ok(a:act{k="inc", by=1}); sim:run(1); ok(b:act{k="inc", by=1}); sim:run(1)

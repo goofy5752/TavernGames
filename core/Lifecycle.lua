@@ -5,7 +5,8 @@ local _, ns = ...
 -- game from the occupied seats, the "result" event, and the entry points
 -- startGame (games with engine.start == "host"; Session:startIfFull never
 -- starts those) and playAuto. Session:apply calls newGame and noteResult;
--- Session:onAct passes a member's action through filterAct before playing it.
+-- Session:onAct passes a member's action through filterAct before playing it;
+-- a new host (core/Succession.lua) applies its catch-up events with applyUnsent.
 local Session = ns.Session
 local copy = ns.Util.copy
 
@@ -20,6 +21,16 @@ function Session:hook(name, ...)
     if out == nil then out = r end
   end
   return out
+end
+
+-- An event a new host orders for itself before its snapshots go out (the old
+-- host's stand that never reached it, the abort of a short table): applied and
+-- counted without being sent, then the extensions' `applied`. -> true | nil
+function Session:applyUnsent(seat, a)
+  if not self:apply(seat, a) then return nil end
+  self.seq = self.seq + 1
+  self:hook("applied", seat, a)
+  return true
 end
 
 function Session:filterAct(seat, a)
