@@ -19,6 +19,7 @@ function Sim.new(ns)
     offlineSet = {},
     guids = {},       -- name -> guid (stable across relogs)
     guidCount = 0,
+    nextRandom = {},  -- results for env.random, first to last; when empty: hi
   }, Sim)
   self.bus = self.ns.Bus.new()
   self.makeEnv = function(name, cls) return self:newEnv(name, { cls = cls }) end
@@ -65,6 +66,7 @@ function Sim:newEnv(name, opts)
   end
   env.status = function() return { combat = status.combat, instance = status.instance, busy = status.busy } end
   env.inGroup = function(guid) return group[guid] == true end
+  env.random = function(lo, hi) return table.remove(sim.nextRandom, 1) or hi end
   env.log = function() end
   return env
 end

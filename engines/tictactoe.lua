@@ -117,6 +117,12 @@ function E.system(s)
   if s.phase == "round" then return { k = "next" }, 3 end
 end
 
+-- The match outcome: {winners, losers} once a player has won the match.
+function E.result(s)
+  if s.phase == "match" then return { winners = { s.winner }, losers = { 3 - s.winner } } end
+  return nil
+end
+
 function E.snapshot(s) return copy(s) end
 function E.restore(t) return copy(t) end
 

@@ -73,6 +73,12 @@ function Client:stand() ns.Session.stand(self) end
 -- A move by my seat -> true | nil, code (see Session.act).
 function Client:act(action) return ns.Session.act(self, action) end
 
+-- Host: start the next game of a host-started game -> true | nil, code (see Session.startGame).
+function Client:startGame() return ns.Session.startGame(self) end
+
+-- My automatic move -> true | nil, code (see Session.playAuto).
+function Client:playAuto() return ns.Session.playAuto(self) end
+
 -- Host of a table with a free seat: invite `name` -> true | nil, code
 -- ("nothost" "unknown" "seated" "pending"). The answer arrives as "inviteAnswer".
 function Client:invite(name) return self.invites:send(name) end
