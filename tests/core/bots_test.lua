@@ -156,3 +156,55 @@ describe("bots", function()
     eq(guild, 0)
   end)
 end)
+
+describe("bots for any game", function()
+  local function setup()
+    local sim = Sim.new()
+    local a, envA = sim:add(A, { cls = "MAGE" }); local bots = Bots.enable(a, envA, sim.makeEnv); sim:run(1)
+    return sim, a, envA, bots
+  end
+
+  it("one human plays Death Roll against two bots: real rolls for me, table rolls for them, nobody invited", function()
+    local sim, a = setup()
+    ok(a:openTable{ game = "deathroll", access = "invite", turn = 45, opt = { start = 100 } })
+    ok(a:invite("Бот Иванов")); ok(a:invite("Bot Barleybrew")); sim:run(5); eq(a.session:seatedCount(), 3)
+    ok(a:startGame()); sim.nextRolls, sim.nextRandom = { 50, 20, 5, 1 }, { 40, 30, 15, 10, 4, 2 }
+    for _ = 1, 200 do
+      local st = a.session.state; if st.phase == "over" then break end
+      if st.turn == 1 and not a.session.rolling then a:roll() end; sim:run(1)
+    end
+    local st = a.session.state; eq(st.phase, "over"); eq(st.rolls[#st.rolls].n, 1)
+    for _, r in ipairs(st.rolls) do eq(r.src, r.seat == 1 and "seen" or "ask") end
+    eq(sim.groupInvites, {}); eq(sim:count(function(m) return m.channel == "GUILD" and m.from ~= A end), 0)
+    for _, r in ipairs(sim.rolled) do eq(r.from, A) end
+  end)
+
+  it("a bot hosts Death Roll, I sit, it starts by itself and sees my rolls", function()
+    local sim, a, _, bots = setup()
+    local tid = bots:hostTable("deathroll"); sim:run(3); a:sit(tid, 2); sim:run(4); eq(a.session.status, "live")
+    for _ = 1, 30 do
+      if a.session.state.turn == 2 then break end
+      sim:run(1)
+    end
+    eq(a.session.state.turn, 2)
+    sim.nextRolls = { 7 }; ok(a:roll()); sim:run(1)
+    local rolls = a.session.state.rolls
+    local r = rolls[#rolls]
+    eq(r.seat, 2); eq(r.n, 7); eq(r.src, "seen")
+  end)
+
+  it("hostTable and inviteMe refuse a game that is not built", function()
+    local _, _, _, bots = setup()
+    eq(bots:hostTable("belot"), nil); eq(bots:inviteMe("holdem"), nil); ok(bots:hostTable()) -- default ttt
+  end)
+
+  it("disable restores env.inGroup", function()
+    local sim = Sim.new()
+    local a, envA = sim:add(A, { cls = "MAGE" })
+    local orig = envA.inGroup
+    local bots = Bots.enable(a, envA, sim.makeEnv); sim:run(1)
+    eq(envA.inGroup(bots.list[1].env.guid), true)
+    Bots.disable(bots)
+    ok(envA.inGroup == orig)
+  end)
+end)

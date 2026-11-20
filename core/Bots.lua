@@ -14,10 +14,19 @@ local _, ns = ...
 -- A bot's WHISPER reaches the human or another bot through the bus (anything
 -- else is dropped); a bot's GUILD reaches the human and the other bots only.
 -- Deliveries are flushed through env.after(0, ...).
+-- enable() also wraps env.inGroup so that a bot's GUID counts as in my group
+-- (no group invite and no "not in your group" hint for a bot, and bots may sit
+-- at my "group" table), and forwards my "rollSeen" events to every bot, so a
+-- bot that hosts Death Roll sees my server rolls. A bot has no env.roll and no
+-- env.groupInvite: its rolls are table rolls (src "ask").
 --
--- Behaviour: a bot accepts an invitation after ACCEPT_AFTER s, on its turn
--- plays Engine.auto after MOVE_AFTER s, and in phase "match" asks for a
--- rematch after REMATCH_AFTER s.
+-- Behaviour: a bot accepts an invitation after ACCEPT_AFTER s (refused "taken"
+-- because another bot took that seat first, it sits at a free seat
+-- SIT_RETRY_AFTER s later, at most SIT_RETRIES times), on its turn makes its
+-- automatic move (client:playAuto) after MOVE_AFTER s, in phase "match" asks
+-- for a rematch after REMATCH_AFTER s, and as host of a game the host starts
+-- (engine.start == "host") starts it START_AFTER s after a change that leaves
+-- it startable (at least minSeats seated, no game running).
 local Bots = {}
 Bots.__index = Bots
 ns.Bots = Bots
@@ -28,7 +37,9 @@ local copy = ns.Util.copy
 local MAX_BOTS = 12
 local STARTERS = { { "Бот Иванов", "PRIEST" }, { "Bot Barleybrew", "WARRIOR" }, { "Бот Петрова", "MAGE" } }
 local SPARE_CLASSES = { "ROGUE", "HUNTER", "WARLOCK", "DRUID", "PALADIN", "SHAMAN", "PRIEST", "WARRIOR", "MAGE" }
-local ACCEPT_AFTER, MOVE_AFTER, REMATCH_AFTER = 1, 1.5, 2
+local ACCEPT_AFTER, MOVE_AFTER, REMATCH_AFTER, START_AFTER = 1, 1.5, 2, 2
+-- A lobby record catches up within one TBL gap (at most one TBL per table per 2 s).
+local SIT_RETRY_AFTER, SIT_RETRIES = 2, 3
 
 local function hasBot(self, seats)
   for i = 1, #(seats or {}) do
@@ -128,38 +139,75 @@ local function humanSend(self)
   end
 end
 
--- The next thing `bot` wants to do at its table -> action, delay | nil.
-local function nextAction(bot)
-  local s = bot.session
-  if not s or not s.mySeat or s.status ~= "live" or not s.state then return nil end
-  local st = s.state
-  if st.phase == "match" then
-    if st.rematch and not st.rematch[s.mySeat] then return { k = "rematch" }, REMATCH_AFTER end
-    return nil
+local function freeSeat(seats)
+  for i = 1, #(seats or {}) do
+    if seats[i] == false then return i end
   end
-  if st.turn ~= s.mySeat then return nil end
-  local a = ns.Engines[s.game].auto(st, s.mySeat)
-  if a then return a, MOVE_AFTER end
   return nil
 end
 
+-- Host of a game the host starts, which client:startGame would start now: at
+-- least minSeats seated and no game running (none yet, or the last one over:
+-- engine.over, else a known result, as in core/Lifecycle.lua).
+local function startable(s)
+  local engine = s:engine()
+  if s.role ~= "host" or engine.start ~= "host" or s:seatedCount() < engine.minSeats then return false end
+  if s.status ~= "live" or not s.state then return true end
+  if engine.over then return engine.over(s.state) == true end
+  return engine.result ~= nil and engine.result(s.state) ~= nil
+end
+
+-- The next thing `bot` wants to do at its table -> do(), delay | nil.
+local function nextAction(bot)
+  local s = bot.session
+  if not s or not s.mySeat then return nil end
+  if startable(s) then return function() bot:startGame() end, START_AFTER end
+  if s.status ~= "live" or not s.state then return nil end
+  local st = s.state
+  if st.phase == "match" then
+    if st.rematch and not st.rematch[s.mySeat] then
+      return function() bot:act({ k = "rematch" }) end, REMATCH_AFTER
+    end
+    return nil
+  end
+  if st.turn ~= s.mySeat then return nil end
+  return function() bot:playAuto() end, MOVE_AFTER
+end
+
 local function behave(bot)
+  -- The table whose invitation I accepted, and how many more SITs it may take.
+  local accepted
   bot:on("invite", function(inv)
     bot:after(ACCEPT_AFTER, function()
       local r = bot.invites.received
-      if r and r.tid == inv.tid then bot:answerInvite(inv.tid, "yes") end
+      if r and r.tid == inv.tid then
+        accepted = { tid = inv.tid, left = SIT_RETRIES }
+        bot:answerInvite(inv.tid, "yes")
+      end
+    end)
+  end)
+  -- Two bots that accept at once ask for the same seat of a stale lobby record;
+  -- the one refused sits at a free seat once the record has caught up.
+  bot:on("refused", function(tid, why)
+    if why ~= "taken" or not accepted or accepted.tid ~= tid or accepted.left <= 0 then return end
+    accepted.left = accepted.left - 1
+    bot:after(SIT_RETRY_AFTER, function()
+      if bot.session or bot.pending or bot.invites.received then return end
+      local rec = bot.lobby:get(tid)
+      local seat = rec and freeSeat(rec.seats)
+      if seat then bot:sit(tid, seat) end
     end)
   end)
   -- One pending step at a time; what to do is decided again when it fires.
   local step
   bot:on("session", function()
     if step then return end
-    local a, delay = nextAction(bot)
-    if not a then return end
+    local act, delay = nextAction(bot)
+    if not act then return end
     step = bot:after(delay, function()
       step = nil
       local now = nextAction(bot)
-      if now then bot:act(now) end
+      if now then now() end
     end)
   end)
   -- Nobody came to my invite-only table: close it.
@@ -183,6 +231,7 @@ function Bots:spawn(name, cls)
   local bot = ns.Client.new(env)
   self.list[#self.list + 1] = bot
   self.isBot[name] = true
+  if env.guid then self.botGuid[env.guid] = true end
   self.bus:join(name, function(channel, sender, msg) bot:receive(channel, sender, msg) end)
   behave(bot)
   bot:start()
@@ -200,20 +249,32 @@ function Bots:idle()
   return self:spawn("Бот Номер" .. n, SPARE_CLASSES[(n - 1) % #SPARE_CLASSES + 1])
 end
 
--- An idle bot opens a guild table and waits -> tid | nil (all MAX_BOTS busy).
-function Bots:hostTable()
-  if self.disabled then return nil end
+-- An idle bot for a table of `game` (default "ttt") -> bot, game | nil (not a
+-- playable game, bot mode off, or all MAX_BOTS busy).
+local function idleFor(self, game)
+  game = game or "ttt"
+  if self.disabled or not ns.Games.engine(game) then return nil end
   local bot = self:idle()
   if not bot then return nil end
-  return (bot:openTable{ game = "ttt", access = "guild", turn = C.TURN_DEFAULT })
+  return bot, game
 end
 
--- An idle bot opens an invite-only table and invites me -> tid | nil.
-function Bots:inviteMe()
-  if self.disabled then return nil end
-  local bot = self:idle()
+-- An idle bot opens a guild table of `game` (default "ttt", the engine's default
+-- options) and waits -> tid | nil.
+function Bots:hostTable(game)
+  local bot
+  bot, game = idleFor(self, game)
   if not bot then return nil end
-  local tid = bot:openTable{ game = "ttt", access = "invite", turn = C.TURN_DEFAULT }
+  return (bot:openTable{ game = game, access = "guild", turn = C.TURN_DEFAULT })
+end
+
+-- An idle bot opens an invite-only table of `game` (default "ttt", the engine's
+-- default options) and invites me -> tid | nil.
+function Bots:inviteMe(game)
+  local bot
+  bot, game = idleFor(self, game)
+  if not bot then return nil end
+  local tid = bot:openTable{ game = game, access = "invite", turn = C.TURN_DEFAULT }
   if not tid then return nil end
   -- After the pending deliveries, so the bot has heard my HI.
   bot:after(0, function()
@@ -222,20 +283,38 @@ function Bots:inviteMe()
   return tid
 end
 
--- client: the human Client; env: its env (send is wrapped); makeEnv(name, cls) -> env.
+-- My env.inGroup while bot mode is on: a bot's GUID is in my group.
+local function humanInGroup(self)
+  local orig = self.origInGroup
+  return function(guid)
+    if self.botGuid[guid] then return true end
+    if orig then return orig(guid) end
+    return false
+  end
+end
+
+-- client: the human Client; env: its env (send and inGroup are wrapped);
+-- makeEnv(name, cls) -> env.
 function Bots.enable(client, env, makeEnv)
   local self = setmetatable({
-    client = client, env = env, makeEnv = makeEnv, orig = env.send,
-    bus = ns.Bus.new(), list = {}, isBot = {}, announced = {}, flushQueued = false, disabled = false,
+    client = client, env = env, makeEnv = makeEnv, orig = env.send, origInGroup = env.inGroup,
+    bus = ns.Bus.new(), list = {}, isBot = {}, botGuid = {}, announced = {}, flushQueued = false, disabled = false,
   }, Bots)
   self.bus:join(env.me, function(channel, sender, msg) client:receive(channel, sender, msg) end)
   env.send = humanSend(self)
+  env.inGroup = humanInGroup(self)
+  -- My sightings of server rolls reach every bot (only until disable).
+  client:on("rollSeen", function(shown, n, lo, hi)
+    if self.disabled then return end
+    for i = 1, #self.list do self.list[i]:rollSeen(shown, n, lo, hi) end
+  end)
   for i = 1, #STARTERS do self:spawn(STARTERS[i][1], STARTERS[i][2]) end
   return self
 end
 
 -- Leaves any bot table, stops every bot (their BYE reaches only me), forgets
--- the bot tables and restores env.send.
+-- the bot tables, stops forwarding my roll sightings and restores env.send and
+-- env.inGroup.
 function Bots.disable(self)
   if self.disabled then return end
   local client = self.client
@@ -250,6 +329,7 @@ function Bots.disable(self)
   for name in pairs(self.isBot) do client:peerOffline(name) end
   self.disabled = true
   self.env.send = self.orig
+  self.env.inGroup = self.origInGroup
   for name in pairs(self.isBot) do self.bus:leave(name) end
   self.bus:leave(self.env.me)
 end
