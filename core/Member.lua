@@ -39,16 +39,17 @@ function Session:requestSync()
   end
 end
 
--- The stake I accepted for table `tid` -> known, sk: my note for it
--- (db.stakeSat, ns.Stake.note: it outlives a /reload or a logout), else my
--- session at that table, else none (nil: only a fun table) when my note of
--- another table was written in this run. Unknown: no note in this run and the
--- one loaded at login is of another table or missing (a crash).
+-- The stake I accepted for table `tid` -> known, sk: my own note for it
+-- (db.stakeSat, see ns.Stake.note), else the stake I am being asked about
+-- (s.stakeAsk, ns.Stake.ask), else none (nil: only a fun table) when I am at
+-- the table in this run or my note was written or cleared in this run.
+-- Unknown: a fresh login whose loaded note is of another table or missing (a
+-- crash): ns.Stake.ask. Never a watcher session's stake.
 local function accepted(client, tid)
   local note, s = client.env.db.stakeSat, client.session
   if type(note) == "table" and note.tid == tid then return true, note.sk end
-  if s and s.tid == tid then return true, s.stake end
-  if client.stakeNoted then return true, nil end
+  if s and s.stakeAsk then return true, s.stake end
+  if s or client.stakeNoted then return true, nil end
   return false, nil
 end
 
@@ -240,6 +241,8 @@ local function onEvent(client, sender, m)
   if not s or s.role == "host" or s.tid ~= m.tid or s.host ~= sender or s.stale then return end
   if m.e ~= s.epoch or type(m.q) ~= "number" or m.q <= s.seq then return end
   if m.q > s.seq + 1 then return s:requestSync() end
+  -- An asked stake I did not accept goes before the next game begins (ns.Stake.ask).
+  if s.stakeAsk and m.seat == 0 and type(m.a) == "table" and m.a.k == "start" then return ns.Stake.standUp(client, s) end
   if m.seat == s.mySeat and s:engine().view and not Member.mine(s, m.a) and not Member.timedOut(s, m) then
     s:hook("forged", m.seat, m.a)
   elseif Member.unasked(s, m.seat, m.a) then

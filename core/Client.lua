@@ -75,10 +75,12 @@ function Client:sit(tid, seat, sk) ns.Session.request(self, "SIT", tid, seat, sk
 function Client:acceptStake() return ns.Stake.accept(self) end
 function Client:watch(tid) ns.Session.request(self, "WAT", tid) end
 
--- Stands up or stops watching (the extensions hear of it first: hook `leaving`).
+-- Stands up or stops watching (the extensions hear of it first: hook `leaving`);
+-- my stake note goes (ns.Stake), so no host can seat me there again at it.
 function Client:stand()
   if self.session then self.session:hook("leaving") end
   ns.Session.stand(self)
+  ns.Stake.clear(self)
 end
 
 -- A move by my seat -> true | nil, code (see Session.act).

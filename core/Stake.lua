@@ -42,14 +42,28 @@ end
 -- The stake I accepted (Member.adopt checks every snapshot that seats me)
 ---------------------------------------------------------------------------
 
--- Notes that I accept stake `sk` (nil: for fun) at table `tid`: db.stakeSat,
--- written by my SIT (Session.request), my own table (Session.open) and
--- Stake.accept. client.stakeNoted: a note was written in this run of the
--- client, so a note of another table means I accepted nothing here (only a
--- note loaded at login can be stale, after a crash).
+-- A staked seat is mine only through my own note {tid, sk} in db.stakeSat
+-- (sk nil: for fun). It is written when I send a SIT with that sk to that
+-- table (Session.request) or open it (Session.open), and by Stake.accept;
+-- it is cleared when I stand (Client:stand), when a SIT of mine is refused
+-- and when I leave the table (Stake.watch). A logout keeps it (Session.stop
+-- leaves nobody), so it outlives a /reload only while I am seated.
+-- client.stakeNoted: the note was written or cleared in this run of the
+-- client, so no note for a table means I accepted no stake there (only the
+-- note loaded at login can be missing or stale, after a crash).
 function Stake.note(client, tid, sk)
   client.env.db.stakeSat = { tid = tid, sk = sk }
   client.stakeNoted = true
+end
+
+function Stake.clear(client)
+  client.env.db.stakeSat = nil
+  client.stakeNoted = true
+end
+
+-- Do I hold a seat at my table s -> bool (a seat the host stood up is lost).
+local function seated(client, s)
+  return s.mySeat ~= nil and s.seats[s.mySeat] == client.env.me
 end
 
 -- No game runs at my table (open, aborted, or the game is over).
@@ -57,7 +71,8 @@ local function over(s)
   return s.status ~= "live" or s:gameOver()
 end
 
-local function standUp(client, s)
+-- The asked seat goes: I stand up, "refused"(tid, "stake").
+function Stake.standUp(client, s)
   local tid = s.tid
   s.stakeAsk = nil
   client:stand()
@@ -67,31 +82,41 @@ end
 -- Member.adopt seated me at a staked table without a note of mine for it (a
 -- crash, or a login with a stale note): the seat is kept for the running game
 -- only, "stakeAsk"(tid, sk) asks me, and unless I accept (Stake.accept) the
--- game's end stands me up ("refused" "stake"). No game running: at once.
+-- game's end or the next game's start (Member's onEvent) stands me up
+-- ("refused" "stake"). No game running: at once.
 function Stake.ask(client)
   local s = client.session
   s.stakeAsk = true
-  if over(s) then return standUp(client, s) end
+  if over(s) then return Stake.standUp(client, s) end
   client.events:emit("stakeAsk", s.tid, s.stake)
 end
 
 -- I accept the stake I was asked about -> true | nil (nothing asked).
 function Stake.accept(client)
   local s = client.session
-  if not (s and s.stakeAsk and s.mySeat) then return nil end
+  if not (s and s.stakeAsk and seated(client, s)) then return nil end
   s.stakeAsk = nil
   Stake.note(client, s.tid, s.stake)
   return true
 end
 
--- Client.new: an asked stake still unaccepted when the game is over stands me
--- up, after the "session" handlers of that change have run.
+-- Client.new. "session"(nil), I left: the note goes. An asked seat I lost
+-- ends the question at once; one still unaccepted when the game is over
+-- stands me up, after the "session" handlers of that change have run.
+-- "refused"(tid) of a SIT of mine, I hold no seat there: the note goes.
 function Stake.watch(client)
   client:on("session", function(s)
-    if not (s and s.stakeAsk) then return end
+    if not s then return Stake.clear(client) end
+    if not s.stakeAsk then return end
+    if not seated(client, s) then s.stakeAsk = nil; return end
     client:after(0, function()
-      if client.session ~= s or not s.stakeAsk then return end
-      if not s.mySeat then s.stakeAsk = nil elseif over(s) then standUp(client, s) end
+      if client.session == s and s.stakeAsk and over(s) then Stake.standUp(client, s) end
     end)
+  end)
+  client:on("refused", function(tid)
+    local note, s = client.env.db.stakeSat, client.session
+    if type(note) ~= "table" or note.tid ~= tid then return end
+    if s and s.tid == tid and seated(client, s) then return end
+    Stake.clear(client)
   end)
 end

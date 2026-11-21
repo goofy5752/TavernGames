@@ -279,27 +279,31 @@ describe("stake", function()
     eq(a.session.seats[2], false); eq(#answers, 1)
     a:stand(); sim:run(3)
 
-    -- A bot hosting a staked table that waits for a third player fills nobody in.
+    -- A bot hosting a staked table that waits for a third player fills nobody in
+    -- (the test engine is registered for this part only, removed even on a failure).
     ns.Engines.fillstake = FS
-    local host = bots.list[2]
-    local tid = host:openTable{ game = "fillstake", access = "guild", turn = 45, stake = 50000 }; sim:run(1)
-    a:sit(tid, 2, 50000); sim:run(5)
-    eq(host.session.seats, { host.env.me, A, false }); eq(next(host.invites.sent), nil)
-    a:stand(); sim:run(3)
-    host:stand(); sim:run(3)
+    local done, err = pcall(function()
+      local host = bots.list[2]
+      local tid = host:openTable{ game = "fillstake", access = "guild", turn = 45, stake = 50000 }; sim:run(1)
+      a:sit(tid, 2, 50000); sim:run(5)
+      eq(host.session.seats, { host.env.me, A, false }); eq(next(host.invites.sent), nil)
+      a:stand(); sim:run(3)
+      host:stand(); sim:run(3)
 
-    -- An invitation to a fun table is accepted as today, and the auto-fill works there.
-    tid = host:openTable{ game = "fillstake", access = "guild", turn = 45 }; sim:run(1)
-    a:sit(tid, 2); sim:run(5)
-    eq(host.session.seats[3] ~= false, true)
-    a:stand(); sim:run(3)
-    answers = record(a, "inviteAnswer")
-    a:openTable{ game = "ttt", access = "invite", turn = 45 }; sim:run(1)
-    local idle = bots:idle()
-    sim:run(1) -- a bot spawned just now: my presence hears its HI first
-    ok(a:invite(idle.env.me)); sim:run(5)
-    eq(answers, { { idle.env.me, "yes" } }); eq(a.session.seats[2], idle.env.me)
+      -- An invitation to a fun table is accepted as today, and the auto-fill works there.
+      tid = host:openTable{ game = "fillstake", access = "guild", turn = 45 }; sim:run(1)
+      a:sit(tid, 2); sim:run(5)
+      eq(host.session.seats[3] ~= false, true)
+      a:stand(); sim:run(3)
+      answers = record(a, "inviteAnswer")
+      a:openTable{ game = "ttt", access = "invite", turn = 45 }; sim:run(1)
+      local idle = bots:idle()
+      sim:run(1) -- a bot spawned just now: my presence hears its HI first
+      ok(a:invite(idle.env.me)); sim:run(5)
+      eq(answers, { { idle.env.me, "yes" } }); eq(a.session.seats[2], idle.env.me)
+    end)
     ns.Engines.fillstake = nil
+    if not done then error(err, 0) end
   end)
 
   it("a note of another table written in this run accepts no stake here (C1)", function()
@@ -310,7 +314,7 @@ describe("stake", function()
     local fun = c:openTable{ game = "ttt", access = "guild", turn = 45 }; sim:run(3)
     b:sit(fun, 2); sim:run(1); eq(b.session.tid, fun)
     b:stand(); sim:run(1)
-    eq(b.env.db.stakeSat, { tid = fun })
+    eq(b.env.db.stakeSat, nil) -- my stand cleared the note (fix round 2)
     -- Иван's modified client seats Мария again and pushes a snapshot at another stake.
     local refused, asks = record(b, "refused"), record(b, "stakeAsk")
     local mark = #sim.sent
@@ -403,6 +407,92 @@ describe("stake", function()
     eq(invites, {})
     c:send("WHISPER", B, { v = 1, t = "INV", tid = P .. "#2", g = "ttt", h = P, s = { P, false }, sk = 50000 }); sim:run(1)
     eq(#invites, 1); eq(invites[1][1].stake, 50000)
+  end)
+
+  it("a watcher seated by the host without a SIT of mine is stood up (C-A)", function()
+    local sim, a, _, c = setup()
+    local tid = a:openTable{ game = "ttt", access = "guild", turn = 45, stake = 50000 }; sim:run(3)
+    c:watch(tid); sim:run(1); eq(c.session.role, "watcher"); eq(c.session.stake, 50000)
+    local refused, asks = record(c, "refused"), record(c, "stakeAsk")
+    local mark = #sim.sent
+    a.session.watcherSet[P], a.session.watchers = nil, 0
+    a.session:event(0, { k = "sit", seat = 2, name = P }); a.session:snapshotTo(P); sim:run(1)
+    eq(c.session, nil); ok(#sent(sim, P, "STD", mark) >= 1, "no STD")
+    eq(refused, { { tid, "stake" } }); eq(asks, {}); eq(a.session.seats[2], false)
+  end)
+
+  -- Мария sat at Иван's staked table and stood up; then she watched Петър's
+  -- table and left it. Иван's modified client seats her again and pushes a snapshot.
+  local function leftAndWatched(relog)
+    local sim, a, b, c, tid = seatedAt(50000)
+    b:stand(); sim:run(1)
+    eq(b.env.db.stakeSat, nil)
+    local u = c:openTable{ game = "ttt", access = "guild", turn = 45 }; sim:run(3)
+    b:watch(u); sim:run(1); eq(b.session.tid, u)
+    b:stand(); sim:run(1)
+    if relog then b = sim:relog(B); sim:run(1) end
+    local refused, asks = record(b, "refused"), record(b, "stakeAsk")
+    local mark = #sim.sent
+    a.session:event(0, { k = "sit", seat = 2, name = B }); a.session:snapshotTo(B); sim:run(1)
+    return sim, a, b, tid, refused, asks, mark
+  end
+
+  it("a stand withdraws my note: a re-seat by the host stands me up (C-B)", function()
+    local sim, a, b, tid, refused, asks, mark = leftAndWatched(false)
+    eq(b.session, nil); ok(#sent(sim, B, "STD", mark) >= 1, "no STD")
+    eq(refused, { { tid, "stake" } }); eq(asks, {}); eq(a.session.seats[2], false)
+  end)
+
+  it("a stand withdraws my note: after a relog a re-seat is never silent (C-B)", function()
+    local sim, a, b, tid, refused, asks, mark = leftAndWatched(true)
+    eq(b.session, nil); ok(#sent(sim, B, "STD", mark) >= 1, "no STD")
+    eq(refused, { { tid, "stake" } }); eq(asks, {}); eq(a.session.seats[2], false)
+  end)
+
+  it("a refused SIT withdraws my note", function()
+    local sim, a, b = setup()
+    local tid = a:openTable{ game = "ttt", access = "guild", turn = 45, stake = 50000 }; sim:run(3)
+    b:sit(tid, 3, 50000); sim:run(1) -- no such seat: "taken"
+    eq(b.env.db.stakeSat, nil); eq(b.session, nil)
+  end)
+
+  it("an asked seat is stood up at the next game's start, back to back with the last roll (I-A)", function()
+    local sim, a, b = setup()
+    local tid = a:openTable{ game = "deathroll", access = "guild", turn = 45, opt = { start = 100 }, stake = 50000 }
+    sim:run(3); b:sit(tid, 2, 50000); sim:run(1)
+    ok(a:startGame()); sim:run(1)
+    sim.envs[B].db.stakeSat = nil
+    b = sim:relog(B)
+    local asks, refused = record(b, "stakeAsk"), record(b, "refused")
+    local newGame = false
+    b:on("session", function(s)
+      if s and s.state and s.state.phase == "play" and #s.state.rolls == 0 and s.seq > 2 then newGame = true end
+    end)
+    sim:run(3)
+    eq(b.session.mySeat, 2); eq(asks, { { tid, 50000 } })
+    -- Иван's last roll and the next start reach Мария in one delivery.
+    local held = {}
+    sim.bus.filter = function(from, to, _, m)
+      if from == A and to == B and m.t == "EV" then held[#held + 1] = m; return {} end
+      return { m }
+    end
+    sim.nextRolls = { 1 }; ok(a:roll()); sim:run(0)
+    ok(a.session:gameOver(), "the game ended"); ok(a:startGame()); sim:run(0)
+    sim.bus.filter = nil
+    eq(#held, 2)
+    for i = 1, #held do sim.bus:send(A, "WHISPER", B, held[i]) end
+    sim:run(1)
+    eq(b.session, nil); eq(refused, { { tid, "stake" } }); eq(newGame, false)
+    eq(a.session.seats[2], false)
+  end)
+
+  it("a fresh login with a loaded note of another table is asked (m1)", function()
+    local sim, _, b, _, tid = seatedAt(50000)
+    sim.envs[B].db.stakeSat = { tid = "Петър Колев#1", sk = 100 }
+    b = sim:relog(B)
+    local asks = record(b, "stakeAsk")
+    sim:run(3)
+    eq(b.session.mySeat, 2); eq(b.session.stake, 50000); eq(asks, { { tid, 50000 } })
   end)
 
   it("Session.lua keeps its limit", function()
