@@ -39,9 +39,9 @@ describe("member side", function()
     local a = sim:add(A, { cls = "MAGE" })
     local b = sim:add(B, { cls = "PRIEST" })
     sim:run(1)
-    ok(sim.ns.Engines.tabla and not sim.ns.Games.PLAYABLE.tabla, "tabla must be a gated engine")
+    ok(sim.ns.Engines.holdem and not sim.ns.Games.PLAYABLE.holdem, "holdem must be a gated engine")
     b:receive("WHISPER", A, {v=1, t="SNP", tid="x#1", e=1, q=0,
-      tbl={tid="x#1", g="tabla", h=A, e=1, ac="guild", tn=45, st="open", s={A, B}, w=0}}); sim:run(1)
+      tbl={tid="x#1", g="holdem", h=A, e=1, ac="guild", tn=45, st="open", s={A, B}, w=0}}); sim:run(1)
     local std = {}
     for _, s in ipairs(sim.sent) do if s.from == B and s.msg.t == "STD" then std[#std+1] = s end end
     eq(#std, 1); eq(std[1].target, A); eq(std[1].msg.tid, "x#1"); eq(b.session, nil)

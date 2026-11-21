@@ -37,6 +37,17 @@ describe("fair", function()
     ok(table.concat(F.deck(H.DECK, { SEED, ZERO }, "t/1"), " ") ~= table.concat(F.deck(H.DECK, { ZERO, SEED }, "t/1"), " "))
   end)
 
+  it("dice come from the seeds and the throw's id; each die is uniform", function()
+    eq({ F.dice({ ZERO, SEED }, "t#1/1") }, { 4, 5 }); eq({ F.dice({ SEED, ZERO }, "t#1/1") }, { 2, 1 }); eq({ F.dice({ ZERO, SEED }, "t#1/2") }, { 1, 4 })
+    eq({ F.dice({ SEED, SEED }, "t#1/1") }, { 3, 3 }); eq({ F.dice({ ZERO }, "t#1/1") }, { 1, 4 }); eq({ F.dice({ ("ab"):rep(16) }, "t#1/7") }, { 2, 2 })
+    local n, doubles = { 0, 0, 0, 0, 0, 0 }, 0
+    for i = 1, 3600 do
+      local x, y = F.dice({ ZERO, SEED }, "x/" .. i); n[x] = n[x] + 1; n[y] = n[y] + 1
+      if x == y then doubles = doubles + 1 end
+    end
+    eq(n, { 1213, 1208, 1188, 1239, 1169, 1183 }); eq(doubles, 601)
+  end)
+
   it("full turns a view into the full state without touching the view", function()
     local s = H.new{ first = 1, seats = { true, true } }; ok(H.apply(s, 0, { k = "deal", deck = H.DECK }))
     local v = H.view(s, 2); eq(F.full(v, s.deck), s); eq(v.full, false); eq(v.deck[1], nil)

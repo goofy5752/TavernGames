@@ -43,4 +43,5 @@ ns.Const = {
   FAIR_WAIT = 20,    -- an undealt shuffle round is reopened, an unrevealed hand given up, after this long
   FAIR_ASK_GAP = 5,  -- missing private faces are asked for again this often
   SEED_BYTES = 16,   -- random bytes in one seed
+  DICE_WAIT = 10,    -- a throw still without the other player's seed this long after its open is thrown alone
 }

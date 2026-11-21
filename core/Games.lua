@@ -11,10 +11,10 @@ Games.ORDER = { "ttt", "deathroll", "santase", "belot", "tabla", "holdem" }
 Games.PLAYERS = { ttt = "2", deathroll = "2–5", santase = "2", belot = "4", tabla = "2", holdem = "2–9" }
 
 -- A game in ORDER is playable only once its integration stage lands (santase:
--- stage B, belot: C; tabla D and holdem E remain); until then its engine exists
+-- stage B, belot: C, tabla: D; holdem E remains); until then its engine exists
 -- but must not be offered, or it would broadcast hidden cards and wait for a deck.
 -- Ids not in ORDER (test engines) are always looked up.
-Games.PLAYABLE = { ttt = true, deathroll = true, santase = true, belot = true }
+Games.PLAYABLE = { ttt = true, deathroll = true, santase = true, belot = true, tabla = true }
 
 local inOrder = {}
 for _, id in ipairs(Games.ORDER) do inOrder[id] = true end

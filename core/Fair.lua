@@ -33,6 +33,17 @@ function Fair.deck(DECK, seeds, handId)
   return out
 end
 
+-- Two dice from the revealed seeds (seat order) and the throw's id (spec 6.3:
+-- SHA256(seed_a .. seed_b .. rollId) mod 6, twice, with the seeds
+-- length-prefixed as in Deck.key and without the bias of a plain mod).
+-- -> x, y in 1..6
+function Fair.dice(seeds, rollId)
+  local Deck = ns.Deck
+  local nextWord = Deck.stream(Deck.key(seeds, rollId))
+  local x = Deck.below(nextWord, 6) + 1
+  return x, Deck.below(nextWord, 6) + 1
+end
+
 -- A view with the whole deck: behaves as the full state. `view` is untouched.
 function Fair.full(view, deck)
   local copy = ns.Util.copy
