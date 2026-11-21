@@ -55,7 +55,8 @@ ns.Engines = ns.Engines or {}
  turn -> {pts, pin, bar, off, left, done, next}, or nil when it cannot begin a move E.apply
  accepts: the position after it (fresh tables), the dice still open (first die assignment that
  still leads to a legal move), done = apply would accept it as the whole move, next = every
- {from, to} that may follow (from descending, then to descending; {} when done).
+ {from, to} that may follow toward some legal move (from descending, then to descending). done and
+ next may both hold: with 5-1, 4/0 already ends where 4/3 3/0 ends, and 3/2 may still follow.
  E.again: once a match is over the host may start a new one; it begins with the opening roll
  (no E.nextFirst).
 ]]
@@ -407,15 +408,17 @@ function E.leave(s, seat)
   s.turn, s.left, s.cv, s.xfer = nil, nil, nil, nil
 end
 
--- The legal moves and the viability memo of the last staged turn: a move is staged one click at a
--- time, so consecutive calls share them. Keyed by everything gen reads.
+-- The legal moves and the viability memo of the last staged turn (one entry, replaced by the next
+-- turn): a move is staged one click at a time, so consecutive calls share them. The key holds the
+-- variant, turn, dice, cascade and transfer state and the whole position (board, pins, bar, off).
 local staged = {}
 
 -- The position after the partial move `steps` of `seat` (see STATE AND ACTIONS), or nil.
 function E.stage(s, seat, steps)
   if s.phase ~= "move" or s.turn ~= seat or type(steps) ~= "table" then return nil end
   local var = s.var
-  local sk = var .. "|" .. seat .. "|" .. table.concat(s.left, ",") .. "|" .. key(s)
+  local sk = table.concat({ var, s.turn, table.concat(s.left, ","), tostring(s.cv), tostring(s.xfer),
+                            key(s) }, "|")
   if staged.k ~= sk then
     local _, byKey = gen(s)
     staged = { k = sk, byKey = byKey, memo = {} }
@@ -462,7 +465,7 @@ function E.stage(s, seat, steps)
   if not final then return nil end
   local done = byKey[key(final)] ~= nil
   local nxt, seen = {}, {}
-  if not done and not final.won then
+  if not final.won then
     local lo = final.bar[seat] > 0 and 25 or 1
     for _, rem in ipairs(rems) do
       for _, d in ipairs(distinct(rem)) do

@@ -358,11 +358,20 @@ describe("tabla staging", function()
     eq(E.stage(bo, 1, {}).next, { { 2, 0 } }); r = E.stage(bo, 1, { { 2, 0 } }); eq({ r.done, r.left, r.next }, { false, { 5 }, { { 1, 0 } } })
     eq(E.stage(bo, 1, { { 2, 0 }, { 1, 0 } }).done, true)
   end)
-  it("stage: a first step that already ends where a whole move ends is done, as apply accepts it", function()
+  it("stage: a first step that already ends where a whole move ends is done and may still go on", function()
     local e = pos("std", 1, { [4] = 1, [3] = 1 }, { [12] = 15 }); roll(e, 5, 1)       -- 4/0 lands where 4/3 3/0 does
-    local r = E.stage(e, 1, { { 4, 0 } }); eq({ r.done, r.left, r.next }, { true, { 1 }, {} })
+    local r = E.stage(e, 1, { { 4, 0 } }); eq({ r.done, r.left, r.next }, { true, { 1 }, { { 3, 2 } } })
     ok(E.apply(E.restore(E.snapshot(e)), 1, { k = "move", steps = { { 4, 0 } } }))
+    eq(E.stage(e, 1, { { 4, 0 }, { 3, 2 } }).done, true)
     eq(E.stage(e, 1, { { 3, 2 } }).next, { { 4, 0 } }); eq(E.stage(e, 1, { { 3, 2 }, { 4, 0 } }).done, true)
+  end)
+  it("stage: the cache never answers for another state", function()
+    local s = E.new{}; roll(s, 6, 1); roll(s, 3, 1)
+    eq(E.stage(s, 1, {}).left, { 3, 1 })
+    local t = E.restore(E.snapshot(s)); t.left = { 6, 6, 6, 6 }
+    eq(E.stage(t, 1, {}).next, { { 24, 18 }, { 13, 7 }, { 8, 2 } })
+    t.left = { 3, 1 }; t.pts[1][8], t.pts[1][7] = 2, 1
+    eq(E.stage(t, 1, { { 7, 4 } }) ~= nil, true); eq(E.stage(s, 1, { { 7, 4 } }), nil)
   end)
   it("stage: a mother pin is a whole move with a die left; a cascade number that cannot be finished is whole too", function()
     local mp = pos("tapa", 1, { [4] = 1, [10] = 14 }, { [24] = 1, [20] = 14 }); roll(mp, 3, 5)
@@ -379,6 +388,10 @@ describe("tabla staging", function()
       for _, y in ipairs(list) do if y[1] == st[1] and y[2] == st[2] then return true end end
       return false
     end
+    local function pk(p)
+      return table.concat(p.pts[1], ",") .. "|" .. table.concat(p.pts[2], ",") .. "|" .. table.concat(p.pin[1], ",") ..
+        "|" .. table.concat(p.pin[2], ",") .. "|" .. p.bar[1] .. p.bar[2] .. "|" .. p.off[1] .. "," .. p.off[2]
+    end
     local games, positions, checked, bad, early = 0, 0, 0, 0, 0
     while games < 30 do
       local s, guard = E.new{}, 0
@@ -393,22 +406,28 @@ describe("tabla staging", function()
           local seat = s.turn
           if positions < 400 then
             positions = positions + 1
-            for _, m in ipairs(E.legal(s, seat)) do
+            -- the positions apply accepts as a whole move: those of the legal moves (every 16th checked by apply)
+            local legal, finals = E.legal(s, seat), {}
+            for i, m in ipairs(legal) do
+              local r = E.stage(s, seat, m.steps)
+              if not r or r.done ~= true then bad = bad + 1 else finals[pk(r)] = true end
+              if r and (checked + i) % 16 == 0 and pk(after(s, m.steps)) ~= pk(r) then bad = bad + 1 end
+            end
+            for _, m in ipairs(legal) do
               local pre = {}
               for k = 0, #m.steps - 1 do
                 local r = E.stage(s, seat, pre)
-                if not r then
+                local accepts = r and finals[pk(r)] == true
+                if not r or r.done ~= accepts or not has(r.next, m.steps[k + 1]) then
                   bad = bad + 1
-                elseif r.done then -- a proper prefix may end where another whole move ends (5-1: 4/0 = 4/3 3/0)
-                  early = early + 1
-                  if not E.apply(E.restore(E.snapshot(s)), seat, { k = "move", steps = pre }) then bad = bad + 1 end
-                elseif not has(r.next, m.steps[k + 1]) then
-                  bad = bad + 1
+                elseif r.done or (checked + k) % 16 == 0 then -- done: a prefix ends where a whole move ends (5-1: 4/0)
+                  if r.done then early = early + 1 end
+                  if (E.apply(E.restore(E.snapshot(s)), seat, { k = "move", steps = pre }) == true) ~= accepts then
+                    bad = bad + 1
+                  end
                 end
                 pre[#pre + 1] = m.steps[k + 1]
               end
-              local r = E.stage(s, seat, m.steps)
-              if not r or r.done ~= true or #r.next ~= 0 then bad = bad + 1 end
               checked = checked + 1
             end
             for _, st in ipairs(E.stage(s, seat, {}).next) do
@@ -423,7 +442,7 @@ describe("tabla staging", function()
       if not E.over(s) then bad = bad + 1 end
     end
     eq(bad, 0)
-    ok(checked >= 1000, "checked " .. checked); ok(early < checked / 100, "early " .. early)
+    ok(checked >= 1000, "checked " .. checked); ok(early > 0 and early < checked / 100, "early " .. early)
   end)
 end)
 
