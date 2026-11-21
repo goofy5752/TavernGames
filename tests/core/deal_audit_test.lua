@@ -328,4 +328,38 @@ describe("deal audit", function()
     sim:run(25)
     for _, cl in ipairs{ a, b, d } do eq(#events(cl), n) end
   end)
+
+  it("a hand closed noreveal takes no late reveal and no second noreveal: one verdict", function()
+    honest(); start(); local n = playMatch()
+    local sim, tid = honest(); d:watch(tid); sim:run(1); start()
+    local _, last = playMatch(n); runTo(lastPlayAt() + 21)
+    for _, cl in ipairs{ a, b, d } do
+      eq(#events(cl), n); eq({ events(cl)[n].why, cl.session.fair.stage }, { "noreveal", "done" })
+    end
+    local r = a.session.fair
+    local dealer = sim.clients[r.dealer].session.fair
+    local seeds = {}
+    for k, q in ipairs(r.p) do seeds[k] = dealer.seeds[q] end
+    -- The withheld seeds, late: neither the host nor a member takes them now.
+    local late = { k = "fair", op = "reveal", h = last, s = seeds }
+    local again = { k = "fair", op = "noreveal", h = last }
+    for _, x in ipairs{ late, again } do
+      local q = a.session.seq
+      if r.dealer ~= A then
+        a:receive("WHISPER", r.dealer, act(x)); eq(a.session.seq, q)          -- the dealer's own late ACT
+      end
+      a.session:play(0, x); eq(a.session.seq, q)                               -- the host orders it anyway
+      eq(ns.Ext.fair.table(a.session, x), nil)
+      for _, cl in ipairs{ b, d } do                                           -- an EV that orders it reaches a member
+        local s = cl.session
+        eq(s:apply(0, x), nil)
+        cl:receive("WHISPER", A, { v = 1, t = "EV", tid = tid, e = s.epoch, q = s.seq + 1, seat = 0, a = x })
+      end
+      sim:run(2)
+    end
+    for _, cl in ipairs{ a, b, d } do
+      eq(#events(cl), n); eq({ events(cl)[n].verdict, events(cl)[n].why, events(cl)[n].h }, { "bad", "noreveal", last })
+      eq(cl.session.fairSeen, { ok = n - 1, bad = 1 }); eq(cl.session.fairLast, { h = last, verdict = "bad", why = "noreveal", dealer = r.dealer })
+    end
+  end)
 end)

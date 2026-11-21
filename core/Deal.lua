@@ -84,10 +84,10 @@ function Deal.handOver(s)
 end
 
 -- May the seeds `list` be revealed for my round now? An array of #p strings,
--- after the hand.
+-- after the hand, for a round still "dealt" (a closed one takes no verdict).
 local function revealFits(s, list)
   local fair = s.fair
-  if type(list) ~= "table" or #list ~= #fair.p or not Deal.handOver(s) then return false end
+  if fair.stage ~= "dealt" or type(list) ~= "table" or #list ~= #fair.p or not Deal.handOver(s) then return false end
   for k = 1, #fair.p do
     if type(list[k]) ~= "string" then return false end
   end
@@ -442,7 +442,7 @@ ns.Ext.fair = {
       return true
     elseif a.op == "noreveal" then
       local fair = s.fair
-      if not fair or a.h ~= fair.h or not Deal.handOver(s) then return nil end
+      if not fair or a.h ~= fair.h or fair.stage ~= "dealt" or not Deal.handOver(s) then return nil end
       return true
     elseif a.op == "commit" then
       local fair = s.fair
