@@ -5,7 +5,7 @@ local _, ns = ...
 -- its deck had to give the hand up (void) - and a /reload at a bad moment was
 -- a way out of a lost deal. So the dealer keeps its round's secrets where a
 -- /reload keeps them, in the saved variables: env.db.fairKeep = {tid, h, seat,
--- me, seed (mine), seeds (seat -> seed), deck}, written once the deck is made
+-- me, seed (mine), seeds (seat -> seed)}, written once the deck is made
 -- (Keep.save, from tryDeal in core/Deal.lua). A client that comes back as the
 -- dealer of that very table, hand and seat, under the same name, takes them up
 -- again (Keep.restore, from Deal.react) when every seed still matches the
@@ -35,7 +35,7 @@ function Keep.save(s)
   if not (env.db and fair and fair.deck and fair.seeds and s.mySeat == fair.d) then return end
   env.db.fairKeep = {
     tid = s.tid, h = fair.h, seat = fair.d, me = env.me,
-    seed = fair.seed, seeds = copy(fair.seeds), deck = copy(fair.deck),
+    seed = fair.seed, seeds = copy(fair.seeds), -- the deck is rebuilt from the seeds
   }
 end
 
@@ -45,7 +45,7 @@ local function fits(s, rec)
   local fair = s.fair
   if type(rec) ~= "table" or rec.tid ~= s.tid or rec.h ~= fair.h or rec.me ~= s.client.env.me
       or rec.seat ~= fair.d or s.mySeat ~= fair.d or (fair.stage ~= "seed" and fair.stage ~= "dealt")
-      or type(rec.seeds) ~= "table" or type(rec.deck) ~= "table" or rec.seed ~= rec.seeds[rec.seat] then
+      or type(rec.seeds) ~= "table" or rec.seed ~= rec.seeds[rec.seat] then
     return false
   end
   for k = 1, #fair.p do
@@ -69,7 +69,11 @@ function Keep.restore(s)
   end
   fair.seed, fair.seat, fair.own = rec.seed, rec.seat, Fair.commit(rec.seed)
   fair.seeds = copy(rec.seeds)
-  if fair.stage == "dealt" then fair.deck, fair.pub, fair.sent = copy(rec.deck), {}, {} end
+  if fair.stage == "dealt" then
+    local list = {}
+    for k = 1, #fair.p do list[k] = rec.seeds[fair.p[k]] end
+    fair.deck, fair.pub, fair.sent = Fair.deck(s:engine().DECK, list, Fair.handId(s.tid, fair.h)), {}, {}
+  end
   return true
 end
 

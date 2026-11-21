@@ -70,7 +70,7 @@ end
 
 -- The client's session ended or was left: no table, `at` cleared.
 local function leave(client)
-  if client.session then client.session:cancelTimers() end
+  if client.session then client.session:cancelTimers(); ns.DealKeep.clear(client.session) end
   client.session = nil
   client.presence:setAt(nil)
   emit(client)

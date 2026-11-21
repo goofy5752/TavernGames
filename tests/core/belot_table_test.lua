@@ -413,11 +413,11 @@ describe("belot at the table", function()
     local sim = table4(); local atA, atC, atW = verdicts(a), verdicts(c), verdicts(w); local h1 = a.session.fair.h
     bid("S P P P"); autoPlay(6)                                                                  -- two cards into the second trick
     local kept = sim.envs[D].db.fairKeep
-    eq({ kept.tid, kept.h, kept.seat, kept.me, #kept.deck }, { tid, h1, 4, D, 32 })
+    eq({ kept.tid, kept.h, kept.seat, kept.me, kept.deck }, { tid, h1, 4, D, nil })           -- no deck is stored
     local mark = #sim.sent
     local d2 = sim:relog(D); local atD = verdicts(d2); sim:run(3)
     eq({ a.session.fair.h, a.session.fair.stage, d2.session.fair.h, d2.session.fair.lost }, { h1, "dealt", h1, nil })
-    eq(d2.session.fair.deck, kept.deck); eq(ns.Deal.missing(d2.session), false); eq(atA, {})
+    eq(#d2.session.fair.deck, 32); eq(ns.Deal.missing(d2.session), false); eq(atA, {})
     autoPlay(100); eq(a.session.state.turn, nil)
     for k = mark + 1, #sim.sent do                                                               -- what was saved stays on the dealer's client
       local m = sim.sent[k]
@@ -444,14 +444,24 @@ describe("belot at the table", function()
       local rec = ns.Util.copy(sim.envs[A].db.fairKeep)
       spoil(rec)
       local trial = { fair = { h = h2, d = 1, p = { 1, 2, 3, 4 }, stage = "dealt", commits = ns.Util.copy(a.session.fair.commits) },
-        tid = tid, mySeat = 1, client = { env = { me = A, db = { fairKeep = rec } } } }
+        tid = tid, mySeat = 1, engine = function() return ns.Engines.belot end, client = { env = { me = A, db = { fairKeep = rec } } } }
       return ns.DealKeep.restore(trial), trial.fair.deck, trial.client.env.db.fairKeep ~= nil
     end
     eq({ back(function() end) }, { true, a.session.fair.deck, true })
+    eq({ back(function(r) r.deck = { "x" } end) }, { true, a.session.fair.deck, true })              -- a stray deck is never read
+    eq({ back(function(r) r.deck = nil end) }, { true, a.session.fair.deck, true })
     for _, spoil in ipairs{ function(r) r.h = r.h + 1 end, function(r) r.me = B end, function(r) r.tid = "x" end,
       function(r) r.seat = 2 end, function(r) r.seeds[2] = ("00"):rep(16) end, function(r) r.seed = ("00"):rep(16) end } do
       eq({ back(spoil) }, { false, nil, false })
     end
+  end)
+
+  it("a kept round goes when I stand up or my session ends", function()
+    table4(); local db = sim.envs[D].db
+    ok(db.fairKeep ~= nil); eq(db.fairKeep.deck, nil)
+    d:stand(); sim:run(1); eq(db.fairKeep, nil)
+    table4(); db = sim.envs[D].db
+    ok(db.fairKeep ~= nil); ns.Session.leave(d); eq(db.fairKeep, nil)                            -- the table ended or closed
   end)
 
   it("a void asked for after the eighth trick is refused: the deal is scored", function()
