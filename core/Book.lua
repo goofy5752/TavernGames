@@ -155,7 +155,7 @@ function Book.watch(s, book, snap)
   local run = st ~= nil and s:engine().inHand(st)
   if snap and st and not n and keep and keep.h then
     if st.hand > keep.h or (st.hand == keep.h and not run) then keep.h = nil else s.client.bookHot = { tid = s.tid, g = book.g, n = keep.h } end
-  elseif not snap and n and book.ran and not run and st.hand == n then
+  elseif not snap and n and book.ran and not run and st and st.hand == n then
     s.client.bookHot = nil
     if keep then keep.h = nil end
   end
