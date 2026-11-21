@@ -74,6 +74,7 @@ ui/Minimap.lua
 ui/TableFrame.lua
 ui/games/TicTacToeView.lua
 ui/games/DeathRollView.lua
+ui/games/SantaseView.lua
 ui/InviteToast.lua
 ui/HelpBook.lua
 ui/Intro.lua
