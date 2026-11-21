@@ -275,7 +275,7 @@ describe("holdem: leaving, silence and the clock", function()
   it("the dealer reloads and the hand goes on; a dealer who is gone: the hand is void after FAIR_WAIT and he sits out", function()
     tableN(3); ok(cl[1]:startGame()); sim:run(3); auto(3); sim:run(5); eq({ st().hand, cl[1].session.fair.d, st().turn }, { 2, 2, 2 })
     sim.envs[N[2]].random = rnd(7)                                                               -- a regenerated key would not be KEY(2)
-    local c2 = sim:relog(N[2]); sim:run(2); eq({ c2.session.fair.stage, c2.session.fair.deck ~= nil, sim.envs[N[2]].db.bookKeep }, { "dealt", true, { tid = tid, me = N[2], key = KEY(2), g = 3 } })
+    local c2 = sim:relog(N[2]); sim:run(2); eq({ c2.session.fair.stage, c2.session.fair.deck ~= nil, sim.envs[N[2]].db.bookKeep }, { "dealt", true, { tid = tid, me = N[2], key = KEY(2), g = 3, h = 2 } })
     act("call"); act("call"); act("check"); sim:run(1); eq({ #st().board, st().turn }, { 3, 3 })     -- the reloaded dealer dealt the flop
     act("check"); act("check"); act("check"); sim:offline(N[2]); local seen = hands(w)             -- the turn card is due and its dealer is gone
     eq({ st().phase, chips() }, { "street", { 990, 985, 995 } }); sim:run(19); eq(st().phase, "street"); sim:run(1)
@@ -793,6 +793,62 @@ describe("holdem: the book", function()
     ok(ns.Cash.close(cl[1])); finishHand(); sim:run(32)
     spentFirst(); eq(keyActs(N[3]), 2); eq(#log, 4)                                             -- seats 2 and 3 at the close, the host's own, seat 3 again
     ns.Book.spend = spend
+  end)
+  -- The host whispers `name` a snapshot of its state as `change` leaves it (a modified host's).
+  local function forgedSnapshot(name, change)
+    local s1 = cl[1].session; local cut = s1.snapshotFor
+    s1.snapshotFor = function(self, to) local x = cut(self, to); change(x); return x end
+    s1:snapshotTo(name); sim:run(1); s1.snapshotFor = nil
+  end
+  local function finalKeys(mark) local e = evs(W, mark); return e[#e] end
+  it("I2: a snapshot that says the game is over while my hand runs draws no key; it is forged, and my key goes at the real end", function()
+    tableN(2); local b2, bw = books(cl[2]), books(w); ok(cl[1]:startGame()); sim:run(3)
+    local s2 = cl[2].session; eq({ st().phase, s2.fair.stage, cl[2].bookHot, sim.envs[N[2]].db.bookKeep.h }, { "bet", "dealt", { tid = tid, g = st().g, n = 1 }, 1 })
+    forgedSnapshot(N[2], function(x) x.phase, x.turn = "closed", nil end)                      -- at my own seq, with my own round
+    eq({ s2:gameOver(), keyActs(N[2]), s2.book.forged, s2.book.held, (ns.Book.status(s2)) }, { true, 0, true, true, "seal.bad" })
+    cl[1].session:snapshotTo(N[2]); sim:run(1); eq({ s2:gameOver(), s2.fair.stage, s2.book.held }, { false, "dealt", nil })   -- the true one: the hand goes on
+    act("fold"); eq({ cl[2].bookHot, sim.envs[N[2]].db.bookKeep.h, s2.book.n }, { nil, nil, 1 })   -- I saw it end, event by event
+    local mark = #sim.sent; ok(ns.Cash.close(cl[1])); sim:run(3); eq(keyActs(N[2]), 1)
+    eq(finalKeys(mark), { k = "book", op = "keys", m = { KEY(1), KEY(2) }, g = st().g, f = true })
+    eq({ bw[1].ok, bw[1].bad, bw[1].open, b2[#b2].ok, b2[#b2].bad }, { 1, 0, 0, 1, 1 })          -- the watcher's book is clean; mine keeps the forged mark
+  end)
+  it("I2: a snapshot that ends my hand, then the close by an event: the hand's end came by no event, my key stays", function()
+    tableN(2); ok(cl[1]:startGame()); sim:run(3); local s2 = cl[2].session
+    forgedSnapshot(N[2], function(x) x.phase, x.turn = "done", nil end); eq({ s2:gameOver(), s2.book.forged, cl[2].bookHot.n }, { false, nil, 1 })
+    local m = ns.Session.message("EV", { tid = tid, e = s2.epoch, q = s2.seq + 1, seat = 0, a = { k = "close" } })
+    cl[2]:receive("WHISPER", N[1], m); sim:run(1)
+    eq({ s2:gameOver(), keyActs(N[2]), s2.book.forged, s2.book.held }, { true, 0, true, true })
+  end)
+  it("I2: my key left at the game's end and a snapshot runs the same game on: forged", function()
+    tableN(2); ok(cl[1]:startGame()); sim:run(3); local live = cl[1].session:snapshotFor(N[2])
+    act("fold"); ok(ns.Cash.close(cl[1])); sim:run(3); local s2 = cl[2].session
+    eq({ s2:gameOver(), keyActs(N[2]), s2.book.done, s2.book.forged, (ns.Book.status(s2)) }, { true, 1, true, nil, "seal.ok" })
+    forgedSnapshot(N[2], function(x) for k in pairs(x) do x[k] = nil end; for k, v in pairs(live) do x[k] = v end end)
+    eq({ s2:gameOver(), s2.book.forged, s2.book.done, s2.book.sent, (ns.Book.status(s2)) }, { false, true, nil, nil, "seal.bad" })
+  end)
+  it("I2: a /reload during the last hand: the snapshot of the game over, its hand count at my hand, sends my key", function()
+    tableN(3); local bk = { books(cl[1]), books(cl[2]) }; ok(cl[1]:startGame()); sim:run(3)
+    eq({ st().order, st().turn, st().p[3].folded, sim.envs[N[3]].db.bookKeep.h }, { { 2, 3, 1 }, 1, false, 1 })   -- seat 3 has the big blind: the hand can end without it
+    local mark = #sim.sent; ok(ns.Cash.close(cl[1])); sim:offline(N[3])                              -- it reloads; the others fold meanwhile
+    act("fold"); act("fold"); eq({ st().phase, cl[1].session.book.published }, { "closed", nil })
+    sim.envs[N[3]].random = rnd(7)                                                               -- a regenerated key would be KEY(7), not its own
+    local c3 = sim:relog(N[3]); sim:run(3)
+    eq({ c3.session:gameOver(), c3.bookHot, sim.envs[N[3]].db.bookKeep, c3.session.book.forged }, { true, nil, nil, nil })
+    eq(finalKeys(mark), { k = "book", op = "keys", m = { KEY(1), KEY(2), KEY(3) }, g = st().g, f = true })
+    for i = 1, 2 do eq({ bk[i][1].ok, bk[i][1].bad, bk[i][1].open }, { 1, 0, 0 }) end
+  end)
+  it("I2: a /reload in my hand: it is still mine, and a snapshot of the game over behind its hand count draws no key", function()
+    tableN(2); ok(cl[1]:startGame()); sim:run(3); act("fold"); sim:run(5); eq({ st().hand, st().phase, sim.envs[N[2]].db.bookKeep.h }, { 2, "bet", 2 })
+    local c2 = sim:relog(N[2]); sim:run(2); eq({ c2.session.fair.stage, c2.bookHot }, { "dealt", { tid = tid, g = st().g, n = 2 } })
+    forgedSnapshot(N[2], function(x) x.phase, x.turn = "closed", nil end)
+    eq({ keyActs(N[2]), c2.session.book.forged }, { 0, true })
+    c2 = sim:relog(N[2]); sim.envs[N[2]].db.bookKeep.h = 3; c2.bookHot = nil; sim:run(2)        -- only the kept number is left, and the snapshot is behind it
+    forgedSnapshot(N[2], function(x) x.phase, x.turn = "closed", nil end)
+    eq({ c2.session:gameOver(), keyActs(N[2]), c2.session.book.forged }, { true, 0, true })
+  end)
+  it("I2: I stand up in my hand: my key is published, the hand binds it no more", function()
+    tableN(3); ok(cl[1]:startGame()); sim:run(3); eq(cl[3].bookHot.n, 1); cl[3]:stand(); sim:run(1)
+    eq({ cl[3].bookHot, sim.envs[N[3]].db.bookKeep, cl[1].session.book.keys[1].m }, { nil, nil, KEY(3) })
   end)
   it("a hand sealed twice (a snapshot brought its round back) is recorded and counted once", function()
     tableN(2); local bk = books(cl[2]); ok(cl[1]:startGame()); sim:run(3); act("fold")

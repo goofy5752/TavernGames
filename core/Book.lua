@@ -21,6 +21,17 @@ local _, ns = ...
 --   before the void) and closes "void". A round with a foul against it, or
 --   private faces the engine refused, closes "bad" as in stage B.
 -- Rule 6, keys: core/BookKeys.lua (who sends its key when, the publish).
+-- Rule 6a, my live hand: a member's key reveals, with the others', the deck of
+-- every hand it committed a seed to, so it leaves at the game's end only when
+-- I saw the hand I committed to last end event by event (the events come in
+-- order, on the state they change; a snapshot is the host's bare word).
+-- client.bookHot = {tid, g, n} is that hand (n = state.hand; kept as
+-- bookKeep.h): set with my seed (Book.heat), dropped by the event that ends it
+-- on a state where it ran (book.ran), by no snapshot. The game over with it
+-- still set: my key stays (book.held) and the book is forged. After a /reload
+-- only bookKeep.h is left: a snapshot that shows hand h running makes it hot
+-- again, one whose hand count shows it ended is believed. My key left at the
+-- end (book.done) and the same game runs on under the same host: forged too.
 -- Rule 7, the check (core/BookCheck.lua): a hand is checked once, for every participant, a key
 --   published for its seat at or after the hand gives a seed whose commit is
 --   the one held; every recorded face must then be the deck's ("ok", else
@@ -118,10 +129,46 @@ function Book.key(s)
   return book.key
 end
 
+-- My kept key of this game (env.db.bookKeep), or nil.
+function Book.kept(s, book)
+  local env = s.client.env
+  local k = env.db and env.db.bookKeep
+  if type(k) == "table" and k.tid == s.tid and k.me == env.me and k.g == book.g and Book.isKey(k.key) then return k.key end
+end
+
+-- The hand of this game I committed to and have not seen end -> n | nil.
+function Book.hot(s, book)
+  local h = s.client.bookHot
+  return h and h.tid == s.tid and h.g == book.g and h.n or nil
+end
+
+-- My seed of the running hand is taken (Book.seedFor).
+function Book.heat(s)
+  local book, n = Book.of(s), s.state.hand
+  s.client.bookHot = { tid = s.tid, g = book.g, n = n }
+  if Book.kept(s, book) then s.client.env.db.bookKeep.h = n end
+end
+
+-- After every event, and every snapshot (`snap`): rule 6a.
+function Book.watch(s, book, snap)
+  local st, n, keep = s.state, Book.hot(s, book), Book.kept(s, book) and s.client.env.db.bookKeep
+  local run = st ~= nil and s:engine().inHand(st)
+  if snap and st and not n and keep and keep.h then
+    if st.hand > keep.h or (st.hand == keep.h and not run) then keep.h = nil else s.client.bookHot = { tid = s.tid, g = book.g, n = keep.h } end
+  elseif not snap and n and book.ran and not run and st.hand == n then
+    s.client.bookHot = nil
+    if keep then keep.h = nil end
+  end
+  book.ran = run
+end
+
+function Book.forge(book) book.forged, book.seen.bad = true, book.seen.bad + 1 end
+
 -- My seed of hand h -> 32 hex | nil (an engine that is not sealed, or no seat).
 function Book.seedFor(s, h)
   local key = s:engine().sealed and s.mySeat and Book.key(s)
   if not key then return nil end
+  Book.heat(s) -- its commit binds my key to the hand that runs (core/BookKeys.lua, rule 6a)
   return Fair.handSeed(key, Fair.handId(s.tid, h))
 end
 

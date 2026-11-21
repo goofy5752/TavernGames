@@ -18,10 +18,14 @@ local _, ns = ...
 -- only spent (Book.spend), always the one this game's commits came from. A
 -- published key under my seat is mine (book.out, my kept key dropped) or
 -- forged (book.forged, a bad hand). Also book.overAt (my clock when the game was over).
+-- Rule 6a (core/Book.lua): my key stays while a hand I committed to has not
+-- ended by an event (book.held); my key left at the end (book.done) and the
+-- same game runs on under the same host: forged.
 local Book = ns.Book
 
 local C = ns.Const
 local copy = ns.Util.copy
+local kept, hot, watch, forge = Book.kept, Book.hot, Book.watch, Book.forge
 
 -- Is my sealed game over (my key is then due)?
 local function over(s)
@@ -36,13 +40,6 @@ function Book.submit(s, a)
   else
     s.client:send("WHISPER", s.host, ns.Session.message("ACT", { tid = s.tid, a = a }))
   end
-end
-
--- My kept key of this game (env.db.bookKeep), or nil.
-local function kept(s, book)
-  local env = s.client.env
-  local k = env.db and env.db.bookKeep
-  if type(k) == "table" and k.tid == s.tid and k.me == env.me and k.g == book.g and Book.isKey(k.key) then return k.key end
 end
 
 -- The key of my commits of this game: sent, the book's, kept (spent or not), else Book.key.
@@ -61,7 +58,7 @@ local function mine(s, book, m, judge)
     book.out = true
     if s.client.env.db then s.client.env.db.bookKeep = nil end
   elseif judge then
-    book.forged, book.seen.bad = true, book.seen.bad + 1
+    forge(book)
   end
 end
 
@@ -138,11 +135,18 @@ end
 -- every seated seat's is in, else BOOK_WAIT after the game was over (book.overAt:
 -- the hand running at „Приключи“ is played out first, however long it takes).
 function Book.due(s)
-  if not over(s) then return end
+  if not over(s) then
+    local old = s.book
+    if old and old.done and s.status == "live" and s.state and s.state.g == old.g then forge(old); old.sent, old.out = nil, nil end
+    if old then old.done, old.held = nil, nil end
+    return
+  end
   local book, now = Book.of(s), s.client.env.now()
   book.overAt = book.overAt or now
   if s.role ~= "host" then
-    if s.mySeat and not (book.sent or book.out) and myKey(s, book) then send(s, book, book.key) end
+    if s.mySeat and not (book.sent or book.out or book.held) and myKey(s, book) then
+      if hot(s, book) then book.held = true; forge(book) else book.done = true; send(s, book, book.key) end
+    end
     return
   end
   if book.published then return end
@@ -159,6 +163,7 @@ end
 -- game over closes the book), the close, an abort, a stand that leaves fewer than minSeats.
 function Book.event(s, seat, a)
   local k, book = seat == 0 and a.k, Book.of(s)
+  watch(s, book)
   if k == "book" and a.op == "keys" then
     Book.addKeys(s, a.m, a.g)
     if a.f and over(s) then Book.close(s); send(s, book, book.sent, "resent") end
@@ -175,6 +180,7 @@ end
 -- relog my kept key may be gone); with the game over, a key I sent and lack goes again.
 function Book.adopt(s, list)
   local book = Book.of(s)
+  watch(s, book, true)
   for _, e in ipairs(type(list) == "table" and list or {}) do
     if type(e) == "table" and s.seats[e[1]] ~= nil and type(e[2]) == "number" and Book.isKey(e[3]) and not known(book, e[1], e[3]) then
       book.keys[#book.keys + 1] = { seat = e[1], q = e[2], m = e[3] }
@@ -195,6 +201,7 @@ function Book.leaving(s)
   elseif s.role ~= "host" and not (book.sent or book.out) and myKey(s, book) then
     send(s, book, book.key)
   end
+  s.client.bookHot = nil -- my key is out by my own will (rule 6a)
   if s.client.env.db then s.client.env.db.bookKeep = nil end
 end
 
@@ -203,7 +210,7 @@ function Book.hostChanged(s)
   if s.keysTimer then s.keysTimer.cancel(); s.keysTimer = nil end
   local book = s.book
   if not book then return end
-  book.wait, book.sent = {}, book.out and book.sent or nil
+  book.wait, book.sent, book.done = {}, book.out and book.sent or nil, nil
   if s.role == "host" then Book.due(s) end
 end
 
