@@ -493,29 +493,35 @@ describe("ledger sync: the budget (packed with the real wire)", function()
     for n = 1, 6 do six[n] = Ledger.wire(debt(n)); ok(Ledger.valid(six[n]), "a valid D") end
     local lev = packed({ v = 1, t = "LEV", ev = six, f = true })
     ok(lev <= 1140, "6 D: " .. lev)
-    -- The sync sends those 6 in one batch; every batch is within 1 140 packed bytes, so one of
-    -- five-seat R entries with 64-byte names holds fewer than 6 (six with 49-byte names pack to about 1 120:
-    -- within 1 140, but above the cut, which keeps LedgerNet.SLACK in hand).
-    local sim, c = world(ANA, BOR)
-    give(c[BOR], six)
-    for n = 1, 6 do give(c[BOR], { result(ZH, n, 49) }) end
-    for n = 1, 12 do give(c[BOR], { result(YA, n, 64) }) end
-    local mark = #sim.sent
-    hello(sim, BOR)
-    sim:run(60)
-    local batches, ds, cut = whispers(sim, BOR, "LEV", mark, ANA), 0, 0
-    eq(entries(batches), 24)
-    for _, b in ipairs(batches) do
-      local size, kinds = packed(b.msg), {}
-      for _, e in ipairs(b.msg.ev) do kinds[Ledger.author(e.i) == YA and "R64" or e.k] = true end
-      ok(size <= 1140, "batch: " .. size)
-      if kinds.D and #b.msg.ev == 6 then ds = ds + 1 end
-      if kinds.R64 and not kinds.R and not kinds.D then cut = cut + 1; ok(#b.msg.ev < 6, "R batch of " .. #b.msg.ev) end
+    -- Every batch the sync sends is within 1 140 packed bytes. Each of these pins runs alone, so
+    -- that no batch boundary depends on a packed size near the cut: AceSerializer writes keys in
+    -- `pairs` order, and LuaJIT seeds its string hash per process, so a size moves by some bytes
+    -- from run to run (six R with 49-byte names pack to about 1 100-1 125, right at the cut of 1 116).
+    local function batches(list)
+      local sim, c = world(ANA, BOR)
+      give(c[BOR], list)
+      local mark = #sim.sent
+      hello(sim, BOR)
+      sim:run(60)
+      local out = whispers(sim, BOR, "LEV", mark, ANA)
+      eq(entries(out), #list)
+      for _, b in ipairs(out) do ok(packed(b.msg) <= 1140, "batch: " .. packed(b.msg)) end
+      return out, c, sim
     end
-    eq(ds, 1); ok(cut >= 2, "R batches cut by bytes: " .. cut)
-
+    local d = batches(six)
+    eq(#d, 1); eq(#d[1].msg.ev, 6) -- the six D in one batch
+    local r64 = {}
+    for n = 1, 12 do r64[n] = result(YA, n, 64) end
+    local cut = batches(r64) -- six R with 64-byte names pack to about 1 335: cut by bytes
+    ok(#cut >= 3, "R batches: " .. #cut)
+    for _, b in ipairs(cut) do ok(#b.msg.ev < 6, "R batch of " .. #b.msg.ev) end
+    local mixed = { unpack(six) }
+    for n = 1, 6 do mixed[#mixed + 1] = result(ZH, n, 49) end
+    for n = 13, 18 do mixed[#mixed + 1] = result(YA, n, 64) end
+    local _, c, sim = batches(mixed) -- whatever the boundaries, each batch is within the cap
     -- My live LEVs of R entries stay within 760 packed bytes each.
-    mark = #sim.sent
+    local mark = #sim.sent
+
     for n = 1, 4 do c[ANA].ledgerNet:make("R", { gid = ANA .. "#" .. EPOCH0 .. "/" .. n, g = "deathroll",
       n = { named(64), named(64), named(64), named(64), named(64) }, w = { 1 }, l = { 2, 3, 4, 5 } }) end
     sim:run(15)
