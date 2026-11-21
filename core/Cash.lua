@@ -150,10 +150,12 @@ local function lapsed(s)
     end
   elseif fair.stage == "seed" then
     local named = fair.missing or {}
+    s.lapseOut = s.lapseOut or {}
     if #named > 0 then s:play(0, { k = "void" }) end
     s:play(0, { k = "away", seat = fair.d })
     for _, q in ipairs(named) do
-      if q ~= s.mySeat then s:play(0, { k = "away", seat = q }) end
+      -- Back only once a hand has been dealt without it (the act hook holds its back).
+      if q ~= s.mySeat then s.lapseOut[q] = { h = s.state.hand }; s:play(0, { k = "away", seat = q }) end
     end
   end
 end
@@ -177,9 +179,9 @@ local function react(s)
   -- A forged event that ended the hand before any shuffle opened: my last hand carries it.
   local last = s.fairLast
   local open = s.fair and s.fair.stage ~= "done"
-  if s.forgedNext and not open and not s:engine().inHand(s.state) and last and last.verdict ~= "bad" then
+  if s.forgedNext and not open and not s:engine().inHand(s.state) and last then
     s.forgedNext = nil
-    revise(s)
+    if last.verdict ~= "bad" then revise(s) end
   end
 end
 
@@ -189,6 +191,8 @@ ns.Ext.cash = {
   act = function(s, seat, a)
     local st = s.state
     if a.k == "back" and st and s:engine().inHand(st) and contains(st.order or {}, seat) then return nil end
+    local out = a.k == "back" and s.lapseOut and s.lapseOut[seat]
+    if out then out.back = true; return nil end
     if a.k ~= "book" then return a end
     ns.Book.request(s, seat, a)
     return nil
@@ -201,7 +205,7 @@ ns.Ext.cash = {
       -- A new game, a new book (Book.of replaces the old one).
       s.state.g = s.seq
       ns.Book.of(s)
-      s.forgedNext = nil
+      s.forgedNext, s.lapseOut = nil, nil
     elseif k == "sit" and s.status == "live" and s.state then
       engine.apply(s.state, 0, { k = "join", seat = a.seat })
       ns.Book.of(s).given[a.seat] = nil
@@ -215,6 +219,11 @@ ns.Ext.cash = {
       -- Host: the commits of a round I opened are collected here (a round I take over has none).
       if s.role == "host" then s.fair.pend = s.fair.pend or {} end
       if s.forgedNext then foul(s.fair, "forged"); s.forgedNext = nil end
+    elseif k == "deal" and s.lapseOut then
+      -- Host: a hand dealt without the seats a lapse named; they are back now if they asked.
+      for q, out in pairs(s.lapseOut) do
+        if s.state.hand > out.h then s.lapseOut[q] = nil; if out.back then s:play(q, { k = "back" }) end end
+      end
     elseif k == "street" and s.fair and s.fair.stage == "dealt" and ns.Book.faceless(s.state, a.cards) then
       foul(s.fair, "deal")
     end

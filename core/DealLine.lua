@@ -24,8 +24,10 @@ function Deal.status(s)
   local last = s.fairLast
   if not last or last.verdict == "sealed" then return nil end
   if last.verdict == "void" then
-    -- By name; with the count from the dealer's second one in this match.
+    -- By name; with the count from the dealer's second one in this match. A
+    -- lapse (a seed the dealer lacked) with its own count, amber, no alarm.
     if not last.dealer then return "fair.void" end
+    if last.lapse then return "fair.lapse", last.dealer, last.n end
     if (last.n or 1) > 1 then return "fair.voidMany", last.dealer, last.n end
     return "fair.voidBy", last.dealer
   end

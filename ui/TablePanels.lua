@@ -102,7 +102,8 @@ local function renderFair(v, s)
   if claimer then text = text .. " · " .. L("fair.claim", claimer) end
   line.text:SetText(text)
   local verdict = key == "fair.last" and s.fairLast.verdict
-  line.text:SetTextColor(Theme.rgb(ns.Deal.alarm(s) and "red" or claimer and "gold" or verdict == "ok" and "good" or "inkDim"))
+  local amber = claimer or key == "fair.lapse"
+  line.text:SetTextColor(Theme.rgb(ns.Deal.alarm(s) and "red" or amber and "gold" or verdict == "ok" and "good" or "inkDim"))
 end
 
 -- The tooltip of the fairness line: what the line means (why a bad hand

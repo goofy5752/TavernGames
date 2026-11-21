@@ -352,11 +352,13 @@ function Deal.close(s, verdict, why, round)
   if fair then h, dealer = fair.h, fair.dealer end
   if fair and fair.foul then verdict, why = "bad", fair.foul end
   s.fairLast = { h = h, verdict = verdict, why = why, dealer = dealer, who = why == "announce" and fair and fair.who or nil }
-  -- A hand the dealer gave up, or did not deal: counted against its name.
+  -- A hand the dealer gave up, or did not deal: counted against its name; a
+  -- lapse's void (stage seed: a seed it lacked, Cash) apart, never an alarm.
   if dealer and (verdict == "void" or why == "nodeal") then
-    local voids = s.fairVoids or {}
-    voids[dealer], s.fairVoids = (voids[dealer] or 0) + 1, voids
-    s.fairLast.n = voids[dealer]
+    local key = verdict == "void" and fair.stage == "seed" and "fairLapses" or "fairVoids"
+    local voids = s[key] or {}
+    voids[dealer], s[key] = (voids[dealer] or 0) + 1, voids
+    s.fairLast.n, s.fairLast.lapse = voids[dealer], key == "fairLapses" or nil
   end
   local seen = s.fairSeen or { ok = 0, bad = 0 }
   if seen[verdict] then seen[verdict] = seen[verdict] + 1 end
