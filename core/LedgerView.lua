@@ -7,7 +7,8 @@ local _, ns = ...
 -- then the smaller amount): "confirmed", "contested", or "pending" without one. A C
 -- or N names one exact claim, by its id r and its hash dh, and counts only for
 -- that body and only when its author is the debt's f: a twin, a copy or a moved
--- claim under the same id has no word of f's. The amount is f's newest
+-- claim under the same id has no word of f's, and when two bodies of one id share
+-- that h (a collision) it counts for none. The amount is f's newest
 -- attestation, else the smallest claim; clash: f attested an amount and a
 -- creditor's claim names another. Only confirmed debts enter a balance:
 -- gross(f, t) = max(0, confirmed f->t - the c of t's P with that f),
@@ -51,12 +52,17 @@ local function say(d, n, kind, c, id)
 end
 
 -- The C or N `e` of author a, number n, over the claim bodies `vers` ({debt, claim})
--- under its r: it counts for the body whose h is its dh, when a is that debt's f.
+-- under its r: it counts for the one body whose h is its dh, when a is that debt's f.
+-- Two bodies with that h under one id are a collision (the creditor made both): none counts.
 local function word(e, a, n, vers)
+  local hit
   for _, x in ipairs(vers or {}) do
-    local d, claim = x[1], x[2]
-    if d.f == a and claim.h == e.dh then say(d, n, e.k, e.k == "C" and claim.c or nil, e.i) end
+    if x[2].h == e.dh then
+      if hit then return end
+      hit = x
+    end
   end
+  if hit and hit[1].f == a then say(hit[1], n, e.k, e.k == "C" and hit[2].c or nil, e.i) end
 end
 
 -- The status, amount and oldest claim of debt d, its working fields dropped.

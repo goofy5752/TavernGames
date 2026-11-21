@@ -115,6 +115,21 @@ describe("ledger view: debts", function()
     v = b.view()
     eq(#v.debts, 1); eq(v.debts[1].gid, G2); eq(v.debts[1].status, "pending"); eq(View.net(v, M, I), 0)
   end)
+  it("two bodies under one id with the same hash (a collision) take no C or N", function()
+    local b, H = book(), "00000000deadbeef"
+    local real, d1, d2 = Ledger.hash, nil, nil
+    Ledger.hash = function() return H end
+    local s, err = pcall(function() d1 = b.debt(I, M, I, 50000, G1, 1); d2 = b.debt(I, M, I, 5000000, G2, 1) end)
+    Ledger.hash = real
+    if not s then error(err, 0) end
+    eq(d1.h, H); eq(d2.h, H); ok(d1 ~= d2)
+    b.confirm(M, d1)
+    local v = b.view()
+    eq(#v.debts, 2); eq(v.debts[1].status, "pending"); eq(v.debts[2].status, "pending"); eq(View.net(v, M, I), 0)
+    b.contest(M, d1)
+    v = b.view()
+    eq(v.debts[1].status, "pending"); eq(v.debts[2].status, "pending")
+  end)
   it("copies with lower hashes that evict the original never inherit the debtor's C", function()
     local function body(c, at)
       return { k = "D", i = I .. ":1", at = at, gid = G1, g = "ttt", f = M, t = I, c = c, why = "lost" }
