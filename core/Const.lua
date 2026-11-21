@@ -77,6 +77,7 @@ ns.Const = {
   LEDGER_LID_AUTHORS = 3,    -- authors listed by LID in one exchange
   LEDGER_EX_MAX = 120,       -- an exchange is closed this long after it opened (its peer then waits a full gap)
   LEDGER_EX_PAGES = 10,      -- ... or past this many pages of one kind (LVC, LID) got in it
+  LEDGER_PAGE_ITEMS = 120,   -- authors in one LVC page, ids in one LID page (a bigger page is refused)
 
   PAY_WINDOW = 300, -- a trade completes a payment when the payer's PAY came within this long
   NUDGE_GAP = 3600, -- a debtor is reminded at most this often

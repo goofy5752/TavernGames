@@ -9,10 +9,13 @@ local Net, Sync = ns.LedgerNet, ns.LedgerSync
 local item, sorted = Ledger.item, Sync.sorted
 
 -- `data` (keyed: a map, by key; else a list) as messages base + {[key] = part} of
--- at most PAGE packed bytes, m = true on all but the last; they go out in turn.
+-- at most PAGE packed bytes and LEDGER_PAGE_ITEMS items, m = true on all but the last;
+-- they go out in turn. Past LEDGER_EX_PAGES x LEDGER_PAGE_ITEMS items, the rest is left out
+-- (what a partner takes in one exchange).
 function Sync:pages(x, base, key, data, keyed)
   local keys = keyed and sorted(data) or {}
   if not keyed then for j = 1, #data do keys[j] = j end end
+  for j = #keys, C.LEDGER_EX_PAGES * C.LEDGER_PAGE_ITEMS + 1, -1 do keys[j] = nil end
   local function page(from, k) -- measured with m (the last page loses it)
     local msg, part = Util.copy(base), {}
     for j = from, from + k - 1 do
@@ -24,7 +27,9 @@ function Sync:pages(x, base, key, data, keyed)
   local from, list = 1, {}
   repeat -- an empty map or list is one empty page
     local left = #keys - from + 1
-    local k = left > 0 and math.max(1, Net.fit(left, Sync.PAGE, function(k) return page(from, k) end)) or 0
+    local k = left > 0 and math.max(1, Net.fit(math.min(left, C.LEDGER_PAGE_ITEMS), Sync.PAGE,
+      function(k) return page(from, k) end)) or 0
+
     list[#list + 1], from = page(from, k), from + k
   until from > #keys
   list[#list].m = nil

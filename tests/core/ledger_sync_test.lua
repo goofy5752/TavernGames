@@ -531,11 +531,11 @@ describe("ledger sync: the budget (packed with the real wire)", function()
     for _ = 1, 45 do v[named(25)] = { n = 1000 + rnd(4000), x = string.format("%06x%06x", rnd(16777216), rnd(16777216)) } end
     local size = packed({ v = 1, t = "LVC", a = v })
     ok(size <= 1500, "LVC 45: " .. size)
-    -- HI grows by at most 16 packed bytes.
+    -- HI grows by at most 20 packed bytes (ruled; measured +13..+18 over many digests).
     local hi = c[ANA].presence:hi(false)
     local with = packed(hi)
     hi.ld = nil
-    ok(with - packed(hi) <= 16, "HI: " .. with .. " - " .. packed(hi))
+    ok(with - packed(hi) <= 20, "HI: " .. with .. " - " .. packed(hi))
   end)
 
   it("a vector that does not fit 1 500 bytes goes in pages inside the one exchange", function()
@@ -697,10 +697,14 @@ describe("ledger sync: the budget (packed with the real wire)", function()
     eq(a.ledgerNet:adopting(), false)
     -- Serving someone else's exchange does not close it.
     local d = sim:add(DARA)
-    eq(d.ledgerNet:adopting(), true)
+    sim:run(1)
+    ok(d.presence.peers[BOR], "Дара lists Борис"); eq(d.ledgerNet:adopting(), true)
+    local mark = #sim.sent
     d.ledgerSync:receive(BOR, { v = 1, t = "LVC", a = {} })
     d.ledgerSync:receive(BOR, { v = 1, t = "LEV", ev = {}, f = true })
     sim:run(1)
+    local f = whispers(sim, DARA, "LEV", mark, BOR)
+    eq(#f, 1); eq(f[1].msg.f, true) -- the exchange ran and ended
     eq(d.ledgerSync:busy(), false); eq(d.ledgerNet:adopting(), true)
 
   end)
@@ -754,6 +758,7 @@ describe("ledger sync: fix round 1", function()
     sim:offline(BOR)
     a.ledgerSync:begin(BOR)
     ok(a.ledgerSync.ask, "Ана asks Борис")
+    sim:run(3) -- so that the close is not the opening
     for _ = 1, C.LEDGER_EX_PAGES + 1 do a.ledgerSync:receive(BOR, { v = 1, t = "LVC", a = {}, r = true, m = true }) end
     eq(a.ledgerSync.ask, nil); eq(a.ledgerSync.last[BOR], sim.clock)
   end)
@@ -821,5 +826,110 @@ describe("ledger sync: fix round 1", function()
   end)
 end)
 
+describe("ledger sync: fix round 2", function()
+  -- n authors named by number (short names: the item cap binds before the byte cap).
+  local function cells(n, len)
+    local a = {}
+    for k = 1, n do a[len and named(len) or ("Z" .. k)] = { n = 0, x = "000000000000" } end
+    return a
+  end
+
+  it("I1: an oversized page is refused at once, with no echo; my other exchange goes on", function()
+    local sim, c = world(ANA, BOR, VERA)
+    local b = c[BOR]
+    give(b, pays(ZH, 1, 60))
+    local mark = #sim.sent
+    hello(sim, VERA) -- Борис sees that Вера lacks his 60: he asks her, 10 batches
+    while #whispers(sim, BOR, "LEV", mark, VERA) < 2 and sim.clock < 60 do sim:run(1) end
+    ok(b.ledgerSync.ask and b.ledgerSync.ask.peer == VERA, "Борис asks Вера")
+    local size, calls = ns.LedgerNet.size, 0
+    ns.LedgerNet.size = function(msg) calls = calls + 1; return size(msg) end
+    local big = { v = 1, t = "LVC", a = cells(2000) }
+    local okRun, err = pcall(function() b.ledgerSync:receive(ANA, big) end)
+    ns.LedgerNet.size = size
+    ok(okRun, err)
+    eq(calls, 0) -- refused on its count of cells: nothing packed, nothing gathered
+    eq(b.ledgerSync.serve, nil); eq(b.ledgerSync.last[ANA], sim.clock)
+    eq(#b.ledgerSync.out, 0) -- no echo
+    sim:run(60)
+    eq(#whispers(sim, BOR, "LVC r", mark, ANA), 0)
+    eq(entries(whispers(sim, BOR, "LEV", mark, VERA)), 60); eq(b.ledger:digest(), c[VERA].ledger:digest())
+  end)
+
+  it("I1: a page within the item cap but above the byte cap is refused", function()
+    local sim, c = world(ANA, BOR)
+    local b = c[BOR]
+    local msg = { v = 1, t = "LVC", a = cells(C.LEDGER_PAGE_ITEMS, 64) }
+    ok(packed(msg) > 1500, "above 1 500: " .. packed(msg))
+    b.ledgerSync:receive(ANA, msg)
+    eq(b.ledgerSync.serve, nil); eq(#b.ledgerSync.out, 0)
+    b.ledgerSync:receive(ANA, { v = 1, t = "LVC", a = cells(C.LEDGER_PAGE_ITEMS) }) -- within both, but within the gap
+    eq(b.ledgerSync.serve, nil)
+  end)
+
+  it("I1: my pages hold at most LEDGER_PAGE_ITEMS items, and a partner takes them", function()
+    local sim, c = world(ANA, BOR)
+    for k = 1, 200 do give(c[ANA], { { i = Ledger.id("Z" .. k, 1), k = "P", at = EPOCH0, f = ZH, c = 100 + k, how = "hand" } }) end
+    local mark = #sim.sent
+    hello(sim, ANA, BOR)
+    sim:run(120)
+    local pages = whispers(sim, ANA, "LVC", mark, BOR)
+    eq(#pages, 2)
+    for _, s in ipairs(pages) do
+      local n = 0
+      for _ in pairs(s.msg.a) do n = n + 1 end
+      ok(n <= C.LEDGER_PAGE_ITEMS, "items: " .. n); ok(packed(s.msg) <= 1500, "bytes: " .. packed(s.msg))
+    end
+    local back = whispers(sim, BOR, "LVC r", mark, ANA)
+    eq(#back, 2) -- the echo is paged the same way
+    eq(c[ANA].ledger:digest(), c[BOR].ledger:digest())
+  end)
+
+  it("I1: my own pages still leaving are no silence: a slow vector does not give up", function()
+    local sim, c = world(ANA, BOR)
+    for k = 1, 100 do give(c[ANA], { { i = Ledger.id(named(64), 1), k = "P", at = EPOCH0, f = ZH, c = 100 + k, how = "hand" } }) end
+    local env, held = c[ANA].env, {}
+    local send = env.send
+    env.send = function(channel, target, msg, done)
+      if msg.t == "LVC" then return send(channel, target, msg, function() held[#held + 1] = done end) end
+      return send(channel, target, msg, done)
+    end
+    hello(sim, BOR, ANA)
+    while not c[ANA].ledgerSync.ask and sim.clock < 60 do sim:run(1) end
+    for _ = 1, 3 do sim:run(25); if held[#held] then held[#held]() end end -- each page leaves after 25 s
+    ok(c[ANA].ledgerSync.ask, "still open after 75 s")
+    env.send = send
+    while held[#held] and #held < 6 do held[#held](); held[#held] = nil end
+    sim:run(100)
+    eq(c[ANA].ledger:digest(), c[BOR].ledger:digest())
+  end)
+
+  it("I2: three bodies whose words cancel out change x and start a LID round", function()
+    local real = Ledger.hash
+    local forged = { pay(VERA, 1, 901), pay(VERA, 2, 902), pay(VERA, 3, 903) }
+    local heads = { "000001", "000002", "fffffd" } -- (1 + 2 + 0xfffffd) * 2^24 = 2^48: a sum of 0
+    local fixed = {}
+    for j, e in ipairs(forged) do fixed[Ledger.canon(e)] = heads[j] .. "000000" .. real(e):sub(13) end
+    Ledger.hash = function(e) return fixed[Ledger.canon(e)] or real(e) end
+    local okRun, err = pcall(function()
+      local sim, c = world(ANA, BOR)
+      give(c[ANA], pays(VERA, 1, 3)); give(c[BOR], pays(VERA, 1, 3))
+      eq(c[ANA].ledger:digest(), c[BOR].ledger:digest())
+      give(c[BOR], forged) -- twins inside the run: n stays 3
+      eq(c[BOR].ledger:vector()[VERA].n, 3)
+      ok(c[ANA].ledger:vector()[VERA].x ~= c[BOR].ledger:vector()[VERA].x, "x moved")
+      local mark = #sim.sent
+      hello(sim, BOR)
+      sim:run(40)
+      ok(#whispers(sim, ANA, "LID", mark) >= 1, "a LID round")
+      for n = 1, 3 do eq(holds(c[ANA], VERA .. ":" .. n), 2) end
+      eq(c[ANA].ledger:digest(), c[BOR].ledger:digest())
+    end)
+    Ledger.hash = real
+    ok(okRun, err)
+  end)
+end)
+
 ns.LedgerNet.size = stand
+
 

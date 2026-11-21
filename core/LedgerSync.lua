@@ -75,7 +75,7 @@ end
 
 function Sync:open(peer, ask)
   local x = { peer = peer, ask = ask, q = {}, qs = {}, sent = 0, took = 0, d0 = self.L:digest(), lidOut = 0,
-    lids = 0, lidN = {}, lidMine = {}, lidAll = {}, lin = {}, pages = {} }
+    lids = 0, lidN = {}, lidMine = {}, lidAll = {}, lin = {}, pages = {}, items = {} }
   self.by[peer], self.last[peer] = x, self.client.env.now()
   if ask then self.ask = x else self.serve = x end
   x.life = self.client:after(C.LEDGER_EX_MAX, function() self:finish(x, true) end)
@@ -94,14 +94,29 @@ function Sync:alive(x)
   if x.fTheirs then return end -- the partner is done: I wait for nothing
   x.timer = self.client:after(C.LEDGER_SYNC_TIMEOUT, function()
     x.timer = nil
-    if due(x) then self:alive(x) else self:finish(x) end
+    if due(x) or self:sending(x) then self:alive(x) else self:finish(x) end
   end)
 end
 
--- A page of kind t came in exchange x -> true; past LEDGER_EX_PAGES of a kind it closes -> false.
-function Sync:page(x, t)
-  x.pages[t] = (x.pages[t] or 0) + 1
-  if x.pages[t] > C.LEDGER_EX_PAGES then self:finish(x, true); return false end
+-- Am I still sending for x (a page of it queued, or a whisper of it not yet left)?
+function Sync:sending(x)
+  if self.inflight and self.inflightX == x then return true end
+  for _, o in ipairs(self.out) do if o.x == x then return true end end
+  return false
+end
+
+-- A page of kind t (part: its cells or items) came in exchange x -> true. Refused, and x
+-- closed (capped) -> false: past LEDGER_PAGE_ITEMS items (counted no further) or PAGE packed
+-- bytes, past LEDGER_EX_PAGES pages or LEDGER_EX_PAGES x LEDGER_PAGE_ITEMS items of a kind.
+function Sync:page(x, t, msg, part)
+  local n = 0
+  for _ in pairs(part) do n = n + 1; if n > C.LEDGER_PAGE_ITEMS then break end end
+  x.pages[t], x.items[t] = (x.pages[t] or 0) + 1, (x.items[t] or 0) + n
+  if n > C.LEDGER_PAGE_ITEMS or x.pages[t] > C.LEDGER_EX_PAGES
+    or x.items[t] > C.LEDGER_EX_PAGES * C.LEDGER_PAGE_ITEMS or Net.size(msg) > Sync.PAGE then
+    self:finish(x, true)
+    return false
+  end
   self:alive(x)
   return true
 end
@@ -143,14 +158,14 @@ function Sync:receive(sender, msg)
   if msg.t == "LVC" and type(msg.a) == "table" and (msg.r == true) == (x and x.ask or false) then
     if not x and not self:welcome(sender) then return end
     x = x or self:open(sender, false)
-    if x.spoke or not self:page(x, "LVC") then return end -- one vector per side and exchange
+    if x.spoke or not self:page(x, "LVC", msg, msg.a) then return end -- one vector per side and exchange
     x.v = x.v or {}
     if Sync.gather(x.v, msg.a, true, msg.m) then x.spoke = true; self:vector(x) end
   elseif msg.t == "LID" and x and Sync.name(msg.au) and type(msg.l) == "table" then
     local au = msg.au
     local mine = x.ask and msg.r == true and x.lidN[au]
     local theirs = not x.ask and msg.r ~= true and x.spoke and not x.fMine and x.lids < 2 * C.LEDGER_LID_AUTHORS
-    if not (mine or theirs) or not self:page(x, "LID") then return end
+    if not (mine or theirs) or not self:page(x, "LID", msg, msg.l) then return end
     x.lin[au] = x.lin[au] or {}
     if not Sync.gather(x.lin[au], msg.l, false, msg.m) then return end
     local l = x.lin[au]; x.lin[au] = nil
@@ -233,7 +248,8 @@ end
 function Sync:send(x, msg)
   local token = {}
   local function free() if self.inflight == token then self.inflight = nil; self:pump() end end
-  self.inflight = token
+  self.inflight, self.inflightX = token, x
+
   self.client:after(C.LEDGER_SYNC_TIMEOUT, free)
   self.client:send("WHISPER", x.peer, msg, free)
 end

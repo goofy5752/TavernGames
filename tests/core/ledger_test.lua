@@ -198,29 +198,35 @@ describe("ledger store", function()
       eq(l:add(entry("X", M, 9, { r = M .. ":1", h = "0123456789abcdef" }), M), "new")
     end)
   end)
-  it("x is incremental and bounded", function()
-    local store, sum = { ev = { [M] = {} }, tw = {}, me = {}, x = {} }, 0
+  it("x is a hash of the author's sorted id:h, cached per author; a load hashes nothing", function()
+    local store = { ev = { [M] = {}, [P] = {} }, tw = {}, me = {}, x = { [M] = 0 } } -- a saved x of before: dropped
+    local items = {}
     for n = 1, 5000 do
       local h = string.format("%08x%08x", n * 7919, n)
       store.ev[M][n] = { i = Ledger.id(M, n), k = "R", at = NOW, gid = "t/" .. n, g = "ttt", n = { M, I }, w = { 1 }, l = { 2 }, h = h }
-      sum = (sum + tonumber(h:sub(1, 6), 16) * 2 ^ 24 + tonumber(h:sub(7, 12), 16)) % 2 ^ 48
+      items[n] = Ledger.id(M, n) .. ":" .. h
     end
-    store.x[M] = 0 -- a stale saved x is ignored
+    store.ev[P][1] = { i = Ledger.id(P, 1), k = "R", at = NOW, gid = "t/1", g = "ttt", n = { P, I }, w = { 1 }, l = { 2 }, h = ("ab"):rep(8) }
+    local function x(list) local c = U.copy(list); table.sort(c, U.byteLess); return ns.Sha256.hex(table.concat(c, ",")):sub(1, 12) end
+    local want = x(items)
     local calls, hex = 0, ns.Sha256.hex
     ns.Sha256.hex = function(s) calls = calls + 1; return hex(s) end
     local s, err = pcall(function()
       local l = Ledger.new(store, I, function() return NOW end)
-      eq(calls, 0, "a load hashes nothing")
-      local function x12(v) return string.format("%06x%06x", math.floor(v / 2 ^ 24), v % 2 ^ 24) end
-      eq(l:vector()[M].x, x12(sum)); eq(#l:vector()[M].x, 12)
-      eq(l:add(paid(5001), M), "new"); eq(calls, 1, "one add hashes one body")
-      local h = l:get(M .. ":5001").h
-      sum = (sum + tonumber(h:sub(1, 6), 16) * 2 ^ 24 + tonumber(h:sub(7, 12), 16)) % 2 ^ 48
-      eq(l:vector()[M].x, x12(sum))
-      eq(l:vector()[M].n, 5001)
+      eq(calls, 0, "a load hashes nothing"); eq(store.x, nil)
+      eq(l:vector()[M].x, want); eq(calls, 2, "one hash per author")
+      eq(l:vector()[M].x, want); eq(calls, 2, "cached")
+      eq(l:add(paid(5001), M), "new"); eq(calls, 3, "one add hashes one body")
+      calls = 0
+      items[#items + 1] = Ledger.id(M, 5001) .. ":" .. l:get(M .. ":5001").h
+      local now = l:vector()
+      eq(calls, 1, "only the author that changed"); eq(now[M].n, 5001)
+      ns.Sha256.hex = hex
+      eq(now[M].x, x(items)); ns.Sha256.hex = function(s2) calls = calls + 1; return hex(s2) end
       calls = 0
       local d = l:digest(); eq(l:digest(), d); eq(calls, 1, "the digest is cached")
     end)
+
     ns.Sha256.hex = hex
     if not s then error(err, 0) end
   end)
@@ -364,7 +370,7 @@ describe("ledger hardening", function()
     copy.ev[M][4] = { i = M .. ":4", k = "X", r = M .. ":1", h = "0123456789abcdef" } -- no rh
     copy.ev[M][5] = "junk"; copy.ev[M]["6"] = paid(6); copy.ev[P] = 7
     copy.ev[M][7] = l:get(M .. ":1")                                  -- under another number
-    copy.x[M] = 12345
+    copy.x = { [M] = 12345 }                                          -- a saved x of an earlier version
     local re = Ledger.new(copy, I, function() return NOW end)
     eq(re:vector(), good); eq(re:list(M), l:list(M)); eq(re:seen(M), 2)
   end)
