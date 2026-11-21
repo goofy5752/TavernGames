@@ -83,6 +83,7 @@ ui/games/SantaseView.lua
 ui/games/BelotModel.lua
 ui/games/BelotView.lua
 ui/games/TablaModel.lua
+ui/games/TablaView.lua
 ui/InviteToast.lua
 ui/HelpBook.lua
 ui/Intro.lua

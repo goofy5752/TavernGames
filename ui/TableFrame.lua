@@ -16,9 +16,11 @@ local _, ns = ...
 -- more players when its engine needs more than two seats), an aborted
 -- match, a silent host, and for RESYNC_SECONDS after "desync" the resync note.
 -- On a card table (ns.Deal.status) one line at the bottom edge of the felt:
--- the shuffle under way or the verdict on the last hand; it opens the
--- rules book on "fair". Title bar: the game, the access, turn time and table
--- options, the watcher count and ⓘ (topic = game id). Bottom: „Стани“
+-- the shuffle under way or the verdict on the last hand; on a dice table
+-- (ns.Dice.status when Deal has none, the tooltip ns.Dice.tip) the throw
+-- under way or the last one's verdict; it opens the rules book on "fair".
+-- Title bar: the game, the access, turn time and table options, the watcher
+-- count and ⓘ (topic = game id). Bottom: „Стани“
 -- (watchers: „Към залата“; in a running match of a team game it first asks
 -- in a small panel above the button, since my partner loses with me), „Покани“ for the host while a seat is free (a list
 -- of who is in the tavern), „Започни“ / „Нова игра“ for the host of a
@@ -338,11 +340,18 @@ end
 -- (Deal.claim) follows it as a claim by name. The colour is my own client's
 -- finding: red while Deal.alarm(s) (a bad hand or a dealer's second void in
 -- this match), else amber with a claim, green on a verified hand.
+-- A dice table: Dice.status(s) -> key, tone, arg, arg2, shown in that tone.
 local function renderFair(v, s)
   local line = v.fairLine
   local key, arg, arg2 = ns.Deal.status(s)
-  line:SetShown(key ~= nil)
-  if not key then return end
+  if not key then
+    local tone
+    key, tone, arg, arg2 = ns.Dice.status(s)
+    line:SetShown(key ~= nil)
+    if key then line.text:SetText(L(key, arg, arg2)); line.text:SetTextColor(Theme.rgb(tone)) end
+    return
+  end
+  line:Show()
   if key == "fair.last" then arg = known("fair.v." .. tostring(arg)) or "?" end
   -- The dealer's seat emptied during the deal (the hand is void soon): no name to show.
   if key == "fair.dealing" and arg == nil then key = "fair.shuffle" end
@@ -357,10 +366,20 @@ end
 -- The tooltip of the fairness line: what the line means (why a bad hand
 -- failed, a void), another player's claim about that hand, then in red the count of bad
 -- hands of this match and every dealer's voided or undealt hands. With no
--- hand closed yet, or a verdict without a text: the line itself.
+-- hand closed yet, or a verdict without a text: the line itself. A dice
+-- table: the lines of Dice.tip(s), a reason spelled out (dice.why.*).
 local function fairTooltip(tip)
   local s = ns.client and ns.client.session
   if not s then return end
+  if not ns.Deal.status(s) and ns.Dice.status(s) then
+    for i, t in ipairs(ns.Dice.tip(s)) do -- {tone, key, arg, arg2}
+      local args, why = { t[3], t[4] }, t[2] == "dice.cry" and 2 or t[2] == "dice.tip.bad" and 1
+      if why then args[why] = known("dice.why." .. tostring(args[why])) or L("fair.why.unknown") end
+      local text, r, g, b = L(t[2], args[1], args[2]), Theme.rgb(t[1])
+      if i == 1 then tip:SetText(text, r, g, b, 1, true) else tip:AddLine(text, r, g, b, true) end
+    end
+    return
+  end
   local last, seen = s.fairLast, s.fairSeen
   local text
   if last and last.verdict == "bad" then

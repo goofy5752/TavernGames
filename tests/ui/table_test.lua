@@ -484,6 +484,29 @@ describe("ui: table frame, card fairness", function()
     eq(v.fairLine.text:GetText(), "Разбъркваме заедно…")
   end)
 
+  it("the fairness line of a dice game: throwing, thrown by both, the host alone, bad", function()
+    local w, v = matchWithBot(); local tip = w.G.GameTooltip
+    local answers = { { "dice.rolling", "inkDim" }, { "dice.ok", "good" }, { "dice.alone", "gold", ME, B }, { "dice.bad", "red" } }
+    local texts = { "Хвърляме заровете заедно…", "Зарове: хвърлени от двамата играчи",
+      "Иван Петров хвърли сам: Мария Стоянова не се включи навреме", "Зарове: нередовни" }
+    local now
+    w.ns.Dice.status = function() return unpack(now) end
+    for k, a in ipairs(answers) do
+      now = a; w.ns.TableFrame.render()
+      ok(v.fairLine:IsVisible(), "no dice line"); eq({ v.fairLine.text:GetText(), color(v.fairLine.text) }, { texts[k], rgb(w, a[2]) })
+    end
+    w.ns.Dice.tip = function() return { { "ink", "dice.tip" }, { "red", "dice.tip.bad", "forged" } } end
+    w:hover(v.fairLine)
+    eq(tip.lines, { w.ns.L("dice.tip"), "Проверката не излезе: заровете не дойдоха от хвърляне на двамата. Кажи на другия." })
+    local opened; w.ns.HelpBook.open = function(id) opened = id end; w:click(v.fairLine); eq(opened, "fair")
+
+    local w2, v2 = santaseWithBot(); local s2 = w2.ns.client.session
+    w2.ns.Dice.status = function() return "dice.bad", "red" end
+    s2.fairLast, s2.fairSeen = { h = 5, verdict = "ok", dealer = BOT }, { ok = 1, bad = 0 }; w2.ns.TableFrame.render()
+    eq(v2.fairLine.text:GetText(), "Последната ръка: проверена")
+    w2:hover(v2.fairLine); eq(w2.G.GameTooltip.lines, { w2.ns.L("fair.tip.ok") })
+  end)
+
   it("after the match the host gets „Нова игра“", function()
     local w, v = santaseWithBot(); local s = w.ns.client.session
     eq(s.status, "live")
