@@ -28,6 +28,7 @@ core/Bus.lua
 core/Trace.lua
 core/Games.lua
 core/Stake.lua
+core/Ledger.lua
 core/Presence.lua
 core/Lobby.lua
 core/Succession.lua
