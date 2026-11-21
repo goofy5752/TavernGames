@@ -3,7 +3,8 @@ local _, ns = ...
 -- „Нова маса“: the game, the stake (stage 1: only „Само за удоволствие“), who
 -- may sit (Всеки от гилдията / Само поканени / Групата ми), the turn time
 -- (30/45/60/90 s, 45 preselected) and one row per option of the game's engine
--- (E.options, the default preselected). „Отвори“ → client:openTable.
+-- (E.options, the default preselected, each value by its name, W.optionText).
+-- „Отвори“ → client:openTable.
 local Theme, W, L, C = ns.Theme, ns.W, ns.L, ns.Const
 
 local D = {
@@ -73,7 +74,7 @@ local function optionSet(id)
     local group, x = choiceGroup(), VALUE_X
     group.default = o.default
     for _, value in ipairs(o.choices) do
-      local choice = addOption(group, frame, tostring(value), value, x, y)
+      local choice = addOption(group, frame, W.optionText(id, o.id, value), value, x, y)
       x = x + choice.frame:GetWidth() + CHOICE_GAP
     end
     set.width = math.max(set.width, x - CHOICE_GAP + RIGHT_MARGIN)

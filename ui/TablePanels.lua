@@ -2,7 +2,9 @@ local _, ns = ...
 
 -- The panels of the table frame, split out of ui/TableFrame.lua: the „Покани“
 -- list, the „Стани“ question, and the fairness line under the felt (its text and
--- its tooltip). TableFrame.panels is what the frame calls.
+-- its tooltip): a card table's (ns.Deal), else a dice table's (ns.Dice), else a
+-- sealed table's book (ns.Book.status for the line, ns.Book.tip for the
+-- tooltip), each read at call time. TableFrame.panels is what the frame calls.
 local TableFrame = ns.TableFrame
 local Theme, W, L = ns.Theme, ns.W, ns.L
 
@@ -82,13 +84,16 @@ end
 -- finding: red while Deal.alarm(s) (a bad hand or a dealer's second void in
 -- this match), else amber with a claim, green on a verified hand.
 -- A dice table: Dice.status(s) -> key, tone, arg, arg2, shown in that tone
--- (a name whose seat emptied, nil, as „?“; so in the dice tooltip).
+-- (a name whose seat emptied, nil, as „?“; so in the dice tooltip). With
+-- neither, a sealed table's book: Book.status(s) -> key, tone, arg, arg2, drawn
+-- as a dice line is.
 local function renderFair(v, s)
   local line = v.fairLine
   local key, arg, arg2 = ns.Deal.status(s)
   if not key then
     local tone
     key, tone, arg, arg2 = ns.Dice.status(s)
+    if not key then key, tone, arg, arg2 = ns.Book.status(s) end
     line:SetShown(key ~= nil)
     if key then line.text:SetText(L(key, arg or "?", arg2 or "?")); line.text:SetTextColor(Theme.rgb(tone)) end
     return
@@ -106,22 +111,36 @@ local function renderFair(v, s)
   line.text:SetTextColor(Theme.rgb(ns.Deal.alarm(s) and "red" or amber and "gold" or verdict == "ok" and "good" or "inkDim"))
 end
 
+-- Tooltip lines {tone, key, arg, arg2}, each in its tone; spell(key, args) may
+-- rewrite the arguments first.
+local function tipLines(tip, lines, spell)
+  for i, t in ipairs(lines) do
+    local args = { t[3], t[4] }
+    if spell then spell(t[2], args) end
+    local text, r, g, b = L(t[2], args[1] or "?", args[2] or "?"), Theme.rgb(t[1])
+    if i == 1 then tip:SetText(text, r, g, b, 1, true) else tip:AddLine(text, r, g, b, true) end
+  end
+end
+
+local function diceWhy(key, args)
+  local why = key == "dice.cry" and 2 or key == "dice.tip.bad" and 1
+  if why then args[why] = known("dice.why." .. tostring(args[why])) or L("fair.why.unknown") end
+end
+
 -- The tooltip of the fairness line: what the line means (why a bad hand
 -- failed, a void), another player's claim about that hand, then in red the count of bad
 -- hands of this match and every dealer's voided or undealt hands. With no
 -- hand closed yet, or a verdict without a text: the line itself. A dice
--- table: the lines of Dice.tip(s), a reason spelled out (dice.why.*).
+-- table: the lines of Dice.tip(s), a reason spelled out (dice.why.*). A
+-- sealed table's book: the lines of Book.tip(s) as they are (their arguments
+-- are counts and names, never a reason to spell out).
 local function fairTooltip(tip)
   local s = ns.client and ns.client.session
   if not s then return end
-  if not ns.Deal.status(s) and ns.Dice.status(s) then
-    for i, t in ipairs(ns.Dice.tip(s)) do -- {tone, key, arg, arg2}
-      local args, why = { t[3], t[4] }, t[2] == "dice.cry" and 2 or t[2] == "dice.tip.bad" and 1
-      if why then args[why] = known("dice.why." .. tostring(args[why])) or L("fair.why.unknown") end
-      local text, r, g, b = L(t[2], args[1] or "?", args[2] or "?"), Theme.rgb(t[1])
-      if i == 1 then tip:SetText(text, r, g, b, 1, true) else tip:AddLine(text, r, g, b, true) end
-    end
-    return
+  if not ns.Deal.status(s) then
+    if ns.Dice.status(s) then return tipLines(tip, ns.Dice.tip(s), diceWhy) end
+    local book = ns.Book.tip(s)
+    if book then return tipLines(tip, book) end
   end
   local last, seen = s.fairLast, s.fairSeen
   local text

@@ -8,9 +8,14 @@ local _, ns = ...
 -- middle, drawn by the view registered for the game id, 16 px lower for every
 -- plate row after the first (a view frame at most 236 high starts below two
 -- rows of plates, which end 68 px from the top of the felt). A view with
--- `ring = true` (a team game) gets its plates around the felt instead
--- (ns.HallLayout.ring: my seat at the bottom, the partner on top) and its
+-- `ring = true` (a team game, Холдем) gets its plates around the felt instead
+-- (ns.HallLayout.ring: my seat at the bottom; four seats with the partner on
+-- top, six clockwise with the next seat at my left) and its
 -- board anchored TOPLEFT to the felt at 0, 0 (the view sizes it to the felt).
+-- A view with `size = {w, h}` (Холдем: 760 x 532, a felt of 732 x 440) gets a
+-- frame of that size, else the frame is WIDTH x HEIGHT; render sizes it (the
+-- frame, the wood, the felt, the banner and the fairness line) whenever the
+-- game shown changes.
 -- A banner across the felt: waiting for players (or for the host to start;
 -- a table that does not start by the host waits for a second player, or for
 -- more players when its engine needs more than two seats), an aborted
@@ -18,7 +23,9 @@ local _, ns = ...
 -- On a card table (ns.Deal.status) one line at the bottom edge of the felt:
 -- the shuffle under way or the verdict on the last hand; on a dice table
 -- (ns.Dice.status when Deal has none, the tooltip ns.Dice.tip) the throw
--- under way or the last one's verdict; it opens the rules book on "fair".
+-- under way or the last one's verdict; at a sealed table (ns.Book.status when
+-- neither has one, the tooltip ns.Book.tip) the book's count of hands; it
+-- opens the rules book on "fair" (ui/TablePanels.lua draws it).
 -- Title bar: the game, the access, turn time and table options, the watcher
 -- count and ⓘ (topic = game id). Bottom: „Стани“
 -- (watchers: „Към залата“; in a running match of a team game it first asks
@@ -28,7 +35,7 @@ local _, ns = ...
 -- over, and one line of news for SAY_SECONDS.
 --
 -- A view is { build(parent) -> frame, update(frame, session) } and may add
--- seatNote(session, seat) -> text for the plates and `ring = true`. Client
+-- seatNote(session, seat) -> text for the plates, `ring = true` and `size`. Client
 -- events only schedule a redraw for the next frame (TableFrame.refresh), as in
 -- the hall.
 local Theme, W, L = ns.Theme, ns.W, ns.L
@@ -48,7 +55,7 @@ local PLATE_W, PLATE_H = 190, 26     -- plate size before ns.HallLayout.plates s
 local PLATE_NAME_INSET = 28 + 64      -- the plate width the disc and the clock/note keep from the name
 local SAY_SECONDS, RESYNC_SECONDS = 5, 3
 
--- view: { build(parent) -> frame, update(frame, session), seatNote(session, seat)?, ring? }
+-- view: { build(parent) -> frame, update(frame, session), seatNote(session, seat)?, ring?, size? }
 function TableFrame.registerView(gameId, view) TableFrame.views[gameId] = view end
 
 local function firstFree(seats)
@@ -273,10 +280,23 @@ local function metaText(s, engine)
   for i = 1, #options do
     local id = options[i].id
     if opt[id] ~= nil then
-      text = text .. " · " .. L("opt." .. s.game .. "." .. id) .. " " .. tostring(opt[id])
+      text = text .. " · " .. L("opt." .. s.game .. "." .. id) .. " " .. W.optionText(s.game, id, opt[id])
     end
   end
   return text
+end
+
+-- Sizes the table frame to w x h: the frame, the wood, the felt (areaW x
+-- areaH), the banner across it and the fairness line under it.
+local function fit(v, w, h)
+  TableFrame.frame:SetSize(w, h)
+  v.wood:SetTexCoord(0, (w - 8) / Theme.texSize.wood, 0, (h - 8) / Theme.texSize.wood)
+  v.areaW = w - 2 * (EDGE + 2)
+  v.areaH = h - (EDGE + TITLE_H) - (EDGE + BOTTOM_H)
+  v.area:SetSize(v.areaW, v.areaH)
+  v.felt:SetSize(v.areaW, v.areaH)
+  v.banner:SetWidth(v.areaW)
+  v.fairLine:SetWidth(v.areaW - 40)
 end
 
 -- Redraws the table frame now; shows it while I am at a table, hides it otherwise.
@@ -299,6 +319,11 @@ function TableFrame.render()
   if not f:IsShown() then
     f:Show()
     f:Raise()
+  end
+  if v.game ~= s.game then
+    v.game = s.game
+    local size = (TableFrame.views[s.game] or {}).size
+    fit(v, size and size[1] or TableFrame.WIDTH, size and size[2] or TableFrame.HEIGHT)
   end
   local engine = s:engine()
   v.title:SetText(W.gameName(s.game))
@@ -355,7 +380,6 @@ function TableFrame.build()
   local W_, H_ = TableFrame.WIDTH, TableFrame.HEIGHT
   local f = CreateFrame("Frame", nil, UIParent)
   TableFrame.frame = f
-  f:SetSize(W_, H_)
   f:SetPoint("CENTER", UIParent, "CENTER", 0, 30)
   f:SetFrameStrata("HIGH")
   f:SetToplevel(true)
@@ -369,6 +393,7 @@ function TableFrame.build()
   wood:SetPoint("TOPLEFT", f, "TOPLEFT", 4, -4)
   wood:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -4, 4)
   wood:SetVertexColor(0.85, 0.85, 0.85)
+  v.wood = wood
   W.nine(f, Theme.tex.frame, Theme.texSize.frame, EDGE, EDGE, "BORDER", true)
 
   -- Title bar: the drag handle.
@@ -395,9 +420,6 @@ function TableFrame.build()
   local area = CreateFrame("Frame", nil, f)
   area:SetPoint("TOPLEFT", f, "TOPLEFT", EDGE + 2, -(EDGE + TITLE_H))
   area:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -(EDGE + 2), EDGE + BOTTOM_H)
-  v.areaW = W_ - 2 * (EDGE + 2)
-  v.areaH = H_ - (EDGE + TITLE_H) - (EDGE + BOTTOM_H)
-  area:SetSize(v.areaW, v.areaH)
   v.area = area
   local felt = area:CreateTexture(nil, "BACKGROUND")
   felt:SetAllPoints(area)
@@ -407,7 +429,7 @@ function TableFrame.build()
 
   -- The banner across the felt, above the board.
   local banner = CreateFrame("Frame", nil, area)
-  banner:SetSize(v.areaW, 36)
+  banner:SetHeight(36) -- as wide as the felt (fit)
   banner:SetPoint("CENTER", area, "CENTER", 0, 0)
   banner:SetFrameLevel(area:GetFrameLevel() + 10)
   local shade = banner:CreateTexture(nil, "BACKGROUND")
@@ -422,7 +444,7 @@ function TableFrame.build()
 
   -- The fairness line at the bottom edge of the felt.
   local fairLine = CreateFrame("Button", nil, area)
-  fairLine:SetSize(v.areaW - 40, 18)
+  fairLine:SetHeight(18) -- 40 px narrower than the felt (fit)
   fairLine:SetPoint("BOTTOM", area, "BOTTOM", 0, 6)
   fairLine:SetFrameLevel(area:GetFrameLevel() + 8)
   fairLine:RegisterForClicks("LeftButtonUp")
@@ -458,6 +480,7 @@ function TableFrame.build()
   line:Hide()
   v.line = line
   TableFrame.panels.build(v, f)
+  fit(v, W_, H_)
 
   f:SetScript("OnUpdate", TableFrame.tick)
   f:Hide()

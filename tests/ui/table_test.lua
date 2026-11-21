@@ -239,6 +239,28 @@ describe("ui: table frame", function()
     eq(v.plates[4].frame:GetWidth(), 165); eq(#w:texts("Чакаме още играчи…"), 1); eq(#w:texts("Чакаме втори играч…"), 0)
     eq(T.built.belot.points[1], { "TOPLEFT", v.area, "TOPLEFT", 0, 0 }); eq({ T.built.belot:GetSize() }, { 532, 328 })
   end)
+
+  it("a view with a size gets its own frame and felt; another game puts the frame back", function()
+    local w = guildWow(); local T = w.ns.TableFrame; local wood = w.ns.Theme.texSize.wood
+    T.registerView("holdem", { size = { 760, 532 }, ring = true, update = function() end,
+      build = function(parent) return w.G.CreateFrame("Frame", nil, parent) end })
+    w.ns.client:openTable{ game = "holdem", access = "guild", turn = 45 }; w:advance(0); local v = T.view
+    eq({ T.frame:GetSize() }, { 760, 532 }); eq({ v.areaW, v.areaH }, { 732, 440 })
+    eq({ v.area:GetSize() }, { 732, 440 }); eq({ v.felt:GetSize() }, { 732, 440 }); eq(v.banner:GetWidth(), 732)
+    eq(v.wood.texCoord, { 0, 752 / wood, 0, 524 / wood })
+    local at = { { 291, -388 }, { 10, -300 }, { 10, -80 }, { 291, -10 }, { 572, -80 }, { 572, -300 } }
+    for i, p in ipairs(at) do
+      eq(v.plates[i].frame.points[1], { "TOPLEFT", v.area, "TOPLEFT", p[1], p[2] }); eq(v.plates[i].frame:GetWidth(), 150)
+      ok(v.plates[i].frame:IsVisible(), "plate " .. i .. " hidden")
+    end
+    eq(v.plates[7], nil); eq(v.fairLine:GetWidth(), 692)
+    eq(v.meta:GetText(), "Всеки от гилдията · 45 с на ход · Залагане Без лимит · Блайндове 5/10 · Стек 100 ГБ")
+    w.ns.client:stand(); w:advance(0)
+    w.ns.client:openTable{ game = "ttt", access = "guild", turn = 45 }; w:advance(0)
+    eq({ T.frame:GetSize() }, { 560, 420 }); eq({ v.areaW, v.areaH }, { 532, 328 }); eq({ v.area:GetSize() }, { 532, 328 })
+    eq({ v.felt:GetSize() }, { 532, 328 }); eq(v.banner:GetWidth(), 532); eq(v.fairLine:GetWidth(), 492)
+    eq(v.wood.texCoord, { 0, 552 / wood, 0, 412 / wood })
+  end)
 end)
 
 describe("ui: table frame, host-started games", function()
@@ -529,6 +551,43 @@ describe("ui: table frame, card fairness", function()
     s2.fairLast, s2.fairSeen = { h = 5, verdict = "ok", dealer = BOT }, { ok = 1, bad = 0 }; w2.ns.TableFrame.render()
     eq(v2.fairLine.text:GetText(), "Последната ръка: проверена")
     w2:hover(v2.fairLine); eq(w2.G.GameTooltip.lines, { w2.ns.L("fair.tip.ok") })
+  end)
+
+  it("the book's line under the felt and its tooltip; the dialog names the option values", function()
+    local w = guildWow(); local tip = w.G.GameTooltip
+    w.ns.client:openTable{ game = "holdem", access = "guild", turn = 45 }; w:advance(0); local v = w.ns.TableFrame.view
+    eq(v.fairLine:IsShown(), false) -- no hand has ended yet
+    local answers = { { "seal.sealed", "inkDim", 12, 3 }, { "seal.ok", "good", 15 }, { "seal.open", "gold", 4, ME }, { "seal.bad", "red", 1 } }
+    local texts = { "Ръце за проверка при затварянето: 12 · вече проверени: 3", "Всичките 15 ръце са проверени",
+      "Непроверени ръце: 4. Иван Петров не остави ключа си", "Нередовни ръце: 1" }
+    local now
+    w.ns.Book.status = function() return unpack(now, 1, 4) end
+    for k, a in ipairs(answers) do
+      now = a; w.ns.TableFrame.render()
+      ok(v.fairLine:IsVisible(), "no book line"); eq({ v.fairLine.text:GetText(), color(v.fairLine.text) }, { texts[k], rgb(w, a[2]) })
+    end
+    local tones, setText, addLine = {}, tip.SetText, tip.AddLine
+    function tip:SetText(text, r, g, b, ...) tones = { { r, g, b, 1 } }; return setText(self, text, r, g, b, ...) end
+    function tip:AddLine(text, r, g, b, ...) tones[#tones + 1] = { r, g, b, 1 }; return addLine(self, text, r, g, b, ...) end
+    w.ns.Book.tip = function() return { { "ink", "seal.tip" }, { "gold", "seal.tip.open", ME } } end
+    w:hover(v.fairLine)
+    eq(tip.lines, { w.ns.L("seal.tip"), "Иван Петров си тръгна, без да остави ключа си. Ръцете с него не могат да се проверят." })
+    eq(tones, { rgb(w, "ink"), rgb(w, "gold") })
+    local opened; w.ns.HelpBook.open = function(id) opened = id end; w:click(v.fairLine); eq(opened, "fair")
+
+    local w2, v2 = santaseWithBot(); local s2 = w2.ns.client.session
+    w2.ns.Book.status = function() return "seal.bad", "red", 1 end
+    w2.ns.Book.tip = function() return { { "red", "seal.tip.bad", 1 } } end
+    s2.fairLast, s2.fairSeen = { h = 5, verdict = "ok", dealer = BOT }, { ok = 1, bad = 0 }; w2.ns.TableFrame.render()
+    eq(v2.fairLine.text:GetText(), "Последната ръка: проверена")
+    w2:hover(v2.fairLine); eq(w2.G.GameTooltip.lines, { w2.ns.L("fair.tip.ok") })
+
+    local w3 = guildWow(); w3.ns.MainWindow.show(); local D = w3.ns.NewTableDialog
+    D.open("holdem")
+    eq(#w3:texts("Залагане"), 1); eq(#w3:texts("Без лимит"), 1); eq(#w3:texts("Пот лимит"), 1)
+    eq(#w3:texts("5/10"), 1); eq(#w3:texts("100/200"), 1); eq(#w3:texts("100 ГБ"), 1); eq(#w3:texts("200 ГБ"), 1)
+    eq(D.options.blinds.value, 10); eq(D.options.betting.value, "nl")
+    eq(w3.ns.W.optionText("holdem", "blinds", 20), "10/20"); eq(w3.ns.W.optionText("deathroll", "start", 1000), "1000")
   end)
 
   it("after the match the host gets „Нова игра“", function()

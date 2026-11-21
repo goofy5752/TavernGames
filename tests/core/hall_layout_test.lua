@@ -61,6 +61,13 @@ describe("hall layout", function()
     eq(H.ring(2, 532, 328, 1), (H.plates(2, 532)))
   end)
 
+  it("six seats around a big felt, mine at the bottom, the next at my left", function()
+    local spots, rows = H.ring(6, 732, 440, 1); eq(rows, 1)
+    eq(spots, { { 291, -388, 150 }, { 10, -300, 150 }, { 10, -80, 150 }, { 291, -10, 150 }, { 572, -80, 150 }, { 572, -300, 150 } })
+    local r = H.ring(6, 732, 440, 4); eq({ r[4], r[5], r[3], r[1] }, { { 291, -388, 150 }, { 10, -300, 150 }, { 572, -300, 150 }, { 291, -10, 150 } })
+    eq(H.ring(4, 532, 328, 1)[1], { 183.5, -276, 165 }); local _, g = H.ring(9, 732, 440, 1); ok(g > 1, "nine seats are a grid again")
+  end)
+
   it("my table comes first, then open, then live", function()
     local r = function(tid, st, s) return { tid = tid, state = st, seats = s } end
     local input = { r("b#2", "live", { A, false }), r("c#3", "open", { "X", false }), r("a#1", "live", { "X", "Y" }), r("d#4", "open", { "Z", false }) }

@@ -123,6 +123,15 @@ function W.gameName(id)
   return s
 end
 
+-- The display name of the value of a table option: the locale's
+-- optv.<game>.<id>.<value> („Без лимит“, „5/10“), else the value as it is.
+function W.optionText(game, id, value)
+  local key = "optv." .. tostring(game) .. "." .. tostring(id) .. "." .. tostring(value)
+  local s = L(key)
+  if s == key then return tostring(value) end
+  return s
+end
+
 -- The first word of a player's name ("Иван Петров" -> "Иван").
 function W.firstWord(name) return ns.Names.first(name) end
 

@@ -50,22 +50,30 @@ function HallLayout.plates(n, w)
   return out, math.ceil(n / cols)
 end
 
--- Four plates 165 wide around a w x h felt for a team game, by the turn order
--- counted from my seat me: me at the bottom, the next seat on the right, my
--- partner at the top, the last on the left -> spots as plates, one row. Any
--- other seat count: the grid of HallLayout.plates.
+-- The plates around a w x h felt, by the turn order counted from my seat me
+-- (k = (seat - me) % n) -> spots as plates, one row. Four seats (a team game),
+-- 165 wide: me at the bottom, the next seat on the right, my partner at the
+-- top, the last on the left. Six seats (Холдем), 150 wide, clockwise: me at the
+-- bottom, the next at my left, two on each side, one at the top. Any other seat
+-- count (nine included): the grid of HallLayout.plates.
+local AROUND = { -- seat count -> function(w, h) -> plate width, {[k] = {x, y}}
+  [4] = function(w, h)
+    return 165, { [0] = { (w - 165) / 2, -(h - 52) }, [1] = { w - 175, -105 }, [2] = { (w - 165) / 2, -10 }, [3] = { 10, -105 } }
+  end,
+  [6] = function(w, h)
+    return 150, {
+      [0] = { (w - 150) / 2, -(h - 52) }, [1] = { 10, -(h - 140) }, [2] = { 10, -80 },
+      [3] = { (w - 150) / 2, -10 }, [4] = { w - 160, -80 }, [5] = { w - 160, -(h - 140) },
+    }
+  end,
+}
+
 function HallLayout.ring(n, w, h, me)
-  if n ~= 4 then return HallLayout.plates(n, w) end
-  local pw = 165
-  local around = {
-    [0] = { (w - pw) / 2, -(h - 52) },
-    [1] = { w - 175, -105 },
-    [2] = { (w - pw) / 2, -10 },
-    [3] = { 10, -105 },
-  }
+  if not AROUND[n] then return HallLayout.plates(n, w) end
+  local pw, around = AROUND[n](w, h)
   local out = {}
-  for seat = 1, 4 do
-    local spot = around[(seat - me) % 4]
+  for seat = 1, n do
+    local spot = around[(seat - me) % n]
     out[seat] = { spot[1], spot[2], pw }
   end
   return out, 1
