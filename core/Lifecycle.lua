@@ -3,8 +3,9 @@ local _, ns = ...
 -- The game lifecycle of a table session (core/Session.lua), installed on the
 -- Session metatable: the engine's extensions (ns.Ext, see Session:hook), a new
 -- game from the occupied seats, the "result" event, and the entry points
--- startGame (games with engine.start == "host"; Session:startIfFull never
--- starts those; its checks are Session:canStart and Session:gameOver, shared
+-- startGame (games with engine.start == "host", which Session:startIfFull never
+-- starts, and the next match of an engine with `again` once one is over; its
+-- checks are Session.startable / Session:canStart and Session:gameOver, shared
 -- with the bots and the table frame) and playAuto. Session:apply calls newGame and noteResult;
 -- Session:onAct passes a member's action through filterAct before playing it;
 -- a new host (core/Succession.lua) applies its catch-up events with applyUnsent.
@@ -132,24 +133,30 @@ function Session:gameOver()
 end
 
 -- Would startGame start the next game now -> true | nil, code: "nothost",
--- "mode" (the game starts by itself), "short" (fewer than minSeats seated),
--- "live" (a game is running and not over). The checks of startGame, no effect.
+-- "mode" (the engine has neither start == "host" nor `again` with the game
+-- over: it starts by itself), "short" (fewer than minSeats seated), "live" (a
+-- game is running and not over). The checks of startGame, no effect.
 function Session:canStart()
   if self.role ~= "host" then return nil, "nothost" end
-  local engine = self:engine()
-  if engine.start ~= "host" then return nil, "mode" end
+  local engine, over = self:engine(), self:gameOver()
+  if engine.start ~= "host" and not (engine.again and over) then return nil, "mode" end
   if self:seatedCount() < engine.minSeats then return nil, "short" end
-  if self.status == "live" and not self:gameOver() then return nil, "live" end
+  if self.status == "live" and not over then return nil, "live" end
   return true
 end
 
--- Host of a game the host starts: the next game begins -> true | nil, code:
--- "none" (no table), else a code of Session:canStart.
-function Session.startGame(client)
+-- Session:canStart for my table -> true | nil, code ("none": no table).
+function Session.startable(client)
   local s = client.session
   if not s then return nil, "none" end
-  local can, code = s:canStart()
+  return s:canStart()
+end
+
+-- Host: the next game begins -> true | nil, code of Session.startable.
+function Session.startGame(client)
+  local can, code = Session.startable(client)
   if not can then return nil, code end
+  local s = client.session
   local engine = s:engine()
   local seats, first = occupied(s.seats)
   if engine.nextFirst and s.state then first = engine.nextFirst(s.state, seats) or first end

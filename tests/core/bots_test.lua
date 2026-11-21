@@ -227,6 +227,45 @@ describe("bots for any game", function()
     assert(okRun, err)
   end)
 
+  it("one human plays a whole Сантасе match against a bot; every hand is checked; nothing leaves the machine", function()
+    local sim, a = setup()
+    local fair, results = {}, 0; a:on("fair", function(e) fair[#fair + 1] = e.verdict end); a:on("result", function() results = results + 1 end)
+    local tid = a:openTable{ game = "santase", access = "invite", turn = 45 }; ok(tid); ok(a:invite("Бот Иванов"))
+    local mark = #sim.sent -- the real TBL and its END (once the bot was invited) are out
+    sim:run(5)
+    eq(a.session.seats[2], "Бот Иванов"); eq({ a:startGame() }, { nil, "mode" })
+    for _ = 1, 6000 do
+      local st = a.session.state; if ns.Engines.santase.over(st) then break end
+      if st.turn == 1 then a:playAuto() end; sim:run(1)
+    end
+    sim:run(1); eq(ns.Engines.santase.over(a.session.state), true); eq(results, 1); ok(#fair >= 4)
+    for _, v in ipairs(fair) do eq(v, "ok") end
+    eq(sim:count(function(m) return m.msg.t == "SED" or m.msg.t == "PRV" or m.msg.t == "PRQ" end), 0)
+    eq(sim.groupInvites, {}); eq(sim.rolled, {})
+    -- Nothing of the bot table (its seeds, faces, events, a bot's name) reached
+    -- the real side after the bot was invited.
+    local words, real = { tid, STARTERS[1], STARTERS[2], STARTERS[3] }, 0
+    for i = mark + 1, #sim.sent do
+      local m = sim.sent[i]
+      ok(not mentions(m.msg, words), "leak in " .. tostring(m.msg.t) .. " on " .. m.channel)
+      real = real + 1
+    end
+    ok(real > 0, "A sent nothing for real") -- its HIs went out, without `at`
+    local loser = 3 - a.session.state.winner; ok(a:startGame()); sim:run(2); eq(a.session.state.gp, { 0, 0 }); eq(a.session.state.turn, loser)
+  end)
+
+  it("a bot hosting Сантасе starts the next match by itself", function()
+    local sim, a, _, bots = setup()
+    local tid = bots:hostTable("santase"); ok(tid); sim:run(3); a:sit(tid, 2); sim:run(4); eq(a.session.status, "live")
+    local results = 0; a:on("result", function() results = results + 1 end)
+    for _ = 1, 6000 do
+      local st = a.session.state; if ns.Engines.santase.over(st) then break end
+      if st.turn == 2 then a:playAuto() end; sim:run(1)
+    end
+    eq(ns.Engines.santase.over(a.session.state), true); eq(results, 1)
+    sim:run(4); eq(a.session.state.gp, { 0, 0 }); eq(a.session.state.phase, "play")
+  end)
+
   it("hostTable and inviteMe refuse a game that is not built", function()
     local _, _, _, bots = setup()
     eq(bots:hostTable("belot"), nil); eq(bots:inviteMe("holdem"), nil); ok(bots:hostTable()) -- default ttt

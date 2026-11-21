@@ -23,9 +23,10 @@ local _, ns = ...
 -- Behaviour: a bot accepts an invitation after ACCEPT_AFTER s (two bots that
 -- accept at once both get a seat: see Invites.seatFor), on its turn makes its
 -- automatic move (client:playAuto) after MOVE_AFTER s, in phase "match" asks
--- for a rematch after REMATCH_AFTER s, and as host of a game the host starts
--- (engine.start == "host") starts it START_AFTER s after a change that leaves
--- it startable (Session:canStart: at least minSeats seated, no game running).
+-- for a rematch after REMATCH_AFTER s, and as host starts the next game
+-- START_AFTER s after any change that leaves Session.startable true (a game
+-- the host starts, or the next match of an engine with `again`, once at least
+-- minSeats are seated and no game runs).
 local Bots = {}
 Bots.__index = Bots
 ns.Bots = Bots
@@ -136,12 +137,12 @@ local function humanSend(self)
   end
 end
 
--- The next thing `bot` wants to do at its table -> do(), delay | nil. As host
--- of a game the host starts: start it whenever client:startGame would.
+-- The next thing `bot` wants to do at its table -> do(), delay | nil. As host:
+-- start the next game whenever client:startGame would.
 local function nextAction(bot)
   local s = bot.session
   if not s or not s.mySeat then return nil end
-  if s:canStart() then return function() bot:startGame() end, START_AFTER end
+  if ns.Session.startable(bot) then return function() bot:startGame() end, START_AFTER end
   if s.status ~= "live" or not s.state then return nil end
   local st = s.state
   if st.phase == "match" then

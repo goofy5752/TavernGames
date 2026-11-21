@@ -14,7 +14,7 @@ Games.PLAYERS = { ttt = "2", deathroll = "2–5", santase = "2", belot = "4", ta
 -- stage B, belot: C, tabla: D, holdem: E); until then its engine exists but
 -- must not be offered, or it would broadcast hidden cards and wait for a deck.
 -- Ids not in ORDER (test engines) are always looked up.
-Games.PLAYABLE = { ttt = true, deathroll = true }
+Games.PLAYABLE = { ttt = true, deathroll = true, santase = true }
 
 local inOrder = {}
 for _, id in ipairs(Games.ORDER) do inOrder[id] = true end

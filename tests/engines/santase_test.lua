@@ -1,4 +1,5 @@
-local E = Loader.ns().Engines.santase
+local NS = Loader.ns()
+local E = NS.Engines.santase
 
 -- Fixed deck from hands: deck[1..3] non-dealer, [4..6] dealer, [7..9] non-dealer, [10..12] dealer,
 -- [13] face-up trump, [14..] stock in draw order (spec.stock first, then the rest in E.DECK order).
@@ -495,6 +496,55 @@ describe("santase: snapshot", function()
       ok(E.apply(s, s.turn, a)); ok(E.apply(r, r.turn, a))
     end
     eq(E.snapshot(r), E.snapshot(s))
+  end)
+end)
+
+describe("santase: at the table (the fair contract)", function()
+  it("declares the fair contract", function()
+    eq(E.ext, { "fair" }); eq(E.again, true)
+    eq(E.nextFirst({ winner = 1 }, { true, true }), 2); eq(E.nextFirst({ winner = 1 }, { true, false }), nil)
+    eq(E.nextFirst({}, { true, true }), nil)
+  end)
+  it("void annuls the running hand and the same dealer deals again", function()
+    local s = dealt(); local i = s.hands[1][1]; ok(E.apply(s, 1, { k = "play", i = i, c = s.deck[i] }))
+    ok(E.apply(s, 0, { k = "void" })); eq({ s.phase, s.hand, s.dealer, s.turn }, { "deal", 0, 2, nil }); eq(s.gp, { 0, 0 }); eq(s.deck, {})
+    eq({ E.system(s) }, { { k = "deal", need = "deck" }, 0 }); ok(E.apply(s, 0, { k = "deal", deck = deckOf(STD) })); eq(s.hand, 1)
+    local t = E.new{ first = 1 }; eq({ E.apply(t, 0, { k = "void" }) }, { nil, "phase" })
+  end)
+  it("void clears the hand and keeps the match score; it is refused between hands, after the match and off seat 0", function()
+    local s = dealt(); plays(s, { 1, "AS", 2, "9H" }); ok(E.apply(s, 2, { k = "close" }))
+    s.gp = { 4, 7 }
+    ok(E.apply(s, 0, { k = "void" }))
+    eq({ s.res, s.closed, s.closeOpp, s.trumpI, s.tsuit }, {})
+    eq({ s.hands, s.stock, s.trick, s.last, s.won, s.shown }, { { {}, {} }, {}, {}, {}, { {}, {} }, {} })
+    eq({ s.ntr, s.pts, s.mar, s.gp }, { { 0, 0 }, { 0, 0 }, { 0, 0 }, { 4, 7 } })
+    eq({ E.apply(s, 0, { k = "void" }) }, { nil, "phase" })
+    local h = craft({ "AS" }, { "9S" }, { pts = { 60, 0 } }); ok(P(h, 1, "AS")); ok(P(h, 2, "9S")); eq(h.phase, "hand")
+    eq({ E.apply(h, 0, { k = "void" }) }, { nil, "phase" })
+    local m = dealt(); E.leave(m, 2); eq({ E.apply(m, 0, { k = "void" }) }, { nil, "phase" })
+    eq({ E.apply(dealt(), 1, { k = "void" }) }, { nil, "seat" })
+  end)
+  it("a view plus the deck is the full state, mid-hand", function()
+    local s = dealt(); plays(s, { 1, "AS", 2, "9H", 2, "JS" })
+    eq(#s.stock, 10); eq(#s.trick, 1)
+    for q = 0, 2 do eq(NS.Fair.full(E.view(s, q), s.deck), s, "seat " .. q) end
+  end)
+  it("a view that has not learned the trump refuses to play", function()
+    local v = E.view(E.new{ first = 1 }, 1); ok(E.apply(v, 0, { k = "deal" })); eq({ E.apply(v, 1, { k = "play", i = 1, c = "AS" }) }, { nil, "phase" })
+    eq({ E.apply(v, 1, { k = "marry", i = 1, c = "KS", j = 2, d = "QS" }) }, { nil, "phase" })
+    eq(E.legal(v, 1), {}); eq(E.auto(v, 1), nil)
+  end)
+  it("every view asks for a deck exactly when the full state does", function()
+    local s = E.new{ first = 1 }
+    local function same(label)
+      for q = 0, 2 do eq({ E.system(E.view(s, q)) }, { E.system(s) }, label .. ", seat " .. q) end
+    end
+    same("before the first deal")
+    ok(E.apply(s, 0, { k = "deal", deck = deckOf(STD) })); same("mid-hand")
+    eq(E.system(E.view(s, 0)), nil)
+    s = craft({ "AS" }, { "9S" }, { pts = { 60, 0 } }); ok(P(s, 1, "AS")); ok(P(s, 2, "9S")); eq(s.phase, "hand")
+    same("between hands"); eq({ E.system(E.view(s, 2)) }, { { k = "deal", need = "deck" }, 3 })
+    E.leave(s, 2); same("after the match"); eq(E.system(E.view(s, 1)), nil)
   end)
 end)
 
