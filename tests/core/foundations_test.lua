@@ -80,3 +80,52 @@ describe("bus re-entry", function()
     eq(got, { 1, 2, 3 })
   end)
 end)
+
+describe("trace redaction", function()
+  local Sim = require("sim")
+  require("hicard_engine")
+  local A, B = "Иван Петров", "Мария Стоянова"
+
+  it("PRV faces and SED seeds are shown as counts only; other messages as they are", function()
+    local prv = { v = 1, t = "PRV", tid = "x#1", h = 4, cards = { [1] = "9C", [4] = "AD" } }
+    local sed = { v = 1, t = "SED", tid = "x#1", h = 4, s = ("ab"):rep(16) }
+    eq(Trace.redact(prv), { v = 1, t = "PRV", tid = "x#1", h = 4, cards = "<2>" })
+    eq(Trace.redact(sed), { v = 1, t = "SED", tid = "x#1", h = 4, s = "<32>" })
+    eq(prv.cards, { [1] = "9C", [4] = "AD" }); eq(sed.s, ("ab"):rep(16))      -- the message itself is untouched
+    local prq = { v = 1, t = "PRQ", tid = "x#1", h = 4 }
+    ok(Trace.redact(prq) == prq)
+    local ev = { v = 1, t = "EV", a = { k = "play", i = 1, c = "9C" } }
+    ok(Trace.redact(ev) == ev)
+    eq(Trace.redact("junk"), "junk")
+    eq(Trace.redact({ t = "PRV", cards = "junk" }).cards, "<?>"); eq(Trace.redact({ t = "SED", s = 5 }).s, "<?>")
+  end)
+
+  it("the dealer's debug trace never shows the other player's cards or seed", function()
+    local sim = Sim.new()
+    local a = sim:add(A, { cls = "MAGE" }); local b = sim:add(B, { cls = "PRIEST" })
+    a.env.random = function() return 0x11 end; b.env.random = function() return 0x22 end
+    local traces = {}
+    for name, cl in pairs{ [A] = a, [B] = b } do
+      local tr = Trace.new(500)
+      traces[name] = tr
+      cl.env.log = function(dir, channel, peer, msg) tr:add(dir, channel, peer, msg) end
+    end
+    sim:run(1)
+    local tid = a:openTable{ game = "hicard", access = "guild", turn = 45 }; sim:run(3)
+    b:sit(tid, 2); sim:run(1); a:startGame(); sim:run(1)
+    local s = a.session
+    eq({ s.fair.d, s.fair.stage }, { 2, "dealt" })                           -- b deals and whispers a its cards
+    local deck = b.session.fair.deck
+    local hidden = {}                                                        -- a's two cards, known to b's addon only
+    for _, i in ipairs(a.session.state.hands[1]) do hidden[#hidden + 1] = deck[i] end
+    eq(#hidden, 2)
+    local function has(name, text)
+      for _, line in ipairs(traces[name]:lines()) do
+        if line:find(text, 1, true) then return line end
+      end
+    end
+    for _, f in ipairs(hidden) do eq(has(B, '"' .. f .. '"'), nil) end      -- the dealer's trace
+    eq(has(B, ("11"):rep(16)), nil); eq(has(A, ("11"):rep(16)), nil)         -- a's seed, on either side
+    ok(has(B, "PRV")); ok(has(B, 'cards="<2>"')); ok(has(B, 's="<32>"')); ok(has(A, 's="<32>"'))
+  end)
+end)
