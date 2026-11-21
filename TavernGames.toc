@@ -29,6 +29,7 @@ core/Trace.lua
 core/Games.lua
 core/Stake.lua
 core/Ledger.lua
+core/LedgerStore.lua
 core/Presence.lua
 core/Lobby.lua
 core/Succession.lua

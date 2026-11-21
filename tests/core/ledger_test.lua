@@ -21,7 +21,7 @@ local GOOD = {
   C = function() return entry("C", M, 2, { r = I .. ":1" }) end,
   N = function() return entry("N", M, 2, { r = I .. ":1", why = "forged" }) end,
   P = function() return entry("P", I, 3, { f = M, c = 50000, how = "trade" }) end,
-  X = function() return entry("X", I, 4, { r = I .. ":1", h = "0123abcd" }) end,
+  X = function() return entry("X", I, 4, { r = I .. ":1", h = "0123456789abcdef" }) end,
 }
 
 local function good(e) eq({ Ledger.valid(e, NOW) }, { true }) end
@@ -48,10 +48,10 @@ describe("ledger entries", function()
     local a, n = Ledger.author("Иван Петров:7"); eq(a, "Иван Петров"); eq(n, 7)
     eq(Ledger.author("Иван"), nil); eq(Ledger.author("Иван:0"), nil); eq(Ledger.author("Иван:1.5"), nil); eq(Ledger.author(":3"), nil)
   end)
-  it("canon is the fixed field order; hash is 8 hex and ignores local fields", function()
+  it("canon is the fixed field order; hash is 16 hex and ignores local fields", function()
     local l = L(); local e = l:make("D", D)
     eq(Ledger.canon(e), "Иван Петров:1|D|1700000000|Иван Петров#1700000000/12|ttt|Мария Колева|Иван Петров|50000|lost|||||||")
-    eq(#e.h, 8); ok(e.h:match("^%x+$"))
+    eq(#e.h, 16); ok(e.h:match("^[0-9a-f]+$"))
     local w = Ledger.wire(e); eq(w.h, nil); eq(Ledger.hash(w), e.h)
     w.c = 50100; ok(Ledger.hash(w) ~= e.h)
   end)
@@ -62,10 +62,10 @@ describe("ledger entries", function()
     eq(Ledger.new(store, "Иван Петров", function() return 6 end):make("P", { f = "Мария Колева", c = 100, how = "hand" }).i, "Иван Петров:3")
   end)
   it("an X keeps the denied hash as its field h on the wire and in canon", function()
-    local l = L(); local e = l:make("X", { r = I .. ":1", h = "0123abcd" })
-    eq(e.rh, "0123abcd"); ok(e.h ~= "0123abcd")
-    eq(Ledger.canon(e), "Иван Петров:1|X|1700000000|||||||Иван Петров:1|0123abcd|||||")
-    local w = Ledger.wire(e); eq(w.h, "0123abcd"); eq(w.rh, nil); eq(Ledger.hash(w), e.h)
+    local l = L(); local e = l:make("X", { r = I .. ":1", h = "0123456789abcdef" })
+    eq(e.rh, "0123456789abcdef"); ok(e.h ~= "0123456789abcdef")
+    eq(Ledger.canon(e), "Иван Петров:1|X|1700000000|||||||Иван Петров:1|0123456789abcdef|||||")
+    local w = Ledger.wire(e); eq(w.h, "0123456789abcdef"); eq(w.rh, nil); eq(Ledger.hash(w), e.h)
   end)
   it("a list joins by commas and false is a dash", function()
     local e = entry("R", I, 1, { gid = "t/1", g = "deathroll", n = { I, false, M }, w = { 1 }, l = { 3 } })
@@ -180,13 +180,13 @@ describe("ledger store", function()
       eq(l:add(entry("C", M, 6, { r = I .. ":1" }), M), "new")
       eq(l:add(entry("N", M, 7, { r = I .. ":2", why = "no" }), M), "new")
       eq(l:add(paid(8), M), "new")
-      eq(l:add(entry("X", M, 9, { r = M .. ":1", h = "0123abcd" }), M), "new")
+      eq(l:add(entry("X", M, 9, { r = M .. ":1", h = "0123456789abcdef" }), M), "new")
     end)
   end)
   it("x is incremental and bounded", function()
     local store, sum = { ev = { [M] = {} }, tw = {}, me = {}, x = {} }, 0
     for n = 1, 5000 do
-      local h = string.format("%08x", n * 7919)
+      local h = string.format("%08x%08x", n * 7919, n)
       store.ev[M][n] = { i = Ledger.id(M, n), k = "R", at = NOW, gid = "t/" .. n, g = "ttt", n = { M, I }, w = { 1 }, l = { 2 }, h = h }
       sum = (sum + tonumber(h, 16)) % 4294967296
     end
@@ -273,5 +273,78 @@ describe("ledger store", function()
     local copy = Ledger.new(U.copy(store), I, function() return NOW end)
     eq(copy:digest(), l:digest()); eq(copy:vector(), l:vector()); eq(copy:list(M), l:list(M))
     eq(copy:seen(I), 1); eq(copy:make("P", { f = M, c = 100, how = "hand" }).i, I .. ":2")
+  end)
+end)
+
+describe("ledger hardening", function()
+  it("a forged id far above my counter never moves it (C)", function()
+    local l = L()
+    eq(l:add(entry("C", I, 999999999, { r = M .. ":1" }), P), "new")
+    eq(l:seen(I), 999999999); eq(l:bump(999999999), false)
+    eq(l:make("P", { f = M, c = 100, how = "hand" }).i, I .. ":1")
+    eq(l:add(entry("C", I, 1001, { r = M .. ":1" }), P), "new"); eq(l:bump(1001), true)
+    eq(l:make("P", { f = M, c = 100, how = "hand" }).i, I .. ":1002")
+    eq(l:add(entry("C", I, 2003, { r = M .. ":1" }), P), "new")
+    eq(l:make("P", { f = M, c = 100, how = "hand" }).i, I .. ":1003")
+    eq(C.LEDGER_JUMP, 1000)
+  end)
+  it("make never writes an id that author() refuses (C)", function()
+    local store = { me = { [I] = { seq = 999999999, born = 1 } } }
+    local l = Ledger.new(store, I, function() return NOW end)
+    eq({ l:make("P", { f = M, c = 100, how = "hand" }) }, { nil, "full" })
+    eq(store.me[I].seq, 999999999)
+  end)
+  it("an X its author denied denies nothing (I-1)", function()
+    local l = L()
+    eq(l:add(paid(1), M), "new")
+    local real = l:get(M .. ":1")
+    l:add(entry("X", M, 2, { r = real.i, h = real.h }), P)
+    eq(l:denied(real), true)
+    local forged = l:get(M .. ":2")
+    l:add(entry("X", M, 3, { r = forged.i, h = forged.h }), M)
+    eq(l:denied(forged), true); eq(l:denied(real), false)
+  end)
+  it("my own version of my entry is never evicted (I-2)", function()
+    local s = {}
+    for j = 1, 5 do s[j] = entry("P", I, 1, { f = M, c = 100 * j, how = "hand" }) end
+    table.sort(s, function(a, b) return U.byteLess(Ledger.hash(a), Ledger.hash(b)) end)
+    local mine, other = L(), L(P)
+    local made = mine:make("P", { f = M, c = s[5].c, how = "hand" })
+    eq(made.h, Ledger.hash(s[5]))
+    other:add(s[5], I)
+    for j = 1, 3 do eq(mine:add(s[j], P), "twin"); eq(other:add(s[j], M), "twin") end
+    eq({ mine:add(s[4], P) }, { nil, "twins" }); eq(other:add(s[4], M), "twin")
+    eq(mine:has(made.i, made.h), true); eq(other:has(made.i, made.h), false)
+  end)
+  it("h is 16 hex; the same h with another canon is another version (I-3)", function()
+    eq(#Ledger.hash(GOOD.D()), 16)
+    local hash = Ledger.hash
+    Ledger.hash = function() return "0000000000000000" end
+    local s, err = pcall(function()
+      local l = L()
+      eq(l:add(claim(50000), P), "new"); eq(l:add(claim(60000), P), "twin"); eq(l:add(claim(50000), P), "dup")
+      local _, tw = l:get(M .. ":1"); eq(#tw, 1)
+    end)
+    Ledger.hash = hash
+    if not s then error(err, 0) end
+  end)
+  it("a name of a dash, an r with a bad author, an X h not 16 lowercase hex", function()
+    bad(with("R", "n", { "-", M }), "name")
+    bad(with("C", "r", string.rep("Ж", 40) .. ":1"), "shape"); bad(with("C", "r", "a|b,c:1"), "shape")
+    bad(with("X", "h", "0123456789ABCDEF"), "shape"); bad(with("X", "h", "0123abcd"), "shape")
+  end)
+  it("a load drops malformed bodies and recomputes x", function()
+    local store = {}
+    local l = Ledger.new(store, I, function() return NOW end)
+    l:add(paid(1), M); l:add(paid(2), M)
+    local good = l:vector()
+    local copy = U.copy(store)
+    copy.ev[M][3] = { i = M .. ":3", k = "P" }                       -- no h
+    copy.ev[M][4] = { i = M .. ":4", k = "X", r = M .. ":1", h = "0123456789abcdef" } -- no rh
+    copy.ev[M][5] = "junk"; copy.ev[M]["6"] = paid(6); copy.ev[P] = 7
+    copy.ev[M][7] = l:get(M .. ":1")                                  -- under another number
+    copy.x[M] = 12345
+    local re = Ledger.new(copy, I, function() return NOW end)
+    eq(re:vector(), good); eq(re:list(M), l:list(M)); eq(re:seen(M), 2)
   end)
 end)

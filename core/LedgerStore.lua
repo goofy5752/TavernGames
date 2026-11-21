@@ -1,0 +1,215 @@
+local _, ns = ...
+
+-- The per-guild store of the gold ledger (core/Ledger.lua has the entries).
+-- The store is a plain table the caller owns (saved variables):
+--   ev[author][n] = the first body of an id; tw[author][n] = its further
+--   versions (at most 3); me[name] = {seq, born}, my counter; x[author] = the
+--   sum mod 2^32 of the first 8 hex of each of that author's bodies' h.
+-- A load files every sound body again (hashing nothing) and recomputes x; a
+-- body that is not sound (no 16-hex h, an X without r or rh, filed under
+-- another id) is dropped. The version of an entry under my name that I made
+-- myself (no dr, no rl) is never evicted from my store.
+local Ledger, C, Util, Sha256 = ns.Ledger, ns.Const, ns.Util, ns.Sha256
+local concat, sort, byteLess = table.concat, table.sort, ns.Util.byteLess
+local BODIES_MAX, W32, W24 = 4, 4294967296, 16777216
+
+local Store = {}; Store.__index = Store
+
+-- The keys of t that pass keep (all when nil), sorted by less.
+local function keys(t, less, keep)
+  local out = {}
+  for k in pairs(t or {}) do if not keep or keep(k) then out[#out + 1] = k end end
+  sort(out, less)
+  return out
+end
+-- Byte order of h, then of the canonical form (two versions may share an h).
+local function before(p, q)
+  if p.h ~= q.h then return byteLess(p.h, q.h) end
+  return byteLess(Ledger.canon(p), Ledger.canon(q))
+end
+-- Can stored body b be filed under id (a, n)?
+local function sound(b, a, n)
+  if type(b) ~= "table" or type(b.h) ~= "string" or #b.h ~= 16 or not b.h:find("^[0-9a-f]+$") then return false end
+  if b.k == "X" and not (type(b.r) == "string" and type(b.rh) == "string") then return false end
+  local ba, bn = Ledger.author(b.i)
+  return ba == a and bn == n
+end
+local function word(h) return tonumber(h:sub(1, 8), 16) end
+
+-- The ledger over `store`, for me; `epoch` is my clock. A load hashes nothing.
+function Ledger.new(store, me, epoch)
+  local ev, tw = type(store.ev) == "table" and store.ev or {}, type(store.tw) == "table" and store.tw or {}
+  store.ev, store.tw, store.x = {}, {}, {}
+  store.me = type(store.me) == "table" and store.me or {}
+  local L = setmetatable({ store = store, me = me, epoch = epoch, rev = 0, top = {}, run = {}, rc = {}, deny = {} }, Store)
+  for a, byN in pairs(ev) do
+    for n, b in pairs(type(byN) == "table" and byN or {}) do
+      local all, t = { b }, type(tw[a]) == "table" and tw[a][n]
+      for _, x in ipairs(type(t) == "table" and t or {}) do all[#all + 1] = x end
+      for _, x in ipairs(all) do if sound(x, a, n) then L:move(a, n, x) end end
+    end
+  end
+  return L
+end
+-- Every body of an id, by ascending h.
+function Store:bodies(a, n)
+  local first = self.store.ev[a] and self.store.ev[a][n]
+  if not first then return {} end
+  local out = { first }
+  for _, b in ipairs(self.store.tw[a] and self.store.tw[a][n] or {}) do out[#out + 1] = b end
+  sort(out, before)
+  return out
+end
+-- The derived counts of a body that comes (d = 1) or goes (d = -1).
+function Store:index(a, n, b, d)
+  if b.k == "R" then self.rc[a] = (self.rc[a] or 0) + d end
+  if b.k == "X" then
+    local key = b.r .. "|" .. b.rh
+    self.deny[key] = self.deny[key] or {}
+    self.deny[key][b] = d > 0 or nil
+  end
+  if n > (self.top[a] or 0) then self.top[a] = n end
+end
+function Store:advance(a)
+  local k, ev = self.run[a] or 0, self.store.ev[a]
+  while ev[k + 1] do k = k + 1 end
+  self.run[a] = k
+end
+-- Adds body b to id (a, n), or (gone) removes it from an id that holds more than one.
+function Store:move(a, n, b, gone)
+  local s = self.store
+  self:index(a, n, b, gone and -1 or 1)
+  self.rev = self.rev + 1
+  s.ev[a], s.tw[a] = s.ev[a] or {}, s.tw[a] or {}
+  local tw = s.tw[a][n] or {}
+  s.tw[a][n] = tw
+  if gone and s.ev[a][n] == b then
+    s.ev[a][n] = table.remove(tw, 1)
+  elseif gone then
+    for j = #tw, 1, -1 do if tw[j] == b then table.remove(tw, j) end end
+  elseif s.ev[a][n] then
+    tw[#tw + 1] = b
+  else
+    s.ev[a][n] = b
+  end
+  if #tw == 0 then s.tw[a][n] = nil end
+  s.x[a] = ((s.x[a] or 0) + (gone and -1 or 1) * word(b.h)) % W32
+  self:advance(a)
+end
+-- Did I make this body myself (under my name, got from nobody)?
+function Store:mine(b) return Ledger.author(b.i) == self.me and not b.dr and not b.rl end
+-- Takes entry `e` from `from` (nil: my own) -> "new" | "dup" | "twin", body | nil, reason.
+function Store:add(e, from)
+  local good, why = Ledger.valid(e, self.epoch())
+  if not good then return nil, why end
+  local a, n = Ledger.author(e.i)
+  if a == self.me and from ~= nil then self:bump(n) end
+  local b = Ledger.wire(e)
+  b.h, b.rh = nil, b.h
+  b.h = Ledger.hash(b)
+  local held, canon = self:bodies(a, n), Ledger.canon(b)
+  for _, old in ipairs(held) do
+    if old.h == b.h and Ledger.canon(old) == canon then
+      if from == a and not old.dr then old.dr, old.rl, self.rev = true, nil, self.rev + 1 end
+      return "dup", old
+    end
+  end
+  if b.k == "R" and (self.rc[a] or 0) >= C.LEDGER_AUTHOR_MAX then return nil, "full" end
+  if from == a then b.dr = true elseif from ~= nil then b.rl = true end
+  if #held >= BODIES_MAX then
+    -- Over the cap: a body its author denied goes first, else the highest h; never one I made.
+    held[#held + 1] = b
+    local loser
+    for _, x in ipairs(held) do
+      local dx, dl = self:denied(x), loser and self:denied(loser)
+      if not self:mine(x) and (not loser or (dx and not dl) or (dx == dl and before(loser, x))) then loser = x end
+    end
+    if not loser or loser == b then return nil, "twins" end
+    self:move(a, n, loser, true)
+  end
+  self:move(a, n, b)
+  return #held == 0 and "new" or "twin", b
+end
+-- My record {seq, born}, made when missing.
+function Store:record()
+  local me = self.store.me
+  me[self.me] = me[self.me] or { seq = 0, born = self.epoch() }
+  return me[self.me]
+end
+-- My next entry of `kind`, added -> entry | nil, reason ("full": no number is left).
+function Store:make(kind, fields)
+  local rec = self:record()
+  local n = rec.seq + 1
+  if n > Ledger.ID_MAX then return nil, "full" end
+  local e = Util.copy(fields)
+  e.k, e.i, e.at = kind, Ledger.id(self.me, n), self.epoch()
+  local status, b = self:add(e)
+  if not status then return nil, b end
+  rec.seq = n
+  return b
+end
+-- The first body of an id, and its further bodies (a list) or nil.
+function Store:get(id)
+  local a, n = Ledger.author(id)
+  local first = a and self.store.ev[a] and self.store.ev[a][n]
+  if not first then return nil end
+  return first, self.store.tw[a] and self.store.tw[a][n]
+end
+-- Do I hold id (with hash h, when given)?
+function Store:has(id, h)
+  local a, n = Ledger.author(id)
+  for _, b in ipairs(a and self:bodies(a, n) or {}) do if h == nil or b.h == h then return true end end
+  return false
+end
+-- Every body, twins included: authors in byte order, then n, then h.
+function Store:each(fn)
+  for _, a in ipairs(keys(self.store.ev, byteLess)) do for _, e in ipairs(self:above(a, 0)) do fn(e) end end
+end
+-- {[author] = {n, x}}: n the highest k with 1..k all held, x the low 24 bits of the sum as 6 hex.
+function Store:vector()
+  local out = {}
+  for a, byN in pairs(self.store.ev) do
+    if next(byN) then out[a] = { n = self.run[a] or 0, x = string.format("%06x", self.store.x[a] % W24) } end
+  end
+  return out
+end
+-- 8 hex of SHA-256 over the sorted "<author>:<x>", cached until the next change.
+function Store:digest()
+  if self.cache and self.cache.rev == self.rev then return self.cache.d end
+  local v, parts = self:vector(), {}
+  for j, a in ipairs(keys(v, byteLess)) do parts[j] = a .. ":" .. v[a].x end
+  self.cache = { rev = self.rev, d = Sha256.hex(concat(parts, ",")):sub(1, 8) }
+  return self.cache.d
+end
+-- Every body of the author numbered above n, ascending, twins after their sibling.
+function Store:above(a, n)
+  local out = {}
+  for _, k in ipairs(keys(self.store.ev[a], nil, function(k) return k > n end)) do
+    for _, b in ipairs(self:bodies(a, k)) do out[#out + 1] = b end
+  end
+  return out
+end
+-- {"<seq>.<h6>", ...}, one per body of the author.
+function Store:list(a)
+  local out = {}
+  for j, b in ipairs(self:above(a, 0)) do out[j] = select(2, Ledger.author(b.i)) .. "." .. b.h:sub(1, 6) end
+  return out
+end
+-- Is there an X naming exactly this body (e.i and e.h)? `raw`: any; denied: one its author did not deny in turn.
+local function raw(self, e) local s = e.h and self.deny[e.i .. "|" .. e.h]; return s ~= nil and next(s) ~= nil end
+function Store:denied(e)
+  for x in pairs(e.h and self.deny[e.i .. "|" .. e.h] or {}) do
+    if not raw(self, x) then return true end
+  end
+  return false
+end
+-- The highest number held for an author, holes and denied entries included.
+function Store:seen(a) return self.top[a] or 0 end
+-- My counter is at least n -> true; false (it stays) when n is more than
+-- LEDGER_JUMP above it: an id no honest client of mine wrote, a forgery to deny.
+function Store:bump(n)
+  local rec = self:record()
+  if n > rec.seq + C.LEDGER_JUMP then return false end
+  rec.seq = math.max(rec.seq, n)
+  return true
+end

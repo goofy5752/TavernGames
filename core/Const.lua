@@ -59,6 +59,7 @@ ns.Const = {
 
   LEDGER_FUTURE = 3600,      -- an entry's `at` may be this far ahead of my clock
   LEDGER_AUTHOR_MAX = 5000,  -- R entries kept per author
+  LEDGER_JUMP = 1000,        -- an id under my name this far above my counter is forged: it never moves the counter
   LEDGER_CLAIMS_OPEN = 20,   -- pending claims per creditor shown or asked about
   LEDGER_ADOPT_WAIT = 30,    -- the adoption window of a new store; my own entries wait this long after login
   LEDGER_DENY_RATE = 8,      -- denials sent per minute
