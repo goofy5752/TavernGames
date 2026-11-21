@@ -35,11 +35,13 @@ local function tick(s, book, all)
   local n, i, client = 0, 1, s.client
   while book.open[i] and (all or n < C.BOOK_BATCH) do
     local h, v, lack = book.open[i], nil, nil
-    if book.tried[h] ~= #book.keys then
+    if book.rec[h] and book.tried[h] ~= #book.keys then
       n, book.tried[h], v, lack = n + 1, #book.keys, Book.check(s, h, book)
       book.lack[h] = lack -- the seats without a key, for the end
     end
-    if v then
+    if not book.rec[h] then
+      table.remove(book.open, i) -- no record: nothing to check
+    elseif v then
       table.remove(book.open, i)
       book.rec[h], book.tried[h], book.seen[v] = nil, nil, book.seen[v] + 1
       if book.final then book.seen.open, book.dirty = book.seen.open - 1, true end -- a late key: the end again

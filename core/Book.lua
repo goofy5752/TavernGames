@@ -32,7 +32,7 @@ local _, ns = ...
 -- open = {h, ...} (hands sealed and not checked yet, oldest first), keys =
 -- {{seat, q, m}, ...} (the published keys), seen = {ok, bad, open}, n (hands
 -- sealed or found bad in this game), given (seat -> its player's key came),
--- tried = {[h] = #keys}, lack = {[h] = seats}, closed, final, dirty, missing; BookKeys'};
+-- tried = {[h] = #keys}, lack = {[h] = seats}, did = {[h] = true} (sealed), closed, final, dirty, missing; BookKeys'};
 -- s.bookTimer, s.handSeen, s.handNames (the seats when the last hand began).
 -- The engine state carries g too (state.g, set at `start` by core/Cash.lua),
 -- so a snapshot tells which game it is of; a book of another game is ended
@@ -61,7 +61,7 @@ function Book.of(s)
   local g = s.state and s.state.g
   if s.book and s.book.g ~= g then drop(s) end
   if not s.book then
-    s.book = { rec = {}, open = {}, keys = {}, seen = { ok = 0, bad = 0, open = 0 }, n = 0, given = {}, g = g, wait = {}, tried = {}, lack = {} }
+    s.book = { rec = {}, open = {}, keys = {}, seen = { ok = 0, bad = 0, open = 0 }, n = 0, given = {}, g = g, wait = {}, tried = {}, lack = {}, did = {} }
   end
   return s.book
 end
@@ -128,13 +128,18 @@ end
 -- The hand of my round is over (rule 5): its record goes into the book and the
 -- round closes `verdict` ("sealed"; "void" for a hand the host annulled, whose
 -- record holds the faces dealt before the void); with a foul or a lie against
--- it, "bad" at once.
+-- it, "bad" at once. A hand is recorded and counted once (book.did): a
+-- snapshot of a host that had not seen it end brings its round back, and it
+-- ends again.
 function Book.seal(s, verdict)
   local fair, book = s.fair, Book.of(s)
+  local bad = (fair.foul or fair.lied) and (fair.foul or "dealt") or nil
+  if book.did[fair.h] then return ns.Deal.close(s, bad and "bad" or verdict or "sealed", bad) end
+  book.did[fair.h] = true
   book.n = book.n + 1
-  if fair.foul or fair.lied then
+  if bad then
     book.seen.bad = book.seen.bad + 1
-    return ns.Deal.close(s, "bad", fair.foul or "dealt")
+    return ns.Deal.close(s, "bad", bad)
   end
   local f = copy(s.state and s.state.deck or {})
   for i, x in pairs(fair.priv or {}) do f[i] = x end

@@ -794,6 +794,14 @@ describe("holdem: the book", function()
     spentFirst(); eq(keyActs(N[3]), 2); eq(#log, 4)                                             -- seats 2 and 3 at the close, the host's own, seat 3 again
     ns.Book.spend = spend
   end)
+  it("a hand sealed twice (a snapshot brought its round back) is recorded and counted once", function()
+    tableN(2); local bk = books(cl[2]); ok(cl[1]:startGame()); sim:run(3); act("fold")
+    local s2 = cl[2].session; eq({ s2.book.n, #s2.book.open, s2.fair.stage }, { 1, 1, "done" })
+    s2.fair.stage = "dealt"; ns.Book.seal(s2)                                                  -- as a snapshot of a host that had not seen the hand end leaves it
+    eq({ s2.book.n, #s2.book.open, s2.fair.stage, s2.fairLast.verdict }, { 1, 1, "done", "sealed" })
+    s2.book.open[2] = 99                                                                       -- an open hand without a record is dropped, not checked
+    ok(ns.Cash.close(cl[1])); sim:run(3); eq(#bk, 1); eq({ bk[1].hands, bk[1].ok, bk[1].bad, bk[1].open }, { 1, 1, 0, 0 })
+  end)
   it("the last hand outlasts BOOK_WAIT after „Приключи“: the wait runs from the end of the game, the one final event has every key", function()
     tableN(3, nil, 90); local bk = { books(cl[1]), books(cl[2]), books(w) }; ok(cl[1]:startGame()); sim:run(3); play(1)
     -- every key reaches the host 2 s after it was sent
