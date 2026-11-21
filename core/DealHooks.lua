@@ -160,6 +160,9 @@ ns.Ext.fair = {
 
   -- Everyone, after every event.
   applied = function(s, seat, a)
+    -- Host: my own seat's timeout is tried again like a member's (Session:armAuto;
+    -- a member arms it after every event itself).
+    if s.role == "host" then s:armAuto() end
     local k = seat == 0 and a.k
     if k == "start" or k == "abort" then
       -- A new match while the last hand's seeds are still out: that hand is нередовна.
@@ -258,8 +261,6 @@ ns.Ext.fair = {
     Deal.react(s)
     -- Host: the hand (or the match) is over and no reveal yet: its wait starts.
     if s.role == "host" and not s.fairTimer and s.fair == fair and Deal.handOver(s) then armWait(s, fair.h) end
-    -- Host: my own seat's timeout is tried again like a member's (Session:armAuto).
-    if s.role == "host" then s:armAuto() end
   end,
 
   -- Member: the round from the host's snapshot (rule 10b), checked as an open

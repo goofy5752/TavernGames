@@ -930,7 +930,9 @@ function E.over(s) return s.phase == "match" end
 -- fair deal closes such a hand "bad", "announce" on every client and names the player.
 function E.foul(s)
   local res = s.res
-  if not res or res.round ~= s.round - (s.phase == "deal" and 1 or s.phase == "match" and 0 or -1) then return nil end
+  -- after a score the next deal is counted already; a match that ended at the score is not
+  local back = s.phase == "deal" and 1 or s.phase == "match" and 0
+  if not res or not back or res.round ~= s.round - back then return nil end
   for _, x in ipairs(res.ann) do
     if x.bad then return x.s end
   end
