@@ -249,6 +249,7 @@ describe("ledger net: my name", function()
     local bodies = { m.ledger:get(mine.i) }
     eq(#bodies[2], 1); eq(m.ledger:denied(bodies[1]), false); eq(m.ledger:denied(bodies[2][1]), false)
     eq(View.paid(View.of(m.ledger), M, I), 7); eq(View.paid(View.of(m.ledger), P, I), 900)
+    eq(View.paid(View.of(i.ledger), M, I), 7); eq(View.paid(View.of(i.ledger), P, I), 0) -- uncounted on my own client
     eq(m.ledger:seen(I), 1) -- no copy of mine under another id
     -- Mine has not left yet: it is made again under a fresh id, the old body never leaves.
     local mark = #sim.sent
@@ -393,10 +394,64 @@ describe("ledger net: my name", function()
     eq(i.ledgerNet:answer(b.i, false), true)
     local x = xs(i)
     eq(#x, 1); eq(x[1].r, b.i); eq(#i.ledgerNet:asks(), 0)
+    -- A forger fills the open questions first; my real lost entry then waits, unshown, never denied.
     for n = 4, 3 + ns.Const.LEDGER_MINE_ASK do i.ledgerNet:take(pay(I, n, M, n), M) end
-    eq(#i.ledgerNet:asks(), ns.Const.LEDGER_MINE_ASK); eq(#xs(i), 1)
-    i.ledgerNet:take(pay(I, 900, M, 9), M)
-    eq(#i.ledgerNet:asks(), ns.Const.LEDGER_MINE_ASK); eq(#xs(i), 2); eq(xs(i)[2].r, I .. ":900")
+    local shown, more = i.ledgerNet:asks()
+    eq(#shown, ns.Const.LEDGER_MINE_ASK); eq(more, 0); eq(#xs(i), 1)
+    local real = pay(I, 900, P, 12345)
+    eq(i.ledgerNet:take(real, M), "new")
+    shown, more = i.ledgerNet:asks()
+    eq(#shown, ns.Const.LEDGER_MINE_ASK); eq(more, 1); eq(#xs(i), 1)
+    eq(i.ledger:get(real.i).un, true); eq(View.paid(View.of(i.ledger), P, I), 0)
+    eq(i.ledgerNet:answer(real.i, true), nil) -- not shown: not answered
+    eq(i.ledgerNet:answer(shown[1], false), true) -- a slot frees
+    shown, more = i.ledgerNet:asks()
+    eq(#shown, ns.Const.LEDGER_MINE_ASK); eq(more, 0); eq(shown[#shown].i, real.i)
+    eq(i.ledgerNet:answer(real.i, true), true); eq(View.paid(View.of(i.ledger), P, I), 12345); eq(#xs(i), 2)
+  end)
+
+  it("two characters share one ledger store: a login makes only its own queued rows", function()
+    local sim = Sim.new()
+    local A, B = I, "Иван Второй"
+    local db = { lang = "bg", introDone = false, busy = false, snoozeUntil = 0, debug = false, minimap = {} }
+    local a = sim:add(A, { db = db })
+    local m = sim:add(M)
+    sim:run(1); sim:settle()
+    store(sim, A).me[A].seq = 9
+    a:stop(); a = sim:relog(A); sim:run(1)
+    eq(a.ledgerNet:make("P", { f = M, c = 10000, how = "hand" }), "queued")
+    eq(a.ledgerNet:take(pay(A, 4, M, 5), M), "new") -- a forgery: its X waits in the queue
+    eq(#db.ledger[GUILD].pending, 2)
+    a:stop(); sim:offline(A)
+    local b = sim:add(B, { db = db })
+    sim:run(1); sim:settle(); sim:run(2)
+    eq(b.ledger:seen(B), 0); eq(m.ledger:seen(B), 0); eq(#db.ledger[GUILD].pending, 2)
+    b:stop(); sim:offline(B)
+    a = sim:relog(A); sim:run(1); sim:settle(); sim:run(2)
+    local x = xs(a)
+    eq(#x, 1); eq(x[1].r, A .. ":4")
+    local got = m.ledger:get(A .. ":10")
+    ok(got, "A's own P made by A"); eq(got.k, "P"); eq(got.c, 10000); ok(m.ledger:get(A .. ":11"), "A's X sent")
+    eq(#db.ledger[GUILD].pending, 0)
+  end)
+
+  it("a queued row made before a crash is not made again when it comes back", function()
+    local sim, i, m = setup()
+    i:stop(); i = sim:relog(I); sim:run(1)
+    eq(i.ledgerNet:make("P", { f = M, c = 10000, how = "hand" }), "queued")
+    eq(i.ledgerNet:make("P", { f = M, c = 10000, how = "hand" }), "queued") -- two equal payments: both are real
+    i:stop(); i = sim:relog(I); sim:run(1) -- the queue is saved
+    sim:settle(); sim:run(2)
+    eq(View.paid(View.of(m.ledger), M, I), 20000)
+    i = sim:crash(I); sim:run(1) -- back to the saved variables of the logout: the rows, seq 0
+    eq(#store(sim, I).pending, 2)
+    for n = 1, 2 do eq(i.ledgerNet:take(Ledger.wire(m.ledger:get(I .. ":" .. n)), M), "new") end
+    eq(#i.ledgerNet:asks(), 2)
+    local mark = #sim.sent
+    sim:settle(); sim:run(3)
+    eq(#i.ledgerNet:asks(), 0); eq(shipped(sim, I, mark), 0); eq(#store(sim, I).pending, 0)
+    eq(View.paid(View.of(m.ledger), M, I), 20000); eq(View.paid(View.of(i.ledger), M, I), 20000)
+    eq(m.ledger:seen(I), 2)
   end)
 
   it("while logging in, my own entries wait", function()

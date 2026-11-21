@@ -4,8 +4,8 @@ local _, ns = ...
 -- * net:make: my entry, added at once; it leaves with the ones I make within
 --   LEDGER_COALESCE s as GUILD LEVs of at most 4, never while I am in an
 --   instance. For LEDGER_ADOPT_WAIT s after a login (or until net:settle) my
---   entries, my denials among them, wait in store.pending (saved variables: a
---   /reload or logout keeps them for the next login), so my next id is above
+--   entries, my denials among them, wait in store.pending (core/LedgerQueue.lua:
+--   saved, per character, replayed once), so my next id is above
 --   whatever the guild holds. My X entries leave at most LEDGER_DENY_RATE a minute.
 -- * net:take: a valid entry whose author and names in f/t/n are guild members
 --   (env.member; absent = all) or authors in my store. A live GUILD LEV is 1..4
@@ -20,8 +20,8 @@ local _, ns = ...
 --   is too far, it is forged and I deny it (an X that points at the stored
 --   body). Else a crash lost it: kept uncounted (`un`, a local field the view
 --   and the denials skip) and put to me, one question per entry (net:asks,
---   net:answer, "mineAsk"); past LEDGER_MINE_ASK open questions it is denied.
-local Ledger, C, Util = ns.Ledger, ns.Const, ns.Util
+--   net:answer, "mineAsk"); past LEDGER_MINE_ASK open questions it waits unshown.
+local Ledger, C = ns.Ledger, ns.Const
 
 local Net = {}; Net.__index = Net
 ns.LedgerNet = Net
@@ -49,16 +49,6 @@ function Net:changed()
   end)
 end
 
--- The saved login queue: {{k = kind, f = fields}, ...}, malformed rows dropped.
-function Net:pending()
-  local out, store = {}, self.L.store
-  for _, q in ipairs(type(store.pending) == "table" and store.pending or {}) do
-    if type(q) == "table" and type(q.k) == "string" and type(q.f) == "table" then out[#out + 1] = q end
-  end
-  store.pending = out
-  return out
-end
-
 -- After a login: my record (seq 0 when missing), the saved seq, the window of a
 -- new store and the queue of my own entries, both closed by net:settle.
 function Net:start()
@@ -83,27 +73,14 @@ function Net:stop()
   self.outTimer, self.denyTimer, self.emitTimer, self.settleTimer = nil, nil, nil, nil
 end
 
--- Closes the adoption window and the login queue: the queued entries are made.
--- Again later: nothing more happens.
-function Net:settle()
-  if not self.running then return end
-  self.L.adopting, self.waiting = false, false
-  local queue = self:pending()
-  self.L.store.pending = {}
-  for _, q in ipairs(queue) do
-    local done, why = self:make(q.k, q.f)
-    if not done and self.client.env.log then self.client.env.log("ledger", nil, nil, "not made: " .. tostring(why)) end
-  end
-end
-
 -- Is the adoption window of a new store open?
 function Net:adopting() return self.L.adopting == true end
 
 -- My new entry -> entry | "queued" | nil, reason ("stopped", or a reason of L:make).
+-- The entry may still move to a fresh id before it leaves (Net:collide): keep its content, not its i.
 function Net:make(kind, fields)
   if not self.running then return nil, "stopped" end
-  local store = self.L.store
-  if self.waiting then store.pending[#store.pending + 1] = { k = kind, f = Util.copy(fields) }; return "queued" end
+  if self.waiting then self:queue(kind, fields); return "queued" end
   local e, why = self.L:make(kind, fields)
   if not e then return nil, why end
   self.made[select(2, Ledger.author(e.i))] = e
@@ -145,11 +122,8 @@ function Net:collide(mine)
   end
 end
 
--- Puts body b to me (uncounted until answered); past LEDGER_MINE_ASK open questions it is denied.
-function Net:ask(b)
-  if #self:asks() >= C.LEDGER_MINE_ASK then return self:deny(b) end
-  b.un, self.L.rev, self.asked = true, self.L.rev + 1, true
-end
+-- Puts body b to me: uncounted until answered, never denied unasked.
+function Net:ask(b) b.un, self.L.rev, self.asked = true, self.L.rev + 1, true end
 
 -- The own-name check of body b, number n, new in my store (held: I held its id before).
 function Net:own(b, n, held)
@@ -194,15 +168,18 @@ function Net:receive(channel, sender, msg)
 end
 
 -- My entries the guild holds that my store had lost (a crash, a collision),
--- one question each: {body, ...}.
+-- one question each: {body, ...} (the first LEDGER_MINE_ASK, by id), and how
+-- many more wait unshown (uncounted, not denied) until a question is answered.
 function Net:asks()
-  local out = {}
-  for _, b in ipairs(self.L:above(self.L.me, 0)) do if b.un then out[#out + 1] = b end end
-  return out
+  local out, more = {}, 0
+  for _, b in ipairs(self.L:above(self.L.me, 0)) do
+    if b.un and #out < C.LEDGER_MINE_ASK then out[#out + 1] = b elseif b.un then more = more + 1 end
+  end
+  return out, more
 end
 
--- The answer for one asked entry (a body of net:asks, or an id: its asked
--- bodies), or for all of them (answer(keep)): keep, it is mine and counts; else
+-- The answer for one shown asked entry (a body of net:asks, or an id: its asked
+-- bodies), or for all shown (answer(keep)): keep, it is mine and counts; else
 -- one X -> true | nil (nothing of it was asked).
 function Net:answer(which, keep)
   if type(which) == "boolean" then which, keep = nil, which end
