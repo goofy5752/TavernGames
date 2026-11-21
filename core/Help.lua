@@ -6,7 +6,8 @@ local _, ns = ...
 -- (text), "example" (a short story in tavern talk), "board" (a 3x3 mini board:
 -- `board` holds 9 cells, 0 empty, 1 X, 2 O, and `line` the three cells that
 -- glow, next to the text `key`), "ladder" (the text `key` over a row of Death
--- Roll numbers `rolls`, the last one the losing 1).
+-- Roll numbers `rolls`, the last one the losing 1), "cards" (a row of card
+-- faces `cards`, as in ui/Cards.lua, above the text `key`).
 local Help = {}
 ns.Help = Help
 
@@ -37,6 +38,28 @@ Help.topics = {
     { kind = "p", key = "help.deathroll.time" },
     { kind = "p", key = "help.deathroll.tags" },
     { kind = "p", key = "help.deathroll.leave" },
+  } },
+  { id = "santase", title = "game.santase", blocks = {
+    { kind = "p", key = "help.santase.p1" },
+    { kind = "example", key = "help.santase.example" },
+    { kind = "cards", key = "help.santase.cards", cards = { "AS", "TS", "KS", "QS", "JS", "9S" } },
+    { kind = "p", key = "help.santase.trick" },
+    { kind = "p", key = "help.santase.strict" },
+    { kind = "cards", key = "help.santase.marriage", cards = { "KH", "QH" } },
+    { kind = "p", key = "help.santase.swap" },
+    { kind = "p", key = "help.santase.close" },
+    { kind = "p", key = "help.santase.score" },
+    { kind = "p", key = "help.santase.time" },
+    { kind = "p", key = "help.santase.fair" },
+  } },
+  -- Why the card deal is fair; the table's fairness line opens it.
+  { id = "fair", title = "help.fair.title", blocks = {
+    { kind = "p", key = "help.fair.p1" },
+    { kind = "example", key = "help.fair.example" },
+    { kind = "p", key = "help.fair.how" },
+    { kind = "p", key = "help.fair.verify" },
+    { kind = "p", key = "help.fair.dealer" },
+    { kind = "p", key = "help.fair.bad" },
   } },
   { id = "soon", title = "games.soon", blocks = {
     { kind = "p", key = "help.soon.p" },

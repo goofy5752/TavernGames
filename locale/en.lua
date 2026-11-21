@@ -30,9 +30,31 @@ T["help.deathroll.time"] = "If your time runs out, the table rolls for you. You 
 T["help.deathroll.tags"] = "A question mark after the name means this roll was not seen in chat. If the host did not see it, the number is the player's word. A red exclamation mark after the name means your chat showed a different number from the table's. The tag “· table” means the table rolled it: that is how bots roll."
 T["help.deathroll.leave"] = "If someone stands up in the middle, the others go on without them. If you are left alone, the game ends without a loser."
 
+-- Rules book: Santase
+T["help.santase.p1"] = "Santase is a game for two with 24 cards, from the nine to the ace. The goal is to be the first to collect 66 points in the hand. Whoever wins the hand takes 1 to 3 games. The match goes to 11 games."
+T["help.santase.example"] = "Ivan and Maria sit down at a table. Each gets six cards, and one card is turned face up under the stock: it shows the trump. Maria plays the ten of spades. Ivan has no higher spade and gives a jack. Maria takes both cards and already has 12 points. Then each of them draws a card and Maria plays again."
+T["help.santase.cards"] = "The cards by strength: ace 11 points, ten 10, king (K) 4, queen (Q) 3, jack (J) 2, nine 0."
+T["help.santase.trick"] = "While there are cards in the stock, you play any card you like. The higher card of the same suit takes the trick, and a trump beats any other suit. Whoever takes the trick draws first and plays first."
+T["help.santase.strict"] = "Once the stock runs out or someone closes it, you must follow suit and play higher if you can. Have none of the suit? Then you play a trump. The cards you may not play are darkened."
+T["help.santase.marriage"] = "A king and a queen of one suit are worth 20 points, and in trumps they are worth 40. When it is your turn and you hold both, a “Declare 20” or “Declare 40” button appears. You press it and play the king or the queen. The points count as soon as you have at least one trick."
+T["help.santase.swap"] = "Have the nine of trumps and at least one trick? When it is your turn, “Swap the nine” trades it for the face-up card under the stock. It works only while the stock has more than two cards."
+T["help.santase.close"] = "Think you will reach 66 without drawing? Press “Close” when it is your turn and the stock has more than two cards. Nobody draws any more. If you do not reach 66, the other player takes 2 games, or 3 if they had no trick yet."
+T["help.santase.score"] = "The hand ends by itself as soon as someone collects 66. That player takes 1 game. If the other has under 33 points, they take 2. If the other has not a single trick, they take 3. The last trick is worth 10 points when the stock was played to the end."
+T["help.santase.time"] = "If your time runs out, the addon plays your weakest allowed card. You do not lose by forfeit. After the match the host presses “New game”."
+T["help.santase.fair"] = "Below the table it says whether the last hand is “verified”. To see what that means, read the topic about the fair deal."
+
+-- Rules book: why the deal is fair
+T["help.fair.title"] = "Why the deal is fair"
+T["help.fair.p1"] = "In the card games nobody shuffles the deck alone. Everyone at the table gives one secret number, and the order of the cards comes from all the numbers together. As long as at least one player at the table is honest, nobody can fix the cards."
+T["help.fair.example"] = "Ivan and Maria play Santase. Each thinks of a secret number and locks it in a little box. They both put their boxes on the table. Only then does Ivan give his number to Maria, because she deals this hand. Maria puts the two numbers together and the order of the cards comes out of them. Nobody could change their number after seeing the other one: the box was already on the table."
+T["help.fair.how"] = "The box is a fingerprint of the number. You cannot guess the number from the fingerprint. But later everyone can check that the number is the same."
+T["help.fair.verify"] = "After every hand the numbers are shown to everyone. Your addon lays out the deck again by itself and goes through the whole hand: are the cards you got from this deck, and was every move allowed? If it all adds up, below the table it says “verified”. If something does not add up, it says “irregular”, and everyone at the table sees it."
+T["help.fair.dealer"] = "One thing you should know: the dealer's addon knows the whole deck of the hand it deals. Otherwise it could not send you your cards. A normal player does not see it. Only a tampered addon could peek, and only when it deals. That is why the deal passes to the next player every hand, and in the end every hand is checked."
+T["help.fair.bad"] = "See “irregular”? Tell the others. Point at the text with the mouse and you will see what exactly does not add up. A hand can also be irregular because the dealer left right at the end without showing the numbers."
+
 -- Rules book: coming soon
-T["help.soon.p"] = "Coming soon: Santase, Belot, Backgammon and Texas Hold'em, and playing for a stake with a ledger of debts."
-T["help.soon.example"] = "For now the tavern plays Tic-tac-toe and Death Roll. The other games sit dimmed in the list, marked “Soon”. As soon as they are ready, their rules will appear here, in the book."
+T["help.soon.p"] = "Coming soon: Belot, Backgammon and Texas Hold'em, and playing for a stake with a ledger of debts."
+T["help.soon.example"] = "For now the tavern plays Tic-tac-toe, Death Roll and Santase. The other games sit dimmed in the list, marked “Soon”. As soon as they are ready, their rules will appear here, in the book."
 
 -- First-run intro
 T["intro.hall.text"] = "This is the guild's tavern. Every round table is a game. On the right you see who is here now."

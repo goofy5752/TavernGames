@@ -6,7 +6,9 @@ local _, ns = ...
 -- "example" as an indented italic block with a brass rule on its left, "board"
 -- as a 3x3 mini board (26 px cells) whose `line` cells are gold, with its text
 -- beside it, "ladder" as its text over a row of numbers in the paper heading
--- face with „›“ in brass between them and the last one in red. The footer
+-- face with „›“ in brass between them and the last one in red, "cards" as a
+-- row of card widgets (ui/Cards.lua, scale 0.8, 4 px apart) above its text.
+-- A topic title too long for the list wraps and its row grows. The footer
 -- link „Покажи въведението пак“ starts the intro again.
 local Theme, W, L = ns.Theme, ns.W, ns.L
 
@@ -31,6 +33,8 @@ local GAP = 12             -- between blocks
 local INDENT = 16          -- an example's text, right of its rule
 local CELL, CELL_GAP = 26, 2
 local LADDER_SIZE, LADDER_ARROW, LADDER_GAP = 22, 16, 8
+local CARD_SCALE, CARD_GAP = 0.8, 4
+local TOPIC_H, TOPIC_GAP, TOPIC_PAD = 26, 4, 8 -- a list row: least height, gap below, text inset
 
 local function setColor(fs, token) fs:SetTextColor(Theme.rgb(token)) end
 
@@ -111,6 +115,22 @@ function BLOCKS.ladder(content, b, y)
   return { kind = "ladder", text = fs, numbers = numbers, arrows = arrows }, h + LADDER_GAP + LADDER_SIZE * 1.25
 end
 
+-- The cards left to right, then the text below them.
+function BLOCKS.cards(content, b, y)
+  local cards, x = {}, 4
+  local w, h = ns.Cards.W * CARD_SCALE, ns.Cards.H * CARD_SCALE
+  for i, face in ipairs(b.cards) do
+    local card = ns.Cards.card(content, CARD_SCALE)
+    card:set(face)
+    card.frame:EnableMouse(false)
+    card.frame:SetPoint("TOPLEFT", content, "TOPLEFT", x, -y)
+    cards[i] = card
+    x = x + w + CARD_GAP
+  end
+  local fs, th = text(content, "paper", b.key, 0, y + h + LADDER_GAP, TEXT_W)
+  return { kind = "cards", text = fs, cards = cards }, h + LADDER_GAP + th
+end
+
 local function buildPage(topic)
   local page = CreateFrame("Frame", nil, HelpBook.frame)
   page:SetPoint("TOPLEFT", HelpBook.frame, "TOPLEFT", BODY_X, -TOP)
@@ -156,10 +176,21 @@ local function showTopic(id)
   styleTopics()
 end
 
-local function topicButton(f, topic, i)
+-- Stacks the topic rows, each tall enough for its (wrapped) title.
+local function layoutTopics()
+  local y = TOP
+  for _, t in ipairs(HelpBook.topics) do
+    local b = t.button
+    b:SetHeight(math.max(TOPIC_H, b.text:GetStringHeight() + 6))
+    b:ClearAllPoints()
+    b:SetPoint("TOPLEFT", HelpBook.frame, "TOPLEFT", PAD, -y)
+    y = y + b:GetHeight() + TOPIC_GAP
+  end
+end
+
+local function topicButton(f, topic)
   local b = CreateFrame("Button", nil, f)
-  b:SetSize(LIST_W, 26)
-  b:SetPoint("TOPLEFT", f, "TOPLEFT", PAD, -TOP - (i - 1) * 30)
+  b:SetSize(LIST_W, TOPIC_H)
   b:RegisterForClicks("LeftButtonUp")
   local bg = b:CreateTexture(nil, "BACKGROUND")
   bg:SetAllPoints(b)
@@ -167,7 +198,10 @@ local function topicButton(f, topic, i)
   bg:SetColorTexture(r, g, bl, 0.35)
   b.bg = bg
   local fs = W.Label(b, "paper", L(topic.title), 15)
-  fs:SetPoint("LEFT", b, "LEFT", 8, 0)
+  fs:SetWidth(LIST_W - 2 * TOPIC_PAD)
+  fs:SetWordWrap(true)
+  fs:SetJustifyH("LEFT")
+  fs:SetPoint("LEFT", b, "LEFT", TOPIC_PAD, 0)
   b.text = fs
   b:SetScript("OnClick", function() showTopic(topic.id) end)
   return b
@@ -212,7 +246,7 @@ local function build()
   HelpBook.close = close
 
   for i, topic in ipairs(ns.Help.topics) do
-    HelpBook.topics[i] = { id = topic.id, button = topicButton(f, topic, i) }
+    HelpBook.topics[i] = { id = topic.id, button = topicButton(f, topic) }
   end
   local divider = f:CreateTexture(nil, "ARTWORK")
   local r, g, b = Theme.rgb("brass")
@@ -233,6 +267,7 @@ function HelpBook.open(topicId)
   -- The language may have been chosen since the book was built (first run).
   HelpBook.title:SetText(L("book.title"))
   for i, topic in ipairs(ns.Help.topics) do HelpBook.topics[i].button.text:SetText(L(topic.title)) end
+  layoutTopics()
   local intro = HelpBook.introLink
   intro.text:SetText(L("book.intro"))
   intro:SetWidth(intro.text:GetStringWidth() + 4)
