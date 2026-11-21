@@ -374,15 +374,26 @@ describe("ledger hardening, round 2", function()
     l:add(deny(9, x8), P); eq(l:denied(p5), false)
     l:add(deny(10, l:get(M .. ":9")), M); eq(l:denied(p5), true, "depth 3")
   end)
-  it("a denial cycle or a very long chain in saved variables ends", function()
+  it("a denial cycle in saved variables ends", function()
     local function x(n, r, h, rh) return { i = M .. ":" .. n, k = "X", at = NOW, r = M .. ":" .. r, h = h, rh = rh } end
     local a, b = string.rep("a", 16), string.rep("b", 16)
     local l = Ledger.new({ ev = { [M] = { x(1, 2, a, b), x(2, 1, b, a) } } }, I, function() return NOW end)
     local d = l:denied(l:get(M .. ":1")); ok(d == true or d == false)
+  end)
+  it("the far end of a 3000-long chain: the true parity, and one sweep visits each node once", function()
+    -- M:n denies M:n+1, so M:1 stands, M:2 is denied, M:3 stands, ...
+    local function x(n) return { i = M .. ":" .. n, k = "X", at = NOW, r = M .. ":" .. (n + 1),
+      h = string.format("%016x", n), rh = string.format("%016x", n + 1) } end
     local chain = {}
-    for n = 1, 3000 do chain[n] = x(n, n + 1, string.format("%016x", n), string.format("%016x", n + 1)) end
-    local long = Ledger.new({ ev = { [M] = chain } }, I, function() return NOW end)
-    d = long:denied(long:get(M .. ":1")); ok(d == true or d == false)
+    for n = 1, 3000 do chain[n] = x(n) end
+    local l = Ledger.new({ ev = { [M] = chain } }, I, function() return NOW end)
+    l.visits = 0
+    eq(l:denied(l:get(M .. ":3000")), true); eq(l:denied(l:get(M .. ":2999")), false)
+    eq(l:denied(l:get(M .. ":1001")), false); eq(l:denied(l:get(M .. ":1002")), true)
+    for n = 1, 3000 do eq(l:denied(l:get(M .. ":" .. n)), n % 2 == 0) end
+    ok(l.visits <= 3000, "visits " .. l.visits)
+    l:add(paid(3001), M); l.visits = 0
+    eq(l:denied(l:get(M .. ":3000")), true); ok(l.visits <= 3000, "the cache is renewed on add")
   end)
   it("the far-id bound is measured from the counter saved at login (two steps)", function()
     local l = settled(0)
@@ -392,13 +403,22 @@ describe("ledger hardening, round 2", function()
     eq(l:make("P", { f = M, c = 100, how = "hand" }).i, I .. ":1001")
     eq(l:bump(2001), true, "my own make moves the base")
   end)
-  it("the adoption window of a new store adopts my ids without the bound", function()
+  it("the adoption window of a new store ratchets from my live counter", function()
     local l = L()
     eq(l.fresh, true); eq(l.adopting, true); eq(settled(0).fresh, false)
-    eq(l:add(entry("C", I, 5000, { r = M .. ":1" }), P), "new")
-    eq(l:make("P", { f = M, c = 100, how = "hand" }).i, I .. ":5001")
+    eq(l:add(entry("C", I, 999999999, { r = M .. ":1" }), P), "new"); eq(l:bump(999999999), false)
+    for _, n in ipairs({ 3, 1, 900, 2, 1800, 2700 }) do eq(l:bump(n), true, "adopts " .. n) end
+    eq(l:bump(3701), false)
+    eq(l:make("P", { f = M, c = 100, how = "hand" }).i, I .. ":2701")
     l.adopting = false
-    eq(l:bump(7000), false); eq(l:bump(6001), true)
+    eq(l:bump(3701), true); eq(l:bump(4702), false)
+  end)
+  it("a new store adopts my own entries it already holds at load", function()
+    local src = L()
+    for _, n in ipairs({ 1, 2, 700 }) do src:add(entry("C", I, n, { r = M .. ":1" }), P) end
+    local store = U.copy(src.store); store.me = nil
+    local l = Ledger.new(store, I, function() return NOW end)
+    eq(l.fresh, true); eq(l:make("P", { f = M, c = 100, how = "hand" }).i, I .. ":701")
   end)
   it("a load files one copy of a body and at most 4 versions of an id", function()
     local src = L()

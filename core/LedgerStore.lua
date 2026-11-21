@@ -11,15 +11,17 @@ local _, ns = ...
 -- version of an entry under my name that I made myself (no dr, no rl) is never
 -- evicted from my store.
 -- My counter: L.base is my saved seq at load plus my own makes; an id of mine
--- more than LEDGER_JUMP above it never moves the counter, except while
--- L.adopting (L.fresh: the store held no sound record of mine at load, the
--- adoption window of a new store; the caller sets L.adopting = false when the
--- window closes).
+-- more than LEDGER_JUMP above it never moves the counter. While L.adopting
+-- (L.fresh: the store held no sound record of mine at load, the adoption window
+-- of a new store; the caller sets L.adopting = false when the window closes) an
+-- id of mine is adopted when it is at most LEDGER_JUMP above my live counter, and
+-- the ids of mine the store holds at load are adopted in ascending order.
 local Ledger, C, Util, Sha256 = ns.Ledger, ns.Const, ns.Util, ns.Sha256
 local concat, sort, byteLess = table.concat, table.sort, ns.Util.byteLess
-local BODIES_MAX, DENY_DEPTH, W32, W24 = 4, 1000, 4294967296, 16777216
+local BODIES_MAX, W32, W24 = 4, 4294967296, 16777216
 
 local Store = {}; Store.__index = Store
+Ledger.Store = Store -- core/LedgerDeny.lua adds Store:denied
 
 -- The keys of t that pass keep (all when nil), sorted by less.
 local function keys(t, less, keep)
@@ -62,6 +64,7 @@ function Ledger.new(store, me, epoch)
       end
     end
   end
+  if L.fresh then for _, k in ipairs(keys(store.ev[me], nil)) do L:bump(k) end end
   return L
 end
 -- Every body of an id, by ascending h.
@@ -111,9 +114,12 @@ function Store:move(a, n, b, gone)
 end
 -- The body held under (a, n) with b's h and canonical form, or nil.
 function Store:same(a, n, b)
-  local canon = Ledger.canon(b)
+  local canon
   for _, old in ipairs(self:bodies(a, n)) do
-    if old.h == b.h and Ledger.canon(old) == canon then return old end
+    if old.h == b.h then
+      canon = canon or Ledger.canon(b)
+      if Ledger.canon(old) == canon then return old end
+    end
   end
 end
 -- Did I make this body myself (under my name, got from nobody)?
@@ -215,36 +221,14 @@ function Store:list(a)
   for j, b in ipairs(self:above(a, 0)) do out[j] = select(2, Ledger.author(b.i)) .. "." .. b.h:sub(1, 6) end
   return out
 end
--- Is the body "<i>|<h>" denied: named by an X of its author that is not denied
--- in turn (recursively)? -> denied, cut. A cycle denies nothing; a chain deeper
--- than DENY_DEPTH is cut there, and a cut result is not kept in the memo.
-local function deniedKey(self, key, depth)
-  local memo = self.memo
-  if memo[key] ~= nil then return memo[key], false end
-  if depth >= DENY_DEPTH then return false, true end
-  memo[key] = false
-  local r, cut = false, false
-  for x in pairs(self.deny[key] or {}) do
-    local d, c = deniedKey(self, x.i .. "|" .. x.h, depth + 1)
-    cut = cut or c
-    if not d then r = true; break end
-  end
-  if cut then memo[key] = nil else memo[key] = r end
-  return r, cut
-end
--- Did e's author deny exactly this body (e.i and e.h), by an X that stands?
-function Store:denied(e)
-  if e.h == nil then return false end
-  if self.memoRev ~= self.rev then self.memo, self.memoRev = {}, self.rev end
-  return (deniedKey(self, e.i .. "|" .. e.h, 0))
-end
 -- The highest number held for an author, holes and denied entries included.
 function Store:seen(a) return self.top[a] or 0 end
 -- My counter is at least n -> true; false (it stays) when n is more than
--- LEDGER_JUMP above L.base outside the adoption window: a forgery to deny.
+-- LEDGER_JUMP above L.base (in the adoption window: above my live counter): a forgery to deny.
 function Store:bump(n)
   local rec = self:record()
   if self.adopting then
+    if n > rec.seq + C.LEDGER_JUMP then return false end
     self.base = math.max(self.base, n)
   elseif n > self.base + C.LEDGER_JUMP then
     return false
