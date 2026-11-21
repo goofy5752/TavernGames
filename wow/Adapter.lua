@@ -15,9 +15,12 @@ local Adapter = {
 ns.Adapter = Adapter
 
 -- Which AceDB section holds each db key.
--- fairKeep: core/DealKeep.lua; lastAt: the table I am at (core/Presence.lua).
-local CHAR_KEYS = { snoozeUntil = true, busy = true, debug = true, fairKeep = true, lastAt = true }
+-- fairKeep: core/DealKeep.lua; lastAt: the table I am at (core/Presence.lua);
+-- bookKeep, bookSpent: the Hold'em table key and spend (core/Book.lua).
+local CHAR_KEYS = { snoozeUntil = true, busy = true, debug = true, fairKeep = true, lastAt = true,
+  bookKeep = true, bookSpent = true }
 local GLOBAL_KEYS = { lang = true, introDone = true, minimap = true }
+Adapter.CHAR_KEYS, Adapter.GLOBAL_KEYS = CHAR_KEYS, GLOBAL_KEYS
 Adapter.DEFAULTS = {
   char = { snoozeUntil = 0, busy = false, debug = false },
   global = { introDone = false, minimap = { hide = false } },

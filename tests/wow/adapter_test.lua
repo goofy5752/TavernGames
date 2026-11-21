@@ -289,3 +289,35 @@ describe("wow adapter: game events", function()
     eq(keys, { "TAVERNGAMES" }); eq(w.G.SLASH_TAVERNGAMES1, "/tavern")
   end)
 end)
+
+describe("wow adapter: db keys", function()
+  it("keeps bookKeep and bookSpent in the char section", function()
+    local w = Wow.new(); w:init()
+    local db, sv = w.ns.db, w.G.TavernGamesDB
+    db.bookKeep, db.bookSpent = { 1 }, 5
+    eq(db.bookKeep, { 1 }); eq(db.bookSpent, 5)
+    local char = sv.char[Wow.FIRST .. " - Forever"]
+    eq(char.bookKeep, { 1 }); eq(char.bookSpent, 5)
+  end)
+
+  it("lists every db key the code uses", function()
+    local w = Wow.new(); w:init()
+    local A = w.ns.Adapter
+    ok(A.CHAR_KEYS and A.GLOBAL_KEYS, "Adapter must expose CHAR_KEYS and GLOBAL_KEYS")
+    local used = {}
+    for p in io.lines("tests/.files.txt") do
+      p = p:gsub("\r", "")
+      if p:match("^core/") or p:match("^ui/") or p:match("^wow/") then
+        local f = assert(io.open(p, "r"))
+        local src = f:read("*a"); f:close()
+        for name in src:gmatch("%f[%w_]db%.([%a_][%w_]*)") do used[name] = p end
+      end
+    end
+    local n = 0
+    for name, p in pairs(used) do
+      n = n + 1
+      ok(A.CHAR_KEYS and (A.CHAR_KEYS[name] or A.GLOBAL_KEYS[name]), "db key not in Adapter key lists: " .. name .. " (" .. p .. ")")
+    end
+    ok(n > 0, "scan found no db keys")
+  end)
+end)
