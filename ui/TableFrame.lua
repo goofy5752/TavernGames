@@ -340,7 +340,8 @@ end
 -- (Deal.claim) follows it as a claim by name. The colour is my own client's
 -- finding: red while Deal.alarm(s) (a bad hand or a dealer's second void in
 -- this match), else amber with a claim, green on a verified hand.
--- A dice table: Dice.status(s) -> key, tone, arg, arg2, shown in that tone.
+-- A dice table: Dice.status(s) -> key, tone, arg, arg2, shown in that tone
+-- (a name whose seat emptied, nil, as „?“; so in the dice tooltip).
 local function renderFair(v, s)
   local line = v.fairLine
   local key, arg, arg2 = ns.Deal.status(s)
@@ -348,7 +349,7 @@ local function renderFair(v, s)
     local tone
     key, tone, arg, arg2 = ns.Dice.status(s)
     line:SetShown(key ~= nil)
-    if key then line.text:SetText(L(key, arg, arg2)); line.text:SetTextColor(Theme.rgb(tone)) end
+    if key then line.text:SetText(L(key, arg or "?", arg2 or "?")); line.text:SetTextColor(Theme.rgb(tone)) end
     return
   end
   line:Show()
@@ -375,7 +376,7 @@ local function fairTooltip(tip)
     for i, t in ipairs(ns.Dice.tip(s)) do -- {tone, key, arg, arg2}
       local args, why = { t[3], t[4] }, t[2] == "dice.cry" and 2 or t[2] == "dice.tip.bad" and 1
       if why then args[why] = known("dice.why." .. tostring(args[why])) or L("fair.why.unknown") end
-      local text, r, g, b = L(t[2], args[1], args[2]), Theme.rgb(t[1])
+      local text, r, g, b = L(t[2], args[1] or "?", args[2] or "?"), Theme.rgb(t[1])
       if i == 1 then tip:SetText(text, r, g, b, 1, true) else tip:AddLine(text, r, g, b, true) end
     end
     return

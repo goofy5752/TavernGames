@@ -490,7 +490,7 @@ describe("ui: table frame, card fairness", function()
     local texts = { "Хвърляме заровете заедно…", "Зарове: хвърлени от двамата играчи",
       "Иван Петров хвърли сам: Мария Стоянова не се включи навреме", "Зарове: нередовни" }
     local now
-    w.ns.Dice.status = function() return unpack(now) end
+    w.ns.Dice.status = function() return unpack(now, 1, 4) end
     for k, a in ipairs(answers) do
       now = a; w.ns.TableFrame.render()
       ok(v.fairLine:IsVisible(), "no dice line"); eq({ v.fairLine.text:GetText(), color(v.fairLine.text) }, { texts[k], rgb(w, a[2]) })
@@ -499,6 +499,14 @@ describe("ui: table frame, card fairness", function()
     w:hover(v.fairLine)
     eq(tip.lines, { w.ns.L("dice.tip"), "Проверката не излезе: заровете не дойдоха от хвърляне на двамата. Кажи на другия." })
     local opened; w.ns.HelpBook.open = function(id) opened = id end; w:click(v.fairLine); eq(opened, "fair")
+    -- a seat that emptied has no name: „?“, never nil (Lua 5.1's format raises on nil)
+    now = { "dice.alone", "gold", ME, nil }; w.ns.TableFrame.render()
+    eq(v.fairLine.text:GetText(), "Иван Петров хвърли сам: ? не се включи навреме")
+    now = { "dice.aloneMany", "red", nil, 2 }; w.ns.TableFrame.render()
+    eq(v.fairLine.text:GetText(), "? хвърли сам вече 2 пъти в тази партия")
+    w.ns.Dice.tip = function() return { { "ink", "dice.tip" }, { "gold", "dice.cry", nil, "forged" } } end
+    w:hover(v.fairLine)
+    eq(tip.lines[2], "? твърди: заровете не дойдоха от хвърляне на двамата. Твоят аддон не може да провери това.")
 
     local w2, v2 = santaseWithBot(); local s2 = w2.ns.client.session
     w2.ns.Dice.status = function() return "dice.bad", "red" end
