@@ -41,10 +41,11 @@ local function relog(name)
   return cl
 end
 
--- `cl` ignores every message of type t until the returned function is called.
-local function drop(cl, t)
+-- `cl` ignores every message of type t (only those for which pred(sender, msg)
+-- holds, when given) until the returned function is called.
+local function drop(cl, t, pred)
   cl.receive = function(self, channel, sender, msg)
-    if msg.t == t then return end
+    if msg.t == t and (not pred or pred(sender, msg)) then return end
     return ns.Client.receive(self, channel, sender, msg)
   end
   return function() cl.receive = nil end
@@ -76,13 +77,14 @@ local function finish(via)
 end
 
 -- Plays the match to its end -> hands dealt, h of the last round. With
--- `withhold`: the dealer of hand number `withhold` keeps its seeds to itself.
+-- `withhold`: the dealer of hand number `withhold` keeps its seeds to itself
+-- (it forgets them, so no later attempt can reveal them).
 local function playMatch(withhold)
   for _ = 1, 120 do
     local s = a.session
     if s:gameOver() then return s.fairN, s.fair.h end
     if withhold and s.fairN == withhold and s.fair.stage == "dealt" then
-      sim.clients[s.fair.dealer].session.fair.revealed = true
+      sim.clients[s.fair.dealer].session.fair.seeds = {}
     end
     if s.state.turn then auto(1) else sim:run(1) end
   end
@@ -106,6 +108,9 @@ local function opensFromA()
 end
 
 local function act(x) return { v = 1, t = "ACT", tid = tid, a = x } end
+
+-- An ACT asking for the fair op `op` (for drop).
+local function asks(op) return function(_, msg) return type(msg.a) == "table" and msg.a.op == op end end
 
 describe("deal failures", function()
   it("a player who never commits: the round is reopened every 20 s until he is back", function()
@@ -230,5 +235,52 @@ describe("deal failures", function()
     a.session:snapshotTo(D); sim:run(1)
     eq(#events(d), 1); eq({ events(d)[1].verdict, events(d)[1].h }, { "unseen", h1 })
     eq(d.session.fair.h, a.session.fair.h)
+  end)
+
+  -- Review M1-M3.
+  it("the host hands off while the dealer's reveal is in flight, and the dealer takes over: проверена", function()
+    local sim = table3(); start(); local h = a.session.fair.h; eq(a.session.fair.d, 2)
+    drop(a, "ACT", asks("reveal")); finish()
+    eq(b.session.fair.revealed, true); eq(a.session.fair.stage, "dealt")      -- the reveal went to A and was lost
+    a:stand(); sim:run(2); eq(b.session.role, "host")
+    for _, cl in ipairs{ b, c } do
+      eq(#events(cl), 1); eq({ events(cl)[1].verdict, events(cl)[1].h }, { "ok", h })
+    end
+    sim:run(25)
+    for _, cl in ipairs{ b, c } do eq(#events(cl), 1) end
+  end)
+
+  it("the host hands off while a member dealer's reveal is in flight: the dealer reveals to the new host", function()
+    local sim = table3(); start(); finish(); sim:run(2)
+    local h = a.session.fair.h; eq({ a.session.fair.d, a.session.fair.stage }, { 3, "dealt" })
+    drop(a, "ACT", asks("reveal")); finish()
+    eq(c.session.fair.revealed, true); eq(a.session.fair.stage, "dealt")
+    a:stand(); sim:run(2); eq(b.session.role, "host")
+    for _, cl in ipairs{ b, c } do
+      eq(#events(cl), 2); eq({ events(cl)[2].verdict, events(cl)[2].h }, { "ok", h })
+    end
+  end)
+
+  it("a host-dealer's stand and void both lost on the way: the new host voids the hand", function()
+    local sim = table3(); start(); finish(); sim:run(2); finish(); sim:run(2)
+    local h = a.session.fair.h; eq({ a.session.fair.d, a.session.fair.stage, a.session.fairN }, { 1, "dealt", 3 })
+    local fromA = function(sender) return sender == A end
+    drop(b, "EV", fromA); drop(c, "EV", fromA)                                -- A's stand and void never arrive
+    a:stand(); sim:run(3); eq(b.session.role, "host")
+    for _, cl in ipairs{ b, c } do
+      eq(#events(cl), 3); eq({ events(cl)[3].verdict, events(cl)[3].h }, { "void", h })
+    end
+    local r = b.session.fair
+    eq({ r.p, r.d, r.stage, b.session.fairN }, { { 2, 3 }, 3, "dealt", 3 }); ok(c.session.fair.deck ~= nil)
+  end)
+
+  it("a dealer whose void request was lost asks again after its next snapshot", function()
+    local sim = table3(); start(); local h1 = a.session.fair.h; auto(1)
+    local restore = drop(a, "ACT", asks("void"))
+    local b2 = relog(B); sim:run(3)
+    eq(#events(a), 0); eq({ b2.session.fair.h, b2.session.fair.voidAsked }, { h1, true })
+    restore(); a.session:snapshotTo(B); sim:run(3)
+    eq(#events(a), 1); eq(events(a)[1].verdict, "void")
+    ok(a.session.fair.h ~= h1); eq({ a.session.fair.d, a.session.fair.stage }, { 2, "dealt" }); ok(b2.session.fair.deck ~= nil)
   end)
 end)

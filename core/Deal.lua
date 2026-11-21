@@ -22,7 +22,9 @@ local _, ns = ...
 -- deck (a reload) or whose seat stands mid-hand: the hand is void (EV seat 0
 -- {k="void"}), nothing scores, and the deal is asked for again.
 -- A member whose snapshot shows that a hand it held open was closed or
--- replaced closes it "unseen" (it missed the end).
+-- replaced closes it "unseen" (it missed the end). A snapshot of the same
+-- dealt hand makes a reveal or void I asked for due again (it may have gone to
+-- a host that is gone); a new host voids a dealt hand whose dealer left.
 -- Seeds, decks and private faces live in the session only; the round that
 -- leaves the client (SNP.fr) is public: h, d, p, the commits, the stage, n
 -- (with no round open, only n).
@@ -336,6 +338,7 @@ end
 -- Participant: PRQ{tid, h}, send me all my faces again.
 local function ask(s)
   local fair = s.fair
+  if not fair.dealer then return end -- the dealer's seat is empty: the hand is void soon
   s.client:send("WHISPER", fair.dealer, Session.message("PRQ", { tid = s.tid, h = fair.h }))
 end
 
@@ -396,6 +399,24 @@ function Deal.react(s)
       end
     end
   end
+end
+
+-- New host with a dealt hand, on the next tick (an event sent before my
+-- snapshots would reach members still waiting for one): a dealer whose seat no
+-- longer holds it took the deck along and the hand is void (its own stand and
+-- void may never have reached me); otherwise my reveal may have gone to the
+-- old host, so I owe it again.
+local function takeOver(s)
+  local client, fair = s.client, s.fair
+  client:after(0, function()
+    if client.session ~= s or s.role ~= "host" or s.fair ~= fair or fair.stage ~= "dealt" then return end
+    if s.seats[fair.d] ~= fair.dealer then
+      if not Deal.handOver(s) and s:seatedCount() >= s:engine().minSeats then s:play(0, { k = "void" }) end
+      return
+    end
+    fair.revealed = nil
+    Deal.react(s)
+  end)
 end
 
 ---------------------------------------------------------------------------
@@ -615,6 +636,10 @@ ns.Ext.fair = {
       fair.commits, fair.stage = copy(fr.c), fr.st
       -- Events I missed: I cannot replay this hand.
       if m.q ~= fair.q then fair.base, fair.log = nil, nil end
+      -- A reveal or void I asked for may have gone to a host that is gone:
+      -- asked again (the host refuses a second one).
+      fair.voidAsked = nil
+      if fr.st == "dealt" then fair.revealed = nil end
     else
       fair = {
         h = fr.h, d = fr.d, p = copy(fr.p), dealer = s.seats[fr.d] or nil, commits = copy(fr.c),
@@ -636,11 +661,14 @@ ns.Ext.fair = {
 
   -- My table changed host. A demoted host drops its wait. A new host whose
   -- hand is over waits for the reveal (after the last hand of a match nothing
-  -- else would; mid-match `need` finds the wait armed).
+  -- else would; mid-match `need` finds the wait armed), and takes over a
+  -- dealt hand once its snapshots are out.
   hostChanged = function(s)
     if s.role ~= "host" then return stopWait(s) end
     local fair = s.fair
-    if fair and not s.fairTimer and Deal.handOver(s) then armWait(s, fair.h) end
+    if not fair then return end
+    if not s.fairTimer and Deal.handOver(s) then armWait(s, fair.h) end
+    if fair.stage == "dealt" then takeOver(s) end
   end,
 }
 
