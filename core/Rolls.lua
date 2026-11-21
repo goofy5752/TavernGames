@@ -27,8 +27,11 @@ local _, ns = ...
 --   rolling     {seen = bool} while my roll is under way (seen: it showed up in chat)
 --   rollStuck   true when my server roll never showed up (the UI says: type /roll)
 --   rollUnheard true when the host of a staked game never played my seen roll
---   myRoll      {n, max}: my own roll seen on my current turn at its max,
---               while my own client saw me in my host's group (Rolls.withHost)
+--   myRoll      {n, max, i, pass}: my own roll seen on my turn at its max (i: its
+--               place in state.rolls), while my own client saw me in my host's
+--               group (Rolls.withHost). Tied to that turn: it goes only when
+--               the turn's roll is applied or the game is replaced or ends,
+--               never by a host change (pass: see hostChanged)
 --   rollHost    the host whose table this is to Rolls (staked: only another
 --               name is a host change, never the same host at a new epoch)
 --   claim       {seat, n, max}: the member's claim the host holds (host only)
@@ -116,14 +119,15 @@ local function recheck(s)
   end
 end
 
--- Did my client see itself roll `entry` (an own sighting of that n and max)?
+-- My own sighting of that n and max that no played roll of my seat has counted
+-- yet (`played`: one sighting stands for one roll) -> the sighting | nil
 local function ownSeen(log, entry)
   log = log or {}
   for i = 1, #log do
     local g = log[i]
-    if g.own and g.n == entry.n and g.max == entry.max then return true end
+    if g.own and not g.played and g.n == entry.n and g.max == entry.max then return g end
   end
-  return false
+  return nil
 end
 
 -- The roll state.rolls[index] was just applied: "ok" at once when my log
@@ -138,7 +142,9 @@ local function verify(s, index)
   local v = verdict(s.rollLog, entry, false)
   if v then setVerdict(s, index, v) end
   local mine = s.stake ~= nil and entry.seat == s.mySeat
-  if v and not (mine and not ownSeen(s.rollLog, entry)) then return end
+  local own = mine and ownSeen(s.rollLog, entry)
+  if own then own.played = true end
+  if v and not (mine and not own) then return end
   local client, check, log = s.client, s.rollCheck, s.rollLog
   s.rollNotMine, s.rollPending = s.rollNotMine or {}, s.rollPending or {}
   local notMine, pending = s.rollNotMine, s.rollPending
@@ -147,7 +153,8 @@ local function verify(s, index)
     pending[index] = nil
     local here, was, wasMine = client.session == s and s.rollCheck == check, check[index], notMine[index]
     if not check[index] then check[index] = verdict(log, entry, true) end
-    if mine and not ownSeen(log, entry) then notMine[index] = true end
+    own = own or (mine and ownSeen(log, entry))
+    if own then own.played = true elseif mine then notMine[index] = true end
     if here and (check[index] ~= was or notMine[index] ~= wasMine) then Session.emit(client) end
   end)
 end
@@ -180,11 +187,6 @@ local function record(s)
   return { rollCheck = s.rollCheck, rollNotMine = s.rollNotMine, rollPending = s.rollPending, rollFolded = s.rollFolded }
 end
 
--- Did my client see itself roll `entry` (state.rolls of my game)? -> bool
-function Rolls.ownSeen(s, entry)
-  return ownSeen(s.rollLog, entry)
-end
-
 -- The audit record of the staked game of my client that ended with q, at
 -- table tid (gid "<tid>/<q>") -> record for Rolls.audit | nil.
 function Rolls.auditOf(client, gid)
@@ -214,7 +216,7 @@ function Rolls.seen(client, shown, n, lo, hi)
   recheck(s)
   local st = s.state
   if s.status ~= "live" or not st or st.turn ~= seat or hi ~= st.max then return end
-  if own and seat == s.mySeat and Rolls.withHost(s) then s.myRoll = { n = n, max = hi } end
+  if own and seat == s.mySeat and Rolls.withHost(s) then s.myRoll = { n = n, max = hi, i = #st.rolls + 1 } end
   if s.role == "host" then
     s:play(seat, { k = "roll", n = n, max = hi, src = "seen" })
   elseif st.staked then
@@ -351,9 +353,18 @@ ns.Ext.rolls = {
   -- its pending verdicts still count when they come.
   adopted = function(s, prev)
     s.rollHost = s.host
-    if sameGame(prev, s.state) then
+    local now, seat = s.state, s.stake ~= nil and s.stakeSeat -- my seat before the snapshot
+    -- Staked, the same game or another: a roll in my seat's name that is not
+    -- one of my game at its place needs an own sighting no roll has counted
+    -- yet (judged here, before the sightings of a replaced game go): forged.
+    for i = 1, seat and now and now.rolls and #now.rolls or 0 do
+      local r, was = now.rolls[i], prev and prev.rolls and prev.rolls[i]
+      if r.seat == seat and not (was and sameRoll(was, r)) and not ownSeen(s.rollLog, r) then ns.Stakes.pend(s, "forged") end
+    end
+    if sameGame(prev, now) then
       if s.stake ~= nil then
-        for i = #prev.rolls + 1, #s.state.rolls do verify(s, i) end
+        for i = #prev.rolls + 1, #now.rolls do verify(s, i) end
+        if s.myRoll and #now.rolls >= s.myRoll.i then s.myRoll = nil end -- its turn is played
       end
       return
     end
@@ -365,18 +376,23 @@ ns.Ext.rolls = {
   -- host is gone with it, so the roll under way is dropped and the player may
   -- press „Хвърли“ again at once (a second server roll; the new host plays the
   -- first one it sees). A host that steps down drops the claim it held. At a
-  -- staked table my roll the old host never answered is not held against the
-  -- new one (myRoll goes; its idle clock starts afresh, core/Stakes.lua) and
-  -- the UI says to roll again (rollUnheard); the same host at a new epoch is
-  -- no host change.
+  -- staked table the same host at a new epoch is no host change, and myRoll
+  -- stays with its turn through every change: the UI says to roll again
+  -- (rollUnheard), the first other host since the roll is not charged with it
+  -- (myRoll.pass = its name, and a fresh idle clock: core/Stakes.lua), any
+  -- later one is (pass = false); when the table is mine, I play it: the host
+  -- saw it.
   hostChanged = function(s)
     if s.stake ~= nil and s.rollHost == s.host then return end
     s.rollHost = s.host
-    if s.stake ~= nil then
-      if s.mySeat and (s.rolling or s.myRoll) then s.rollUnheard = true end
-      s.myRoll = nil
-    end
+    local mine, st = s.stake ~= nil and s.myRoll, s.state
+    if s.stake ~= nil and s.mySeat and (s.rolling or mine) then s.rollUnheard = true end
     s.rolling, s.claim = nil, nil
+    if not mine then return end
+    if mine.pass == nil then mine.pass = s.host else mine.pass = false end
+    if s.role == "host" and s.status == "live" and st.turn == s.mySeat and st.max == mine.max and #st.rolls + 1 == mine.i then
+      s:play(s.mySeat, { k = "roll", n = mine.n, max = mine.max, src = "seen" })
+    end
   end,
   auto = function(s)
     Rolls.roll(s.client, true)

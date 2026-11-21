@@ -116,8 +116,9 @@ function Member.adopt(client, sender, m)
   if not s.resultSeen then s.seatedBefore = copy(s.seats) end
   s.status = t.st == "live" and "live" or (s.state and "aborted" or "open")
   s.deadline = type(m.left) == "number" and client.env.now() + m.left or nil
-  -- My turn in a snapshot: no clock of mine saw it begin, the host's word dates it.
-  s.turnAt = seat and s.state and s.state.turn == seat and s.deadline and type(s.turn) == "number" and s.deadline - s.turn or nil
+  -- My turn in a snapshot: no clock of mine saw it begin, the host's word dates it
+  -- (at a staked table never: my own clock does, the hook `adopted` of core/StakesWatch.lua).
+  s.turnAt = s.stake == nil and seat and s.state and s.state.turn == seat and s.deadline and type(s.turn) == "number" and s.deadline - s.turn or nil
   s.stale, s.sitAsked, s.asked = nil, nil, nil
   if not same then s.gameNo = (s.gameNo or 0) + 1 end -- another game, for all I can tell (Session:noteResult)
   s.invited = {}
@@ -195,6 +196,7 @@ function Member.sendAct(s, a)
   s.sent = sent
   if not (sent[#sent] and ns.Util.same(sent[#sent].a, a)) then sent[#sent + 1] = { a = copy(a), at = s.client.env.now() } end
   if #sent > SENT_KEPT then table.remove(sent, 1) end
+  if s.stake ~= nil then ns.Stakes.sent(s, a) end -- the table's log of what I sent (core/StakesWatch.lua)
   s.client:send("WHISPER", s.host, Session.message("ACT", { tid = s.tid, a = a }))
 end
 
@@ -294,7 +296,7 @@ local function onEvent(client, sender, m)
   if Member.staleSeat(s, m) then return ns.Stake.standUp(client, s) end
   local engine = s:engine()
   if m.seat == s.mySeat and (engine.view or (s.stake and not engine.idle)) and not Member.mine(s, m.a) and not Member.timedOut(s, m) then
-    s:hook("forged", m.seat, m.a)
+    s:hook("forged", m.seat, m.a, m.auto)
   elseif Member.unasked(s, m.seat, m.a) then
     s:hook("forged", m.seat, m.a)
   end
