@@ -7,11 +7,17 @@ local _, ns = ...
 --   sum mod 2^32 of the first 8 hex of each of that author's bodies' h.
 -- A load files every sound body again (hashing nothing) and recomputes x; a
 -- body that is not sound (no 16-hex h, an X without r or rh, filed under
--- another id) is dropped. The version of an entry under my name that I made
--- myself (no dr, no rl) is never evicted from my store.
+-- another id, a copy of a body already filed, a fifth version) is dropped. The
+-- version of an entry under my name that I made myself (no dr, no rl) is never
+-- evicted from my store.
+-- My counter: L.base is my saved seq at load plus my own makes; an id of mine
+-- more than LEDGER_JUMP above it never moves the counter, except while
+-- L.adopting (L.fresh: the store held no sound record of mine at load, the
+-- adoption window of a new store; the caller sets L.adopting = false when the
+-- window closes).
 local Ledger, C, Util, Sha256 = ns.Ledger, ns.Const, ns.Util, ns.Sha256
 local concat, sort, byteLess = table.concat, table.sort, ns.Util.byteLess
-local BODIES_MAX, W32, W24 = 4, 4294967296, 16777216
+local BODIES_MAX, DENY_DEPTH, W32, W24 = 4, 1000, 4294967296, 16777216
 
 local Store = {}; Store.__index = Store
 
@@ -35,18 +41,25 @@ local function sound(b, a, n)
   return ba == a and bn == n
 end
 local function word(h) return tonumber(h:sub(1, 8), 16) end
+local function whole(v) return type(v) == "number" and v == math.floor(v) end
 
 -- The ledger over `store`, for me; `epoch` is my clock. A load hashes nothing.
 function Ledger.new(store, me, epoch)
   local ev, tw = type(store.ev) == "table" and store.ev or {}, type(store.tw) == "table" and store.tw or {}
   store.ev, store.tw, store.x = {}, {}, {}
   store.me = type(store.me) == "table" and store.me or {}
-  local L = setmetatable({ store = store, me = me, epoch = epoch, rev = 0, top = {}, run = {}, rc = {}, deny = {} }, Store)
+  local rec = store.me[me]
+  if not (type(rec) == "table" and whole(rec.seq) and rec.seq >= 0 and rec.seq <= Ledger.ID_MAX
+    and type(rec.born) == "number") then rec, store.me[me] = nil, nil end
+  local L = setmetatable({ store = store, me = me, epoch = epoch, rev = 0, top = {}, run = {}, rc = {}, deny = {},
+    fresh = rec == nil, adopting = rec == nil, base = rec and rec.seq or 0 }, Store)
   for a, byN in pairs(ev) do
     for n, b in pairs(type(byN) == "table" and byN or {}) do
       local all, t = { b }, type(tw[a]) == "table" and tw[a][n]
       for _, x in ipairs(type(t) == "table" and t or {}) do all[#all + 1] = x end
-      for _, x in ipairs(all) do if sound(x, a, n) then L:move(a, n, x) end end
+      for _, x in ipairs(all) do
+        if sound(x, a, n) and #L:bodies(a, n) < BODIES_MAX and not L:same(a, n, x) then L:move(a, n, x) end
+      end
     end
   end
   return L
@@ -96,6 +109,13 @@ function Store:move(a, n, b, gone)
   s.x[a] = ((s.x[a] or 0) + (gone and -1 or 1) * word(b.h)) % W32
   self:advance(a)
 end
+-- The body held under (a, n) with b's h and canonical form, or nil.
+function Store:same(a, n, b)
+  local canon = Ledger.canon(b)
+  for _, old in ipairs(self:bodies(a, n)) do
+    if old.h == b.h and Ledger.canon(old) == canon then return old end
+  end
+end
 -- Did I make this body myself (under my name, got from nobody)?
 function Store:mine(b) return Ledger.author(b.i) == self.me and not b.dr and not b.rl end
 -- Takes entry `e` from `from` (nil: my own) -> "new" | "dup" | "twin", body | nil, reason.
@@ -107,12 +127,10 @@ function Store:add(e, from)
   local b = Ledger.wire(e)
   b.h, b.rh = nil, b.h
   b.h = Ledger.hash(b)
-  local held, canon = self:bodies(a, n), Ledger.canon(b)
-  for _, old in ipairs(held) do
-    if old.h == b.h and Ledger.canon(old) == canon then
-      if from == a and not old.dr then old.dr, old.rl, self.rev = true, nil, self.rev + 1 end
-      return "dup", old
-    end
+  local held, old = self:bodies(a, n), self:same(a, n, b)
+  if old then
+    if from == a and not old.dr then old.dr, old.rl, self.rev = true, nil, self.rev + 1 end
+    return "dup", old
   end
   if b.k == "R" and (self.rc[a] or 0) >= C.LEDGER_AUTHOR_MAX then return nil, "full" end
   if from == a then b.dr = true elseif from ~= nil then b.rl = true end
@@ -137,15 +155,17 @@ function Store:record()
   return me[self.me]
 end
 -- My next entry of `kind`, added -> entry | nil, reason ("full": no number is left).
+-- A number already held under my name (a refused far forgery) is skipped.
 function Store:make(kind, fields)
   local rec = self:record()
   local n = rec.seq + 1
+  while self:has(Ledger.id(self.me, n)) do n = n + 1 end
   if n > Ledger.ID_MAX then return nil, "full" end
   local e = Util.copy(fields)
   e.k, e.i, e.at = kind, Ledger.id(self.me, n), self.epoch()
   local status, b = self:add(e)
   if not status then return nil, b end
-  rec.seq = n
+  rec.seq, self.base = n, math.max(self.base, n)
   return b
 end
 -- The first body of an id, and its further bodies (a list) or nil.
@@ -195,21 +215,40 @@ function Store:list(a)
   for j, b in ipairs(self:above(a, 0)) do out[j] = select(2, Ledger.author(b.i)) .. "." .. b.h:sub(1, 6) end
   return out
 end
--- Is there an X naming exactly this body (e.i and e.h)? `raw`: any; denied: one its author did not deny in turn.
-local function raw(self, e) local s = e.h and self.deny[e.i .. "|" .. e.h]; return s ~= nil and next(s) ~= nil end
-function Store:denied(e)
-  for x in pairs(e.h and self.deny[e.i .. "|" .. e.h] or {}) do
-    if not raw(self, x) then return true end
+-- Is the body "<i>|<h>" denied: named by an X of its author that is not denied
+-- in turn (recursively)? -> denied, cut. A cycle denies nothing; a chain deeper
+-- than DENY_DEPTH is cut there, and a cut result is not kept in the memo.
+local function deniedKey(self, key, depth)
+  local memo = self.memo
+  if memo[key] ~= nil then return memo[key], false end
+  if depth >= DENY_DEPTH then return false, true end
+  memo[key] = false
+  local r, cut = false, false
+  for x in pairs(self.deny[key] or {}) do
+    local d, c = deniedKey(self, x.i .. "|" .. x.h, depth + 1)
+    cut = cut or c
+    if not d then r = true; break end
   end
-  return false
+  if cut then memo[key] = nil else memo[key] = r end
+  return r, cut
+end
+-- Did e's author deny exactly this body (e.i and e.h), by an X that stands?
+function Store:denied(e)
+  if e.h == nil then return false end
+  if self.memoRev ~= self.rev then self.memo, self.memoRev = {}, self.rev end
+  return (deniedKey(self, e.i .. "|" .. e.h, 0))
 end
 -- The highest number held for an author, holes and denied entries included.
 function Store:seen(a) return self.top[a] or 0 end
 -- My counter is at least n -> true; false (it stays) when n is more than
--- LEDGER_JUMP above it: an id no honest client of mine wrote, a forgery to deny.
+-- LEDGER_JUMP above L.base outside the adoption window: a forgery to deny.
 function Store:bump(n)
   local rec = self:record()
-  if n > rec.seq + C.LEDGER_JUMP then return false end
+  if self.adopting then
+    self.base = math.max(self.base, n)
+  elseif n > self.base + C.LEDGER_JUMP then
+    return false
+  end
   rec.seq = math.max(rec.seq, n)
   return true
 end

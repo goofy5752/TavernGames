@@ -5,6 +5,12 @@ local I, M, P = "Иван Петров", "Мария Колева", "Петър 
 local NOW = 1700000000
 
 local function L(me) return Ledger.new({}, me or "Иван Петров", function() return 1700000000 end) end
+-- A ledger of Иван over a store that holds his record (saved seq): no adoption window.
+local function settled(seq, store)
+  store = store or {}
+  store.me = { ["Иван Петров"] = { seq = seq or 0, born = 1 } }
+  return Ledger.new(store, "Иван Петров", function() return 1700000000 end), store
+end
 local D = { k = "D", gid = "Иван Петров#1700000000/12", g = "ttt", f = "Мария Колева", t = "Иван Петров", c = 50000, why = "lost" }
 
 -- A wire entry of `kind` numbered `n` by `author`, made at NOW.
@@ -188,15 +194,18 @@ describe("ledger store", function()
     for n = 1, 5000 do
       local h = string.format("%08x%08x", n * 7919, n)
       store.ev[M][n] = { i = Ledger.id(M, n), k = "R", at = NOW, gid = "t/" .. n, g = "ttt", n = { M, I }, w = { 1 }, l = { 2 }, h = h }
-      sum = (sum + tonumber(h, 16)) % 4294967296
+      sum = (sum + tonumber(h:sub(1, 8), 16)) % 4294967296
     end
-    store.x[M] = sum
+    store.x[M] = 0 -- a stale saved x is ignored
     local calls, hex = 0, ns.Sha256.hex
     ns.Sha256.hex = function(s) calls = calls + 1; return hex(s) end
     local s, err = pcall(function()
       local l = Ledger.new(store, I, function() return NOW end)
       eq(calls, 0, "a load hashes nothing")
+      eq(l:vector()[M].x, string.format("%06x", sum % 16777216))
       eq(l:add(paid(5001), M), "new"); eq(calls, 1, "one add hashes one body")
+      sum = (sum + tonumber(l:get(M .. ":5001").h:sub(1, 8), 16)) % 4294967296
+      eq(l:vector()[M].x, string.format("%06x", sum % 16777216))
       eq(l:vector()[M].n, 5001)
       calls = 0
       local d = l:digest(); eq(l:digest(), d); eq(calls, 1, "the digest is cached")
@@ -278,7 +287,7 @@ end)
 
 describe("ledger hardening", function()
   it("a forged id far above my counter never moves it (C)", function()
-    local l = L()
+    local l = settled(0)
     eq(l:add(entry("C", I, 999999999, { r = M .. ":1" }), P), "new")
     eq(l:seen(I), 999999999); eq(l:bump(999999999), false)
     eq(l:make("P", { f = M, c = 100, how = "hand" }).i, I .. ":1")
@@ -346,5 +355,82 @@ describe("ledger hardening", function()
     copy.x[M] = 12345
     local re = Ledger.new(copy, I, function() return NOW end)
     eq(re:vector(), good); eq(re:list(M), l:list(M)); eq(re:seen(M), 2)
+  end)
+end)
+
+describe("ledger hardening, round 2", function()
+  -- Мария's X number n naming body b.
+  local function deny(n, b) return entry("X", M, n, { r = b.i, h = b.h }) end
+  it("denial is recursive: depth 2 and depth 3 chains", function()
+    local l = L()
+    l:add(paid(5), P)
+    local p5 = l:get(M .. ":5")
+    l:add(deny(6, p5), M); eq(l:denied(p5), true)
+    local x6 = l:get(M .. ":6")
+    l:add(deny(7, x6), P); eq(l:denied(x6), true); eq(l:denied(p5), false)
+    local x7 = l:get(M .. ":7")
+    l:add(deny(8, x7), M); eq(l:denied(x7), true); eq(l:denied(x6), false); eq(l:denied(p5), true, "depth 2")
+    local x8 = l:get(M .. ":8")
+    l:add(deny(9, x8), P); eq(l:denied(p5), false)
+    l:add(deny(10, l:get(M .. ":9")), M); eq(l:denied(p5), true, "depth 3")
+  end)
+  it("a denial cycle or a very long chain in saved variables ends", function()
+    local function x(n, r, h, rh) return { i = M .. ":" .. n, k = "X", at = NOW, r = M .. ":" .. r, h = h, rh = rh } end
+    local a, b = string.rep("a", 16), string.rep("b", 16)
+    local l = Ledger.new({ ev = { [M] = { x(1, 2, a, b), x(2, 1, b, a) } } }, I, function() return NOW end)
+    local d = l:denied(l:get(M .. ":1")); ok(d == true or d == false)
+    local chain = {}
+    for n = 1, 3000 do chain[n] = x(n, n + 1, string.format("%016x", n), string.format("%016x", n + 1)) end
+    local long = Ledger.new({ ev = { [M] = chain } }, I, function() return NOW end)
+    d = long:denied(long:get(M .. ":1")); ok(d == true or d == false)
+  end)
+  it("the far-id bound is measured from the counter saved at login (two steps)", function()
+    local l = settled(0)
+    eq(l:add(entry("C", I, 1000, { r = M .. ":1" }), P), "new"); eq(l:bump(1000), true)
+    eq(l:add(entry("C", I, 2000, { r = M .. ":1" }), P), "new"); eq(l:bump(2000), false)
+    eq(l:add(entry("C", I, 1999, { r = M .. ":1" }), P), "new"); eq(l:bump(1999), false)
+    eq(l:make("P", { f = M, c = 100, how = "hand" }).i, I .. ":1001")
+    eq(l:bump(2001), true, "my own make moves the base")
+  end)
+  it("the adoption window of a new store adopts my ids without the bound", function()
+    local l = L()
+    eq(l.fresh, true); eq(l.adopting, true); eq(settled(0).fresh, false)
+    eq(l:add(entry("C", I, 5000, { r = M .. ":1" }), P), "new")
+    eq(l:make("P", { f = M, c = 100, how = "hand" }).i, I .. ":5001")
+    l.adopting = false
+    eq(l:bump(7000), false); eq(l:bump(6001), true)
+  end)
+  it("a load files one copy of a body and at most 4 versions of an id", function()
+    local src = L()
+    for j = 1, 6 do src:add(claim(10000 * j), P) end
+    local bodies = {}
+    for j = 1, 6 do bodies[j] = U.copy(src:get(M .. ":1")) end
+    local five = { claim(10000), claim(20000), claim(30000), claim(40000), claim(50000), claim(60000) }
+    for j, e in ipairs(five) do local b = Ledger.wire(e); b.h = Ledger.hash(b); five[j] = b end
+    local l = Ledger.new({ ev = { [M] = { five[1] } }, tw = { [M] = { [1] = { U.copy(five[1]), five[2], five[3], five[4], five[5], five[6] } } } },
+      I, function() return NOW end)
+    eq(#l:list(M), 4)
+    local one = Ledger.new({ ev = { [M] = { bodies[1] } }, tw = { [M] = { [1] = { bodies[2] } } } }, I, function() return NOW end)
+    local ref = L(); ref:add(bodies[1], P)
+    eq(one:list(M), ref:list(M)); eq(one:vector(), ref:vector())
+  end)
+  it("a malformed record or twin list in saved variables", function()
+    for _, rec in ipairs({ "junk", { seq = 2.5, born = 1 }, { seq = -1, born = 1 }, { born = 1 } }) do
+      local l = Ledger.new({ me = { [I] = rec } }, I, function() return NOW end)
+      eq(l.fresh, true); eq(l:make("P", { f = M, c = 100, how = "hand" }).i, I .. ":1")
+    end
+    local src = L(); src:add(paid(1), M)
+    local b = U.copy(src:get(M .. ":1"))
+    for _, tw in ipairs({ "x", { [M] = "x" }, { [M] = { [1] = { "x", 7 } } }, { [M] = { [9] = { U.copy(b) } } } }) do
+      local l = Ledger.new({ ev = { [M] = { U.copy(b) } }, tw = tw }, I, function() return NOW end)
+      eq(l:list(M), src:list(M))
+    end
+  end)
+  it("make skips a number already held under my name", function()
+    local l, store = settled(0)
+    eq(l:add(entry("C", I, 1001, { r = M .. ":1" }), P), "new")
+    store.me[I].seq = 1000
+    local again = Ledger.new(store, I, function() return NOW end)
+    eq(again:make("P", { f = M, c = 100, how = "hand" }).i, I .. ":1002")
   end)
 end)
