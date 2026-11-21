@@ -146,6 +146,21 @@ end
 -- Requests to the host
 ---------------------------------------------------------------------------
 
+-- Host: would the seat-0 event `a` (a deal or a show) publish only faces a
+-- watcher may see once it is applied? The dealer knows every face; one it
+-- publishes too early is refused here, since the audit would pass it (the
+-- face is true).
+local function allPublic(s, a, faces)
+  local engine = s:engine()
+  local trial = copy(s.state)
+  if not engine.apply(trial, 0, a) then return false end
+  local public = engine.view(trial, 0).deck
+  for i in pairs(faces) do
+    if public[i] == nil then return false end
+  end
+  return true
+end
+
 -- Host: a fair action by `seat` (rule 4); it never reaches the engine.
 local function request(s, seat, a)
   local fair, op = s.fair, a.op
@@ -164,12 +179,14 @@ local function request(s, seat, a)
   if op == "commit" then
     if commitFits(fair, seat, a.c) then s:play(0, { k = "fair", op = "commit", h = fair.h, seat = seat, c = a.c }) end
   elseif op == "deal" then
-    if seat == fair.d and fair.stage == "seed" and type(a.deck) == "table" then
-      s:play(0, { k = "deal", deck = a.deck })
+    local ev = { k = "deal", deck = a.deck }
+    if seat == fair.d and fair.stage == "seed" and type(a.deck) == "table" and allPublic(s, ev, a.deck) then
+      s:play(0, ev)
     end
   elseif op == "show" then
-    if seat == fair.d and fair.stage == "dealt" and type(a.cards) == "table" then
-      s:play(0, { k = "show", cards = a.cards })
+    local ev = { k = "show", cards = a.cards }
+    if seat == fair.d and fair.stage == "dealt" and type(a.cards) == "table" and allPublic(s, ev, a.cards) then
+      s:play(0, ev)
     end
   elseif op == "reveal" then
     if seat == fair.d and revealFits(s, a.s) then s:play(0, { k = "fair", op = "reveal", h = fair.h, s = copy(a.s) }) end

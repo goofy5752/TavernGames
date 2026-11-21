@@ -337,3 +337,31 @@ describe("deal cheats: a move in my name", function()
     eq(got[b][1].verdict, "ok")
   end)
 end)
+
+describe("deal cheats: what the dealer publishes", function()
+  local function act(x) return { v = 1, t = "ACT", tid = tid, a = x } end
+
+  it("the host refuses a deal or a show that publishes a face a watcher may not see", function()
+    setup()
+    local held
+    a.receive = function(self, channel, sender, msg)
+      if msg.t == "ACT" and type(msg.a) == "table" and msg.a.op == "deal" then held = ns.Util.copy(msg); return end
+      return ns.Client.receive(self, channel, sender, msg)
+    end
+    a:startGame(); sim:run(1); a.receive = nil
+    ok(held); eq(a.session.fair.stage, "seed")
+    local deck, h, q = b.session.fair.deck, a.session.fair.h, a.session.seq
+    eq(held.a.deck, { [5] = deck[5] })                               -- the up card only
+    -- With a card of the host's hand in it (anybody watching would see it).
+    a:receive("WHISPER", B, act{ k = "fair", op = "deal", h = h, deck = { [5] = deck[5], [1] = deck[1] } })
+    eq({ a.session.seq, a.session.fair.stage }, { q, "seed" })
+    a:receive("WHISPER", B, held)
+    eq({ a.session.seq, a.session.fair.stage }, { q + 1, "dealt" }); sim:run(1)
+    q = a.session.seq
+    a:receive("WHISPER", B, act{ k = "fair", op = "show", h = h, cards = { [2] = deck[2] } }) -- a card b still holds
+    a:receive("WHISPER", B, act{ k = "fair", op = "show", h = h, cards = { [9] = deck[9] } }) -- a card of the stock
+    eq(a.session.seq, q)
+    finish(); sim:run(1)
+    eq(last(a).verdict, "ok"); eq(last(b).verdict, "ok")
+  end)
+end)
