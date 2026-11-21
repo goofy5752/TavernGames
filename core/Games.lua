@@ -8,7 +8,7 @@ local Games = {}
 ns.Games = Games
 
 Games.ORDER = { "ttt", "deathroll", "santase", "belot", "tabla", "holdem" }
-Games.PLAYERS = { ttt = "2", deathroll = "2–5", santase = "2", belot = "4", tabla = "2", holdem = "2–9" }
+Games.PLAYERS = { ttt = "2", deathroll = "2–5", santase = "2", belot = "4", tabla = "2", holdem = "2–6" }
 
 -- A game in ORDER is playable only once its integration stage lands. Every
 -- game of ORDER is integrated now (santase: stage B, belot: C, tabla: D,

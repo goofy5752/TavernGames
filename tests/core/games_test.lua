@@ -38,6 +38,12 @@ describe("game registry", function()
     ok(G.engine("ttt") ~= nil); ok(G.engine("deathroll") ~= nil); ok(G.engine("santase") == ns.Engines.santase)
     ok(G.engine("optgame") == ns.Engines.optgame)
   end)
+  it("the player counts shown in the hall are each engine's minSeats and maxSeats", function()
+    for _, id in ipairs(G.ORDER) do
+      local e = ns.Engines[id]
+      eq(G.PLAYERS[id], e.minSeats == e.maxSeats and tostring(e.minSeats) or (e.minSeats .. "–" .. e.maxSeats))
+    end
+  end)
 
   it("resolve fills defaults and rejects what the engine does not offer", function()
     eq(G.resolve("ttt", nil), {}); eq(G.resolve("optgame", nil), {goal=2}); eq(G.resolve("optgame", {goal=3}), {goal=3})
