@@ -51,8 +51,9 @@ ns.Engines = ns.Engines or {}
  seat 0 {k="deal", deck}, {k="show", cards = {[i] = face}}, {k="void"}. Hand result: s.res = {winner
  (0 = tie), gp, reason = "66" | "fail" | "tie" | "out" (played out below 66 with unequal totals; cannot
  occur)}.
- {k="void"} (phase "play" only): the running hand is annulled, nothing scores, the same dealer deals it
- again (back to phase "deal"); the game points of the match stay.
+ {k="void"} (phase "play" only): the running hand is annulled, nothing scores and it is dealt again
+ (back to phase "deal") with the same s.dealer, so the same seat leads; the game points of the match
+ stay. Who holds the deck for the new deal is the extension's business (the next seat, core/Deal.lua).
 
  Views: a seat sees its own hand, the cards on the table, the last completed trick, the face-up trump
  card, cards shown in a hand (marriage partner, a trump card taken from under the stock), and
@@ -297,7 +298,7 @@ local function show(s, a)
   return true
 end
 
--- The running hand is annulled: back to the deal, the same dealer, the match score kept.
+-- The running hand is annulled: back to the deal, the same s.dealer (the same leader), the match score kept.
 local function void(s)
   if s.phase ~= "play" then return nil, "phase" end
   s.phase, s.hand = "deal", s.hand - 1

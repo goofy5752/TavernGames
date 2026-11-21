@@ -16,11 +16,20 @@ local _, ns = ...
 --   "noreveal" - closed by the next open, or after the last hand of a match by
 --   EV {k="fair", op="noreveal", h} (host only) or at the latest by the next start.
 -- Failures: a shuffle not dealt FAIR_WAIT after its open is opened again
--- (a new h, fresh seeds), and a stand during the shuffle reopens it at once.
+-- (a new h, fresh seeds, the same dealer), and a stand during the shuffle
+-- reopens it at once. A shuffle that had every commit and was not dealt
+-- although nobody left closes "bad", "nodeal" (the dealer saw the seeds).
 -- A player missing faces of its hand asks the dealer again (PRQ): at once
 -- after adopting a dealt hand, else after FAIR_ASK_GAP. A dealer without its
 -- deck (a reload) or whose seat stands mid-hand: the hand is void (EV seat 0
--- {k="void"}), nothing scores, and the deal is asked for again.
+-- {k="void"}), nothing scores, and the deal is asked for again - from the
+-- next seat (the count of deals is kept), so a void never buys the same
+-- dealer another deck. Voids and no-deals are counted per dealer name and
+-- match (s.fairVoids) and the status line names the dealer.
+-- Fouls (fair.foul, see Deal.close): "mine" (my commit or seed was replaced),
+-- "commit" (a commit changed), "round" (a snapshot changed the round or
+-- skipped events unasked), "play" (an event my engine refused), "forged" (a
+-- move or a void in my name that I did not make).
 -- A member whose snapshot shows that a hand it held open was closed or
 -- replaced closes it "unseen" (it missed the end). A snapshot of the same
 -- dealt hand makes a reveal or void I asked for due again (it may have gone to
@@ -38,8 +47,11 @@ local _, ns = ...
 -- before its last commit event; s.fairN = hands dealt in this match;
 -- s.fairTimer (host) = the round's wait (FAIR_WAIT): for a shuffle from the
 -- open until the deal, for a reveal from the end of the hand. s.askTimer =
--- my next PRQ. s.fairLast = {h, verdict, why, dealer} of the last closed
--- hand; s.fairSeen = {ok, bad} hands closed so far in this match.
+-- my next PRQ. s.fairLast = {h, verdict, why, dealer, n (the dealer's count
+-- of voids and no-deals, on such a verdict)} of the last closed hand;
+-- s.fairSeen = {ok, bad} hands closed so far in this match; s.fairVoids =
+-- dealer name -> hands voided or not dealt; s.fairCry = {h, seat, name, why}
+-- the last complaint of a seat (op "protest"), s.fairCries their count.
 -- Nothing is sent from the `table` hook: an event sent from inside
 -- Session:apply would overtake the one being applied. Sending happens in
 -- `applied`, `adopted`, the act hook and the message handlers.
@@ -53,7 +65,7 @@ local copy, seatOf, contains = ns.Util.copy, ns.Util.seatOf, ns.Util.contains
 local STAGES = { commit = true, seed = true, dealt = true, done = true }
 
 -- Reasons of "bad" that only the cheated client can see: it tells the table.
-local PRIVATE = { mine = true, dealt = true }
+local PRIVATE = { mine = true, dealt = true, forged = true }
 
 local function isInt(x) return type(x) == "number" and x % 1 == 0 end
 
@@ -234,6 +246,12 @@ function Deal.close(s, verdict, why, round)
   if fair then h, dealer = fair.h, fair.dealer end
   if fair and fair.foul then verdict, why = "bad", fair.foul end
   s.fairLast = { h = h, verdict = verdict, why = why, dealer = dealer }
+  -- A hand the dealer gave up, or did not deal: counted against its name.
+  if dealer and (verdict == "void" or why == "nodeal") then
+    local voids = s.fairVoids or {}
+    voids[dealer], s.fairVoids = (voids[dealer] or 0) + 1, voids
+    s.fairLast.n = voids[dealer]
+  end
   local seen = s.fairSeen or { ok = 0, bad = 0 }
   if seen[verdict] then seen[verdict] = seen[verdict] + 1 end
   s.fairSeen = seen
@@ -304,16 +322,23 @@ local function takeSeed(s, sender, seed)
   end
 end
 
+-- Dealer: the seeds of the round in p order, once every one is in.
+local function seedsIn(fair)
+  local list = {}
+  for k = 1, #fair.p do
+    list[k] = fair.seeds and fair.seeds[fair.p[k]]
+    if not list[k] then return nil end
+  end
+  return list
+end
+
 -- Dealer: every participant's seed is in -> the deck, and the deal is asked for
 -- with the faces a watcher sees.
 local function tryDeal(s)
   local fair, engine = s.fair, s:engine()
   if fair.dealing or fair.stage ~= "seed" or s.mySeat ~= fair.d then return end
-  local list = {}
-  for k = 1, #fair.p do
-    list[k] = fair.seeds[fair.p[k]]
-    if not list[k] then return end
-  end
+  local list = seedsIn(fair)
+  if not list then return end
   local deck = Fair.deck(engine.DECK, list, Fair.handId(s.tid, fair.h))
   local full = Fair.full(s.state, s.state.deck)
   if not engine.apply(full, 0, { k = "deal", deck = deck }) then return end
@@ -373,11 +398,9 @@ end
 
 -- Dealer, after the hand: every seed, in p order, to the host (once).
 local function reveal(s)
-  local fair, list = s.fair, {}
-  for k = 1, #fair.p do
-    list[k] = fair.seeds and fair.seeds[fair.p[k]]
-    if not list[k] then return end
-  end
+  local fair = s.fair
+  local list = seedsIn(fair)
+  if not list then return end
   fair.revealed = true
   Deal.submit(s, { k = "fair", op = "reveal", h = fair.h, s = list })
 end
@@ -457,7 +480,9 @@ end
 local function takeOver(s)
   local client, fair = s.client, s.fair
   client:after(0, function()
-    if client.session ~= s or s.role ~= "host" or s.fair ~= fair or fair.stage ~= "dealt" then return end
+    if client.session ~= s or s.role ~= "host" or s.fair ~= fair then return end
+    -- A shuffle goes on: my own deal, if I am its dealer, is asked for again.
+    if fair.stage ~= "dealt" then return Deal.react(s) end
     if s.seats[fair.d] ~= fair.dealer then
       if not Deal.handOver(s) and s:seatedCount() >= s:engine().minSeats then s:play(0, { k = "void" }) end
       return
@@ -607,7 +632,7 @@ ns.Ext.fair = {
       s.fair = {
         h = a.h, d = a.d, p = copy(a.p), dealer = s.seats[a.d], commits = {}, held = {}, stage = "commit",
         priv = {}, base = s:engine().snapshot(s.state), log = {},
-        replaced = old and (old.stage == "dealt" or (old.foul and old.stage ~= "done")) and old or nil,
+        replaced = old and (old.stage == "dealt" or old.stage == "seed" or (old.foul and old.stage ~= "done")) and old or nil,
       }
       return true
     elseif a.op == "protest" then
@@ -649,16 +674,21 @@ ns.Ext.fair = {
       -- A new match while the last hand's seeds are still out: that hand is нередовна.
       if k == "start" and s.fair and s.fair.stage == "dealt" then Deal.close(s, "bad", "noreveal") end
       s.fair, s.fairN, s.fairEarly = nil, 0, nil
-      if k == "start" then s.fairLast, s.fairSeen, s.fairCry, s.fairCries, s.fairCried = nil, nil, nil, nil, nil end
+      if k == "start" then
+        s.fairLast, s.fairSeen, s.fairVoids, s.fairCry, s.fairCries, s.fairCried = nil, nil, nil, nil, nil, nil
+      end
       stopWait(s)
       return
     end
     local fair = s.fair
     if k == "void" then
-      -- The hand is annulled; the host's timers ask for the deal again.
+      -- The hand is annulled; the host's timers ask for the deal again. The
+      -- count of deals stays, so the next seat deals it, not the same dealer.
       if s.role == "host" then stopWait(s) end
-      Deal.close(s, "void", nil, fair and fair.stage ~= "done" and fair or false)
-      if (s.fairN or 0) > 0 then s.fairN = s.fairN - 1 end
+      local round = fair and fair.stage ~= "done" and fair or false
+      -- I deal this hand, hold its deck and did not give it up: not my void.
+      if round and round.d == s.mySeat and round.deck and not round.voidAsked then foul(round, "forged") end
+      Deal.close(s, "void", nil, round)
       s.fair = nil
       return
     end
@@ -670,11 +700,25 @@ ns.Ext.fair = {
       s.fairCries = (s.fairCries or 0) + 1
       return
     end
-    -- A hand whose seeds never came out: closed before anything else.
+    -- The round this open replaces, closed before anything else: a hand whose
+    -- seeds never came out; a shuffle with every commit in that was not dealt
+    -- although nobody left (the dealer saw the seeds and may be fishing for
+    -- another deck: "nodeal" - but not on a client that knows a seed was
+    -- missing, mine or one the dealer never got, or that its own deal was
+    -- asked for and lost); a shuffle with a foul against it.
     if op == "open" and fair.replaced then
       local old = fair.replaced
       fair.replaced = nil
-      Deal.close(s, "bad", "noreveal", old)
+      if old.stage == "dealt" then
+        Deal.close(s, "bad", "noreveal", old)
+      elseif old.stage == "seed" and ns.Util.same(old.p, fair.p) then
+        local me = s.mySeat
+        local excused = me ~= nil and contains(old.p, me)
+          and ((me ~= old.d and not old.seedSent) or (me == old.d and (old.dealing or not seedsIn(old))))
+        Deal.close(s, excused and "unseen" or "bad", not excused and "nodeal" or nil, old)
+      elseif old.foul then
+        Deal.close(s, "unseen", nil, old)
+      end
     end
     -- A deal without a shuffle round holding every commit (a closed round is
     -- not judged again: the verdict belongs to no round).
@@ -790,11 +834,16 @@ ns.Ext.fair = {
   end,
 
   hostChanged = function(s)
-    if s.role ~= "host" then return stopWait(s) end
     local fair = s.fair
+    -- The deal I asked for may have gone to the host that is gone: asked again
+    -- (a member's next snapshot, or takeOver, makes my role react).
+    if fair and fair.stage == "seed" then fair.dealing = nil end
+    if s.role ~= "host" then return stopWait(s) end
     if not fair then return end
-    if not s.fairTimer and Deal.handOver(s) then armWait(s, fair.h) end
-    if fair.stage == "dealt" then takeOver(s) end
+    -- A shuffle with every commit in goes on under a fresh wait (`need` would
+    -- open it again at once, and that would read as the dealer not dealing).
+    if not s.fairTimer and (Deal.handOver(s) or fair.stage == "seed") then armWait(s, fair.h) end
+    if fair.stage == "seed" or fair.stage == "dealt" then takeOver(s) end
   end,
 }
 
@@ -818,13 +867,22 @@ function Deal.status(s)
     return "fair.protest", cry.name
   end
   if not last then return nil end
-  if last.verdict == "void" then return "fair.void" end
+  if last.verdict == "void" then
+    -- By name; with the count from the dealer's second one in this match.
+    if not last.dealer then return "fair.void" end
+    if (last.n or 1) > 1 then return "fair.voidMany", last.dealer, last.n end
+    return "fair.voidBy", last.dealer
+  end
   return "fair.last", last.verdict
 end
 
--- Does the fairness line warn (red)? A bad hand or a complaint in this match.
+-- Does the fairness line warn (red)? A bad hand or a complaint in this match,
+-- or a dealer who gave up or did not deal a second hand.
 function Deal.alarm(s)
   local last, seen = s.fairLast, s.fairSeen
+  for _, n in pairs(s.fairVoids or {}) do
+    if n > 1 then return true end
+  end
   return (last and last.verdict == "bad") or (seen and seen.bad > 0) or (s.fairCries or 0) > 0 or false
 end
 

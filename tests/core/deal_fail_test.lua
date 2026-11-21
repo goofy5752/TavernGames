@@ -121,10 +121,47 @@ describe("deal failures", function()
     sim:online(B); sim:run(20); eq(a.session.fair.stage, "dealt"); eq(b.session.fair.stage, "dealt"); eq(ns.Deal.missing(a.session), false)
   end)
 
-  it("a seed that never arrives: the round is reopened", function()
-    local sim = table2(); local restore = drop(b, "SED"); start()
+  it("a seed that never arrives: the round is reopened; whoever sent its seed sees a dealer that did not deal", function()
+    local sim = table2(); d:watch(tid); sim:run(1); local restore = drop(b, "SED"); start()
     local h1 = a.session.fair.h; eq(a.session.fair.stage, "seed"); eq({ ns.Deal.status(a.session) }, { "fair.dealing", B })
     restore(); sim:run(20); ok(a.session.fair.h ~= h1); eq(a.session.fair.stage, "dealt")
+    for _, cl in ipairs{ a, d } do
+      eq(#events(cl), 1); local e = events(cl)[1]
+      eq({ e.h, e.verdict, e.why, e.dealer }, { h1, "bad", "nodeal", B })
+    end
+    eq({ events(b)[1].verdict, events(b)[1].why }, { "unseen", nil })       -- the dealer knows a seed was missing
+    eq({ a.session.fair.d, a.session.fairN }, { 2, 1 })                        -- the same dealer, with fresh seeds
+    eq(a.session.fairVoids, { [B] = 1 })
+  end)
+
+  it("a dealer that has every seed and does not deal within 20 s: нередовна (nodeal), by name", function()
+    local sim = table3(); d:watch(tid); sim:run(1)
+    local restore = drop(a, "ACT", asks("deal")); start()                      -- as if b never asked for the deal
+    local h1 = a.session.fair.h; eq({ a.session.fair.stage, a.session.fair.d }, { "seed", 2 })
+    sim:run(19); eq(#events(a), 0); restore(); sim:run(2)
+    for _, cl in ipairs{ a, c, d } do
+      eq(#events(cl), 1); local e = events(cl)[1]
+      eq({ e.h, e.verdict, e.why, e.dealer }, { h1, "bad", "nodeal", B })
+      eq(cl.session.fairLast, { h = h1, verdict = "bad", why = "nodeal", dealer = B, n = 1 })
+      eq(ns.Deal.alarm(cl.session), true)
+    end
+    eq(events(b)[1].verdict, "unseen")                                         -- b did ask: its deal was dropped on the way
+    eq(a.session.fair.stage, "dealt")
+  end)
+
+  it("a commit that never comes is nobody's no-deal: the round reopens without a verdict", function()
+    local sim = table2(); sim:offline(B); start(); sim:run(41)
+    eq(opensFromA(), 3); eq(#events(a), 0); eq(a.session.fairVoids, nil)
+  end)
+
+  it("a new host during the shuffle waits for the deal instead of opening again; the dealer asks the new host", function()
+    local sim = table3(); drop(a, "ACT", asks("deal")); start()                -- b's deal is lost on the way to a
+    local h1 = a.session.fair.h; eq({ a.session.fair.stage, b.session.fair.dealing }, { "seed", true })
+    relog(A)                                                                   -- the host is gone; its seat stays
+    for _ = 1, 100 do sim:run(1); if b.session.role == "host" then break end end
+    eq(b.session.role, "host"); sim:run(2)
+    eq({ b.session.fair.h, b.session.fair.stage, c.session.fair.stage }, { h1, "dealt", "dealt" })
+    eq(#events(b), 0); eq(#events(c), 0)
   end)
 
   it("a relogged player gets its hand again from the dealer", function()
@@ -140,17 +177,43 @@ describe("deal failures", function()
     eq(#events(a), 1); eq(events(a)[1].verdict, "ok")
   end)
 
-  it("the dealer relogs mid-hand: void, the same dealer deals again", function()
+  it("the dealer relogs mid-hand: void by name, and the next seat deals the hand again", function()
     local sim = table3(); start(); local h1 = a.session.fair.h; auto(1)
     local b2 = relog(B); sim:run(3)
-    eq(events(a)[1].verdict, "void"); ok(a.session.fair.h ~= h1); eq({ a.session.fair.d, a.session.fair.stage }, { 2, "dealt" })
-    eq(a.session.state.hand, 1); eq(a.session.state.pts, { 0, 0, 0 }); ok(b2.session.fair.deck ~= nil); eq(a.session.fairN, 1)
+    eq({ events(a)[1].verdict, events(a)[1].dealer, events(a)[1].h }, { "void", B, h1 })
+    ok(a.session.fair.h ~= h1); eq({ a.session.fair.d, a.session.fair.stage }, { 3, "dealt" })
+    eq(a.session.state.hand, 1); eq(a.session.state.pts, { 0, 0, 0 }); eq(a.session.fairN, 2)
+    ok(c.session.fair.deck ~= nil); eq(b2.session.fair.deck, nil)
+    eq(a.session.fairLast, { h = h1, verdict = "void", dealer = B, n = 1 }); eq(a.session.fairVoids, { [B] = 1 })
+    eq({ ns.Deal.status(a.session) }, { "fair.voidBy", B }); eq(ns.Deal.alarm(a.session), false)
+  end)
+
+  it("a second void by the same dealer in a match is counted and turns the line red", function()
+    local sim = table2(); start(); auto(1)
+    relog(B); sim:run(3)                                                       -- hand 1 void; a deals it again
+    eq({ a.session.fair.d, a.session.fairN }, { 1, 2 })
+    finish(); sim:run(2)                                                       -- b deals again
+    eq({ a.session.fair.d, a.session.fair.stage }, { 2, "dealt" }); auto(1)
+    relog(B); sim:run(3)
+    local e = events(a)[#events(a)]; eq({ e.verdict, e.dealer }, { "void", B })
+    eq(a.session.fairVoids, { [B] = 2 }); eq(a.session.fairLast.n, 2)
+    eq({ ns.Deal.status(a.session) }, { "fair.voidMany", B, 2 }); eq(ns.Deal.alarm(a.session), true)
+    eq(a.session.fair.d, 1)
+    ok(a.session.fairSeen.bad == 0)
+  end)
+
+  it("a void the dealer did not ask for, while it holds the deck: its own verdict is нередовна (forged) and it tells the table", function()
+    local sim = table3(); start(); local h1 = a.session.fair.h; auto(1); eq(a.session.fair.d, 2)
+    a.session:play(0, { k = "void" }); sim:run(1)
+    eq({ events(b)[1].h, events(b)[1].verdict, events(b)[1].why }, { h1, "bad", "forged" })
+    eq(events(c)[1].verdict, "void")
+    eq(c.session.fairCry, { h = h1, seat = 2, name = B, why = "forged" })
   end)
 
   it("the dealer stands mid-hand: void, the next player deals", function()
     local sim = table3(); start(); b:stand(); sim:run(3)
     eq(a.session.state.players, { 1, 3 }); eq(events(a)[1].verdict, "void")
-    eq({ a.session.fair.d, a.session.fair.p, a.session.fair.stage }, { 3, { 1, 3 }, "dealt" }); ok(c.session.fair.deck ~= nil)
+    eq({ a.session.fair.d, a.session.fair.p, a.session.fair.stage }, { 1, { 1, 3 }, "dealt" }); ok(a.session.fair.deck ~= nil)
   end)
 
   it("a player stands during the shuffle: the round restarts without him", function()
@@ -194,8 +257,10 @@ describe("deal failures", function()
     table2(); start(); eq({ ns.Deal.status(a.session) }, {})
     finish(); sim:run(1); eq({ ns.Deal.status(a.session) }, { "fair.last", "ok" })
     sim:run(2); eq(a.session.fair.stage, "dealt"); eq({ ns.Deal.status(a.session) }, { "fair.last", "ok" })
-    a.session:play(0, { k = "void" }); eq({ ns.Deal.status(a.session) }, { "fair.void" })
-    sim:run(1); eq(a.session.fair.stage, "dealt"); eq({ ns.Deal.status(a.session) }, { "fair.void" })
+    a.session.fair.voidAsked = true                                             -- a deals this hand and gives it up
+    a.session:play(0, { k = "void" }); eq({ ns.Deal.status(a.session) }, { "fair.voidBy", A })
+    sim:run(1); eq(a.session.fair.stage, "dealt"); eq({ ns.Deal.status(a.session) }, { "fair.voidBy", A })
+    a.session.fairLast.dealer = nil; eq({ ns.Deal.status(a.session) }, { "fair.void" }) -- nobody to name
     local T = ns.Locale.tables
     eq(T.bg["fair.v.ok"], "проверена"); eq(T.bg["fair.v.bad"], "нередовна"); eq(T.en["fair.v.ok"], "verified")
     eq(T.bg["fair.v.unseen"], "не съм я гледал цялата"); eq(T.bg["fair.waiting"], "Чакаме %s за разбъркването…")
@@ -207,12 +272,13 @@ describe("deal failures", function()
     eq({ a.session.fairN, a.session.fair.d, a.session.fair.stage }, { 2, 1, "dealt" })
     local restore = drop(a, "HI"); local b2 = relog(B); sim:run(0); restore()  -- b2 holds no session yet
     eq(b2.session, nil)
-    a.session:play(0, { k = "void" })                                         -- no round open, one hand counted
-    eq(a.session.fair, nil); eq(ns.Ext.fair.snap(a.session), { n = 1 })
+    a.session.fair.voidAsked = true
+    a.session:play(0, { k = "void" })                                         -- no round open, the deal moves on
+    eq(a.session.fair, nil); eq(ns.Ext.fair.snap(a.session), { n = 2 })
     local syn = #sentOf("SYN")
     a.session:snapshotTo(B); sim:run(1)
     eq(#sentOf("SYN"), syn)                                                   -- the open was not refused
-    eq({ b2.session.fairN, b2.session.fair.h, b2.session.fair.d, b2.session.fair.stage }, { 2, a.session.fair.h, 1, "dealt" })
+    eq({ b2.session.fairN, b2.session.fair.h, b2.session.fair.d, b2.session.fair.stage }, { 3, a.session.fair.h, 2, "dealt" })
   end)
 
   it("a new host after the last hand of a match waits for its reveal", function()
@@ -271,7 +337,7 @@ describe("deal failures", function()
       eq(#events(cl), 3); eq({ events(cl)[3].verdict, events(cl)[3].h }, { "void", h })
     end
     local r = b.session.fair
-    eq({ r.p, r.d, r.stage, b.session.fairN }, { { 2, 3 }, 3, "dealt", 3 }); ok(c.session.fair.deck ~= nil)
+    eq({ r.p, r.d, r.stage, b.session.fairN }, { { 2, 3 }, 2, "dealt", 4 }); ok(b.session.fair.deck ~= nil)
   end)
 
   it("a dealer whose void request was lost asks again after its next snapshot", function()
@@ -281,6 +347,6 @@ describe("deal failures", function()
     eq(#events(a), 0); eq({ b2.session.fair.h, b2.session.fair.voidAsked }, { h1, true })
     restore(); a.session:snapshotTo(B); sim:run(3)
     eq(#events(a), 1); eq(events(a)[1].verdict, "void")
-    ok(a.session.fair.h ~= h1); eq({ a.session.fair.d, a.session.fair.stage }, { 2, "dealt" }); ok(b2.session.fair.deck ~= nil)
+    ok(a.session.fair.h ~= h1); eq({ a.session.fair.d, a.session.fair.stage }, { 3, "dealt" }); ok(c.session.fair.deck ~= nil)
   end)
 end)
