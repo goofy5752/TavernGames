@@ -748,12 +748,12 @@ describe("holdem at the table", function()
     E.leave(s, 3); eq({ s.seats[3].leaving, s.p[3].gone }, { true, nil })
     ok(E.apply(s, 0, { k = "join", seat = 3 })); eq({ s.p[3].gone, s.seats[3].leaving, s.seats[3].chips, E.hidden(s, 3) }, { true, true, 990, {} })
     eq(E.view(s, 3).deck, {})                                                        -- no face of the leaver is shown to the newcomer
-    acts(s, { { 1, "fold" } }); eq({ s.phase, chips(s), s.last.left }, { "done", { 1000, 1010, 1000 }, { [3] = 990 } })   -- seat 3 now holds a fresh stack
+    acts(s, { { 1, "fold" } }); eq({ s.phase, chips(s), s.last.left }, { "done", { 1000, 1005, 1000 }, { [3] = 995 } })   -- seat 3 now holds a fresh stack
     ok(E.apply(s, 0, { k = "hand" })); eq(E.players(s), { 1, 2, 3 })
-    -- one newcomer a chair; a newcomer who stands up again before the hand ends is not seated
+    -- one newcomer a chair; a leave of a taken chair is the newcomer's (the leaver already stood up): he is not seated
     local u = mk({ 1, 2, 3 }); start(u); E.leave(u, 3); ok(E.apply(u, 0, { k = "join", seat = 3 }))
     rejects(u, 0, { k = "join", seat = 3 }, "seat"); E.leave(u, 3)
-    acts(u, { { 1, "fold" } }); eq({ u.seats[3], u.last.left, chips(u) }, { false, { [3] = 990 }, { 1000, 1010 } })
+    acts(u, { { 1, "fold" } }); eq({ u.seats[3], u.last.left, chips(u) }, { false, { [3] = 995 }, { 1000, 1005 } })
   end)
   it("a street and the showdown need their faces: asked from whoever holds the deck", function()
     local s = mk({ 1, 2, 3 }); start(s, { [1] = "AS AD", [2] = "KS KD", [3] = "7C 2D" }, "3H 8S 9C JD 4C")

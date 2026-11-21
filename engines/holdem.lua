@@ -13,10 +13,10 @@ RULES
     When a chair is vacated its record of the last hand is flagged gone: whoever sits there next sees none
     of those cards (E.view, E.hidden). A busted seat may stand up and sit down again for a fresh starting
     stack (play chips). A join on a chair whose player stood up during this hand (leaving) is accepted, one
-    newcomer a chair: the leaver's hand is gone at once (flagged gone, the newcomer owes no face of it), its
-    chips behind go with it (state.last.left), everything it put in stays in the pot, an uncalled bet
-    included, and the newcomer is seated with the starting stack when the hand ends (not if he stood up
-    again before).
+    newcomer a chair: the leaver's hand is gone at once (flagged gone, the newcomer owes no face of it), the
+    leaver is folded and goes with its chips when the hand ends as any leaver does (state.last.left), and
+    the newcomer is seated with the starting stack then. A leave of that chair before the hand ends is the
+    newcomer's: he is not seated.
  3. Button: the first hand's button is the first playing seat at or after opts.first (default 1); every
     next hand it moves to the next playing seat clockwise (seat numbers upwards, 9 wraps to 1).
  4. Blinds: small blind = first playing seat left of the button, big blind = the next one; heads-up the
@@ -54,9 +54,8 @@ RULES
 11. Showdown: every live hand is shown (no mucking). The last bettor/raiser of the river shows first,
     else the first live player left of the button; then clockwise. Best five of seven (holdem_eval.lua).
 12. Pots: contributions are layered by size. A layer only one player paid into is an uncalled bet and goes
-    back to him (not to a leaver whose chair was taken, rule 2). A pot is won only by live players who paid
-    its whole layer; folded chips stay in the pot (a layer that only folded players paid into, which only a
-    leave can cause, joins the pot below it).
+    back to him. A pot is won only by live players who paid its whole layer; folded chips stay in the pot
+    (a layer that only folded players paid into, which only a leave can cause, joins the pot below it).
     Consecutive layers with the same live players make one pot. Each pot is split among its best live hands;
     odd chips go one at a time to those winners in order from the first seat left of the button.
 13. state.last, the record of the finished hand: { hand = n, contrib = {[seat] = chips put in minus chips
@@ -67,9 +66,10 @@ RULES
 14. A cash table has no match end: E.result is nil; E.over is false until the game is closed (rule 17).
     E.auto: check if possible, else fold.
 15. {k="void"} at seat 0, only during a hand (phase deal, bet, street or showdown; else "phase"): every
-    seat dealt in gets back all it put in this hand, nothing is shown, state.last = {hand, void = true,
-    contrib = {}, won = {}, pots = {}, shown = {}, cat = {}, left}; leavers go and busted seats sit out as
-    after any hand. The hand count and the button stay, so the next hand moves the button on.
+    seat dealt in gets back all it put in this hand (nothing stays in the pot), nothing is shown,
+    state.last = {hand, void = true, contrib = {}, won = {}, pots = {}, shown = {}, cat = {}, left};
+    leavers go and busted seats sit out as after any hand. The hand count and the button stay, so the
+    next hand moves the button on.
 16. {k="away", seat} at seat 0 sits an occupied seat out ("seat" if empty or already away): in a hand it is
     folded as a leave folds it (its chips stay in the pot) but it keeps its chair; an away seat is not a
     playing seat (rule 1) and is dealt no hand. {k="back"} by the seat itself, in any phase, only while it
@@ -78,8 +78,9 @@ RULES
     "closed" (at once outside a hand): the game is over (E.over), nothing is dealt, hand and join are
     refused with "phase" (join already once the close is given).
 18. Who shuffles and deals (E.players, E.dealer): the players of a hand are the seats of state.order still
-    in their chair, not leaving and not away, ascending ({} before the first hand); the dealer is the
-    button while it is one of them, else the next of them clockwise after it (nil without a button).
+    in their chair, not leaving and not away (a record flagged gone, rule 2, is nobody's), ascending ({}
+    before the first hand); the dealer is the button while it is one of them, else the next of them
+    clockwise after it (nil without a button).
 19. A street or the showdown on a state that lacks one of its faces (a view): E.system returns
     {k="street"/"showdown", need="faces"}, 0; the faces come from whoever holds the deck.
 
@@ -274,7 +275,7 @@ local function finish(s, scores, cats, showOrder)
       end
     end
     local amt, top = (L - prev) * #payers, pots[#pots]
-    if #payers == 1 and not s.p[payers[1]].gone then   -- not when the chair was taken (rule 2)
+    if #payers == 1 then
       refund[payers[1]] = (refund[payers[1]] or 0) + amt       -- uncalled
     elseif #eligible == 0 and top then
       top.amount = top.amount + amt                             -- dead chips join the pot below
