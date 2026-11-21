@@ -58,7 +58,8 @@ local _, ns = ...
 -- Session fields: s.fair = the round {h, d, p, dealer (name), commits, stage
 -- ("commit"|"seed"|"dealt"|"done"), seed, seedSent, seeds, deck, dealing, sent,
 -- pub, priv, lied, base, log, q, fresh (adopted from a snapshot, not asked
--- yet), voidAsked, lost (dealer: my deck was gone while the hand ran),
+-- yet), voidAsked and voidChain (core/DealKeep.lua), who (the player an
+-- "announce" foul names), lost (dealer: my deck was gone while the hand ran),
 -- voidLate (dealer: the void asked again after the hand ended), revealed,
 -- out (the published seeds), wantOpen (host: the engine asked for the next
 -- deal), replaced (the round an open replaced while
