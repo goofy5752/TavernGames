@@ -41,6 +41,13 @@ describe("wow adapter: db", function()
     db.fairKeep = nil; eq(sv.char[Wow.FIRST .. " - Forever"].fairKeep, nil)
   end)
 
+  it("keeps the table I am at with the character (core/Presence.lua)", function()
+    local w = Wow.new(); w:init()
+    local db, sv = w.ns.db, w.G.TavernGamesDB
+    db.lastAt = "t#1"; eq(sv.char[Wow.FIRST .. " - Forever"].lastAt, "t#1"); eq(sv.global.lastAt, nil)
+    db.lastAt = nil; eq(db.lastAt, nil)
+  end)
+
   it("values survive a reload and the saved language is applied", function()
     local w = Wow.new(); w:init()
     local db = w.ns.db

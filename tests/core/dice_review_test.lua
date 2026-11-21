@@ -95,3 +95,36 @@ describe("final review: the seats of a throw (C1)", function()
     eq(sim:count(function(m) return m.from == B and m.msg.t == "ACT" and m.msg.a.op == "seed" and m.msg.a.h == h end), 0)
   end)
 end)
+
+describe("final review: back to my seat after a /reload (I3)", function()
+  local C = "Трети Играч"
+  it("the host reloads, looks at another table while it waits, and is taken back by the new host: nobody forfeits (fr2)", function()
+    local tid = table2()
+    local c = sim:add(C, { cls = "ROGUE" }); sim:run(1)
+    local other = c:openTable{ game = "ttt", access = "guild", turn = 45 }; sim:run(3)
+    local a2 = sim:relog(A); sim:run(2); eq(a2.session, nil)
+    a2:watch(other); sim:run(2); eq(a2.session.tid, other); a2:stand(); sim:run(1); eq(a2.session, nil)
+    for _ = 1, 200 do if b.session.role == "host" then break end; sim:run(1) end
+    sim:run(3); local s = a2.session
+    eq({ s ~= nil and s.tid, s ~= nil and s.mySeat, b.session.seats, b.session.status, b.session.state.quit }, { tid, 1, { A, B }, "live", nil })
+    eq(E.over(b.session.state), false)
+  end)
+  it("the guest reloads while its host is away, looks at another table, and gets its seat back", function()
+    local tid = table2()
+    local c = sim:add(C, { cls = "ROGUE" }); sim:run(1)
+    local other = c:openTable{ game = "ttt", access = "guild", turn = 45 }; sim:run(3)
+    sim:offline(A); local b2 = sim:relog(B); sim:run(2); eq(b2.session, nil)
+    b2:watch(other); sim:run(2); b2:stand(); sim:run(1)
+    sim:online(A); sim:run(125); local s = b2.session   -- my next HI tells the host I am not at its table
+    eq({ s ~= nil and s.tid, s ~= nil and s.mySeat, a.session.seats, a.session.state.quit }, { tid, 2, { A, B }, nil })
+  end)
+  it("the table I am at is kept where a /reload keeps it; a table that was never mine is still refused", function()
+    local tid = table2(); eq(sim.envs[B].db.lastAt, tid)
+    b:stand(); sim:run(1); eq(sim.envs[B].db.lastAt, nil)
+    local P = ns.Presence
+    local p = P.new({ env = { db = { lastAt = "X#1" } } })
+    eq({ p:mayReturn("X#1"), p:mayReturn("Y#2") }, { true, true })     -- been nowhere yet: the table a login finds me at
+    p.been["Z#3"] = true; eq({ p:mayReturn("X#1"), p:mayReturn("Z#3"), p:mayReturn("Y#2") }, { true, true, false })
+    eq(P.new({ env = {} }):mayReturn("X#1"), true)                     -- a bot's env has no db
+  end)
+end)

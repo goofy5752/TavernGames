@@ -15,6 +15,7 @@ local function public(p)
 end
 
 function Presence.new(client)
+  local db = client.env.db
   return setmetatable({
     client = client,
     peers = {},      -- name -> { name, cls, guid, at, incompatible }
@@ -22,6 +23,7 @@ function Presence.new(client)
     expiry = {},     -- name -> timer handle
     at = nil,        -- own table id
     been = {},       -- tid -> true: every table I was at since this client started
+    home = db and type(db.lastAt) == "string" and db.lastAt or nil, -- the table the last client left me at
     sentAt = nil,    -- `at` carried by the last GUILD HI
     lastHi = nil,    -- env.now() of the last GUILD HI
     pendingHi = nil, -- coalesced GUILD HI timer
@@ -29,10 +31,12 @@ function Presence.new(client)
 end
 
 -- May a snapshot I did not ask for bring me (back) to table `tid`: one I was
--- at, or, having been at none since this client started, the table a login
--- finds me still seated at.
+-- at, the one I was at when the client before this one stopped (env.db.lastAt,
+-- kept across a /reload: looking at other tables meanwhile costs me no seat),
+-- or, having been at none since this client started, the table a login finds
+-- me still seated at (after a crash nothing is saved).
 function Presence:mayReturn(tid)
-  return self.been[tid] == true or next(self.been) == nil
+  return self.been[tid] == true or tid == self.home or next(self.been) == nil
 end
 
 function Presence:hi(re)
@@ -62,6 +66,8 @@ end
 -- Own seat changed: GUILD HI, at most one per HI_MIN_GAP seconds, latest `at` wins.
 -- A stopped client only records it; its BYE already tells everyone.
 function Presence:setAt(tid)
+  local db = self.client.env.db
+  if db then db.lastAt = tid end
   if tid then self.been[tid] = true end
   if tid == self.at then return end
   self.at = tid
