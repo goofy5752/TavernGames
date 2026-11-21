@@ -26,6 +26,9 @@ local _, ns = ...
 -- next seat (the count of deals is kept), so a void never buys the same
 -- dealer another deck. Voids and no-deals are counted per dealer name and
 -- match (s.fairVoids) and the status line names the dealer.
+-- A seat whose own check failed where the others cannot see it tells the table:
+-- ACT {k="fair", op="protest", h, why} -> EV seat 0 {..., seat, why}, once per
+-- seat and hand (s.fairCry, Deal.status "fair.protest").
 -- Fouls (fair.foul, see Deal.close): "mine" (my commit or seed was replaced),
 -- "commit" (a commit changed), "round" (a snapshot changed the round or
 -- skipped events unasked), "play" (an event my engine refused), "forged" (a
@@ -64,8 +67,9 @@ local copy, seatOf, contains = ns.Util.copy, ns.Util.seatOf, ns.Util.contains
 
 local STAGES = { commit = true, seed = true, dealt = true, done = true }
 
--- Reasons of "bad" that only the cheated client can see: it tells the table.
-local PRIVATE = { mine = true, dealt = true, forged = true }
+-- What a seat may tell the table (op "protest"): the reasons of "bad" that
+-- only the cheated client can see - every foul, and faces sent to it alone.
+local PRIVATE = { mine = true, commit = true, round = true, play = true, forged = true, dealt = true }
 
 local function isInt(x) return type(x) == "number" and x % 1 == 0 end
 
@@ -255,7 +259,9 @@ end
 -- Closes `round` (default s.fair; false = no round) with a verdict "ok",
 -- "bad" (why), "unseen" or "void"; emits "fair" and "session". A foul noted
 -- against the round decides: "bad" with that reason, whatever else happened.
--- A reason only I can see is told to the table (ACT/EV op "protest").
+-- What only I can see (a foul, or faces sent to me alone that are not the
+-- deck's) is told to the table (ACT/EV op "protest"); a reason every client
+-- reaches by its own audit is not.
 function Deal.close(s, verdict, why, round)
   local fair = round
   if fair == nil then fair = s.fair end
@@ -278,7 +284,7 @@ function Deal.close(s, verdict, why, round)
     tid = s.tid, game = s.game, h = h, verdict = verdict, why = why, dealer = dealer, at = client.env.epoch(),
   })
   Session.emit(client)
-  if verdict == "bad" and PRIVATE[why] and fair and s.mySeat then
+  if verdict == "bad" and fair and s.mySeat and PRIVATE[why] and (fair.foul or why == "dealt") then
     Deal.submit(s, { k = "fair", op = "protest", h = h, why = why })
   end
 end

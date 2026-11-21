@@ -433,6 +433,11 @@ describe("ui: table frame, card fairness", function()
         ok(w.ns.Locale.tables[lang]["fair.why." .. why], lang .. ": no text for " .. why)
       end
     end
+    for _, why in ipairs{ "mine", "commit", "round", "play", "forged", "dealt" } do -- what a seat may complain of
+      for _, lang in ipairs{ "bg", "en" } do
+        ok(w.ns.Locale.tables[lang]["fair.cry." .. why], lang .. ": no complaint text for " .. why)
+      end
+    end
     for _, why in ipairs{ "xyz", false } do
       s.fairLast = { h = 9, verdict = "bad", why = why or nil, dealer = BOT }; w.ns.TableFrame.render()
       w:hover(v.fairLine)

@@ -99,7 +99,11 @@ TOC: `core/Fair.lua` after `core/Deck.lua`; `core/Deal.lua` after `core/Lifecycl
 | `ACT` (dealer) → `EV` seat 0 | `{k="fair", op="show", h, cards}` → `{k="show", cards}` | faces that became public outside a play |
 | `ACT` (dealer) → `EV` seat 0 | `{k="fair", op="reveal", h, s={seed,…}}` → the same as an event | the seeds in `p` order, after the hand |
 | `ACT` (dealer) → `EV` seat 0 | `{k="fair", op="void", h}` → `{k="void"}` | the dealer lost the deck |
-| `SNP` | `fr = {h, d, p, c, st, n}` | the round: commits `c` by seat, stage `st`, hands dealt `n`; absent when no round |
+| `EV` seat 0 (host) | `{k="fair", op="noreveal", h}` | the seeds of the last hand of a match never came out (`FAIR_WAIT` after it ended): the hand closes `"bad", "noreveal"` |
+| `ACT` → `EV` seat 0 | `{k="fair", op="protest", h, why}` → `{…, seat, why}` | a seat's own check of hand `h` failed where the others cannot see it (`why` = `mine`, `commit`, `round`, `play`, `forged`, `dealt`); once per seat and hand (final fix wave) |
+| `SNP` | `fr = {h, d, p, c, st, n}` | the round: commits `c` by seat, stage `st`, deals made `n`. Always present on a card table: with no round open it is `{n}` alone |
+
+**Corrected after the final review (final fix wave, see `docs/superpowers/notes/engine-contract.md`, Addendum 3):** `SNP.fr` is never absent on a card table (the earlier text said "absent when no round"); the `noreveal` event above was missing from this table; a void no longer gives the same dealer the next deal (`n` is not taken back, the next seat deals); reasons of `"bad"` added: `mine`, `round`, `forged`, `nodeal`; the op `protest`.
 
 **Client event added:** `"fair"({tid, game, h, verdict, why, dealer, at})`, once per closed hand on every client at the table.
 
@@ -319,7 +323,7 @@ end)
   7. **`SED`** (dealer): taken when I am seat `d` of round `m.h` in stage `"seed"`, the sender is a participant and `Fair.commit(m.s) == commits[seat]`. A SED for a round I hold in stage `"commit"` (or for a later `h`) cannot be taken yet (messages of different senders have no order at the dealer): it is kept in `s.fairEarly[h][sender]` and taken by `react` when the stage becomes `"seed"`. The deal is attempted whenever a seed is stored, my own or another's. With every participant's seed and not yet `dealing`: `deck = Fair.deck(engine.DECK, <seeds in p order>, Fair.handId(tid, h))`; a trial `full = Fair.full(s.state, s.state.deck)` gets `{k="deal", deck=deck}`; `pub = engine.view(full, 0).deck`; `fair.deck, fair.pub, fair.sent, fair.dealing = deck, pub, {}, true`; submit `{k="fair", op="deal", h, deck = pub}`.
   8. **`sync`** (dealer, stage `"dealt"`): `full = Fair.full(s.state, fair.deck)`; `known = engine.view(s.state, 0).deck` (what the event stream already made public). First the faces of `engine.view(full, 0).deck` in neither `known` nor `fair.pub`: one submit `{k="fair", op="show", h, cards}`, marked in `fair.pub`. Then for every participant seat `q` still occupied: the faces of `engine.view(full, q).deck` that are in none of `known`, `fair.pub`, `sent[q]` — for my own seat `Deal.learn(s, them)`, for another seat one `PRV{tid, h, cards}` to its name; marked in `sent[q]`.
   9. **`PRV`**: taken from `fair.dealer` for round `m.h == fair.h` with a table `cards` → `Deal.learn(s, m.cards)`. `learn` merges into `fair.priv`; in stage `"dealt"` with a non-empty `priv` it tries `{k="show", cards = priv}` at seat 0 on a copy of `s.state`: accepted → that copy is the state and `"session"` is emitted; refused → `fair.lied = true`.
-  10. **`snap`** (host): `{h, d, p, c = commits, st = stage, n = s.fairN or 0}` or nil. (`PRQ` comes in Task 6.)
+  10. **`snap`** (host): `{h, d, p, c = commits, st = stage, n = s.fairN or 0}`, or `{n = s.fairN or 0}` alone with no round open (never nil). (`PRQ` comes in Task 6.)
   10b. **Adoption** (`adopted(s, prev, m)`): `m.fr` not a well-formed round → `s.fair = nil`. The same `h` as my round → I keep `seed`, `seedSent`, `seeds`, `deck`, `dealing`, `sent`, `pub`, `priv`, `revealed` and `lied`; `commits`, `stage` come from `fr`; `base` and `log` are kept when `m.q == fair.q` (nothing was missed, e.g. a host change) and dropped otherwise (I missed events: this hand will be `"unseen"` for me). Another `h` → a new round from `fr` with `priv = {}`, no `base`/`log`, `fresh = true`. `s.fairN = fr.n`. Then `Deal.react(s)`.
   11. Every timer and handler first checks that `client.session` is the same session and `s.fair` the same round.
 
@@ -889,7 +893,7 @@ end)
   4. Commits, the public deal and the reveal ride in the host's ordered `EV` stream (reliable, reaches watchers, healed by the existing resync); only `SED`, `PRV`, `PRQ` are new types.
   5. A silent player during the shuffle is **waited for** (round reopened every 20 s, then the 3-minute offline rule); nobody shuffles on his behalf.
   6. An **offline player's turn is not played** for him in a card game (nobody else may know his cards); an online but idle player's own client plays at the deadline.
-  7. A dealer who reloads loses the deck: the hand is void and dealt again. A dealer who vanishes exactly at the end of a hand makes it „нередовна“ (`noreveal`).
+  7. A dealer who reloads loses the deck: the hand is void and dealt again, by the next seat (changed in the final fix wave: at first the same dealer dealt it again, which let a dealer buy a new deck with a reload). A dealer who vanishes exactly at the end of a hand makes it „нередовна“ (`noreveal`).
   8. A client that did not see the whole hand says „не съм я гледал цялата“ instead of vouching.
   9. After a Santase match the **host** starts the next one („Нова игра“); the loser leads.
   10. The rules-book says plainly that the dealer's addon knows the deck of its own deals.

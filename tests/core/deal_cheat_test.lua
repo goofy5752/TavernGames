@@ -113,6 +113,8 @@ describe("deal cheats: the shuffle", function()
     finish(); sim:run(1)
     local e = last(b)
     eq({ e.h, e.verdict, e.why }, { r.h, "bad", "commit" })
+    -- Only b was shown the other commit: it tells the table what it saw.
+    eq(a.session.fairCry, { h = r.h, seat = 2, name = B, why = "commit" })
   end)
 
   it("a commit dropped by one snapshot and committed again with another value: нередовна (commit)", function()
@@ -249,6 +251,7 @@ describe("deal cheats: the round a snapshot brings", function()
     eq(c.session.seq, a.session.seq)
     finish(); sim:run(1)
     eq({ last(c).verdict, last(c).why }, { "bad", "round" }); eq(last(a).verdict, "ok")
+    eq(b.session.fairCry, { h = last(c).h, seat = 3, name = C, why = "round" })
   end)
 
   it("a snapshot I asked for after losing an event: не съм я гледал цялата", function()
@@ -284,6 +287,15 @@ describe("deal cheats: the round a snapshot brings", function()
     eq(desync, 1); eq(c.session.fair.foul, "play")
     sim:run(1); finish(); sim:run(1)
     eq({ last(c).verdict, last(c).why }, { "bad", "play" })
+    eq(b.session.fairCry, { h = last(c).h, seat = 3, name = C, why = "play" })
+  end)
+
+  it("a reason every client reaches by itself is not told again", function()
+    setup(true); a:startGame(); sim:run(1)
+    b.session.fair.revealed = true                                   -- the dealer keeps the seeds to itself
+    finish(); sim:run(22)
+    for _, cl in ipairs{ a, b, c } do eq({ got[cl][1].verdict, got[cl][1].why }, { "bad", "noreveal" }) end
+    eq(a.session.fairCries, nil); eq(a.session.fairCry, nil)
   end)
 
   it("with no replay left the shuffle and every face I saw are still checked against the revealed deck", function()
