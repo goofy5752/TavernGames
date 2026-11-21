@@ -6,7 +6,8 @@ local _, ns = ...
 -- the dealer, the score, the last deal's summary and the line of text.
 -- No frames. It reads only s.state (a view: a face the view lacks stays
 -- nil), s.mySeat, s.status, s.seats and the optional `names` (seat -> who
--- held it during the match, the view's memory), and stores nothing.
+-- held it during the match, the view's memory), and stores nothing; what it
+-- returns is its own (the contract is a copy, not the state's table).
 -- Bubbles come from the engine's record only (state.bids, state.ann) and
 -- name an announce by its kind, never by a face.
 local E = ns.Engines.belot
@@ -104,7 +105,7 @@ local function summaryOf(st, team)
   local anns = {}
   for n, x in ipairs(res.ann or {}) do anns[n] = { seat = x.s, t = x.t, v = x.v, on = x.on } end
   return {
-    passed = c == nil, contract = c, us = res.pts[team], them = res.pts[3 - team],
+    passed = c == nil, contract = c and { seat = c.seat, b = c.b, x = c.x }, us = res.pts[team], them = res.pts[3 - team],
     hang = res.hang, valat = res.valat, inside = inside, hanging = hanging, anns = anns,
   }
 end
@@ -178,7 +179,7 @@ function M.build(s, peek, names)
     me = me, seated = seated, team = team, pos = pos, mine = mine,
     hand = hand, bids = bids, announce = announce,
     trick = cards, peeking = peeking, canPeek = phase == "play" and st.last ~= nil,
-    bubbles = bubblesOf(st), contract = st.contract,
+    bubbles = bubblesOf(st), contract = st.contract and { seat = st.contract.seat, b = st.contract.b, x = st.contract.x },
     dealer = dealt and E.dealer(st) or nil,
     score = { us = st.score[team], them = st.score[3 - team], hang = st.hang },
     summary = summaryOf(st, team),

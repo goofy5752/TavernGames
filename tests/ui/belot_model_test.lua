@@ -150,6 +150,10 @@ describe("ui: the Белот model", function()
     local m = M.build(sess(st, 1)); local sum = m.summary
     eq({ sum.passed, sum.contract, sum.us, sum.them, sum.hang, sum.valat, sum.inside, sum.hanging }, { false, { seat = 2, b = "H", x = 2 }, 32, 0, 0, false, true, false })
     eq(M.build(sess(st, 2)).summary.us, 0); eq(M.build(sess(st, 2)).summary.them, 32); eq(m.score, { us = 32, them = 0, hang = 0 }); eq(m.text, nil)
+    ok(sum.contract ~= st.res.contract, "the summary hands out the state's own table")
+    sum.contract.x = 4; eq(st.res.contract.x, 2)
+    local live = started(DECK_A, "S P P P"); local view = E.view(live, 1); local lm = M.build(sess(view, 1))
+    ok(lm.contract ~= view.contract, "the model hands out the state's own table"); lm.contract.b = "A"; eq(view.contract.b, "S")
     st.res.raw, st.res.pts, st.res.hang = { 81, 81 }, { 8, 0 }, 11; sum = M.build(sess(st, 1)).summary; eq({ sum.inside, sum.hanging, sum.hang }, { false, true, 11 })
     st.res = { round = 1, raw = { 0, 0 }, pts = { 0, 0 }, hang = 0, valat = false, ann = {} }
     eq(M.build(sess(st, 1)).summary.passed, true); eq(M.build(sess(st, 1)).text, { "belot.passed" })
