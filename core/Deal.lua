@@ -271,7 +271,7 @@ local function onSeed(client, sender, m)
   if not s or s.tid ~= m.tid or not isInt(m.h) or type(m.s) ~= "string" then return end
   local fair = s.fair
   if fair and fair.h == m.h then
-    if s.mySeat ~= fair.d then return end
+    if s.mySeat ~= fair.d or not seatOf(s.seats, sender) then return end
     if fair.stage == "commit" then return keepEarly(s, sender, m.h, m.s) end
     if fair.stage == "seed" then
       fair.seeds = fair.seeds or {}

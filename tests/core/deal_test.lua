@@ -7,13 +7,18 @@ local SEED = ("ff"):rep(16)
 local sim, tid, a, b, c, d
 
 -- a hosts hicard, b on seat 2 (and c on seat 3 when `three`), d online but not
--- at the table; not started.
-local function setup(three)
+-- at the table; not started. `bytes` (optional) = name -> the byte that
+-- client's env.random always yields, so its seed is that byte 16 times
+-- (without it every client yields hi: SEED).
+local function setup(three, bytes)
   sim = Sim.new()
   a = sim:add(A, { cls = "MAGE" })
   b = sim:add(B, { cls = "PRIEST" })
   c = three and sim:add(C, { cls = "ROGUE" }) or nil
   d = sim:add(D, { cls = "DRUID" })
+  for name, byte in pairs(bytes or {}) do
+    sim.clients[name].env.random = function() return byte end
+  end
   sim:run(1)
   tid = a:openTable{ game = "hicard", access = "guild", turn = 45 }; sim:run(3)
   b:sit(tid, 2); sim:run(1)
@@ -247,6 +252,59 @@ describe("deal", function()
     eq(b.session:apply(0, open), nil); eq(b.session:apply(0, { k = "fair", op = "open", h = q + 1, d = 2, p = { 2, 1 } }), nil)
     eq(b.session.fair.h, h)
     ok(b.session:apply(0, { k = "fair", op = "open", h = q + 1, d = 1, p = { 1, 2 } })); eq(b.session.fair.h, q + 1)
+  end)
+
+  it("the deck is built from every participant's own seed, in seat order", function()
+    local SA, SB = ("11"):rep(16), ("22"):rep(16)
+    setup(false, { [A] = 0x11, [B] = 0x22 }); start()
+    local r = a.session.fair; eq(r.stage, "dealt")
+    local hid = tid .. "/" .. r.h
+    local deck = b.session.fair.deck
+    eq(b.session.fair.seeds, { [1] = SA, [2] = SB })
+    eq(a.session.fair.commits, { [1] = ns.Fair.commit(SA), [2] = ns.Fair.commit(SB) })
+    eq(deck, ns.Fair.deck(H.DECK, { SA, SB }, hid))
+    local function same(x) return table.concat(x, " ") == table.concat(deck, " ") end
+    ok(not same(ns.Fair.deck(H.DECK, { SA, SA }, hid))); ok(not same(ns.Fair.deck(H.DECK, { SB, SB }, hid)))
+    ok(not same(ns.Fair.deck(H.DECK, { SB, SA }, hid)))
+    eq(a.session.state.deck, { [1] = deck[1], [3] = deck[3], [5] = deck[5] })
+  end)
+
+  it("a seed that does not match its sender's commit is refused", function()
+    local SA, SB = ("11"):rep(16), ("22"):rep(16)
+    setup(false, { [A] = 0x11, [B] = 0x22 })
+    local held = {}
+    b.receive = function(self, channel, sender, msg)
+      if msg.t == "SED" then held[#held + 1] = { channel, sender, msg }; return end
+      return ns.Client.receive(self, channel, sender, msg)
+    end
+    start(); b.receive = nil
+    local r = b.session.fair; eq(#held, 1); eq(r.stage, "seed"); eq(r.seeds, { [2] = SB })
+    -- Somebody else's seed, then a made-up one: neither matches A's commit.
+    for _, x in ipairs{ SB, ("00"):rep(16) } do
+      b:receive("WHISPER", A, { v = 1, t = "SED", tid = tid, h = r.h, s = x }); sim:run(1)
+      eq(r.seeds[1], nil); eq(r.deck, nil); eq(r.stage, "seed"); eq(a.session.fair.stage, "seed")
+    end
+    -- The real one deals.
+    b:receive(held[1][1], held[1][2], held[1][3]); sim:run(1)
+    eq(r.seeds, { [1] = SA, [2] = SB }); eq(a.session.fair.stage, "dealt")
+    eq(r.deck, ns.Fair.deck(H.DECK, { SA, SB }, tid .. "/" .. r.h))
+  end)
+
+  it("a seed from somebody who is not a participant is ignored", function()
+    local SA, SB = ("11"):rep(16), ("22"):rep(16)
+    setup(false, { [A] = 0x11, [B] = 0x22 }); d:watch(tid); sim:run(1)
+    local held = {}
+    b.receive = function(self, channel, sender, msg)
+      if msg.t == "SED" then held[#held + 1] = { channel, sender, msg }; return end
+      return ns.Client.receive(self, channel, sender, msg)
+    end
+    start(); b.receive = nil
+    local r = b.session.fair; eq(r.stage, "seed")
+    -- The watcher D carries A's real seed: it is not D's to give.
+    b:receive("WHISPER", D, { v = 1, t = "SED", tid = tid, h = r.h, s = SA }); sim:run(1)
+    eq(r.seeds, { [2] = SB }); eq(r.deck, nil); eq(a.session.fair.stage, "seed")
+    eq(b.session.fairEarly, nil)
+    b:receive(held[1][1], held[1][2], held[1][3]); sim:run(1); eq(a.session.fair.stage, "dealt")
   end)
 
   it("repeated need offers during the shuffle open no second round", function()
