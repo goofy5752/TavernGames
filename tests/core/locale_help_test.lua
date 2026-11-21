@@ -22,11 +22,11 @@ describe("locale and help", function()
     end
   end)
 
-  it("every help block and intro key exists in both languages; topics are hall, ttt, deathroll, santase, belot, tabla, fair, soon", function()
+  it("every help block and intro key exists in both languages; topics are hall, ttt, deathroll, santase, belot, tabla, holdem, fair, soon", function()
     local H = ns.Help
     local ids = {}
     for i, t in ipairs(H.topics) do ids[i] = t.id end
-    eq(ids, { "hall", "ttt", "deathroll", "santase", "belot", "tabla", "fair", "soon" })
+    eq(ids, { "hall", "ttt", "deathroll", "santase", "belot", "tabla", "holdem", "fair", "soon" })
     eq(#H.intro, 4)
     for _, t in ipairs(H.topics) do
       both(t.title, "topic title")
@@ -97,23 +97,25 @@ describe("locale and help", function()
     eq(rows, { { 6, 3 }, { 4, 5, 6 } })
     eq(H.get("fair").title, "help.fair.title")
     local fb = H.get("fair").blocks
-    eq(fb[#fb], { kind = "p", key = "help.fair.dice" })
+    eq(fb[#fb], { kind = "p", key = "help.fair.sealed" })
+    eq(fb[#fb - 1], { kind = "p", key = "help.fair.dice" })
     eq(H.get("nope"), nil)
   end)
 
-  it("every quoted label in the hall, ttt, deathroll, santase, belot, tabla, fair and soon help is a UI label, and no help title copies one", function()
+  it("every quoted label in the hall, ttt, deathroll, santase, belot, tabla, holdem, fair and soon help is a UI label, and no help title copies one", function()
     local QUOTES = { bg = { "„", "“" }, en = { "“", "”" } }
     for lang, q in pairs(QUOTES) do
       local ui = {}
       for k, v in pairs(T[lang]) do
         if not k:match("^help%.") and not k:match("^intro%.") then ui[v] = true end
       end
-      local checked, cards, belot, tabla = 0, 0, 0, 0
+      local checked, cards, belot, tabla, holdem = 0, 0, 0, 0, 0
       for k, text in pairs(T[lang]) do
         local card = k:match("^help%.santase%.") or k:match("^help%.fair%.")
         local isBelot = k:match("^help%.belot%.")
         local isTabla = k:match("^help%.tabla%.")
-        if card or isBelot or isTabla or k:match("^help%.hall%.") or k:match("^help%.ttt%.") or k:match("^help%.deathroll%.") or k == "help.soon.example" then
+        local isHoldem = k:match("^help%.holdem%.")
+        if card or isBelot or isTabla or isHoldem or k:match("^help%.hall%.") or k:match("^help%.ttt%.") or k:match("^help%.deathroll%.") or k == "help.soon.example" then
           local pos = 1
           while true do
             local a, b = text:find(q[1], pos, true)
@@ -127,6 +129,7 @@ describe("locale and help", function()
             if card then cards = cards + 1 end
             if isBelot then belot = belot + 1 end
             if isTabla then tabla = tabla + 1 end
+            if isHoldem then holdem = holdem + 1 end
             pos = d + 1
           end
         end
@@ -135,6 +138,7 @@ describe("locale and help", function()
       ok(cards >= 8, lang .. ": only " .. cards .. " quoted labels in the santase and fair help")
       ok(belot >= 12, lang .. ": only " .. belot .. " quoted labels in the belot help")
       ok(tabla >= 10, lang .. ": only " .. tabla .. " quoted labels in the tabla help")
+      ok(holdem >= 12, lang .. ": only " .. holdem .. " quoted labels in the holdem help")
       for k, v in pairs(T[lang]) do
         if k:match("^help%.") and k:match("%.title$") then ok(not ui[v], lang .. " " .. k .. " copies a UI label") end
       end
@@ -144,8 +148,25 @@ describe("locale and help", function()
   it("pinned texts are used verbatim", function()
     eq(T.bg["help.ttt.example"], "Иван е Х, Мария е О. Редуват се. Иван нарежда три Х в редица и печели играта. Който пръв спечели 3 игри, печели мача.")
     eq(T.bg["help.hall.example"], "Виждаш маса с празен стол с пунктир. Кликаш на стола и вече седиш. Ако масата е пълна, кликни на нея, за да гледаш.")
-    eq(T.bg["help.soon.p"], "Скоро идва Тексас Холдем, и игра на залог с тефтер на дълговете.")
-    eq(T.bg["help.soon.example"], "Засега в кръчмата се играят Морски шах, Death Roll, Сантасе, Белот и Табла. Тексас Холдем стои блед в списъка, с надпис „Скоро“. Щом стане готов, правилата му ще се появят тук, в книжката.")
+    eq(T.bg["help.soon.p"], "Скоро идва игра на залог с тефтер на дълговете.")
+    eq(T.bg["help.soon.example"], "Засега всички игри в кръчмата са за удоволствие: Морски шах, Death Roll, Сантасе, Белот, Табла и Тексас Холдем. Когато залозите станат готови, правилата им ще се появят тук, в книжката.")
+    eq(T.bg["help.holdem.limits"], "„Без лимит“: можеш да заложиш всичките си чипове по всяко време, с бутона за ва банк. „Пот лимит“: най-много колкото е потът, след като платиш. Пример при блайндове 5/10: пръв си на ход, потът е 15, плащаш 10 и може да вдигнеш до 35. Бутонът „Пот“ слага точно толкова.")
+    eq(T.bg["help.holdem.sidepot"], "Иван влиза ва банк със 100 чипа. Мария има 300, Киро 600. Основният пот е 300: по 100 от тримата. За него играят и тримата. Мария и Киро залагат още по 200 помежду си. Това е страничен пот от 400 и е само за тях двамата. Иван може да спечели най-много основния пот.")
+    ok(T.bg["help.holdem.fair"]:find("надписът под масата го казва по име, в златно.", 1, true), "the gold note")
+    ok(T.bg["help.holdem.seats"]:find("Само залог, който никой не е платил, се връща при теб.", 1, true), "the uncalled bet")
+    ok(T.bg["help.holdem.time"]:find("кехлибарено, не в червено", 1, true), "amber, not red")
+    ok(T.en["help.holdem.time"]:find("amber, not in red", 1, true))
+    eq(T.bg["help.fair.sealed"], "В Холдем числата не се показват след всяка ръка, а чак при затварянето на масата. Иначе щяха да се видят картите на отказалите се. Дотогава надписът под масата брои запечатаните ръце. Аддонът на раздаващия и тук знае тестето на своята ръка, а раздаващият се сменя с бутона.")
+    eq(T.en["holdem.fold"], "Fold"); eq(T.en["holdem.close"], "End game"); eq(T.en["optv.holdem.betting.pl"], "Pot Limit"); eq(T.en["seal.ok"], "All %d hands checked")
+    local hb, hc = {}, {}
+    for i, b in ipairs(ns.Help.get("holdem").blocks) do
+      hb[i] = b.key
+      if b.kind == "cards" then hc[#hc + 1] = b.cards end
+    end
+    eq(hb, { "help.holdem.p1", "help.holdem.example", "help.holdem.blinds", "help.holdem.rounds", "help.holdem.hands", "help.holdem.sidepot",
+      "help.holdem.limits", "help.holdem.seats", "help.holdem.time", "help.holdem.fair" })
+    eq(hc, { { "AH", "JH", "7C", "QS", "2D" }, { "TS", "JS", "QS", "KS", "AS" } })
+    eq(ns.Help.get("holdem").title, "game.holdem")
     eq(T.bg["help.tabla.tapa"], "На „Тапа“ всичките 15 пула тръгват от едно поле и не се бие. Поле с два или повече чужди пула е затворено за теб. Стъпиш ли върху сам чужд пул, го затискаш: той не мърда, докато всичките ти пулове не си тръгнат оттам. Върху затиснатия пул можеш да слагаш и други свои. Мария затиска последния пул на Иван, останал на началното му поле. Това е майката. Играта свършва веднага и Мария взима 2 точки.")
     eq(T.bg["help.tabla.time"], "Ако времето ти изтече, аддонът изиграва вместо теб първия позволен ход. Не губиш играта. Ако някой стане от масата или го няма повече от три минути, губи партията.")
     -- Pre-flight F13 + D13: the guest cannot pick a die; what a modified host can still do is said honestly (shown and counted, not prevented).

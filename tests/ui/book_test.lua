@@ -44,7 +44,7 @@ describe("ui: rules book", function()
     eq(B.paper.color, rgba(w, "cream"))
     local names = {}
     for i, t in ipairs(B.topics) do names[i] = t.id .. "=" .. t.button.text:GetText() end
-    eq(names, { "hall=Залата", "ttt=Морски шах", "deathroll=Death Roll", "santase=Сантасе", "belot=Белот", "tabla=Табла", "fair=Защо раздаването е честно", "soon=Скоро" })
+    eq(names, { "hall=Залата", "ttt=Морски шах", "deathroll=Death Roll", "santase=Сантасе", "belot=Белот", "tabla=Табла", "holdem=Тексас Холдем", "fair=Защо раздаването е честно", "soon=Скоро" })
     -- a long title wraps inside the list and its row grows to hold it
     for _, t in ipairs(B.topics) do
       local fs = t.button.text
@@ -92,10 +92,10 @@ describe("ui: rules book", function()
     local B, L = w.ns.HelpBook, w.ns.L
     B.open("hall")
     local hallPage = B.page
-    w:click(B.topics[8].button)
+    w:click(B.topics[9].button)
     eq(B.current, "soon"); eq(hallPage:IsShown(), false); ok(B.page:IsVisible(), "soon page hidden")
     eq(B.page.blocks[1].text:GetText(), L("help.soon.p"))
-    eq({ B.topics[8].button.text:GetTextColor() }, rgba(w, "red"))
+    eq({ B.topics[9].button.text:GetTextColor() }, rgba(w, "red"))
     w:click(B.topics[1].button); ok(hallPage:IsVisible(), "hall page not back")
     w:click(B.close); eq(B.frame:IsShown(), false)
   end)
@@ -212,7 +212,7 @@ describe("ui: rules book", function()
     B.open()
     local names = {}
     for i, t in ipairs(B.topics) do names[i] = t.id .. "=" .. t.button.text:GetText() end
-    eq(names[4], "santase=Сантасе"); eq(names[5], "belot=Белот"); eq(names[7], "fair=Защо раздаването е честно")
+    eq(names[4], "santase=Сантасе"); eq(names[5], "belot=Белот"); eq(names[8], "fair=Защо раздаването е честно")
     B.open("belot")
     eq(B.current, "belot")
     local topic = w.ns.Help.get("belot")
@@ -241,7 +241,7 @@ describe("ui: rules book", function()
     B.open()
     local names = {}
     for i, t in ipairs(B.topics) do names[i] = t.id .. "=" .. t.button.text:GetText() end
-    eq(names, { "hall=Залата", "ttt=Морски шах", "deathroll=Death Roll", "santase=Сантасе", "belot=Белот", "tabla=Табла", "fair=Защо раздаването е честно", "soon=Скоро" })
+    eq(names, { "hall=Залата", "ttt=Морски шах", "deathroll=Death Roll", "santase=Сантасе", "belot=Белот", "tabla=Табла", "holdem=Тексас Холдем", "fair=Защо раздаването е честно", "soon=Скоро" })
     B.open("tabla")
     eq(B.current, "tabla")
     local topic = w.ns.Help.get("tabla")
@@ -268,7 +268,29 @@ describe("ui: rules book", function()
     eq(rows[2][3].texCoord, { 0.25, 0.5, 0.5, 1 })
     B.open("fair")
     local blocks = B.page.blocks
-    eq(blocks[#blocks].text:GetText(), L("help.fair.dice"))
+    eq(blocks[#blocks - 1].text:GetText(), L("help.fair.dice"))
+  end)
+
+  it("the Тексас Холдем topic is listed between Табла and the fair deal and draws its two rows of cards", function()
+    local w = guildWow()
+    local B, L = w.ns.HelpBook, w.ns.L
+    B.open()
+    local names = {}
+    for i, t in ipairs(B.topics) do names[i] = t.id .. "=" .. t.button.text:GetText() end
+    eq(names[6], "tabla=Табла"); eq(names[7], "holdem=Тексас Холдем"); eq(names[8], "fair=Защо раздаването е честно")
+    B.open("holdem")
+    eq(B.current, "holdem"); eq(w.ns.HelpBook.current, "holdem")
+    local topic = w.ns.Help.get("holdem")
+    local rows = {}
+    for i, b in ipairs(topic.blocks) do
+      local block = B.page.blocks[i]
+      eq(block.kind, b.kind); eq(block.text:GetText(), L(b.key)); ok(block.text:IsVisible(), b.key)
+      if b.kind == "cards" then rows[#rows + 1] = block.cards end
+    end
+    eq(#rows, 2); eq(#rows[1], 5); eq(#rows[2], 5)
+    B.open("fair")
+    local blocks = B.page.blocks
+    eq(blocks[#blocks].text:GetText(), L("help.fair.sealed"))
   end)
 
   it("„Покажи въведението пак“ reopens the intro at 1/4", function()

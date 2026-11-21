@@ -80,6 +80,18 @@ Help.topics = {
     { kind = "p", key = "help.tabla.time" },
     { kind = "p", key = "help.tabla.fair" },
   } },
+  { id = "holdem", title = "game.holdem", blocks = {
+    { kind = "p", key = "help.holdem.p1" },
+    { kind = "example", key = "help.holdem.example" },
+    { kind = "p", key = "help.holdem.blinds" },
+    { kind = "cards", key = "help.holdem.rounds", cards = { "AH", "JH", "7C", "QS", "2D" } },
+    { kind = "cards", key = "help.holdem.hands", cards = { "TS", "JS", "QS", "KS", "AS" } },
+    { kind = "example", key = "help.holdem.sidepot" },
+    { kind = "p", key = "help.holdem.limits" },
+    { kind = "p", key = "help.holdem.seats" },
+    { kind = "p", key = "help.holdem.time" },
+    { kind = "p", key = "help.holdem.fair" },
+  } },
   -- Why the card deal (and the Табла dice) is fair; the table's fairness line opens it.
   { id = "fair", title = "help.fair.title", blocks = {
     { kind = "p", key = "help.fair.p1" },
@@ -89,6 +101,7 @@ Help.topics = {
     { kind = "p", key = "help.fair.dealer" },
     { kind = "p", key = "help.fair.bad" },
     { kind = "p", key = "help.fair.dice" },
+    { kind = "p", key = "help.fair.sealed" },
   } },
   { id = "soon", title = "games.soon", blocks = {
     { kind = "p", key = "help.soon.p" },
