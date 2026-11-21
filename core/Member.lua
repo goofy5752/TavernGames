@@ -44,6 +44,7 @@ end
 function Member.adopt(client, sender, m)
   local t, me = m.tbl, client.env.me
   local seat = seatOf(t.s, me)
+  local fresh = client.session == nil -- no memory of this table (a relog, or I just came)
   local s = client.session or setmetatable({ client = client }, Session)
   local prevState, prevHost = s.state, s.host
   if s.role == "host" then Succession.demote(s) end
@@ -64,7 +65,7 @@ function Member.adopt(client, sender, m)
   client.session = s
   -- The extensions hear of a new host and of the state this snapshot replaced.
   if prevHost and prevHost ~= sender then s:hook("hostChanged") end
-  s:hook("adopted", prevState, m)
+  s:hook("adopted", prevState, m, { fresh = fresh })
   s:armAuto()
   if not s.pingTimer then s:schedulePing() end
   Succession.watchHost(s)

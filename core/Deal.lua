@@ -52,6 +52,9 @@ local copy, seatOf, contains = ns.Util.copy, ns.Util.seatOf, ns.Util.contains
 
 local STAGES = { commit = true, seed = true, dealt = true, done = true }
 
+-- Reasons of "bad" that only the cheated client can see: it tells the table.
+local PRIVATE = { mine = true, dealt = true }
+
 local function isInt(x) return type(x) == "number" and x % 1 == 0 end
 
 -- The occupied seats, ascending.
@@ -66,6 +69,27 @@ end
 -- The dealer's seat of the next hand: p[(n + 1) % #p + 1].
 local function dealerOf(p, n)
   return p[(n + 1) % #p + 1]
+end
+
+-- Evidence against the round, kept until it closes (the first one wins).
+local function foul(fair, why)
+  fair.foul = fair.foul or why
+end
+
+-- A commit for `seat` as the host shows it to me, in an event or a snapshot.
+-- The first one seen is held for good (fair.held; the audit checks the seeds
+-- against these): another value later is a foul. The commit under my own seat
+-- must be the one of my seed; with no seed of mine it is taken only in a round
+-- I got from a snapshot after a reload (fair.reload).
+local function sawCommit(s, fair, seat, c)
+  local mine = seat == s.mySeat
+  local held = fair.held[seat]
+  if held ~= nil then
+    if held ~= c then foul(fair, mine and "mine" or "commit") end
+    return
+  end
+  fair.held[seat] = c
+  if mine and (fair.own or not fair.reload) and fair.own ~= c then foul(fair, "mine") end
 end
 
 -- May `seat` commit `c` to this round now?
@@ -113,6 +137,17 @@ end
 -- Host: a fair action by `seat` (rule 4); it never reaches the engine.
 local function request(s, seat, a)
   local fair, op = s.fair, a.op
+  if op == "protest" then
+    -- A seat says a hand was not fair to it: once per hand, for the round
+    -- running or the last one closed.
+    local last, cried = s.fairLast, s.fairCried or {}
+    if s.status == "live" and PRIVATE[a.why] and isInt(a.h) and cried[seat] ~= a.h
+        and ((fair and a.h == fair.h) or (last and a.h == last.h)) then
+      cried[seat], s.fairCried = a.h, cried
+      s:play(0, { k = "fair", op = "protest", h = a.h, seat = seat, why = a.why })
+    end
+    return
+  end
   if not fair or s.status ~= "live" or a.h ~= fair.h then return end
   if op == "commit" then
     if commitFits(fair, seat, a.c) then s:play(0, { k = "fair", op = "commit", h = fair.h, seat = seat, c = a.c }) end
@@ -189,12 +224,15 @@ function Deal.open(s)
 end
 
 -- Closes `round` (default s.fair; false = no round) with a verdict "ok",
--- "bad" (why), "unseen" or "void"; emits "fair" and "session".
+-- "bad" (why), "unseen" or "void"; emits "fair" and "session". A foul noted
+-- against the round decides: "bad" with that reason, whatever else happened.
+-- A reason only I can see is told to the table (ACT/EV op "protest").
 function Deal.close(s, verdict, why, round)
   local fair = round
   if fair == nil then fair = s.fair end
   local h, dealer
   if fair then h, dealer = fair.h, fair.dealer end
+  if fair and fair.foul then verdict, why = "bad", fair.foul end
   s.fairLast = { h = h, verdict = verdict, why = why, dealer = dealer }
   local seen = s.fairSeen or { ok = 0, bad = 0 }
   if seen[verdict] then seen[verdict] = seen[verdict] + 1 end
@@ -205,15 +243,25 @@ function Deal.close(s, verdict, why, round)
     tid = s.tid, game = s.game, h = h, verdict = verdict, why = why, dealer = dealer, at = client.env.epoch(),
   })
   Session.emit(client)
+  if verdict == "bad" and PRIVATE[why] and fair and s.mySeat then
+    Deal.submit(s, { k = "fair", op = "protest", h = h, why = why })
+  end
 end
 
--- Everyone, once the seeds are out: the hand judged on what I saw of it.
+-- Everyone, once the seeds are out: the hand judged on what I saw of it. The
+-- seed revealed for the seat I committed at must be the one I made.
 local function judge(s)
   local fair = s.fair
+  if fair.seed then
+    for k = 1, #fair.p do
+      if fair.p[k] == fair.seat and fair.out[k] ~= fair.seed then foul(fair, "mine") end
+    end
+  end
+  if fair.foul then return Deal.close(s, "bad", fair.foul) end
   if fair.lied then return Deal.close(s, "bad", "dealt") end
   if not fair.base then return Deal.close(s, "unseen") end
   local verdict, why = Fair.audit(s:engine(), {
-    tid = s.tid, h = fair.h, p = fair.p, commits = fair.commits, seeds = fair.out,
+    tid = s.tid, h = fair.h, p = fair.p, commits = fair.held, seeds = fair.out,
     base = fair.base, log = fair.log, priv = fair.priv,
   })
   Deal.close(s, verdict, why)
@@ -366,7 +414,8 @@ function Deal.react(s)
     if part and not fair.seed and fair.commits[me] == nil then
       local env = s.client.env
       fair.seed = Fair.seed(function(lo, hi) return env.random(lo, hi) end)
-      Deal.submit(s, { k = "fair", op = "commit", h = fair.h, c = Fair.commit(fair.seed) })
+      fair.seat, fair.own = me, Fair.commit(fair.seed)
+      Deal.submit(s, { k = "fair", op = "commit", h = fair.h, c = fair.own })
     end
   elseif fair.stage == "seed" then
     if not (part and fair.seed) then return end
@@ -521,11 +570,13 @@ ns.Ext.fair = {
       if not isInt(a.h) or not participantsFit(s, a.p) or a.d ~= dealerOf(a.p, s.fairN or 0) then return nil end
       local old = s.fair
       s.fair = {
-        h = a.h, d = a.d, p = copy(a.p), dealer = s.seats[a.d], commits = {}, stage = "commit",
+        h = a.h, d = a.d, p = copy(a.p), dealer = s.seats[a.d], commits = {}, held = {}, stage = "commit",
         priv = {}, base = s:engine().snapshot(s.state), log = {},
-        replaced = old and old.stage == "dealt" and old or nil,
+        replaced = old and (old.stage == "dealt" or (old.foul and old.stage ~= "done")) and old or nil,
       }
       return true
+    elseif a.op == "protest" then
+      return isInt(a.h) and type(a.seat) == "number" and s.seats[a.seat] and PRIVATE[a.why] and true or nil
     elseif a.op == "reveal" then
       local fair = s.fair
       if not fair or a.h ~= fair.h or not revealFits(s, a.s) then return nil end
@@ -538,6 +589,7 @@ ns.Ext.fair = {
     elseif a.op == "commit" then
       local fair = s.fair
       if not fair or a.h ~= fair.h or not commitFits(fair, a.seat, a.c) then return nil end
+      sawCommit(s, fair, a.seat, a.c)
       fair.commits[a.seat] = a.c
       for k = 1, #fair.p do
         if fair.commits[fair.p[k]] == nil then return true end
@@ -562,7 +614,7 @@ ns.Ext.fair = {
       -- A new match while the last hand's seeds are still out: that hand is нередовна.
       if k == "start" and s.fair and s.fair.stage == "dealt" then Deal.close(s, "bad", "noreveal") end
       s.fair, s.fairN, s.fairEarly = nil, 0, nil
-      if k == "start" then s.fairLast, s.fairSeen = nil, nil end
+      if k == "start" then s.fairLast, s.fairSeen, s.fairCry, s.fairCries, s.fairCried = nil, nil, nil, nil, nil end
       stopWait(s)
       return
     end
@@ -576,6 +628,13 @@ ns.Ext.fair = {
       return
     end
     local op = k == "fair" and a.op
+    if op == "protest" then
+      -- Somebody's own check of a hand failed where mine could not see it.
+      if fair then fair.q = s.seq end
+      s.fairCry = { h = a.h, seat = a.seat, name = s.seats[a.seat], why = a.why }
+      s.fairCries = (s.fairCries or 0) + 1
+      return
+    end
     -- A hand whose seeds never came out: closed before anything else.
     if op == "open" and fair.replaced then
       local old = fair.replaced
@@ -619,7 +678,7 @@ ns.Ext.fair = {
   end,
 
   -- Member: the round from the host's snapshot (rule 10b).
-  adopted = function(s, prev, m)
+  adopted = function(s, prev, m, how)
     local fr = m and m.fr
     local good, fair = wellFormed(fr), s.fair
     -- A hand I still held open that the host has closed or replaced: I missed its end.
@@ -633,6 +692,7 @@ ns.Ext.fair = {
       return
     end
     if fair and fair.h == fr.h then
+      for seat, c in pairs(fr.c) do sawCommit(s, fair, seat, c) end
       fair.commits, fair.stage = copy(fr.c), fr.st
       -- Events I missed: I cannot replay this hand.
       if m.q ~= fair.q then fair.base, fair.log = nil, nil end
@@ -643,8 +703,9 @@ ns.Ext.fair = {
     else
       fair = {
         h = fr.h, d = fr.d, p = copy(fr.p), dealer = s.seats[fr.d] or nil, commits = copy(fr.c),
-        stage = fr.st, priv = {}, fresh = true,
+        stage = fr.st, priv = {}, fresh = true, held = {}, reload = how and how.fresh or nil,
       }
+      for seat, c in pairs(fr.c) do sawCommit(s, fair, seat, c) end
       s.fair = fair
     end
     fair.q = s.seq
@@ -686,10 +747,20 @@ function Deal.status(s)
   elseif fair and fair.stage == "seed" then
     return "fair.dealing", fair.dealer
   end
-  local last = s.fairLast
+  local last, cry = s.fairLast, s.fairCry
+  -- Another seat's complaint, unless my own last verdict is bad already.
+  if cry and cry.name and cry.seat ~= s.mySeat and not (last and last.verdict == "bad") then
+    return "fair.protest", cry.name
+  end
   if not last then return nil end
   if last.verdict == "void" then return "fair.void" end
   return "fair.last", last.verdict
+end
+
+-- Does the fairness line warn (red)? A bad hand or a complaint in this match.
+function Deal.alarm(s)
+  local last, seen = s.fairLast, s.fairSeen
+  return (last and last.verdict == "bad") or (seen and seen.bad > 0) or (s.fairCries or 0) > 0 or false
 end
 
 return Deal
