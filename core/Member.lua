@@ -54,7 +54,7 @@ function Member.adopt(client, sender, m)
   local how = {
     fresh = fresh, changed = not fresh and (prevHost ~= sender or s.epoch ~= m.e or s.stale == true),
     asked = s.asked == true, sat = seat ~= nil and s.mySeat == nil, q = s.seq,
-    req = fresh and client.pending ~= nil,
+    req = fresh and client.pending ~= nil and client.pending.tid == m.tid,
   }
   if s.role == "host" then Succession.demote(s) end
   s.tid, s.role, s.mySeat, s.host = m.tid, seat and "player" or "watcher", seat, sender

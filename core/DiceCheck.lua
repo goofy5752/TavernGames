@@ -12,7 +12,9 @@ local _, ns = ...
 -- takes me in again (END, then a snapshot) finds them: only a login without
 -- such a record is new to the table. A record of a table that is no longer
 -- listed is dropped DICE_KEEP seconds after I was last there (rec.at), when
--- the first record of another dice table is written.
+-- the first record of another dice table is written; with it goes my way
+-- back there unasked (presence.been), so a late snapshot of that table is
+-- refused instead of being taken as a login.
 local Dice = ns.Dice
 local Fair, int, ext = ns.Fair, ns.Dice.int, ns.Ext.dice
 local same = ns.Util.same
@@ -86,7 +88,7 @@ end
 
 local FIELDS = {
   "throw", "diceLast", "diceSeen", "diceBad", "diceAlone", "diceUnheard", "diceCry", "diceProof", "diceOwn",
-  "diceHost", "diceNew", "diceAway", "diceHeard",
+  "diceHost", "diceNew", "diceAway", "diceHeard", "diceAwayAt",
 }
 
 local function kept(s) return s.client.dice and s.client.dice[s.tid] end
@@ -96,7 +98,7 @@ local function keep(s)
   local all = client.dice or {}
   if not all[s.tid] then
     for tid, old in pairs(all) do
-      if not client.lobby:get(tid) and now - old.at > ns.Const.DICE_KEEP then all[tid] = nil end
+      if not client.lobby:get(tid) and now - old.at > ns.Const.DICE_KEEP then all[tid], client.presence.been[tid] = nil, nil end
     end
   end
   local rec = { state = s.state, q = s.seq, at = now }

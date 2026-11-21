@@ -24,6 +24,8 @@ function Presence.new(client)
     at = nil,        -- own table id
     been = {},       -- tid -> true: every table I was at since this client started
     home = db and type(db.lastAt) == "string" and db.lastAt or nil, -- the table the last client left me at
+    -- ... and until when a seat there can still be mine: after that an absent player was stood up.
+    homeUntil = (client.env.now and client.env.now() or 0) + C.OFFLINE_STAND_SECONDS + C.SILENT_AFTER + C.CLAIM_STAGGER,
     sentAt = nil,    -- `at` carried by the last GUILD HI
     lastHi = nil,    -- env.now() of the last GUILD HI
     pendingHi = nil, -- coalesced GUILD HI timer
@@ -32,11 +34,14 @@ end
 
 -- May a snapshot I did not ask for bring me (back) to table `tid`: one I was
 -- at, the one I was at when the client before this one stopped (env.db.lastAt,
--- kept across a /reload: looking at other tables meanwhile costs me no seat),
--- or, having been at none since this client started, the table a login finds
--- me still seated at (after a crash nothing is saved).
+-- kept across a /reload: looking at other tables meanwhile costs me no seat;
+-- only while that seat can still be held, self.homeUntil), or, having been at
+-- none since this client started, the table a login finds me still seated at
+-- (after a crash nothing is saved).
 function Presence:mayReturn(tid)
-  return self.been[tid] == true or tid == self.home or next(self.been) == nil
+  local now = self.client.env.now
+  local home = tid == self.home and (now and now() or 0) <= self.homeUntil
+  return self.been[tid] == true or home or next(self.been) == nil
 end
 
 function Presence:hi(re)

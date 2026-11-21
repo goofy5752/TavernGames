@@ -125,8 +125,9 @@ ns.Ext.dice.adopted = function(s, prev, m, how)
   s.diceNew, s.diceHost = nil, s.host
   local held, fr, last0, proof0 = s.throw, m.fr, s.diceLast, s.diceProof
   local p = type(fr) == "table" and fr.p or nil
-  -- I walk into a running match at my own SIT or WAT.
-  local late = how.req and s.status == "live" and s.state ~= nil and not s:engine().over(s.state)
+  -- I walk into a running match: at my own SIT or WAT, or by a snapshot
+  -- over a table that had no match yet on my client.
+  local late = (how.req or (not how.fresh and prev == nil)) and s.status == "live" and s.state ~= nil and not s:engine().over(s.state)
   local x, y = int.proved(s, m, p)
   if x and old and held and not held.done and held.h == p.h then prev = closed(s, prev, held, p, x, y) or prev end
   local bad, drift = int.forgery(s, prev, m, how, old, sameHost, p, x, y)
@@ -135,7 +136,7 @@ ns.Ext.dice.adopted = function(s, prev, m, how)
   if bad then forged(s, bad) elseif x then s.diceProof = copy(p) end
   -- What was thrown before I came I did not witness: the dice on the board
   -- are unseen for me (unless they are of the throw I hold), never "ok".
-  if late and not bad and s.diceLast == last0 and not (old and (x == nil or same(p, proof0))) then
+  if late and not bad and s.diceLast == last0 and not (old and prev ~= nil and (x == nil or same(p, proof0))) then
     int.close(s, x and p.h or m.q, "unseen")
   end
   local good = fits(s, m, how, held)
@@ -144,12 +145,15 @@ ns.Ext.dice.adopted = function(s, prev, m, how)
     -- A throw I had said my part to is gone or another one: unasked, or under
     -- an epoch its opener (still my host) raised, a second try; else unheard.
     local why = held.foul or ((how.changed or not how.asked) and "dodge") or nil
-    if why then int.close(s, held.h, "bad", why, held) else int.unheard(s) end
+    if why then int.close(s, held.h, "bad", why, held) else int.unheard(s, true) end
   elseif unseen and s.mySeat then
     -- Never passed over: pushed on me (by whoever hosts) or under an epoch my
     -- host raised a second try, else (I asked for the snapshot) unheard.
-    if not how.asked or (sameHost and how.changed) then int.close(s, p.h, "bad", "dodge") else int.unheard(s) end
+    if not how.asked or (sameHost and how.changed) then int.close(s, p.h, "bad", "dodge") else int.unheard(s, true) end
   end
+  -- The dice a snapshot brings of a throw I did not see close are unseen on
+  -- my line (amber), whatever was counted: it never stays green over them.
+  if unseen and x and not same(p, proof0) and s.diceLast == last0 then int.close(s, p.h, "unseen") end
   if good == "old" then return end
   if not good then
     if held and not held.done then s.throw = nil; int.stopTimer(s); Dice.forget(s) end
@@ -177,7 +181,7 @@ ns.Ext.dice.hostChanged = function(s)
   local t = s.throw
   if s.diceHost ~= s.host then s.diceNew = true end
   local why = t and not t.done and (t.foul or (s.seats[t.d] == s.host and "dodge"))
-  if why then int.close(s, t.h, "bad", why, t) elseif t and not t.done and (t.asked or t.sent) then int.unheard(s) end
+  if why then int.close(s, t.h, "bad", why, t) elseif t and not t.done and (t.asked or t.sent) then int.unheard(s, true) end
   s.throw, s.diceMine = nil, nil
   Dice.forget(s)
   int.stopTimer(s)

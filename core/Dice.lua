@@ -50,15 +50,23 @@ end
 
 local function foul(throw, why) throw.foul = throw.foul or why end
 -- A throw went on without my part although I had said it, or behind my back:
--- counted against the host (s.diceUnheard), unless my own client was away:
--- it shows a loading screen (env.loading), one ended less than DICE_WAIT ago
--- or after the last event I heard (env.loadedAt against s.diceHeard). Then
--- nobody is blamed (s.diceAway). The flags are my own client's; no message
--- of a host sets them.
-local function unheard(s)
+-- counted against the host (s.diceUnheard), unless my own client was away for
+-- it: it shows a loading screen (env.loading) or one ended less than DICE_WAIT
+-- ago (env.loadedAt); in a snapshot that resyncs me (`resync`) also one that
+-- ended after the last event I heard (s.diceHeard), as long as the snapshot
+-- comes within the time an honest host's tick and my request take. Then
+-- nobody is blamed (s.diceAway). One loading screen excuses one throw
+-- (s.diceAwayAt: its env.loadedAt, true while it still shows). The flags are
+-- my own client's; no message of a host sets them.
+local function unheard(s, resync)
   local env = s.client.env
   local at, now = env.loadedAt, env.now()
-  local away = env.loading == true or (at ~= nil and (now - at < C.DICE_WAIT or at > (s.diceHeard or now)))
+  local screen = env.loading == true or at -- which loading screen, if any
+  local inside = screen == true or (at ~= nil and (now - at < C.DICE_WAIT
+    or (resync and at > (s.diceHeard or now) and now - at < C.DICE_WAIT + C.PING_EVERY + C.SYN_MIN_GAP)))
+  if s.diceAwayAt == true and screen ~= true then s.diceAwayAt = at end -- the screen excused while it showed is over
+  local away = inside and s.diceAwayAt ~= screen
+  if away then s.diceAwayAt = screen end
   local key = away and "diceAway" or "diceUnheard"
   s[key] = (s[key] or 0) + 1
 end

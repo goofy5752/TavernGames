@@ -333,3 +333,64 @@ describe("final review: my dice records of tables that are gone (M6)", function(
     b:stand(); sim:run(1); b:sit(t4, 2); sim:run(2); eq({ a.dice[t1], a.dice[t2], a.dice[t4] ~= nil }, { nil, nil, true })
   end)
 end)
+
+describe("re-review: one excuse a loading screen, and a resync is never green", function()
+  local function move()
+    for _ = 1, 100 do if a.session.state.phase == "move" and ns.Util.same(a.session.state, b.session.state) then break end; sim:run(1) end
+    local st = a.session.state
+    if st.turn == 1 then ok(a:act(E.auto(st, 1))) else a.session:play(2, E.auto(st, 2), true) end
+  end
+
+  it("a host that keeps its events from me after my loading screen, throws alone several times and then resyncs me: amber or red, never green", function()
+    table2(30); local s, atB = b.session, {}; eq({ ns.Dice.status(s) }, { "dice.ok", "good" })
+    b:on("fair", function(e) atB[#atB + 1] = { verdict = e.verdict, line = { ns.Dice.status(s) } } end)   -- the line as each throw closes
+    sim:loading(B, true); sim:offline(B); move(); sim:run(12); sim:loading(B, false)
+    local h0 = a.session.diceProof.h
+    sim:run(45); ok(a.session.diceSeen.alone >= 2 and a.session.diceProof.h > h0)   -- nothing reaches me meanwhile
+    local n = #atB; sim:online(B)
+    for _ = 1, 40 do if #atB > n then break end; sim:run(1) end       -- the host's next tick makes me ask; the snapshot comes
+    eq({ atB[n + 1].verdict, atB[n + 1].line, (s.diceAway or 0) + (s.diceUnheard or 0) }, { "unseen", { "dice.unseen", "gold" }, 1 })
+    for i = n + 2, #atB do eq(atB[i].verdict, "ok") end                -- only a throw I then see whole turns it green again
+    eq(s.state, a.session.state)
+  end)
+
+  it("a loading screen excuses one throw, inside DICE_WAIT of its end; the next one under the same screen is counted", function()
+    table2(); local s, U = b.session, ns.Dice.int.unheard
+    sim:loading(B, true); sim:run(3); sim:loading(B, false)
+    U(s); U(s); eq({ s.diceAway, s.diceUnheard }, { 1, 1 })
+    sim:loading(B, true); U(s); U(s); eq({ s.diceAway, s.diceUnheard }, { 2, 2 })       -- while it shows: one
+    sim:loading(B, false); U(s); eq({ s.diceAway, s.diceUnheard }, { 2, 3 })           -- the same screen, now over: used
+    sim:loading(B, true); sim:run(1); sim:loading(B, false); sim:run(ns.Const.DICE_WAIT)
+    U(s); eq({ s.diceAway, s.diceUnheard }, { 2, 4 })                                 -- outside its window
+  end)
+
+  it("a snapshot of another table than the one I asked for is no walk-in; a match that appears by snapshot over my empty table is unseen", function()
+    local tid = table2(); local b2 = sim:crash(B)
+    local c = sim:add("Трети Играч", { cls = "ROGUE" }); sim:run(1)                     -- B's HI brought its snapshot already
+    eq(b2.session.tid, tid); b2 = sim:crash(B); b2.pending = { tid = "X#1", host = "Трети Играч", kind = "SIT" }
+    sim:run(3); eq({ b2.session.tid, b2.session.diceLast }, { tid, nil })               -- back at my seat: as any login
+    -- B sits at an open table of C (no match yet); C then pushes a running match by snapshot.
+    local t2 = c:openTable{ game = "tabla", access = "guild", turn = 45 }; sim:run(3)
+    local d = sim:add("Четвърти Играч", { cls = "DRUID" }); sim:run(1)
+    local sc = c.session; sc.seats[2] = "Четвърти Играч"; sc.seats[1] = false           -- a table that will not start by itself
+    sc.seats[1] = "Трети Играч"; sc.seats[2] = false
+    d:watch(t2); sim:run(1); local sd = d.session; eq({ sd.state, sd.status }, { nil, "open" })
+    local donor = a.session
+    sc.state, sc.status, sc.seq = ns.Util.copy(donor.state), "live", donor.seq
+    local h = sc.seq - 1; local x = grind(t2, h, donor.state.dice)
+    sc.diceProof = { h = h, c = { Fair.commit(x) }, s = { x }, r = 1, t = donor.state.rolls[1] }
+    local atD = fairs(d); sc:snapshotTo("Четвърти Играч"); sim:run(1)
+    eq({ sd.status, #atD, atD[1] and atD[1].verdict }, { "live", 1, "unseen" }); eq({ ns.Dice.status(sd) }, { "dice.unseen", "gold" })
+  end)
+
+  it("the table a /reload left me at is mine to return to only while my seat can still be held; a pruned record takes the way back with it", function()
+    local P = ns.Presence
+    local clock = 100
+    local p = P.new({ env = { db = { lastAt = "X#1" }, now = function() return clock end } })
+    p.been["Z#3"] = true; eq(p:mayReturn("X#1"), true)
+    clock = 100 + ns.Const.OFFLINE_STAND_SECONDS + ns.Const.SILENT_AFTER + ns.Const.CLAIM_STAGGER + 1; eq(p:mayReturn("X#1"), false)
+    local t1 = table2(); b:stand(); sim:run(1); a:stand(); sim:run(3); eq(b.presence:mayReturn(t1), true)
+    sim:run(ns.Const.DICE_KEEP + 1); local t2 = a:openTable{ game = "tabla", access = "guild", turn = 45 }; sim:run(3); b:sit(t2, 2); sim:run(2)
+    eq({ b.dice[t1], b.presence:mayReturn(t1), b.presence:mayReturn(t2) }, { nil, false, true })
+  end)
+end)
