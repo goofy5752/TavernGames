@@ -9,9 +9,17 @@ local function fail(describeName, itName, msg)
   print("FAIL " .. describeName .. " / " .. itName .. ": " .. tostring(msg))
 end
 
-local function show(v)
+-- A value for a failure message. A table already open on the way down prints
+-- as <cycle> (frames point at their parents and back), one nested deeper than
+-- SHOW_DEPTH as {…}.
+local SHOW_DEPTH = 8
+local function show(v, open, depth)
   if type(v) == "string" then return string.format("%q", v) end
   if type(v) ~= "table" then return tostring(v) end
+  open, depth = open or {}, depth or 0
+  if open[v] then return "<cycle>" end
+  if depth >= SHOW_DEPTH then return "{…}" end
+  open[v] = true
   local keys = {}
   for k in pairs(v) do keys[#keys + 1] = k end
   table.sort(keys, function(a, b)
@@ -19,7 +27,10 @@ local function show(v)
     return tostring(a) < tostring(b)
   end)
   local parts = {}
-  for _, k in ipairs(keys) do parts[#parts + 1] = "[" .. show(k) .. "]=" .. show(v[k]) end
+  for _, k in ipairs(keys) do
+    parts[#parts + 1] = "[" .. show(k, open, depth + 1) .. "]=" .. show(v[k], open, depth + 1)
+  end
+  open[v] = nil
   return "{" .. table.concat(parts, ", ") .. "}"
 end
 
