@@ -343,11 +343,11 @@ ns.Ext.fair = {
     Deal.react(s)
   end,
 
-  -- Host: the round as SNP.fr (public data only); with no round, only n.
+  -- Host: the round as SNP.fr (public data only); with no round, only n. k: a sealed book's keys (Book.snap).
   snap = function(s)
     local fair = s.fair
-    if not fair then return { n = s.fairN or 0 } end
-    return { h = fair.h, d = fair.d, p = copy(fair.p), c = copy(fair.commits), st = fair.stage, n = s.fairN or 0 }
+    if not fair then return { n = s.fairN or 0, k = ns.Book.snap(s) } end
+    return { h = fair.h, d = fair.d, p = copy(fair.p), c = copy(fair.commits), st = fair.stage, n = s.fairN or 0, k = ns.Book.snap(s) }
   end,
 
   -- My table changed host. A demoted host drops its wait. A new host whose

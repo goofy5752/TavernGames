@@ -67,8 +67,11 @@ function Client:openTable(opts) return ns.Session.open(self, opts) end
 function Client:sit(tid, seat) ns.Session.request(self, "SIT", tid, seat) end
 function Client:watch(tid) ns.Session.request(self, "WAT", tid) end
 
--- Stands up or stops watching.
-function Client:stand() ns.Session.stand(self) end
+-- Stands up or stops watching (the extensions hear of it first: hook `leaving`).
+function Client:stand()
+  if self.session then self.session:hook("leaving") end
+  ns.Session.stand(self)
+end
 
 -- A move by my seat -> true | nil, code (see Session.act).
 function Client:act(action) return ns.Session.act(self, action) end

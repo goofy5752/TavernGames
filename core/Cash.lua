@@ -30,6 +30,7 @@ local _, ns = ...
 --   itself away asks {k="back"} once its hand is over (Member.comeBack); a
 --   member flags an away or a void no honest host plays now (Member.unasked).
 --   The turn clock: Session:armTimers and Member.timedOut.
+-- - the book's keys and the close of the game: core/BookKeys.lua (op "key", hooks table, leaving).
 -- Nothing is sent from the `table` hook (core/DealHooks.lua says why).
 -- Session fields: s.stepTimer, s.stepWaits, s.dueKey, s.dueAt (armStep);
 -- s.handSeen, s.handNames (the seats when the last hand began); s.backAsked;
@@ -39,19 +40,12 @@ local Cash = {}
 ns.Cash = Cash
 
 local C = ns.Const
-local Session = ns.Session
 local copy, contains = ns.Util.copy, ns.Util.contains
 local int = ns.Deal.int
 local handDone, stopWait, foul, revise = int.handDone, int.stopWait, int.foul, int.revise
 
--- A book action to the host: handled at once when I host, else whispered as ACT.
-function Cash.submit(s, a)
-  if s.role == "host" then
-    if s.mySeat then ns.Book.request(s, s.mySeat, a) end
-  else
-    s.client:send("WHISPER", s.host, Session.message("ACT", { tid = s.tid, a = a }))
-  end
-end
+-- A book action to the host (Book.submit); the host's „Приключи“ (Book.closeGame).
+Cash.submit, Cash.close = ns.Book.submit, ns.Book.closeGame
 
 -- The names of the participants p as the table sits now -> {[seat] = name}.
 local function namesOf(s, p)
@@ -186,6 +180,7 @@ local function react(s)
   armStep(s)
   ns.Member.comeBack(s)
   release(s)
+  ns.Book.due(s)
   -- A forged event that ended the hand before any shuffle opened: my last hand carries it.
   local last = s.fairLast
   local open = s.fair and s.fair.stage ~= "done"
@@ -204,7 +199,7 @@ ns.Ext.cash = {
     local out = a.k == "back" and s.lapseOut and s.lapseOut[seat]
     if out then out.back = true; release(s); return nil end
     if a.k ~= "book" then return a end
-    ns.Book.request(s, seat, a)
+    if a.op == "key" then ns.Book.take(s, seat, a.m) else ns.Book.request(s, seat, a) end
     return nil
   end,
 
@@ -238,9 +233,13 @@ ns.Ext.cash = {
     elseif k == "street" and s.fair and s.fair.stage == "dealt" and ns.Book.faceless(s.state, a.cards) then
       foul(s.fair, "deal")
     end
+    ns.Book.event(s, seat, a)
     react(s)
     ns.Book.told(s)
   end,
+  table = ns.Book.table, -- a keys event (Book.event applies it)
+  still = function(_, seat, a) return seat == 0 and a.k == "book" or nil end, -- a key leaves the clock alone
+  leaving = ns.Book.leaving,
 
   lapsed = lapsed,
 
@@ -253,6 +252,7 @@ ns.Ext.cash = {
     if key ~= s.dueKey then s.dueKey, s.dueAt = key, nil end
     armStep(s)
     if s.role == "host" then s.backAsked, s.lapseOut = nil, nil; ns.Member.comeBack(s) end -- a held seat that hosts now asks itself
+    ns.Book.hostChanged(s)
   end,
 
   -- Member: a forged event while no round runs (the hand is dealt in, its
@@ -261,11 +261,11 @@ ns.Ext.cash = {
     if not (s.fair and s.fair.stage ~= "done") then s.forgedNext = true end
   end,
 
-  -- Member: the state of a snapshot (a book of another game is replaced by Book.of).
-  adopted = function(s)
+  -- Member: the state of a snapshot (a book of another game is replaced by Book.of) and its keys.
+  adopted = function(s, _, m)
     local st = s.state
     if not st then return end
-    ns.Book.of(s)
+    ns.Book.adopt(s, type(m) == "table" and type(m.fr) == "table" and m.fr.k or nil)
     s.handSeen = st.last and st.last.hand
     s.handNames = s.handNames or copy(s.seats)
     if s.fair and not s.fair.who then s.fair.who = namesOf(s, s.fair.p) end

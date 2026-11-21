@@ -32,7 +32,8 @@ local copy, seatOf = ns.Util.copy, ns.Util.seatOf
 -- need(s, action) (host: a system action that needs randomness), lapsed(s)
 -- (host: a shuffle was not dealt in FAIR_WAIT; called before it is opened again),
 -- table(s, a) -> true (a seat-0 event the extension applied itself), snap(s)
--- -> the SNP field `fr`. A hook that raises counts as nil: the error goes to
+-- -> the SNP field `fr`, leaving(s) (my client stands up: Client:stand, before
+-- its STD). A hook that raises counts as nil: the error goes to
 -- env.log ("error", "ext", "<ext>.<hook>", message), so it cannot cut short the
 -- request, event or snapshot handling around it (e.g. the sitter's SNP after a sit);
 -- an act hook that raises drops the action.
@@ -166,13 +167,16 @@ end
 -- Would startGame start the next game now -> true | nil, code: "nothost",
 -- "mode" (the engine has neither start == "host" nor `again` with the game
 -- over: it starts by itself), "short" (fewer than minSeats seated), "live" (a
--- game is running and not over). The checks of startGame, no effect.
+-- game is running and not over), "book" (a sealed game is over and my book has
+-- not published its keys yet: the check of every hand would be lost). The
+-- checks of startGame, no effect.
 function Session:canStart()
   if self.role ~= "host" then return nil, "nothost" end
   local engine, over = self:engine(), self:gameOver()
   if engine.start ~= "host" and not (engine.again and over) then return nil, "mode" end
   if self:seatedCount() < engine.minSeats then return nil, "short" end
   if self.status == "live" and not over then return nil, "live" end
+  if engine.sealed and over and not ns.Book.of(self).published then return nil, "book" end
   return true
 end
 
