@@ -671,6 +671,22 @@ describe("belot match", function()
   end)
 end)
 
+local function lcg(seed)
+  local x = seed
+  return function(lo, hi)
+    x = (x * 1103515245 + 12345) % 2147483648
+    return lo + math.floor(x / 65536) % (hi - lo + 1)
+  end
+end
+local function shuffled(rnd)
+  local deck = { unpack(E.DECK) }
+  for n = 32, 2, -1 do
+    local k = rnd(1, n)
+    deck[n], deck[k] = deck[k], deck[n]
+  end
+  return deck
+end
+
 describe("belot auto", function()
   it("passes in the auction, only on turn", function()
     local s = E.new {}
@@ -678,17 +694,63 @@ describe("belot auto", function()
     deal(s)
     eq(E.auto(s, 1), { k = "bid", b = "P" }); eq(E.auto(s, 2), nil); eq(E.auto(s, 0), nil)
   end)
-  it("announces what it holds, then plays a legal card, with the belote", function()
+  it("announces what it holds, then plays its lowest legal card, with the belote", function()
     local s = started(deckWith { [1] = "9C 9D 9H 9S TC JC TD JD" }, "A P P P")
-    local a = E.auto(s, 1)
-    eq(a, { k = "ann", a = { { t = "c9", i = idx(s, "9S") } } })
-    ok(E.apply(s, 1, a))
-    eq(E.auto(s, 1), { k = "play", i = idx(s, "9C"), c = "9C" })
-    eq(E.auto(s, 1, function(lo, hi) eq(lo, 1); return hi end), { k = "play", i = idx(s, "JD"), c = "JD" })
-    local t = started(DECK_A, "S P P P")
-    plays(t, "AH 9H 8H TS AC 8C 7C 9C KC 9S")
-    eq(E.auto(t, 2, function() return 3 end), { k = "play", i = idx(t, "QS"), c = "QS", b = true })
-    eq(E.auto(t, 3), nil)
+    eq(E.announce(s, 1), { k = "ann", a = { { t = "c9", i = idx(s, "9S") } } }); eq(E.auto(s, 1), E.announce(s, 1)); eq(E.announce(s, 2), nil)
+    ok(E.apply(s, 1, E.auto(s, 1))); eq(E.announce(s, 1), nil)
+    eq(E.auto(s, 1), { k = "play", i = idx(s, "TC"), c = "TC" })                      -- a ten (10) under a nine (14) and a jack (20)
+    eq(E.auto(s, 1, function() return 99 end), { k = "play", i = idx(s, "TC"), c = "TC" })
+    local t = started(DECK_A, "S P P P"); plays(t, "AH 9H 8H TS AC 8C 7C 9C KC 9S")
+    eq(E.auto(t, 2), { k = "play", i = idx(t, "QH"), c = "QH" }); eq(E.auto(t, 3), nil)   -- QH and QS both 3: the plain one
+    local u = started(deckWith { [1] = "QS KS JS 9S AS TS AH TH" }, "S P P P")
+    eq(E.auto(u, 1), { k = "ann", a = { { t = "s6", i = idx(u, "AS") } } }); ok(E.apply(u, 1, E.auto(u, 1)))
+    eq(E.auto(u, 1), { k = "play", i = idx(u, "QS"), c = "QS", b = true })
+  end)
+  it("a bot bids its strong suit, and never under the contract", function()
+    local d = E.new {}; deal(d, DECK_A)
+    eq(E.bot(E.view(d, 1), 1), { k = "bid", b = "H" }); eq(E.bot(E.view(d, 2), 2), nil)         -- AH KH 7H: 15 + 20
+    bids(d, "H"); eq(E.bot(E.view(d, 2), 2), { k = "bid", b = "P" })                              -- hearts 47, but hearts are bid
+    bids(d, "P"); eq(E.bot(E.view(d, 3), 3), { k = "bid", b = "P" })                              -- clubs 34, but clubs rank under hearts
+    bids(d, "P"); eq(E.bot(E.view(d, 4), 4), { k = "bid", b = "P" }); eq(E.bot(E.view(d, 1), 4), { k = "bid", b = "P" })   -- an unseen hand passes
+  end)
+  it("the fourth to speak bids its best suit rather than pass the deal out; luck bids a weak hand", function()
+    local weak = "7C 8D 7H 8S 7D 8C 9C TC"                                                        -- five cards: diamonds 10, the rest 0
+    local w = started(deckWith { [4] = weak }, "P P P"); eq(E.bot(E.view(w, 4), 4), { k = "bid", b = "D" })
+    eq(E.bot(E.view(started(deckWith { [4] = weak }, "P P H"), 4), 4, function() return 1 end), { k = "bid", b = "P" })
+    local x = E.new {}; deal(x, deckWith { [1] = weak }); local calls = 0
+    local function rnd(n) return function(lo, hi) calls = calls + 1; eq({ lo, hi }, { 1, 6 }); return n end end
+    eq(E.bot(E.view(x, 1), 1), { k = "bid", b = "P" }); eq(E.bot(E.view(x, 1), 1, rnd(6)), { k = "bid", b = "P" })
+    eq(E.bot(E.view(x, 1), 1, rnd(1)), { k = "bid", b = "D" }); eq(calls, 2)
+    local d = E.new {}; deal(d, DECK_A); eq(E.bot(E.view(d, 1), 1, rnd(1)), { k = "bid", b = "H" }); eq(calls, 2)   -- strong: luck not asked
+    local p = started(DECK_A, "S P P P"); eq(E.bot(p, 1), E.auto(p, 1))
+  end)
+  it("bots alone never pass a deal out and every match ends", function()
+    local rnd = lcg(20261122)
+    local deals, matches = 0, 0
+    while deals < 300 do
+      local s = E.new { first = rnd(1, 4) }
+      local guard = 0
+      while not E.over(s) do
+        guard = guard + 1
+        assert(guard < 20000, "the match does not end")
+        local sys = E.system(s)
+        local okay, why
+        if sys then
+          if sys.need == "deck" then
+            sys.deck, sys.need = shuffled(rnd), nil
+            deals = deals + 1
+          end
+          okay, why = E.apply(s, 0, sys)
+        else
+          local seat = s.turn
+          okay, why = E.apply(s, seat, E.bot(E.view(s, seat), seat, rnd))
+        end
+        ok(okay, "bot action rejected: " .. tostring(why))
+        if s.phase == "deal" and s.res then ok(s.res.contract ~= nil, "a deal was passed out") end
+      end
+      matches = matches + 1
+    end
+    ok(matches >= 10, "expected 10+ matches, got " .. matches)
   end)
 end)
 
@@ -748,22 +810,6 @@ local function assertViewHidesTheRest(s)
       eq(view.deck[i], (everything or allowed[i]) and s.deck[i] or nil)
     end
   end
-end
-
-local function lcg(seed)
-  local x = seed
-  return function(lo, hi)
-    x = (x * 1103515245 + 12345) % 2147483648
-    return lo + math.floor(x / 65536) % (hi - lo + 1)
-  end
-end
-local function shuffled(rnd)
-  local deck = { unpack(E.DECK) }
-  for n = 32, 2, -1 do
-    local k = rnd(1, n)
-    deck[n], deck[k] = deck[k], deck[n]
-  end
-  return deck
 end
 
 describe("belot whole deals", function()

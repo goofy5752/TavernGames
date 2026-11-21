@@ -776,33 +776,80 @@ function E.legal(s, seat)
   return out
 end
 
--- A legal action for the seat on turn, from what its view shows: a pass in the auction;
--- in the tricks first every announce it holds (a four before a sequence through it), then
--- a legal card (the first, or a random one), with the belote when it is one.
+-- Everything the seat on turn may still announce, as one action: every offered announce in
+-- the offered order whose cards are still free (a four before a sequence through it). nil
+-- off turn, once announcing is closed, for a hand the view does not show, or with nothing.
+function E.announce(s, seat)
+  if not isSeat(seat) or s.turn ~= seat or s.phase ~= "play" or not canAnnounce(s) then return nil end
+  local avail = availableAnnounces(s, seat)
+  if not avail then return nil end
+  local set, used = {}, {}
+  for _, x in ipairs(avail) do
+    local cards, free = announceCards(x.t, s.deck[x.i]), true
+    for _, face in ipairs(cards) do
+      if used[face] then free = false break end
+    end
+    if free then
+      set[#set + 1] = x
+      for _, face in ipairs(cards) do used[face] = true end
+    end
+  end
+  if #set == 0 then return nil end
+  return { k = "ann", a = set }
+end
+
+-- The timeout's move for the seat on turn, from what its view shows: a pass in the auction;
+-- in the tricks first E.announce, then the lowest legal card (fewest card points under the
+-- contract, a plain card before a trump, then the first in the hand), with the belote when
+-- it is one. `random` is not used. Bots move by E.bot.
 function E.auto(s, seat, random)
   if not isSeat(seat) or s.turn ~= seat then return nil end
   if s.phase == "bid" then return { k = "bid", b = "P" } end
   if s.phase ~= "play" then return nil end
   local hand, trick = facesOf(s, s.hands[seat]), facesOf(s, s.trick)
   if not hand or not trick then return nil end
-  if canAnnounce(s) then
-    local set, used = {}, {}
-    for _, x in ipairs(availableAnnounces(s, seat)) do
-      local cards, free = announceCards(x.t, s.deck[x.i]), true
-      for _, face in ipairs(cards) do
-        if used[face] then free = false break end
-      end
-      if free then
-        set[#set + 1] = x
-        for _, face in ipairs(cards) do used[face] = true end
-      end
-    end
-    if #set > 0 then return { k = "ann", a = set } end
-  end
+  local announce = E.announce(s, seat)
+  if announce then return announce end
   local b = s.contract.b
-  local valid = validCards(b, hand, trick)
-  local n = valid[random and random(1, #valid) or 1]
+  local n, key
+  for _, m in ipairs(validCards(b, hand, trick)) do
+    local face = hand[m]
+    local k = cardValue(b, face) * 2 + ((b == "A" or suitOf(face) == b) and 1 or 0)
+    if not key or k < key then n, key = m, k end
+  end
   return { k = "play", i = s.hands[seat][n], c = hand[n], b = beloteAllowed(b, hand, trick, hand[n]) or nil }
+end
+
+-- A bot's bids: suits only, never a double. Strength of a suit = the trump points of my cards
+-- of it + 10 for each card of it after the first. The strongest suit (the higher one among
+-- equals) is bid when it outranks the contract and is strong enough (BOT_BID), or when I am
+-- the fourth to speak and nobody has bid, or by luck (random(1, BOT_LUCK) == 1).
+E.BOT_BID, E.BOT_LUCK = 34, 6
+
+function E.bot(s, seat, random)
+  if s.phase ~= "bid" then return E.auto(s, seat, random) end
+  if not isSeat(seat) or s.turn ~= seat then return nil end
+  local hand = facesOf(s, s.hands[seat])
+  if not hand then return { k = "bid", b = "P" } end
+  local strength = { C = 0, D = 0, H = 0, S = 0 }
+  local count = { C = 0, D = 0, H = 0, S = 0 }
+  for _, face in ipairs(hand) do
+    local suit = suitOf(face)
+    strength[suit] = strength[suit] + TRUMP_VALUE[rankOf(face)]
+    count[suit] = count[suit] + 1
+  end
+  local best
+  for _, suit in ipairs(SUITS) do
+    if count[suit] > 0 then strength[suit] = strength[suit] + 10 * (count[suit] - 1) end
+    if not best or strength[suit] >= strength[best] then best = suit end
+  end
+  local top = s.contract and BID_RANK[s.contract.b] or 0
+  if BID_RANK[best] <= top then return { k = "bid", b = "P" } end
+  if strength[best] >= E.BOT_BID or (not s.contract and s.passes == 3)
+    or (random and random(1, E.BOT_LUCK) == 1) then
+    return { k = "bid", b = best }
+  end
+  return { k = "bid", b = "P" }
 end
 
 -- What the table does next: {k="deal", need="deck"} (randomness: the supplier applies it without need
