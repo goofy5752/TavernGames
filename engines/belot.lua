@@ -92,7 +92,8 @@
 --                  on (as after a passed-out deal), res is cleared           -> "deal"
 -- At the table: extension "fair" (core/Deal.lua) shuffles and deals; E.dealer names the
 -- seat that deals the next round. E.again: once a match is over the host may start a new
--- one; E.nextFirst keeps the deal going round (the previous loser does not lead).
+-- one; E.nextFirst keeps the deal going round (the previous loser does not lead). E.teams:
+-- a seat that leaves loses the match for its partner too (the table frame asks first).
 -- state.res is the last deal's result: raw (team totals), pts (game points), hang, valat,
 -- contract (nil when passed out), ann (every announce with its points v and whether it
 -- scored, on; bad = true, v = 0 for one its seat's cards did not back). state.score, state.hang, state.winner (team) and state.left (the seat that
@@ -101,7 +102,7 @@
 local _, ns = ...
 ns.Engines = ns.Engines or {}
 
-local E = { id = "belot", minSeats = 4, maxSeats = 4, TARGET = 151, options = {}, ext = { "fair" }, again = true }
+local E = { id = "belot", minSeats = 4, maxSeats = 4, TARGET = 151, options = {}, ext = { "fair" }, again = true, teams = true }
 ns.Engines.belot = E
 
 local SUITS = { "C", "D", "H", "S" }

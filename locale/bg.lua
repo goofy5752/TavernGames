@@ -173,6 +173,9 @@ T["table.stand"] = "Стани"
 T["ttt.rematch"] = "Реванш"
 
 -- Table frame
+T["table.standWarn"] = "Отборът ви губи мача, ако станеш сега. Партньорът ти губи заедно с теб."
+T["table.standYes"] = "Стани"
+T["table.standNo"] = "Остани"
 T["table.toHall"] = "Към залата"
 T["table.waiting"] = "Чакаме втори играч…"
 T["table.aborted"] = "Играта е прекъсната."

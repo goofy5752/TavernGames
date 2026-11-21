@@ -252,4 +252,42 @@ describe("ui: Белот view", function()
       "the fairness line has a verdict already")
     eq(v.info.topic, "belot")
   end)
+
+  it("„Стани“ in a running match asks first: „Отборът ви губи мача“; „Остани“ keeps the seat, „Стани“ there stands", function()
+    local w = guildWow(); w:slash("bots"); w:advance(0); w:advance(0)
+    local client, T = w.ns.client, w.ns.TableFrame
+    client:openTable{ game = "belot", access = "invite", turn = 45 }; w:advance(0)
+    local v = T.view
+    eq(v.confirm:IsVisible(), false); eq(T.standCosts(client.session), false)                 -- alone at the table: nothing to lose
+    for _, bot in ipairs(BOTS) do
+      w:click(v.inviteButton)
+      for _, r in ipairs(v.picker.rows) do
+        if r.frame:IsVisible() and r.name:GetText() == bot then w:click(r.frame) end
+      end
+      w:advance(2)
+    end
+    w:advance(2)
+    local s = client.session; eq({ s.status, s:seatedCount(), T.standCosts(s) }, { "live", 4, true })
+    local results = 0; client:on("result", function() results = results + 1 end)
+    w:click(v.standButton); w:advance(0)
+    eq(client.session, s); eq(results, 0); ok(v.confirm:IsVisible(), "no question")
+    ok(v.confirm.text:GetText():find("Отборът ви губи мача", 1, true), v.confirm.text:GetText())
+    eq({ v.confirm.yes.text:GetText(), v.confirm.no.text:GetText() }, { "Стани", "Остани" })
+    eq(v.confirm.points[1], { "BOTTOMLEFT", v.standButton, "TOPLEFT", 0, 6 })
+    w:click(v.confirm.no); w:advance(0)
+    eq(client.session, s); eq(v.confirm:IsVisible(), false); eq(results, 0)
+    w:click(v.standButton); w:advance(0); ok(v.confirm:IsVisible(), "no question the second time")
+    w:click(v.confirm.yes); w:advance(1)
+    eq(client.session, nil); eq(v.confirm:IsVisible(), false)
+    -- a watcher, a table that is not live and a game without teams stand at once
+    eq(T.standCosts(nil), false)
+    eq(T.standCosts({ status = "live", mySeat = nil, engine = function() return E end, gameOver = function() return false end }), false)
+    eq(T.standCosts({ status = "aborted", mySeat = 1, engine = function() return E end, gameOver = function() return false end }), false)
+    eq(T.standCosts({ status = "live", mySeat = 1, engine = function() return E end, gameOver = function() return true end }), false)
+    eq(T.standCosts({ status = "live", mySeat = 1, engine = function() return w.ns.Engines.santase end, gameOver = function() return false end }), false)
+    eq(T.standCosts({ status = "live", mySeat = 1, engine = function() return E end, gameOver = function() return false end }), true)
+    for _, lang in ipairs{ "bg", "en" } do
+      for _, key in ipairs{ "table.standWarn", "table.standYes", "table.standNo" } do ok(w.ns.Locale.tables[lang][key], lang .. ": " .. key) end
+    end
+  end)
 end)

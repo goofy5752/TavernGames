@@ -173,6 +173,9 @@ T["table.stand"] = "Stand up"
 T["ttt.rematch"] = "Rematch"
 
 -- Table frame
+T["table.standWarn"] = "Your team loses the match if you stand up now. Your partner loses with you."
+T["table.standYes"] = "Stand up"
+T["table.standNo"] = "Stay"
 T["table.toHall"] = "To the hall"
 T["table.waiting"] = "Waiting for a second player…"
 T["table.aborted"] = "The game was interrupted."

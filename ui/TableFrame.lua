@@ -19,7 +19,8 @@ local _, ns = ...
 -- the shuffle under way or the verdict on the last hand; it opens the
 -- rules book on "fair". Title bar: the game, the access, turn time and table
 -- options, the watcher count and ⓘ (topic = game id). Bottom: „Стани“
--- (watchers: „Към залата“), „Покани“ for the host while a seat is free (a list
+-- (watchers: „Към залата“; in a running match of a team game it first asks
+-- in a small panel above the button, since my partner loses with me), „Покани“ for the host while a seat is free (a list
 -- of who is in the tavern), „Започни“ / „Нова игра“ for the host of a
 -- host-started game while none runs and of a game with `again` once it is
 -- over, and one line of news for SAY_SECONDS.
@@ -82,10 +83,21 @@ function TableFrame.say(text)
   return true
 end
 
--- „Стани“ / „Към залата“: leave the table and go back to the hall.
-function TableFrame.stand()
+-- Would standing up now lose a running match for my partner too -> bool: I
+-- am seated in a live match of a team game (engine.teams) that is not over.
+function TableFrame.standCosts(s)
+  return s ~= nil and s.status == "live" and s.mySeat ~= nil and s:engine().teams == true and not s:gameOver()
+end
+
+-- „Стани“ / „Към залата“: leave the table and go back to the hall. While
+-- standCosts, the first click only opens the question („Отборът ви губи
+-- мача…“); its „Стани“ calls this with sure = true.
+function TableFrame.stand(sure)
   local client = ns.client
   if not client then return end
+  local v = TableFrame.view
+  if v and sure ~= true and TableFrame.standCosts(client.session) then return v.confirm:Show() end
+  if v then v.confirm:Hide() end
   client:stand()
   ns.MainWindow.show("hall")
 end
@@ -390,7 +402,10 @@ function TableFrame.render()
   local client = ns.client
   local s = client and client.session
   if not s then
-    if TableFrame.frame then TableFrame.frame:Hide() end
+    if TableFrame.frame then
+      TableFrame.view.confirm:Hide()
+      TableFrame.frame:Hide()
+    end
     return
   end
   if not TableFrame.frame then TableFrame.build() end
@@ -415,6 +430,7 @@ function TableFrame.render()
   if key then v.bannerText:SetText(L(key)) end
   v.banner:SetShown(key ~= nil)
   v.standButton.text:SetText(L(s.role == "watcher" and "table.toHall" or "table.stand"))
+  if not TableFrame.standCosts(s) then v.confirm:Hide() end -- the match ended meanwhile
   local canInvite = s.role == "host" and firstFree(s.seats) ~= nil
   v.inviteButton:SetShown(canInvite)
   if not canInvite then
@@ -472,6 +488,30 @@ local function buildPicker(v, f)
   picker.empty:SetPoint("TOPLEFT", picker, "TOPLEFT", 10, -32)
   picker:Hide()
   v.picker = picker
+end
+
+-- The question before „Стани“ costs my team the match: above the button.
+local function buildConfirm(v, f)
+  local panel = W.Panel(f)
+  panel.fill:SetColorTexture(20 / 255, 10 / 255, 5 / 255, 0.95)
+  panel:SetSize(250, 82)
+  panel:SetPoint("BOTTOMLEFT", v.standButton, "TOPLEFT", 0, 6)
+  panel:SetFrameLevel(f:GetFrameLevel() + 22)
+  panel:EnableMouse(true)
+  local text = W.Label(panel, "ui", L("table.standWarn"), 12)
+  text:SetWidth(230)
+  text:SetJustifyH("LEFT")
+  text:SetTextColor(Theme.rgb("gold"))
+  text:SetPoint("TOPLEFT", panel, "TOPLEFT", 10, -9)
+  panel.text = text
+  panel.yes = W.Button(panel, L("table.standYes"), function() TableFrame.stand(true) end, true)
+  panel.yes:SetSize(100, 22)
+  panel.yes:SetPoint("BOTTOMLEFT", panel, "BOTTOMLEFT", 10, 9)
+  panel.no = W.Button(panel, L("table.standNo"), function() panel:Hide() end, true)
+  panel.no:SetSize(110, 22)
+  panel.no:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -10, 9)
+  panel:Hide()
+  v.confirm = panel
 end
 
 function TableFrame.build()
@@ -581,6 +621,7 @@ function TableFrame.build()
   line:Hide()
   v.line = line
   buildPicker(v, f)
+  buildConfirm(v, f)
 
   f:SetScript("OnUpdate", TableFrame.tick)
   f:Hide()
