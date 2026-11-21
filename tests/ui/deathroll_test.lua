@@ -81,7 +81,7 @@ local function hello(w, name, guid)
 end
 
 -- I leave my bot table; B (real) hosts a live game from 100 in which I hold
--- seat 2 and B is on turn: its TBL and the SNP that seats me.
+-- seat 2 and B is on turn: its TBL, my request and the SNP that seats me.
 -- `seats` and `st` replace that table's seats and game state.
 local function seatedAtB(w, seats, st)
   w.ns.client:stand(); w:advance(0)
@@ -92,6 +92,7 @@ local function seatedAtB(w, seats, st)
   local announce = { v = 1, t = "TBL" }
   for k, v in pairs(tbl) do announce[k] = v end
   w:deliver("GUILD", B, announce)
+  w.ns.client:sit(tid, 2) -- a snapshot of a table I never asked for is not adopted
   st = st or { players = { 1, 2 }, turn = 1, start = 100, max = 100, rolls = {}, phase = "play" }
   w:deliver("WHISPER", B, { v = 1, t = "SNP", tid = tid, e = 1, q = 1, tbl = tbl, st = st, left = 45 })
   w:advance(0)

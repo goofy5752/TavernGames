@@ -21,10 +21,18 @@ function Presence.new(client)
     heardAt = {},    -- name -> env.now() of the last message
     expiry = {},     -- name -> timer handle
     at = nil,        -- own table id
+    been = {},       -- tid -> true: every table I was at since this client started
     sentAt = nil,    -- `at` carried by the last GUILD HI
     lastHi = nil,    -- env.now() of the last GUILD HI
     pendingHi = nil, -- coalesced GUILD HI timer
   }, Presence)
+end
+
+-- May a snapshot I did not ask for bring me (back) to table `tid`: one I was
+-- at, or, having been at none since this client started, the table a login
+-- finds me still seated at.
+function Presence:mayReturn(tid)
+  return self.been[tid] == true or next(self.been) == nil
 end
 
 function Presence:hi(re)
@@ -54,6 +62,7 @@ end
 -- Own seat changed: GUILD HI, at most one per HI_MIN_GAP seconds, latest `at` wins.
 -- A stopped client only records it; its BYE already tells everyone.
 function Presence:setAt(tid)
+  if tid then self.been[tid] = true end
   if tid == self.at then return end
   self.at = tid
   if not self.client.running then return end

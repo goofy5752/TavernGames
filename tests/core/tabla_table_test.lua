@@ -535,6 +535,21 @@ describe("tabla at the table", function()
     ns.Dice.int.close(s, 6, "bad", "forged"); eq({ s.diceSeen.ok, s.diceSeen.bad }, { 1, 1 })     -- throw 6 found bad afterwards: counted once
     ns.Dice.int.close(s, 6, "ok", nil, { d = 1 }); eq({ s.diceSeen.ok, s.diceSeen.bad, ns.Dice.alarm(s) }, { 2, 1, true })   -- its number used again
   end)
+  it("a table that ends under me cannot come back under another id with dice of the host's making (round 5)", function()
+    local function other(tid, send)                                                            -- the reviewer's probes rr8 and rr9
+      local sa, nt = a.session, A .. "#1700000099"; local st = sa.state
+      send(sa); sa.tid = nt; sa.seq = sa.seq + 3
+      local x = grind(nt, sa.seq - 1, { 6, 6 }); st.dice, st.left, st.phase, st.turn = { 6, 6 }, { 6, 6, 6, 6 }, "move", 1
+      sa.diceProof = { h = sa.seq - 1, c = { ns.Fair.commit(x) }, s = { x }, r = 1, t = st.rolls[1] }
+      sa:snapshotTo(B); sim:run(2); return nt
+    end
+    local sim, tid = table2(); seat(); local atB = fairs(b)
+    local nt = other(tid, function(sa) a:send("GUILD", nil, ns.Session.message("END", { tid = tid, e = sa.epoch })) end)
+    eq({ b.session, b.dice[nt] }, {}); eq(#atB, 0); ok(sim:count(function(m) return m.from == B and m.msg.t == "STD" and m.msg.tid == nt end) >= 1)
+    sim, tid = table2(); seat(); atB = fairs(b)
+    nt = other(tid, function() a:send("WHISPER", B, ns.Session.message("SNO", { tid = tid, why = "gone" })); sim:run(1); eq(b.session, nil) end)
+    eq({ b.session, b.dice[nt] }, {}); eq(#atB, 0); ok(sim:count(function(m) return m.from == B and m.msg.t == "STD" and m.msg.tid == nt end) >= 1)
+  end)
   it("a start in the middle of a match wipes no count of mine; a real new match does (round 4)", function()
     local sim, tid = table2(); seat(); local atB, sa = fairs(b), a.session; local st = sa.state
     st.dice, st.left = { 6, 6 }, { 6, 6, 6, 6 }; sa:snapshotTo(B); sim:run(1); eq(ns.Dice.alarm(b.session), true)

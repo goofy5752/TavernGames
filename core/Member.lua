@@ -111,11 +111,13 @@ local function onSnapshot(client, sender, m)
       Member.adopt(client, sender, m)
     end
   elseif not s and ((p and p.tid == m.tid and p.host == sender)
-      or (client.gaveUp ~= m.tid and seatOf(t.s, client.env.me))) then
-    -- The answer to my request, or (after a relog) a table I still hold a seat at.
+      or (client.gaveUp ~= m.tid and seatOf(t.s, client.env.me) and client.presence:mayReturn(m.tid))) then
+    -- The answer to my request (sit, watch, an invitation I took), or a seat I
+    -- still hold at a table I was at (after a relog: the one it left me at).
     Member.adopt(client, sender, m)
   else
-    -- Seated or listed after I gave up waiting or went elsewhere: free the place again.
+    -- Seated or listed after I gave up waiting or went elsewhere, or at a table
+    -- I never asked for: free the place again (the STD is the trace line).
     client:send("WHISPER", sender, Session.message("STD", { tid = m.tid }))
   end
 end
