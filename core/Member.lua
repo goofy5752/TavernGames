@@ -39,20 +39,23 @@ function Session:requestSync()
   end
 end
 
--- The stake I accepted for table `tid` -> known, sk: the note of my SIT
--- (db.stakeSat, Session.request: it outlives a /reload or a logout), else my
--- session at that table. Unknown (a crash, or a table I opened): the
--- snapshot's stake is taken.
+-- The stake I accepted for table `tid` -> known, sk: my note for it
+-- (db.stakeSat, ns.Stake.note: it outlives a /reload or a logout), else my
+-- session at that table, else none (nil: only a fun table) when my note of
+-- another table was written in this run. Unknown: no note in this run and the
+-- one loaded at login is of another table or missing (a crash).
 local function accepted(client, tid)
   local note, s = client.env.db.stakeSat, client.session
   if type(note) == "table" and note.tid == tid then return true, note.sk end
   if s and s.tid == tid then return true, s.stake end
+  if client.stakeNoted then return true, nil end
   return false, nil
 end
 
 -- Member: session from a snapshot (new, or replacing the current one; a host
 -- that lost its table to `sender` steps down first). A snapshot that seats me
--- at another stake than the one I accepted stands me up ("refused" "stake").
+-- at another stake than the one I accepted stands me up ("refused" "stake");
+-- one that seats me at a staked table at an unknown stake asks (ns.Stake.ask).
 function Member.adopt(client, sender, m)
   local t, me = m.tbl, client.env.me
   local seat = seatOf(t.s, me)
@@ -64,6 +67,7 @@ function Member.adopt(client, sender, m)
     if client.session then Session.leave(client) end
     return Session.refuse(client, m.tid, "stake")
   end
+  local ask = seat ~= nil and not known and t.sk ~= nil
   local fresh = client.session == nil -- no memory of this table (a relog, or I just came)
   local s = client.session or setmetatable({ client = client }, Session)
   local prevState, prevHost = s.state, s.host
@@ -108,6 +112,7 @@ function Member.adopt(client, sender, m)
   end
   client.presence:setAt(s.tid)
   Session.emit(client)
+  if ask then ns.Stake.ask(client) end
 end
 
 local function unusable(m, sender)

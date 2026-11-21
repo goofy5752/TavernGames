@@ -14,6 +14,8 @@ function Client.new(env)
   self.session = nil -- see core/Session.lua
   self.pending = nil -- { tid, host } of an unanswered SIT/WAT
   self.invites = ns.Invites.new(self)
+  self.stakeNoted = false -- a db.stakeSat note was written in this run (see ns.Stake.note)
+  ns.Stake.watch(self)
   return self
 end
 
@@ -67,6 +69,10 @@ function Client:openTable(opts) return ns.Session.open(self, opts) end
 -- Refusals arrive as the event "refused"(tid, why). `sk`: the table's stake I
 -- accept (nil at a fun table); any other is refused "stake".
 function Client:sit(tid, seat, sk) ns.Session.request(self, "SIT", tid, seat, sk) end
+
+-- After "stakeAsk"(tid, sk): I accept that stake and keep my seat -> true | nil
+-- (nothing asked). Unaccepted, the end of the running game stands me up.
+function Client:acceptStake() return ns.Stake.accept(self) end
 function Client:watch(tid) ns.Session.request(self, "WAT", tid) end
 
 -- Stands up or stops watching (the extensions hear of it first: hook `leaving`).

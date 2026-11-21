@@ -388,7 +388,7 @@ function Session.open(client, opts)
   local seats = {}
   for i = 1, engine.maxSeats do seats[i] = false end
   seats[1] = env.me
-  client.pending = nil
+  client.pending = nil; ns.Stake.note(client, tid, opts.stake) -- the opener accepts its own stake
   client.session = setmetatable({
     client = client,
     tid = tid, role = "host", mySeat = 1, host = env.me, epoch = 1, seq = 0,
@@ -409,7 +409,7 @@ end
 function Session.request(client, kind, tid, seat, sk)
   local s = client.session
   if s and (s.tid ~= tid or s.role == "host") then return refuse(client, tid, "busy") end
-  local host = s and s.host
+  local host, was = s and s.host, client.pending -- was: a SIT of mine still unanswered keeps its note
   client.gaveUp = nil
   if s then s.sitAsked, s.asked = kind == "SIT" and client.env.now() or nil, true end -- see Party.inviteFrom, Member.adopt
   if not host then
@@ -427,7 +427,7 @@ function Session.request(client, kind, tid, seat, sk)
     end)
   end
   local m = kind == "SIT" and { tid = tid, seat = seat, sk = sk } or { tid = tid }
-  if kind == "SIT" and not (s and s.mySeat) then client.env.db.stakeSat = { tid = tid, sk = sk } end -- a repeat keeps it
+  if kind == "SIT" and not (s and s.mySeat or was and was.tid == tid and was.kind == "SIT") then ns.Stake.note(client, tid, sk) end
   client:send("WHISPER", host, message(kind, m))
 end
 

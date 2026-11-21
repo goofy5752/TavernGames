@@ -163,7 +163,7 @@ end
 function Invites:onInvite(sender, m)
   local client, env = self.client, self.client.env
   if m.h ~= sender or type(m.g) ~= "string" or type(m.s) ~= "table" then return end
-  if m.sk ~= nil and not ns.Stake.valid(m.sk) then return end
+  if m.sk ~= nil and not ns.Stake.allowed(m.g, m.sk) then return end
   local r = self.received
   if r and r.tid == m.tid and r.host == sender then return end -- a repeated whisper
   if r or (m.sk ~= nil and self.noStakes) then return reply(client, sender, m.tid, "auto", "busy") end
