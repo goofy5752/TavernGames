@@ -145,15 +145,15 @@ describe("ui: main window", function()
 end)
 
 describe("ui: hall", function()
-  it("lists six games: Морски шах, Death Roll and Сантасе active, the other three dimmed with „Скоро“", function()
+  it("lists six games: Морски шах, Death Roll, Сантасе and Белот active, the other two dimmed with „Скоро“", function()
     local w = guildWow()
     w.ns.MainWindow.show()
     local games = w.ns.Hall.view.games
     eq(#games, 6)
     eq({ games[1].id, games[2].id, games[3].id, games[6].id }, { "ttt", "deathroll", "santase", "holdem" })
     eq(games[1].name:GetText(), "Морски шах")
-    for i = 1, 3 do eq(games[i].frame:GetAlpha(), 1); eq(games[i].soon:IsVisible(), false) end
-    for i = 4, 6 do
+    for i = 1, 4 do eq(games[i].frame:GetAlpha(), 1); eq(games[i].soon:IsVisible(), false) end
+    for i = 5, 6 do
       ok(games[i].frame:GetAlpha() < 1, "not dimmed: " .. games[i].id)
       ok(games[i].soon:IsVisible(), "no Скоро: " .. games[i].id); eq(games[i].soon:GetText(), "Скоро")
     end
@@ -168,7 +168,7 @@ describe("ui: hall", function()
     local opened = {}
     w.ns.HelpBook = { open = function(id) opened[#opened + 1] = id end }
     w.ns.MainWindow.show()
-    w:click(w.ns.Hall.view.games[4].frame)
+    w:click(w.ns.Hall.view.games[5].frame)
     eq(opened, { "soon" })
     w:click(w.ns.Hall.view.openButton)
     eq(w.ns.NewTableDialog.gameId, "ttt")

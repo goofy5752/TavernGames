@@ -268,7 +268,7 @@ describe("bots for any game", function()
 
   it("hostTable and inviteMe refuse a game that is not built", function()
     local _, _, _, bots = setup()
-    eq(bots:hostTable("belot"), nil); eq(bots:inviteMe("holdem"), nil); ok(bots:hostTable()) -- default ttt
+    eq(bots:hostTable("tabla"), nil); eq(bots:inviteMe("holdem"), nil); ok(bots:hostTable()) -- default ttt
   end)
 
   it("disable restores env.inGroup", function()

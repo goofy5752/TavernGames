@@ -15,6 +15,10 @@ local _, ns = ...
 --   Seeds still out FAIR_WAIT after the hand ended: the hand is "bad",
 --   "noreveal" - closed by the next open, or after the last hand of a match by
 --   EV {k="fair", op="noreveal", h} (host only) or at the latest by the next start.
+-- The dealer (dealerFor): the seat the engine names (E.dealer, from its
+-- public state: Белот, the seat before the one that bids first), else
+-- p[(n + 1) % #p + 1] with n the hands dealt in this match. The open, the
+-- open event's check and a snapshot's round (DealHooks `fits`) all use it.
 -- Failures: a shuffle not dealt FAIR_WAIT after its open is opened again
 -- (a new h, fresh seeds, the same dealer), and a stand during the shuffle
 -- reopens it at once. A shuffle that had every commit and was not dealt
@@ -23,9 +27,10 @@ local _, ns = ...
 -- after adopting a dealt hand, else after FAIR_ASK_GAP. A dealer without its
 -- deck (a reload) or whose seat stands mid-hand: the hand is void (EV seat 0
 -- {k="void"}), nothing scores, and the deal is asked for again - from the
--- next seat (the count of deals is kept), so a void never buys the same
--- dealer another deck. Voids and no-deals are counted per dealer name and
--- match (s.fairVoids) and the status line names the dealer.
+-- next seat (the count of deals is kept; an engine naming the dealer moves it
+-- on itself), so a void never buys the same dealer another deck. Voids and
+-- no-deals are counted per dealer name and match (s.fairVoids) and the status
+-- line names the dealer.
 -- A seat whose own check failed where the others cannot see it tells the table:
 -- ACT {k="fair", op="protest", h, why} -> EV seat 0 {..., seat, why}, once per
 -- seat and hand. The others keep it as a claim about that hand (s.fairCry,
@@ -85,9 +90,19 @@ local function occupiedSeats(seats)
   return out
 end
 
--- The dealer's seat of the next hand: p[(n + 1) % #p + 1].
+-- The dealer's seat of the next hand by the count of hands dealt: p[(n + 1) % #p + 1].
 local function dealerOf(p, n)
   return p[(n + 1) % #p + 1]
+end
+
+-- The dealer's seat of the next hand among the participants p: the one the
+-- engine names (E.dealer) when it is one of p, else dealerOf(p, n), n = the
+-- hands dealt in this match (s.fairN unless given).
+local function dealerFor(s, p, n)
+  local engine = s:engine()
+  local d = engine.dealer and s.state and engine.dealer(s.state)
+  if d and contains(p, d) then return d end
+  return dealerOf(p, n or s.fairN or 0)
 end
 
 -- Evidence against the round, kept until it closes (the first one wins).
@@ -128,14 +143,19 @@ local function participantsFit(s, p)
   return true
 end
 
--- A round in stage "dealt" whose hand is finished: the match is over, or the
--- engine asks for the next deck.
-function Deal.handOver(s)
-  local fair = s.fair
-  if not fair or fair.stage ~= "dealt" or not s.state then return false end
+-- Is the hand on my state finished: the match is over, or the engine asks
+-- for the next deck?
+local function handDone(s)
+  if not s.state then return false end
   if s:gameOver() then return true end
   local action = s:engine().system(s.state)
   return action ~= nil and action.need == "deck"
+end
+
+-- A round in stage "dealt" whose hand is finished.
+function Deal.handOver(s)
+  local fair = s.fair
+  return fair ~= nil and fair.stage == "dealt" and handDone(s)
 end
 
 -- May the seeds `list` be revealed for my round now? An array of #p strings,
@@ -256,7 +276,7 @@ function Deal.open(s)
   local h = s.seq + 1
   stopWait(s)
   armWait(s, h)
-  s:play(0, { k = "fair", op = "open", h = h, d = dealerOf(p, s.fairN or 0), p = p })
+  s:play(0, { k = "fair", op = "open", h = h, d = dealerFor(s, p), p = p })
 end
 
 -- My seat tells the table that hand h was not fair to it (ACT/EV op
@@ -607,8 +627,8 @@ ns.Member.handlers.PRQ = onAsk
 Deal.int = {
   isInt = isInt, STAGES = STAGES, PRIVATE = PRIVATE, foul = foul, sawCommit = sawCommit,
   commitFits = commitFits, participantsFit = participantsFit, revealFits = revealFits,
-  dealerOf = dealerOf, armWait = armWait, stopWait = stopWait, revise = revise,
-  seedsIn = seedsIn, takeOver = takeOver, request = request, judge = judge,
+  dealerOf = dealerOf, dealerFor = dealerFor, handDone = handDone, armWait = armWait, stopWait = stopWait,
+  revise = revise, seedsIn = seedsIn, takeOver = takeOver, request = request, judge = judge,
 }
 
 -- The table frame's fairness line -> locale key, argument | nil: nil for an

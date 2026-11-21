@@ -3,7 +3,9 @@ local _, ns = ...
 -- The `ns.Ext.fair` hooks of the fair deal (core/Deal.lua describes the round
 -- and its session fields) and the checks of a snapshot's round (SNP.fr):
 -- wellFormed, fits, agrees. Deal's private helpers come only through
--- Deal.int; this file is loaded right after core/Deal.lua.
+-- Deal.int; this file is loaded right after core/Deal.lua. The dealer of a
+-- round is Deal's dealerFor (the engine's E.dealer, else the count of hands),
+-- in the open event's check and in `fits`.
 -- Nothing is sent from the `table` hook: an event sent from inside
 -- Session:apply would overtake the one being applied. Sending happens in
 -- `applied`, `adopted`, the act hook and the message handlers.
@@ -13,7 +15,8 @@ local int = Deal.int
 local copy, contains = ns.Util.copy, ns.Util.contains
 local isInt, STAGES, PRIVATE, foul = int.isInt, int.STAGES, int.PRIVATE, int.foul
 local sawCommit, commitFits, participantsFit, revealFits = int.sawCommit, int.commitFits, int.participantsFit, int.revealFits
-local dealerOf, armWait, stopWait, revise = int.dealerOf, int.armWait, int.stopWait, int.revise
+local dealerOf, dealerFor, handDone = int.dealerOf, int.dealerFor, int.handDone
+local armWait, stopWait, revise = int.armWait, int.stopWait, int.revise
 local seedsIn, takeOver, request, judge = int.seedsIn, int.takeOver, int.request, int.judge
 
 ---------------------------------------------------------------------------
@@ -33,11 +36,16 @@ local function wellFormed(fr)
 end
 
 -- Does the round of the snapshot m fit my table, as an open event would have
--- to (rule 10b)? Its seats exist and it is not from the future; the dealer is
--- the one the count of hands gives. A round new to me, from the host I know:
--- its number is above every round I have seen, and events I did not see lie
--- between. While a round new to me is still being shuffled its participants
--- are seated, and I am one of them unless I sat down after it opened.
+-- to (rule 10b)? Its seats exist and it is not from the future. The dealer,
+-- for a shuffle and for a dealt hand still running, is dealerFor on the
+-- snapshot's state (s.state is already the snapshot's) and count of hands.
+-- Once the hand is over, or the round done, an engine naming the dealer has
+-- moved on (after the score or a pass-out `first` is the next deal's): the
+-- dealer need only be a participant; without E.dealer the count still names
+-- it. A round new to me, from the host I know: its number is above every
+-- round I have seen, and events I did not see lie between. While a round new
+-- to me is still being shuffled its participants are seated, and I am one of
+-- them unless I sat down after it opened.
 local function fits(s, m, how)
   local fr, fair = m.fr, s.fair
   if not wellFormed(fr) or fr.h > m.q or fr.p[1] < 1 or fr.p[#fr.p] > #s.seats then return false end
@@ -46,7 +54,9 @@ local function fits(s, m, how)
     if m.q == how.q or fr.h <= math.max(fair and fair.h or 0, s.fairLast and s.fairLast.h or 0) then return false end
   end
   if fr.st == "dealt" or fr.st == "done" then
-    return fr.n >= 1 and fr.d == dealerOf(fr.p, fr.n - 1)
+    if fr.n < 1 then return false end
+    if fr.st == "dealt" and not handDone(s) then return fr.d == dealerFor(s, fr.p, fr.n - 1) end
+    return s:engine().dealer ~= nil or fr.d == dealerOf(fr.p, fr.n - 1) -- wellFormed: d is in p
   end
   if not known then
     for k = 1, #fr.p do
@@ -54,7 +64,7 @@ local function fits(s, m, how)
     end
     if s.mySeat and not contains(fr.p, s.mySeat) and not (how.fresh or how.sat) then return false end
   end
-  return fr.d == dealerOf(fr.p, fr.n)
+  return fr.d == dealerFor(s, fr.p, fr.n)
 end
 
 -- Is the snapshot's round of my number the round I hold: the same
@@ -91,7 +101,7 @@ ns.Ext.fair = {
     if a.k ~= "fair" then return nil end
     if a.op == "open" then
       -- Its number is its own place in the order of events (h = seq + 1).
-      if a.h ~= s.seq + 1 or not participantsFit(s, a.p) or a.d ~= dealerOf(a.p, s.fairN or 0) then return nil end
+      if a.h ~= s.seq + 1 or not participantsFit(s, a.p) or a.d ~= dealerFor(s, a.p) then return nil end
       local old = s.fair
       s.fair = {
         h = a.h, d = a.d, p = copy(a.p), dealer = s.seats[a.d], commits = {}, held = {}, stage = "commit",
