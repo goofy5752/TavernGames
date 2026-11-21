@@ -71,5 +71,6 @@ describe(".pkgmeta", function()
     local function lines(path) local n = 0; for _ in io.lines(path) do n = n + 1 end; return n end
     ok(lines("core/Session.lua") < 540, "Session.lua"); ok(lines("core/Deal.lua") <= 700, "Deal.lua " .. lines("core/Deal.lua"))
     ok(lines("core/DealHooks.lua") < 400, "DealHooks.lua"); ok(lines("ui/TableFrame.lua") < 600, "TableFrame.lua " .. lines("ui/TableFrame.lua"))
+    ok(lines("core/Book.lua") < 260, "Book.lua " .. lines("core/Book.lua")); ok(lines("core/Cash.lua") < 280, "Cash.lua " .. lines("core/Cash.lua"))
   end)
 end)

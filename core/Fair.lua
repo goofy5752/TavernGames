@@ -45,6 +45,12 @@ function Fair.commit(seed)
   return ns.Sha256.hex(seed)
 end
 
+-- The seed of a hand on a sealed table (one table key a player and sitting,
+-- core/Book.lua): the head of SHA-256(key / hand id), SEED_BYTES bytes as hex.
+function Fair.handSeed(key, handId)
+  return ns.Sha256.hex(key .. "/" .. handId):sub(1, 2 * ns.Const.SEED_BYTES)
+end
+
 function Fair.handId(tid, h)
   return tid .. "/" .. h
 end

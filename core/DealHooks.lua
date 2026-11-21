@@ -45,7 +45,8 @@ end
 -- it. A round new to me, from the host I know: its number is above every
 -- round I have seen, and events I did not see lie between. While a round new
 -- to me is still being shuffled its participants are seated, and I am one of
--- them unless I sat down after it opened.
+-- them unless I sat down after it opened (an engine with E.players: a seat
+-- may sit out a hand, so I need not be).
 local function fits(s, m, how)
   local fr, fair = m.fr, s.fair
   if not wellFormed(fr) or fr.h > m.q or fr.p[1] < 1 or fr.p[#fr.p] > #s.seats then return false end
@@ -62,7 +63,7 @@ local function fits(s, m, how)
     for k = 1, #fr.p do
       if not s.seats[fr.p[k]] then return false end
     end
-    if s.mySeat and not contains(fr.p, s.mySeat) and not (how.fresh or how.sat) then return false end
+    if s.mySeat and not s:engine().players and not contains(fr.p, s.mySeat) and not (how.fresh or how.sat) then return false end
   end
   return fr.d == dealerFor(s, fr.p, fr.n)
 end
@@ -106,7 +107,7 @@ ns.Ext.fair = {
     Deal.open(s)
   end,
 
-  -- Everyone: open, commit and reveal change only s.fair, and so does a void
+  -- Everyone: open, commit(s) and reveal change only s.fair, and so does a void
   -- of a finished hand the dealer played no card in; anything else of k "fair" is refused. A round an
   -- open replaces while still "dealt" is closed by `applied`, not here.
   table = function(s, a)
@@ -136,6 +137,21 @@ ns.Ext.fair = {
     elseif a.op == "noreveal" then
       local fair = s.fair
       if not fair or a.h ~= fair.h or fair.stage ~= "dealt" or not Deal.handOver(s) then return nil end
+      return true
+    elseif a.op == "commits" then
+      -- A sealed round's commits, all in one event: exactly the participants'.
+      local fair, n = s.fair, 0
+      if not fair or a.h ~= fair.h or not s:engine().sealed or type(a.c) ~= "table" then return nil end
+      for seat, c in pairs(a.c) do
+        if not commitFits(fair, seat, c) then return nil end
+        n = n + 1
+      end
+      if n ~= #fair.p then return nil end
+      for seat, c in pairs(a.c) do
+        sawCommit(s, fair, seat, c)
+        fair.commits[seat] = c
+      end
+      fair.stage = "seed"
       return true
     elseif a.op == "commit" then
       local fair = s.fair
@@ -253,8 +269,9 @@ ns.Ext.fair = {
       return Deal.close(s, "bad", "noreveal")
     end
     if k == "stand" and s.role == "host" then
-      -- A stand during the shuffle: the round restarts without that seat.
-      if fair.stage == "commit" or fair.stage == "seed" then return Deal.open(s) end
+      -- A stand during the shuffle: the round restarts without that seat (a
+      -- seat that does not take part in it changes nothing).
+      if (fair.stage == "commit" or fair.stage == "seed") and contains(fair.p, a.seat) then return Deal.open(s) end
       -- The dealer's seat stands mid-hand, taking the deck with it.
       if a.seat == fair.d and fair.stage == "dealt" and not Deal.handOver(s) and not s:gameOver()
           and s:seatedCount() >= s:engine().minSeats then

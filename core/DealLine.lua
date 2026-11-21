@@ -6,11 +6,13 @@ local Deal = ns.Deal
 local contains = ns.Util.contains
 
 -- The table frame's fairness line -> locale key, argument | nil: nil for an
--- engine without the extension "fair".
+-- engine without the extension "fair". A sealed engine (core/Book.lua) names
+-- nobody while it shuffles, and a sealed hand leaves the line to the book.
 function Deal.status(s)
   if not contains(s:engine().ext or {}, "fair") then return nil end
   local fair = s.fair
   if fair and fair.stage == "commit" then
+    if s:engine().sealed then return "fair.shuffle" end
     for _, q in ipairs(fair.p) do
       local name = s.seats[q]
       if q ~= s.mySeat and fair.commits[q] == nil and name then return "fair.waiting", name end
@@ -20,7 +22,7 @@ function Deal.status(s)
     return "fair.dealing", fair.dealer
   end
   local last = s.fairLast
-  if not last then return nil end
+  if not last or last.verdict == "sealed" then return nil end
   if last.verdict == "void" then
     -- By name; with the count from the dealer's second one in this match.
     if not last.dealer then return "fair.void" end

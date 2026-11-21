@@ -100,7 +100,7 @@ describe("/tavern", function()
     local games = {}
     for _, rec in ipairs(c.lobby:tables()) do games[rec.game] = true end
     eq(games, { deathroll = true, santase = true })
-    w:slash("bots host holdem"); eq(#w:chatWith(w.ns.L("bots.nogame")), 1); w:advance(1)
+    w:slash("bots host chess"); eq(#w:chatWith(w.ns.L("bots.nogame")), 1); w:advance(1)
     eq(#c.lobby:tables(), 2)
     w:slash("bots invite nonsense"); eq(#w:chatWith(w.ns.L("bots.nogame")), 2)
     w:slash("bots invite deathroll"); w:advance(1)
@@ -113,11 +113,15 @@ describe("/tavern", function()
     local tabla = 0
     for _, rec in ipairs(c.lobby:tables()) do if rec.game == "tabla" then tabla = tabla + 1 end end
     eq(tabla, 1)
+    w:slash("bots host holdem"); w:advance(1)
+    local holdem = 0
+    for _, rec in ipairs(c.lobby:tables()) do if rec.game == "holdem" then holdem = holdem + 1 end end
+    eq(holdem, 1)
   end)
 
   it("bots host with an unknown game does not start the bots", function()
     local w = guildWow()
-    w:slash("bots host holdem"); eq(#w:chatWith(w.ns.L("bots.nogame")), 1); eq(w.ns.bots, nil)
+    w:slash("bots host chess"); eq(#w:chatWith(w.ns.L("bots.nogame")), 1); eq(w.ns.bots, nil)
   end)
 
   it("bots waits while the own name is still unknown", function()

@@ -41,7 +41,7 @@ local WHISPERED = {
 
 local TIMERS = {
   "announceTimer", "heartbeatTimer", "tickTimer", "pingTimer", "turnTimer", "systemTimer",
-  "sweepTimer", "silenceTimer", "fairTimer", "askTimer", "autoTimer",
+  "sweepTimer", "silenceTimer", "fairTimer", "askTimer", "autoTimer", "stepTimer", "keysTimer", "bookTimer",
 }
 
 -- message, emit and refuse are shared with core/Member.lua and core/Succession.lua.

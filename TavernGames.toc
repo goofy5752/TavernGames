@@ -37,6 +37,8 @@ core/Party.lua
 core/Lifecycle.lua
 core/Deal.lua
 core/DealLine.lua
+core/Book.lua
+core/Cash.lua
 core/DealHooks.lua
 core/DealKeep.lua
 core/Dice.lua

@@ -51,6 +51,13 @@ describe("fair", function()
     ok(table.concat(F.deck(H.DECK, { SEED, ZERO }, "t/1"), " ") ~= table.concat(F.deck(H.DECK, { ZERO, SEED }, "t/1"), " "))
   end)
 
+  it("a table key gives one seed a hand; the same key and hand give the same seed", function()
+    eq(F.handSeed(SEED, "t#1/1"), "8a096ed15cb70ed784b4785d4e17cd5b"); eq(F.handSeed(SEED, "t#1/2"), "b68638cff5e56a73ad112fbb79444292")
+    eq(F.handSeed(ZERO, "t#1/1"), "e5095b93260184a29b277f91645c49da")
+    eq(F.commit(F.handSeed(SEED, "t#1/1")), "b64fd9e94132a8c73a533d601ce4cacad546b9e7e2a47fb7941ca992e85be5ec")
+    local d = F.deck(ns.Engines.holdem.DECK, { F.handSeed(SEED, "t#1/1"), F.handSeed(ZERO, "t#1/1") }, "t#1/1"); eq({ d[1], d[2], d[3], d[52] }, { "TS", "7C", "9C", "8C" })
+  end)
+
   it("dice come from the seeds and the throw's id; each die is uniform", function()
     eq({ F.dice({ ZERO, SEED }, "t#1/1") }, { 4, 5 }); eq({ F.dice({ SEED, ZERO }, "t#1/1") }, { 2, 1 }); eq({ F.dice({ ZERO, SEED }, "t#1/2") }, { 1, 4 })
     eq({ F.dice({ SEED, SEED }, "t#1/1") }, { 3, 3 }); eq({ F.dice({ ZERO }, "t#1/1") }, { 1, 4 }); eq({ F.dice({ ("ab"):rep(16) }, "t#1/7") }, { 2, 2 })

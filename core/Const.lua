@@ -45,4 +45,7 @@ ns.Const = {
   SEED_BYTES = 16,   -- random bytes in one seed
   DICE_WAIT = 10,    -- a throw still without the other player's seed this long after its open is thrown alone
   DICE_KEEP = 600,   -- my dice records of a table that is gone are dropped this long after I was last there
+  BOOK_WAIT = 30,    -- a closed sealed game's keys are published at the latest this long after the close
+  BOOK_KEYS = 24,    -- published keys a snapshot carries (the newest)
+  BOOK_BATCH = 2,    -- hands of the book checked a tick
 }

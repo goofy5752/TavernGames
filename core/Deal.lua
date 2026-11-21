@@ -102,6 +102,13 @@ local function occupiedSeats(seats)
   return out
 end
 
+-- Who shuffles: the engine's players of the hand (E.players), else the occupied seats.
+local function players(s)
+  local engine = s:engine()
+  if engine.players and s.state then return engine.players(s.state) end
+  return occupiedSeats(s.seats)
+end
+
 -- The dealer's seat of the next hand by the count of hands dealt: p[(n + 1) % #p + 1].
 local function dealerOf(p, n)
   return p[(n + 1) % #p + 1]
@@ -144,10 +151,10 @@ local function commitFits(fair, seat, c)
     and type(c) == "string" and #c == 64
 end
 
--- An open event's participants: exactly the occupied seats, strictly ascending.
+-- An open event's participants: exactly players(s), strictly ascending.
 local function participantsFit(s, p)
   if type(p) ~= "table" then return false end
-  local want = occupiedSeats(s.seats)
+  local want = players(s)
   if #p ~= #want or #p < 2 then return false end
   for k = 1, #want do
     if p[k] ~= want[k] then return false end
@@ -156,10 +163,11 @@ local function participantsFit(s, p)
 end
 
 -- Is the hand on my state finished: the match is over, or the engine asks
--- for the next deck?
+-- for the next deck (an engine with E.inHand: it is not in a hand)?
 local function handDone(s)
   if not s.state then return false end
   if s:gameOver() then return true end
+  if s:engine().inHand then return not s:engine().inHand(s.state) end
   local action = s:engine().system(s.state)
   return action ~= nil and action.need == "deck"
 end
@@ -229,7 +237,13 @@ local function request(s, seat, a)
   end
   if not fair or s.status ~= "live" or a.h ~= fair.h then return end
   if op == "commit" then
-    if commitFits(fair, seat, a.c) then s:play(0, { k = "fair", op = "commit", h = fair.h, seat = seat, c = a.c }) end
+    if not commitFits(fair, seat, a.c) then return end
+    if not s:engine().sealed then return s:play(0, { k = "fair", op = "commit", h = fair.h, seat = seat, c = a.c }) end
+    -- A sealed round: every commit in one event, once all are in (fair.pend).
+    fair.pend = fair.pend or {}
+    fair.pend[seat] = fair.pend[seat] or a.c
+    for _, q in ipairs(fair.p) do if not fair.pend[q] then return end end
+    s:play(0, { k = "fair", op = "commits", h = fair.h, c = copy(fair.pend) })
   elseif op == "deal" then
     local ev = { k = "deal", deck = a.deck }
     if seat == fair.d and fair.stage == "seed" and type(a.deck) == "table" and allPublic(s, ev, a.deck) then
@@ -304,7 +318,7 @@ end
 -- Host: opens round h = seq + 1 while the engine wants a deck; always
 -- replaces the round's wait.
 function Deal.open(s)
-  local p = occupiedSeats(s.seats)
+  local p = players(s)
   local action = s.state and s:engine().system(s.state)
   if #p < 2 or not (action and action.need == "deck") then return end
   local h = s.seq + 1
@@ -542,11 +556,14 @@ function Deal.react(s)
   if fair.stage ~= "dealt" then fair.fresh = nil end -- I see this deal happen: nothing to ask for
   if fair.stage == "commit" then
     if part and not fair.seed and fair.commits[me] == nil then
-      fair.seed = Fair.seed(s.client.env, "deal|" .. Fair.handId(s.tid, fair.h))
+      fair.seed = ns.Book.seedFor(s, fair.h) or Fair.seed(s.client.env, "deal|" .. Fair.handId(s.tid, fair.h))
       fair.seat, fair.own = me, Fair.commit(fair.seed)
       Deal.submit(s, { k = "fair", op = "commit", h = fair.h, c = fair.own })
     end
   elseif fair.stage == "seed" then
+    -- A sealed seed is the table key's: after a /reload it is made again.
+    local again = part and not fair.seed and ns.Book.seedFor(s, fair.h)
+    if again and Fair.commit(again) == fair.held[me] then fair.seed, fair.seat, fair.own = again, me, fair.held[me] end
     if not (part and fair.seed) then return end
     if me == fair.d then
       fair.seeds = fair.seeds or {}
@@ -562,7 +579,7 @@ function Deal.react(s)
     if me == fair.d then
       if fair.deck then
         Deal.sync(s)
-        if not fair.revealed and Deal.handOver(s) then reveal(s) end
+        if not fair.revealed and not s:engine().sealed and Deal.handOver(s) then reveal(s) end
       elseif not Deal.handOver(s) then
         -- My deck is gone for good: nobody can be dealt the rest of this hand.
         fair.lost = true
@@ -665,14 +682,15 @@ ns.Member.handlers.SED = onSeed
 ns.Member.handlers.PRV = onPrivate
 ns.Member.handlers.PRQ = onAsk
 
--- Private to core/Deal.lua and core/DealHooks.lua, nothing else reads it: the
--- helpers above that the `ns.Ext.fair` hooks use.
+-- Private to core/Deal.lua, core/DealHooks.lua and core/Cash.lua, nothing
+-- else reads it: the helpers above that the `ns.Ext.fair` and `ns.Ext.cash` hooks use.
 Deal.int = {
   isInt = isInt, STAGES = STAGES, PRIVATE = PRIVATE, foul = foul, sawCommit = sawCommit,
   commitFits = commitFits, participantsFit = participantsFit, revealFits = revealFits,
   dealerOf = dealerOf, dealerFor = dealerFor, handDone = handDone, lateVoid = lateVoid,
   armWait = armWait, stopWait = stopWait,
   revise = revise, seedsIn = seedsIn, takeOver = takeOver, request = request, judge = judge, ask = ask,
+  allPublic = allPublic,
 }
 
 return Deal

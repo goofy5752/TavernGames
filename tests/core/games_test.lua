@@ -30,11 +30,11 @@ end
 describe("game registry", function()
   it("lists the six games in order with their player counts", function()
     local l = G.list(); eq(#l, 6); eq(l[1].id, "ttt"); eq(l[1].players, "2"); ok(l[1].engine == ns.Engines.ttt)
-    eq(l[2].id, "deathroll"); eq(l[2].players, "2–5"); eq(l[6].id, "holdem"); eq(l[6].engine, nil); eq(G.engine(42), nil)
-    -- engines exist but are not playable until their integration stage lands (santase: B, belot: C, tabla: D)
+    eq(l[2].id, "deathroll"); eq(l[2].players, "2–5"); eq(l[6].id, "holdem"); ok(l[6].engine == ns.Engines.holdem); eq(G.engine(42), nil)
+    -- every game of ORDER is integrated (santase: B, belot: C, tabla: D, holdem: E); the gate is tested by gating one by hand
     ok(ns.Engines.belot ~= nil); ok(ns.Engines.holdem ~= nil)
-    ok(G.engine("belot") == ns.Engines.belot); ok(G.engine("tabla") == ns.Engines.tabla); eq(G.engine("holdem"), nil)
-    ok(G.list()[3].engine == ns.Engines.santase); ok(G.list()[4].engine == ns.Engines.belot); ok(G.list()[5].engine == ns.Engines.tabla); eq(G.list()[6].engine, nil)
+    ok(G.engine("belot") == ns.Engines.belot); ok(G.engine("tabla") == ns.Engines.tabla); ok(G.engine("holdem") == ns.Engines.holdem)
+    ok(G.list()[3].engine == ns.Engines.santase); ok(G.list()[4].engine == ns.Engines.belot); ok(G.list()[5].engine == ns.Engines.tabla); ok(G.list()[6].engine == ns.Engines.holdem)
     ok(G.engine("ttt") ~= nil); ok(G.engine("deathroll") ~= nil); ok(G.engine("santase") == ns.Engines.santase)
     ok(G.engine("optgame") == ns.Engines.optgame)
   end)
@@ -93,9 +93,11 @@ describe("game registry", function()
   end)
 
   it("a TBL for an unintegrated engine game (holdem) is treated like an unknown game", function()
+    ns.Games.PLAYABLE.holdem = nil -- gated by hand: every game of ORDER is integrated
     local sim, _, b = setup()
     local refused = refusals(b)
     b:receive("GUILD", A, {v=1,t="TBL",tid="x#2",g="holdem",h=A,e=1,ac="guild",tn=45,st="open",s={A,false},w=0})
     local n = #sim.sent; b:sit("x#2", 2); eq(refused, {{"x#2", "version"}}); eq(#sim.sent, n); eq(b.lobby:get("x#2").game, "holdem")
+    ns.Games.PLAYABLE.holdem = true
   end)
 end)

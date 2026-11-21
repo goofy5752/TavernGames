@@ -39,6 +39,7 @@ describe("member side", function()
     local a = sim:add(A, { cls = "MAGE" })
     local b = sim:add(B, { cls = "PRIEST" })
     sim:run(1)
+    sim.ns.Games.PLAYABLE.holdem = nil -- gated by hand: every game of ORDER is integrated
     ok(sim.ns.Engines.holdem and not sim.ns.Games.PLAYABLE.holdem, "holdem must be a gated engine")
     b:receive("WHISPER", A, {v=1, t="SNP", tid="x#1", e=1, q=0,
       tbl={tid="x#1", g="holdem", h=A, e=1, ac="guild", tn=45, st="open", s={A, B}, w=0}}); sim:run(1)
@@ -48,6 +49,7 @@ describe("member side", function()
     -- A session without resolved options still gives its record.
     a:openTable{game="ttt", access="guild", turn=45}; a.session.opt = nil
     eq(a.session:record().o, nil)
+    sim.ns.Games.PLAYABLE.holdem = true
   end)
 
   it("an unanswered sit request gives up after 10 s with 'gone'", function()
