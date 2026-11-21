@@ -30,7 +30,8 @@ local _, ns = ...
 -- next seat (the count of deals is kept; an engine naming the dealer moves it
 -- on itself), so a void never buys the same dealer another deck. A dealer
 -- that lost its deck while the hand ran gives the hand up even when it ended
--- before the void came (Белот: passed out): void, not "noreveal". Voids and
+-- before the void came, if its seat played no card in it (Белот: passed
+-- out): void, not "noreveal". Voids and
 -- no-deals are counted per dealer name and match (s.fairVoids) and the status
 -- line names the dealer.
 -- A seat whose own check failed where the others cannot see it tells the table:
@@ -162,6 +163,19 @@ function Deal.handOver(s)
   return fair ~= nil and fair.stage == "dealt" and handDone(s)
 end
 
+-- May the dealer give up a hand that is already over (op "void" after the
+-- hand, Deal.react)? Only one in which the dealer's seat played no card
+-- (Белот: passed out), so nothing a foul of its could have won stands. A
+-- client that did not see the whole hand (no fair.log) cannot tell: it accepts.
+local function lateVoid(s)
+  local fair = s.fair
+  if not Deal.handOver(s) then return false end
+  for _, e in ipairs(fair.log or {}) do
+    if e[1] == fair.d and type(e[2]) == "table" and e[2].k == "play" then return false end
+  end
+  return true
+end
+
 -- May the seeds `list` be revealed for my round now? An array of #p strings,
 -- after the hand, for a round still "dealt" (a closed one takes no verdict).
 local function revealFits(s, list)
@@ -223,9 +237,13 @@ local function request(s, seat, a)
     if seat == fair.d and revealFits(s, a.s) then s:play(0, { k = "fair", op = "reveal", h = fair.h, s = copy(a.s) }) end
   elseif op == "void" then
     -- The dealer lost its deck while the hand ran. A hand that ended before
-    -- the request came is given up all the same (its seeds are gone): the void
-    -- then only closes the round (DealHooks `table`), the engine keeps its state.
-    if seat == fair.d and fair.stage == "dealt" and not s:gameOver() then s:play(0, { k = "void" }) end
+    -- the request came is given up all the same when the dealer played no
+    -- card in it (lateVoid): the void then only closes the round (DealHooks
+    -- `table`), the engine keeps its state.
+    if seat == fair.d and fair.stage == "dealt" and not s:gameOver()
+        and (not Deal.handOver(s) or lateVoid(s)) then
+      s:play(0, { k = "void" })
+    end
   end
 end
 
@@ -642,7 +660,8 @@ ns.Member.handlers.PRQ = onAsk
 Deal.int = {
   isInt = isInt, STAGES = STAGES, PRIVATE = PRIVATE, foul = foul, sawCommit = sawCommit,
   commitFits = commitFits, participantsFit = participantsFit, revealFits = revealFits,
-  dealerOf = dealerOf, dealerFor = dealerFor, handDone = handDone, armWait = armWait, stopWait = stopWait,
+  dealerOf = dealerOf, dealerFor = dealerFor, handDone = handDone, lateVoid = lateVoid,
+  armWait = armWait, stopWait = stopWait,
   revise = revise, seedsIn = seedsIn, takeOver = takeOver, request = request, judge = judge,
 }
 

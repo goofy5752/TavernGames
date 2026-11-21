@@ -347,11 +347,28 @@ describe("belot at the table", function()
     local d2 = sim:relog(D); sim:run(1); restore()
     eq({ d2.session.fair.h, d2.session.fair.voidAsked, d2.session.fair.deck }, { h1, true, nil }); eq(atA, {})
     bid("P P P P")                                                                               -- the dealer passes last
-    eq(atA, { "void" }); eq(atC, { "void" }); eq(atW, { "void" }); eq(a.session.fairLast.dealer, D)
+    eq(atA, { "void" }); eq(atC, { "void" }); eq(atW, { "void" }); eq(a.session.fairLast.dealer, D); eq(a.session.fairVoids, { [D] = 1 })
     sim:run(25)
     eq(atA, { "void" }); eq(atC, { "void" }); eq({ a.session.fair.d, a.session.fair.stage }, { 1, "dealt" }); ok(a.session.fair.deck ~= nil)
     eq({ a.session.state.phase, a.session.state.round, a.session.state.first, a.session.state.turn }, { "bid", 2, 2, 2 }); eq(a.session.state.score, { 0, 0 })
     for _, cl in ipairs{ b, c, d2, w } do eq(cl.session.fair.h, a.session.fair.h) end
+  end)
+
+  it("a dealer that played in the hand cannot give it up afterwards: a void instead of the reveal is нередовна", function()
+    local sim, tid = table4(); local atA, atC = verdicts(a), verdicts(c); local h = a.session.fair.h
+    drop(a, "ACT", asks("reveal"))
+    bid("S P P P"); autoPlay(100); eq(a.session.state.turn, nil); sim:run(3)
+    eq({ a.session.state.phase, a.session.fair.h, a.session.fair.stage }, { "deal", h, "dealt" }); local score = ns.Util.copy(a.session.state.score)
+    ok(score[1] + score[2] > 0); eq(d.session.fair.revealed, true)                                -- scored; the reveal was lost
+    local mark = #sim.sent
+    ns.Deal.submit(d.session, { k = "fair", op = "void", h = h }); sim:run(1)
+    for k = mark + 1, #sim.sent do
+      local x = sim.sent[k].msg.a
+      ok(not (type(x) == "table" and x.k == "void"), "a void went out")
+    end
+    eq(atA, {}); sim:run(25)
+    eq(atA, { "bad" }); eq(atC, { "bad" }); eq(a.session.fairLast.why, "noreveal"); eq(a.session.fairVoids, nil)
+    eq(a.session.state.score, score); eq(a.session.fair.stage, "dealt"); ok(a.session.fair.h ~= h)
   end)
 
   it("a member that came by snapshot still names the leaver", function()

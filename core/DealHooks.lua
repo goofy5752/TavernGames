@@ -15,7 +15,7 @@ local int = Deal.int
 local copy, contains = ns.Util.copy, ns.Util.contains
 local isInt, STAGES, PRIVATE, foul = int.isInt, int.STAGES, int.PRIVATE, int.foul
 local sawCommit, commitFits, participantsFit, revealFits = int.sawCommit, int.commitFits, int.participantsFit, int.revealFits
-local dealerOf, dealerFor, handDone = int.dealerOf, int.dealerFor, int.handDone
+local dealerOf, dealerFor, handDone, lateVoid = int.dealerOf, int.dealerFor, int.handDone, int.lateVoid
 local armWait, stopWait, revise = int.armWait, int.stopWait, int.revise
 local seedsIn, takeOver, request, judge = int.seedsIn, int.takeOver, int.request, int.judge
 
@@ -95,13 +95,14 @@ ns.Ext.fair = {
   end,
 
   -- Everyone: open, commit and reveal change only s.fair, and so does a void
-  -- of a finished hand; anything else of k "fair" is refused. A round an
+  -- of a finished hand the dealer played no card in; anything else of k "fair" is refused. A round an
   -- open replaces while still "dealt" is closed by `applied`, not here.
   table = function(s, a)
     -- A void of a hand that is already over (its dealer lost the deck before
-    -- the end, Deal.react): the engine has nothing left to annul; `applied`
-    -- closes the round.
-    if a.k == "void" then return Deal.handOver(s) or nil end
+    -- the end, Deal.react), in which the dealer played no card (lateVoid):
+    -- the engine has nothing left to annul; `applied` closes the round. One
+    -- after a card of the dealer's goes to the engine, which refuses it.
+    if a.k == "void" and Deal.handOver(s) then return lateVoid(s) or nil end
     if a.k ~= "fair" then return nil end
     if a.op == "open" then
       -- Its number is its own place in the order of events (h = seq + 1).
