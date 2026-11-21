@@ -822,9 +822,31 @@ describe("holdem: the book", function()
   it("I2: my key left at the game's end and a snapshot runs the same game on: forged", function()
     tableN(2); ok(cl[1]:startGame()); sim:run(3); local live = cl[1].session:snapshotFor(N[2])
     act("fold"); ok(ns.Cash.close(cl[1])); sim:run(3); local s2 = cl[2].session
-    eq({ s2:gameOver(), keyActs(N[2]), s2.book.done, s2.book.forged, (ns.Book.status(s2)) }, { true, 1, true, nil, "seal.ok" })
+    eq({ s2:gameOver(), keyActs(N[2]), s2.book.done, s2.book.forged, (ns.Book.status(s2)) }, { true, 1, N[1], nil, "seal.ok" })
     forgedSnapshot(N[2], function(x) for k in pairs(x) do x[k] = nil end; for k, v in pairs(live) do x[k] = v end end)
     eq({ s2:gameOver(), s2.book.forged, s2.book.done, s2.book.sent, (ns.Book.status(s2)) }, { false, true, nil, nil, "seal.bad" })
+  end)
+  it("R-I1: the same host bumps its epoch after drawing my key: the game that runs on is still forged", function()
+    tableN(2); ok(cl[1]:startGame()); sim:run(3); local s1, s2 = cl[1].session, cl[2].session; local live = s1:snapshotFor(N[2])
+    act("fold"); ok(ns.Cash.close(cl[1])); sim:run(3); eq({ s2:gameOver(), keyActs(N[2]), s2.book.done }, { true, 1, N[1] })
+    s1.epoch = s1.epoch + 1; s1.snapshotFor = function() return ns.Util.copy(live) end             -- its answer to my SYN is the hand running again
+    cl[2]:receive("WHISPER", N[1], ns.Session.message("TCK", { tid = tid, e = s1.epoch, q = s1.seq })); sim:run(2)
+    eq({ s2.epoch, s2.host, s2:gameOver(), s2.book.forged, (ns.Book.status(s2)) }, { s1.epoch, N[1], false, true, "seal.bad" })
+  end)
+  it("R-M1: the host is lost in the key window: the next host waits BOOK_WAIT again, one final event has the keys of all who are there", function()
+    tableN(3); ok(cl[1]:startGame()); sim:run(3); play(1); ok(ns.Cash.close(cl[1]))
+    tap(cl[1], function(m) if m.t == "ACT" and m.a.op == "key" then sim:offline(N[1]); return true end end)   -- the first key finds it gone
+    for _ = 1, 60 do
+      local x = cl[2].session.state; if E.over(x) then break end
+      if x.turn then sim.clients[N[x.turn]]:playAuto() end; sim:run(1)
+    end
+    local mark = #sim.sent
+    for _ = 1, 150 do if cl[2].session.role == "host" then break end; sim:run(1) end
+    eq(cl[2].session.role, "host"); sim:run(ns.Const.BOOK_WAIT + 2); local keys = {}
+    for i = mark + 1, #sim.sent do
+      local m = sim.sent[i]; if m.from == N[2] and m.target == W and m.msg.t == "EV" and m.msg.a.k == "book" then keys[#keys + 1] = m.msg.a.m end
+    end
+    eq(keys, { { [2] = KEY(2), [3] = KEY(3) } })                                               -- the new host's only keys event (the lost host's own goes nowhere)
   end)
   it("I2: a /reload during the last hand: the snapshot of the game over, its hand count at my hand, sends my key", function()
     tableN(3); local bk = { books(cl[1]), books(cl[2]) }; ok(cl[1]:startGame()); sim:run(3)

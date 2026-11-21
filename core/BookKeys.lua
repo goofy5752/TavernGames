@@ -145,7 +145,7 @@ function Book.due(s)
   book.overAt = book.overAt or now
   if s.role ~= "host" then
     if s.mySeat and not (book.sent or book.out or book.held) and myKey(s, book) then
-      if hot(s, book) then book.held = true; forge(book) else book.done = true; send(s, book, book.key) end
+      if hot(s, book) then book.held = true; forge(book) else book.done = s.host; send(s, book, book.key) end
     end
     return
   end
@@ -210,8 +210,9 @@ function Book.hostChanged(s)
   if s.keysTimer then s.keysTimer.cancel(); s.keysTimer = nil end
   local book = s.book
   if not book then return end
-  book.wait, book.sent, book.done = {}, book.out and book.sent or nil, nil
-  if s.role == "host" then Book.due(s) end
+  -- book.done names the host my key went to: only another host's name clears it (not its own new epoch).
+  book.wait, book.sent, book.done = {}, book.out and book.sent or nil, book.done == s.host and book.done or nil
+  if s.role == "host" then book.overAt = nil; Book.due(s) end -- my wait starts with my empty wait list
 end
 
 -- Host: „Приключи“, {k="close"} -> true | nil, code ("none", "nothost", "live": none or closing).

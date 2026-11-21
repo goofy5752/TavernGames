@@ -423,6 +423,7 @@ describe("bots for any game", function()
     local tid = a:openTable{ game = "deathroll", access = "invite", turn = 30 }; ok(tid); eq(bots:fill(1), 1); sim:run(8)
     eq(a.session:seatedCount(), 2); ok(a:startGame()); sim:run(1); eq({ a.session.status, #a.session.seats - a.session:seatedCount() }, { "live", 3 })
     eq(bots:fill(), nil); sim:run(8); eq(a.session:seatedCount(), 2)
+    a.session.gameOver = function() return true end; eq(bots:fill(1), 1)                         -- between two games the table takes them again
   end)
 
   it("I host Холдем and fill my table with five bots; the close checks every hand", function()

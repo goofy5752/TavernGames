@@ -323,7 +323,7 @@ end
 -- then: no botFill). See the header.
 function Bots:fill(n)
   local s = self.client.session
-  if self.disabled or not s or s.role ~= "host" or (s.status == "live" and not s:engine().botFill) then return nil end
+  if self.disabled or not s or s.role ~= "host" or (s.status == "live" and not s:gameOver() and not s:engine().botFill) then return nil end
   local free = #s.seats - s:seatedCount()
   local asked = math.min(n or free, free)
   self.wanted = { tid = s.tid, left = asked }
