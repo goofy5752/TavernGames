@@ -166,6 +166,28 @@ describe("belot core", function()
     local s = E.new {}; eq({ E.system(s) }, { { k = "deal", need = "deck" }, 0 })
     eq({ E.apply(s, 0, { k = "deal", need = "deck", deck = DECK1 }) }, { nil, "need" })
   end)
+  it("declares the fair contract", function()
+    eq(E.ext, { "fair" }); eq(E.again, true)
+    local s = E.new {}; eq(s.full, true); eq(E.view(s, 1).full, false)
+    eq({ E.apply(s, 0, { k = "deal" }) }, { nil, "deck" })
+    local short = { unpack(DECK1) }; short[32] = nil
+    eq({ E.apply(s, 0, { k = "deal", deck = short }) }, { nil, "deck" })
+    local v = E.view(s, 3); ok(E.apply(v, 0, { k = "deal", deck = { [3] = "7H" } })); eq(v.deck, { [3] = "7H" })
+  end)
+  it("the dealer sits before the seat that bids first and moves on every deal", function()
+    local s = E.new { first = 1 }; eq(E.dealer(s), 4); deal(s); bids(s, "P P P P"); eq(s.first, 2); eq(E.dealer(s), 1)
+    eq(E.dealer(E.new { first = 3 }), 2); eq(E.dealer(E.new { first = 4 }), 3)
+    eq(E.nextFirst({ first = 4 }, { true, true, true, true }), 1); eq(E.nextFirst({ first = 2 }, { true, true, false, true }), nil)
+  end)
+  it("void annuls the running deal; the next seat bids first and deals, and no point moves", function()
+    local s = started(DECK_A, "S P P P"); plays(s, "AH 9H 8H TS AC")
+    s.score, s.hang, s.res = { 30, 12 }, 4, { round = 0 }
+    ok(E.apply(s, 0, { k = "void" }))
+    eq({ s.phase, s.round, s.first, s.passes, s.open }, { "deal", 1, 2, 0, false }); eq(s.turn, nil); eq(s.contract, nil); eq(s.res, nil); eq(E.dealer(s), 1)
+    eq(s.deck, {}); eq(s.hands, { {}, {}, {}, {} }); eq(s.bids, {}); eq(s.ann, {}); eq(s.pts, { 0, 0 }); eq(s.score, { 30, 12 }); eq(s.hang, 4)
+    eq({ E.system(s) }, { { k = "deal", need = "deck" }, 0 }); deal(s, DECK_A); eq(s.turn, 2)
+    eq({ E.apply(E.new {}, 0, { k = "void" }) }, { nil, "phase" }); eq({ E.apply(started(DECK_A, "S"), 2, { k = "void" }) }, { nil, "seat" })
+  end)
 end)
 
 describe("belot auction", function()
@@ -247,7 +269,7 @@ describe("belot views", function()
     eq(E.hidden(s, 2), { 2, 6, 10, 14, 18 }); eq(E.hidden(s, 0), {})
   end)
   it("deal and show work on a view", function()
-    local v = E.new {}
+    local v = E.view(E.new {}, 1)
     ok(E.apply(v, 0, { k = "deal" }))
     eq(v.deck, {}); eq(v.phase, "bid"); eq(#v.hands[3], 5)
     ok(E.apply(v, 0, { k = "show", cards = { [3] = "7H", [7] = "8H" } }))
@@ -277,6 +299,14 @@ describe("belot views", function()
     t.hands[1][1] = 99; t.deck[1] = "AS"
     eq(s.hands[1][1], 1); eq(s.deck[1], "7C")
     eq(E.snapshot(E.restore(E.snapshot(s))), E.snapshot(s))
+  end)
+  it("a view plus the deck is the full state, in the auction and mid-play", function()
+    local mid = started(DECK_A, "S P P P"); plays(mid, "AH 9H 8H TS AC 8C")
+    for _, s in ipairs { started(DECK_A, "S P P"), mid } do
+      for q = 0, 4 do
+        local f = E.view(s, q); f.deck, f.full = E.snapshot(s).deck, true; eq(f, s)
+      end
+    end
   end)
 end)
 
@@ -398,14 +428,13 @@ describe("belot tricks", function()
     ok(E.apply(v, 4, { k = "play", i = idx(s, "TS"), c = "TS" }))
     eq(v.pts, { 0, 21 }); eq(v.turn, 4)
   end)
-  it("a view shows the current and the last trick only", function()
-    local s = started(DECK_A, "S P P P")
-    plays(s, "AH 9H 8H TS AC 8C 7C 9C KC 9S")
-    local seen = {}
-    for _, face in pairs(E.view(s, 0).deck) do seen[#seen + 1] = face end
-    table.sort(seen)
-    eq(seen, { "7C", "8C", "9C", "9S", "AC", "KC" })
-    eq(E.hidden(s, 1), s.hands[1])
+  it("a view keeps every card played in this deal, so a latecomer can score it", function()
+    local s = started(DECK_A, "S P P P"); plays(s, "AH 9H 8H"); ok(ann(s, "s4:AC")); plays(s, "TS AC 8C 7C 9C KC 9S")
+    local seen = {}; for _, face in pairs(E.view(s, 0).deck) do seen[#seen + 1] = face end; table.sort(seen)
+    eq(seen, { "7C", "8C", "8H", "9C", "9H", "9S", "AC", "AH", "KC", "TS" })
+    eq(E.view(s, 3).deck[idx(s, "AC")], "AC"); eq(E.view(s, 3).deck[idx(s, "KS")], nil)      -- KS is still in seat 2's hand
+    local b = started(DECK_A, "S P"); eq(E.view(b, 0).deck, {})
+    eq(E.view(b, 2).deck, { [2] = "TH", [6] = "QH", [10] = "9H", [14] = "7C", [18] = "QS" })
   end)
 end)
 
@@ -669,7 +698,7 @@ end)
 ---------------------------------------------------------------------------------------------
 local function newTable(first)
   local t = { full = E.new { first = first }, views = {}, seen = {} }
-  for seat = 0, 4 do t.views[seat], t.seen[seat] = E.new { first = first }, {} end
+  for seat = 0, 4 do t.views[seat], t.seen[seat] = E.view(E.new { first = first }, seat), {} end
   local function sync()
     for seat = 0, 4 do
       local view, mine, cards, any = E.view(t.full, seat), t.views[seat], {}, false
@@ -700,13 +729,19 @@ local function newTable(first)
   return t
 end
 
--- What a seat may see of the full state: its hand, the trick, the last trick; or all of it.
+-- What a seat may see of the full state: its hand, the trick, the last trick, in the tricks
+-- every card in no hand; or all of it.
 local function assertViewHidesTheRest(s)
   for seat = 0, 4 do
     local allowed = {}
     for _, i in ipairs(s.hands[seat] or {}) do allowed[i] = true end
     for _, i in ipairs(s.trick) do allowed[i] = true end
     for _, i in ipairs(s.last and s.last.cards or {}) do allowed[i] = true end
+    if s.phase == "play" then
+      local held = {}
+      for q = 1, 4 do for _, i in ipairs(s.hands[q]) do held[i] = true end end
+      for i = 1, 32 do if not held[i] then allowed[i] = true end end
+    end
     local everything = s.phase == "match" or s.phase == "score" or (s.phase == "deal" and s.took[1] + s.took[2] == 8)
     local view = E.view(s, seat)
     for i = 1, 32 do

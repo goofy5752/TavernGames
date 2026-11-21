@@ -10,7 +10,7 @@
 --     1,2,... (five each), always starting at seat 1. After the auction ends in a contract,
 --     deck[21..32] go the same way (three each). A passed-out deal never deals them.
 --  3. `first` bids first and leads the first trick; it moves to the next seat after every
---     deal, passed-out ones included.
+--     deal, passed-out and annulled ones included. The dealer is the seat before `first`.
 --  4. Auction ({k="bid", b=...}): contracts rank C < D < H < S < N (Без коз) < A (Всичко коз);
 --     a bid must be higher than the contract so far. "P" passes. "X" (контра) is open to the
 --     opponents of the declarer on an undoubled contract, "R" (реконтра) to the declarer's
@@ -68,10 +68,13 @@
 --
 -- STATE AND ACTIONS
 -- Cards live in state.deck (deck index -> face); hands, tricks and announces hold deck
--- indices. E.view hides every face a seat may not see: it sees its own hand, the current
--- trick and the last taken trick, and everything once the eight tricks are played or the
--- match is over.
---   phase "deal":  seat 0 {k="deal", deck={32 faces}} (on a view: no deck)       -> "bid"
+-- indices. E.view hides every face a seat may not see: it sees its own hand; in the tricks
+-- also every card in no hand (the cards played in this deal, so a latecomer can score the
+-- announces); everything once the eight tricks are played or the match is over. state.full
+-- is true on the state E.new makes and false on every view (a view with the whole deck and
+-- full = true is the state).
+--   phase "deal":  seat 0 {k="deal", deck=...}: on a full state all 32 faces at 1..32, on a
+--                  view any subset or none                                       -> "bid"
 --   phase "bid":   the seat on turn {k="bid", b="P"|"C"|"D"|"H"|"S"|"N"|"A"|"X"|"R"}
 --                  -> "play", or "deal" again when passed out
 --   phase "play":  the seat on turn, optionally once in the first trick before its card,
@@ -80,6 +83,11 @@
 --   phase "score": seat 0 {k="score"} (a view must have been shown the announces' cards;
 --                  E.view shows everything by now)                    -> "deal" or "match"
 --   any phase:     seat 0 {k="show", cards={[deck index]=face}} fills faces on a view
+--   "bid", "play", "score": seat 0 {k="void"} annuls the deal: nothing scores, `first` moves
+--                  on (as after a passed-out deal), res is cleared           -> "deal"
+-- At the table: extension "fair" (core/Deal.lua) shuffles and deals; E.dealer names the
+-- seat that deals the next round. E.again: once a match is over the host may start a new
+-- one; E.nextFirst keeps the deal going round (the previous loser does not lead).
 -- state.res is the last deal's result: raw (team totals), pts (game points), hang, valat,
 -- contract (nil when passed out), ann (every announce with its points v and whether it
 -- scored, on). state.score, state.hang, state.winner (team) and state.left (the seat that
@@ -88,7 +96,7 @@
 local _, ns = ...
 ns.Engines = ns.Engines or {}
 
-local E = { id = "belot", minSeats = 4, maxSeats = 4, TARGET = 151, options = {} }
+local E = { id = "belot", minSeats = 4, maxSeats = 4, TARGET = 151, options = {}, ext = { "fair" }, again = true }
 ns.Engines.belot = E
 
 local SUITS = { "C", "D", "H", "S" }
@@ -150,7 +158,7 @@ function E.new(opts)
   local first = opts and opts.first
   if not isSeat(first) then first = 1 end
   local s = {
-    phase = "deal", round = 1, first = first, turn = nil,
+    full = true, phase = "deal", round = 1, first = first, turn = nil,
     deck = {}, hands = { {}, {}, {}, {} },
     bids = {}, contract = nil, passes = 0,
     score = { 0, 0 }, hang = 0, res = nil,
@@ -164,9 +172,10 @@ end
 -- Deal
 ---------------------------------------------------------------------------------------------
 
--- A deal action's deck: nil (nothing known, a view), or up to 32 distinct faces.
-local function checkDeck(deck)
-  if deck == nil then return {} end
+-- A deal action's deck: on a full state all 32 distinct faces at 1..32; on a view nil
+-- (nothing known) or up to 32 distinct faces.
+local function checkDeck(deck, full)
+  if deck == nil and not full then return {} end
   if type(deck) ~= "table" then return nil end
   local out, seen = {}, {}
   for i, face in pairs(deck) do
@@ -174,6 +183,11 @@ local function checkDeck(deck)
     if not IS_FACE[face] or seen[face] then return nil end
     seen[face] = true
     out[i] = face
+  end
+  if full then
+    for i = 1, 32 do
+      if not out[i] then return nil end
+    end
   end
   return out
 end
@@ -188,7 +202,7 @@ end
 local function applyDeal(s, seat, a)
   if seat ~= 0 then return nil, "seat" end
   if s.phase ~= "deal" then return nil, "phase" end
-  local deck = checkDeck(a.deck)
+  local deck = checkDeck(a.deck, s.full)
   if not deck then return nil, "deck" end
   s.deck = deck
   s.hands = { {}, {}, {}, {} }
@@ -664,6 +678,19 @@ end
 -- Faces on a view
 ---------------------------------------------------------------------------------------------
 
+-- The running deal is annulled: nothing scores, the next seat bids first (and so deals).
+local function applyVoid(s, seat)
+  if seat ~= 0 then return nil, "seat" end
+  if s.phase ~= "bid" and s.phase ~= "play" and s.phase ~= "score" then return nil, "phase" end
+  s.phase, s.turn = "deal", nil
+  s.deck, s.hands = {}, { {}, {}, {}, {} }
+  s.bids, s.contract, s.passes = {}, nil, 0
+  s.open, s.res = false, nil
+  resetPlay(s)
+  s.first = nextSeat(s.first)
+  return true
+end
+
 local function applyShow(s, seat, a)
   if seat ~= 0 then return nil, "seat" end
   if type(a.cards) ~= "table" then return nil, "action" end
@@ -682,14 +709,21 @@ end
 
 function E.view(s, seat)
   local v = copy(s)
+  v.full = false
   if s.phase == "match" or s.open then return v end
   local keep = {}
   if isSeat(seat) then
     for _, i in ipairs(s.hands[seat]) do keep[i] = true end
   end
-  for _, i in ipairs(s.trick) do keep[i] = true end
-  if s.last then
-    for _, i in ipairs(s.last.cards) do keep[i] = true end
+  if s.phase == "play" then
+    -- every card in no hand has been played in this deal
+    local held = {}
+    for q = 1, 4 do
+      for _, i in ipairs(s.hands[q]) do held[i] = true end
+    end
+    for i = 1, 32 do
+      if not held[i] then keep[i] = true end
+    end
   end
   for i = 1, 32 do
     if not keep[i] then v.deck[i] = nil end
@@ -714,6 +748,7 @@ function E.apply(s, seat, a)
   if k == "ann" then return applyAnn(s, seat, a) end
   if k == "score" then return applyScore(s, seat) end
   if k == "show" then return applyShow(s, seat, a) end
+  if k == "void" then return applyVoid(s, seat) end
   return nil, "action"
 end
 
@@ -778,6 +813,16 @@ function E.system(s)
 end
 
 function E.over(s) return s.phase == "match" end
+
+-- The dealer of the next round: the seat before the one that bids first.
+function E.dealer(s) return (s.first + 2) % 4 + 1 end
+
+-- A new match after `prev`: the deal keeps going round, when that seat is occupied.
+function E.nextFirst(prev, occupied)
+  local f = prev and prev.first
+  if not isSeat(f) or not occupied[nextSeat(f)] then return nil end
+  return nextSeat(f)
+end
 
 function E.result(s)
   if s.phase ~= "match" then return nil end
