@@ -26,6 +26,8 @@ local Theme = {
     red = hex("a3161c"),
     oMark = hex("e2735a"),
     good = hex("9fd17a"),
+    cardInk = hex("22170f"),   -- black suits and ranks on a card face
+    cardEdge = hex("c7ad82"),  -- the card face edge
   },
   font = {
     heading = MEDIA .. "fonts\\AlegreyaSC-Bold.ttf",
@@ -38,6 +40,7 @@ local Theme = {
   texSize = {
     wood = 256, felt = 256, frame = 64, ring = 128, tabletop = 128, chair = 64, chair_empty = 64,
     button = { 128, 32 }, button_hi = { 128, 32 }, glow = 128, info = 32, icon = 64,
+    card = { 64, 128 }, card_back = { 64, 128 }, suits = { 128, 32 }, -- suits: club, diamond, heart, spade
   },
 }
 

@@ -32,6 +32,12 @@ GOLD = hex_rgb("#f2c94c")
 CREAM = hex_rgb("#fbf3e2")
 RED_PAINT = hex_rgb("#a3161c")
 WHITE = (1.0, 1.0, 1.0)
+# Cards (mockup 07, variant 1 "Кръчмата на гилдията").
+CARD_EDGE = hex_rgb("#c7ad82")
+GILT = hex_rgb("#c19350")
+WALNUT_DARK = hex_rgb("#3b1d10")
+WALNUT = hex_rgb("#5c311a")
+WALNUT_DEEP = hex_rgb("#2e190e")
 
 
 # ---------------------------------------------------------------- helpers
@@ -111,6 +117,18 @@ def sd_round_rect(x, y, x0, y0, x1, y1, r):
     qx, qy = abs(x - cx) - hx, abs(y - cy) - hy
     outside = math.hypot(max(qx, 0.0), max(qy, 0.0))
     return outside + min(max(qx, qy), 0.0) - r
+
+
+def sd_convex(x, y, pts):
+    """Distance to a convex polygon (points clockwise on screen, y down): the largest
+    edge-line distance. Exact inside and along edges, slightly sharp past corners."""
+    d = -1e9
+    for i in range(len(pts)):
+        (ax, ay), (bx, by) = pts[i], pts[(i + 1) % len(pts)]
+        ex, ey = bx - ax, by - ay
+        length = math.hypot(ex, ey)
+        d = max(d, ((x - ax) * ey - (y - ay) * ex) / length)
+    return d
 
 
 def render(w, h, fn):
@@ -320,11 +338,89 @@ def tex_icon(rng):
     return w, h, render(w, h, px)
 
 
+# Cards are drawn at 40x58 on screen from a 64x128 file, so one file pixel is
+# 0.625 screen px across and 0.453 down. Shapes that must look round on screen
+# (the medallion) measure y in units of x by dividing by CARD_STRETCH.
+CARD_W, CARD_H = 64, 128
+CARD_STRETCH = (CARD_H / 58.0) / (CARD_W / 40.0)
+
+
+def sd_card(x, y):
+    return sd_round_rect(x, y, 0.0, 0.0, CARD_W, CARD_H, 8.0)
+
+
+def tex_card(rng):
+    def px(x, y):
+        sd = sd_card(x, y)
+        # Cream face inside a 2 px edge, a thin gilt line 4 px further in.
+        col = mix(CARD_EDGE, CREAM, cover(sd + 2.0))
+        col = mix(col, GILT, cover(abs(sd + 4.5) - 0.5))
+        return col + (cover(sd),)
+    return CARD_W, CARD_H, render(CARD_W, CARD_H, px)
+
+
+def tex_card_back(rng):
+    cx, cy = CARD_W / 2.0, CARD_H / 2.0
+    root2 = math.sqrt(2.0)
+
+    def px(x, y):
+        sd = sd_card(x, y)
+        # 45 degree stripes, 8 px wide: q runs across the stripes, centred on a light one.
+        q = ((x + y) / root2 - 4.0) % 16.0 - 8.0
+        col = mix(WALNUT_DARK, WALNUT, cover(abs(q) - 4.0))
+        # Medallion: a gilt ring round a quiet walnut field (the guild emblem, when
+        # the client has one, is drawn over this centre; the ring is the fallback).
+        r = math.hypot(x - cx, (y - cy) / CARD_STRETCH)
+        col = mix(col, WALNUT_DEEP, 0.7 * cover(r - 15.0))
+        col = mix(col, GILT, cover(abs(r - 16.5) - 1.5))
+        col = mix(col, GILT, 0.6 * cover(abs(r - 12.0) - 0.5))
+        col = mix(GILT, col, cover(sd + 2.0))
+        return col + (cover(sd),)
+    return CARD_W, CARD_H, render(CARD_W, CARD_H, px)
+
+
+def sd_heart(x, y):
+    """Heart in a 32x32 cell: two circles over a downward triangle."""
+    return min(sd_circle(x, y, 10.5, 11.5, 6.2), sd_circle(x, y, 21.5, 11.5, 6.2),
+               sd_convex(x, y, [(4.5, 13.5), (27.5, 13.5), (16.0, 28.0)]))
+
+
+def sd_stem(x, y, top, half, bottom):
+    return sd_convex(x, y, [(16.0, top), (16.0 + half, bottom), (16.0 - half, bottom)])
+
+
+def sd_club(x, y):
+    return min(sd_circle(x, y, 16.0, 9.0, 5.6), sd_circle(x, y, 9.2, 17.5, 5.6),
+               sd_circle(x, y, 22.8, 17.5, 5.6), sd_circle(x, y, 16.0, 15.5, 3.5),
+               sd_stem(x, y, 15.0, 4.5, 29.5))
+
+
+def sd_diamond(x, y):
+    return (abs(x - 16.0) + abs(y - 16.0) - 13.0) / math.sqrt(2.0)
+
+
+def sd_spade(x, y):
+    return min(sd_heart(x, 30.0 - y), sd_stem(x, y, 18.0, 5.0, 30.0))
+
+
+def tex_suits(rng):
+    """Four 32x32 cells, left to right: club, diamond, heart, spade. White, tinted in code."""
+    w, h = 128, 32
+    shapes = (sd_club, sd_diamond, sd_heart, sd_spade)
+
+    def px(x, y):
+        cell = min(int(x // 32), 3)
+        return WHITE + (cover(shapes[cell](x - cell * 32.0, y)),)
+    return w, h, render(w, h, px)
+
+
 TEXTURES = [
     ("wood", tex_wood), ("felt", tex_felt), ("frame", tex_frame), ("ring", tex_ring),
     ("tabletop", tex_tabletop), ("chair", tex_chair), ("chair_empty", tex_chair_empty),
     ("button", tex_button), ("button_hi", tex_button_hi), ("glow", tex_glow),
     ("info", tex_info), ("icon", tex_icon),
+    # Appended, so the shared rng stays where it was for every file above.
+    ("card", tex_card), ("card_back", tex_card_back), ("suits", tex_suits),
 ]
 
 
