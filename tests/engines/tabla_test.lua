@@ -116,10 +116,10 @@ describe("tabla start and flow", function()
       ok(n > 5)
     end
   end)
-  it("snapshot round-trips mid-game, view is an equal copy", function()
+  it("snapshot round-trips mid-game", function()
     local s = E.new{}; roll(s, 6, 1); roll(s, 3, 1); mv(s, { { 8, 5 }, { 6, 5 } }); roll(s, 4, 4)
     local t = E.snapshot(s); t.pts[1][1] = 9
-    eq(s.pts[1][1], 0); eq(E.snapshot(E.restore(E.snapshot(s))), E.snapshot(s)); eq(E.view(s, 2), E.snapshot(s))
+    eq(s.pts[1][1], 0); eq(E.snapshot(E.restore(E.snapshot(s))), E.snapshot(s))
     eq(E.legal(E.restore(E.snapshot(s)), 2), E.legal(s, 2))
   end)
   it("asks for dice with a need marker", function()
@@ -324,10 +324,106 @@ describe("tabla match", function()
   it("a seat that leaves loses the match; leaving after the end changes nothing", function()
     local s = E.new{}; roll(s, 5, 2); roll(s, 3, 1)
     E.leave(s, 1)
-    eq(E.over(s), true); eq(E.result(s), { winners = { 2 }, losers = { 1 } }); eq(s.turn, nil)
+    eq(E.over(s), true); eq(E.result(s), { winners = { 2 }, losers = { 1 }, left = 1 }); eq(s.turn, nil)
     eq(E.legal(s, 1), {}); eq(E.system(s), nil)
-    E.leave(s, 2); eq(E.result(s), { winners = { 2 }, losers = { 1 } })
-    local t = E.new{}; E.leave(t, 2); eq(E.result(t), { winners = { 1 }, losers = { 2 } })
+    E.leave(s, 2); eq(E.result(s), { winners = { 2 }, losers = { 1 }, left = 1 })
+    local t = E.new{}; E.leave(t, 2); eq(E.result(t), { winners = { 1 }, losers = { 2 }, left = 2 })
+  end)
+end)
+
+describe("tabla staging", function()
+  it("an open game: no view, dice by the extension, a new match on request, the result names a leaver", function()
+    eq(E.view, nil); eq(E.ext, { "dice" }); eq(E.again, true); eq(E.nextFirst, nil)
+    local s = E.new{}; roll(s, 5, 2); E.leave(s, 1); eq(E.result(s), { winners = { 2 }, losers = { 1 }, left = 1 })
+  end)
+  it("stage: what may follow a partial move, and done only for a whole legal move", function()
+    local s = E.new{}; roll(s, 6, 1); roll(s, 3, 1)                                     -- seat 1 moves a 3 and a 1
+    local r = E.stage(s, 1, {})
+    eq({ r.done, r.left }, { false, { 3, 1 } }); eq(r.next, { { 24, 23 }, { 24, 21 }, { 13, 10 }, { 8, 7 }, { 8, 5 }, { 6, 5 }, { 6, 3 } })
+    r = E.stage(s, 1, { { 8, 5 } }); eq({ r.done, r.left }, { false, { 1 } }); eq(r.next, { { 24, 23 }, { 8, 7 }, { 6, 5 }, { 5, 4 } })
+    eq({ E.apply(E.restore(E.snapshot(s)), 1, { k = "move", steps = { { 8, 5 } } }) }, { nil, "move" })
+    r = E.stage(s, 1, { { 24, 23 } }); eq(r.left, { 3 }); eq(r.next, { { 24, 21 }, { 23, 20 }, { 13, 10 }, { 8, 5 }, { 6, 3 } })
+    r = E.stage(s, 1, { { 8, 5 }, { 6, 5 } }); eq({ r.done, r.left, r.next }, { true, {}, {} })
+    eq(r.pts[1], arr{ [24] = 2, [13] = 5, [8] = 2, [6] = 4, [5] = 2 }); eq(s.pts[1][8], 3); eq(s.left, { 3, 1 })
+    eq(E.stage(s, 2, {}), nil); eq(E.stage(s, 1, { { 8, 4 } }), nil); eq(E.stage(s, 1, { { 8, 5 }, { 6, 5 }, { 6, 5 } }), nil)
+    eq(E.stage(s, 1, "x"), nil); eq(E.stage(s, 1, { { 8 } }), nil); eq(E.stage(E.new{}, 1, {}), nil)
+  end)
+  it("stage: a double, a blocked roll, bearing off", function()
+    local d = pos("std", 1, { [24] = 2, [13] = 5, [8] = 3, [6] = 5 }, { [24] = 2, [13] = 5, [8] = 3, [6] = 5 }); roll(d, 6, 6)
+    local r = E.stage(d, 1, {}); eq(r.left, { 6, 6, 6, 6 }); eq(r.next, { { 24, 18 }, { 13, 7 }, { 8, 2 } })
+    r = E.stage(d, 1, { { 24, 18 }, { 24, 18 }, { 13, 7 } }); eq({ r.done, r.left }, { false, { 6 } }); eq(r.next, { { 13, 7 }, { 8, 2 } })
+    local u = pos("std", 1, { [24] = 2, [13] = 12 }, { [6] = 2, [5] = 2, [4] = 2, [3] = 2, [2] = 2, [1] = 2, [24] = 3 }, { bar = { 1, 0 } }); roll(u, 3, 4)
+    eq(E.legal(u, 1), NOMOVE); r = E.stage(u, 1, {}); eq({ r.done, r.next, r.left }, { true, {}, { 3, 4 } })
+    local bo = pos("std", 1, { [2] = 1, [1] = 1 }, { [24] = 15 }); roll(bo, 6, 5)
+    eq(E.stage(bo, 1, {}).next, { { 2, 0 } }); r = E.stage(bo, 1, { { 2, 0 } }); eq({ r.done, r.left, r.next }, { false, { 5 }, { { 1, 0 } } })
+    eq(E.stage(bo, 1, { { 2, 0 }, { 1, 0 } }).done, true)
+  end)
+  it("stage: a first step that already ends where a whole move ends is done, as apply accepts it", function()
+    local e = pos("std", 1, { [4] = 1, [3] = 1 }, { [12] = 15 }); roll(e, 5, 1)       -- 4/0 lands where 4/3 3/0 does
+    local r = E.stage(e, 1, { { 4, 0 } }); eq({ r.done, r.left, r.next }, { true, { 1 }, {} })
+    ok(E.apply(E.restore(E.snapshot(e)), 1, { k = "move", steps = { { 4, 0 } } }))
+    eq(E.stage(e, 1, { { 3, 2 } }).next, { { 4, 0 } }); eq(E.stage(e, 1, { { 3, 2 }, { 4, 0 } }).done, true)
+  end)
+  it("stage: a mother pin is a whole move with a die left; a cascade number that cannot be finished is whole too", function()
+    local mp = pos("tapa", 1, { [4] = 1, [10] = 14 }, { [24] = 1, [20] = 14 }); roll(mp, 3, 5)
+    eq(E.stage(mp, 1, {}).next, { { 10, 7 }, { 4, 1 } }); local r = E.stage(mp, 1, { { 4, 1 } }); eq({ r.done, r.left, r.next }, { true, { 5 }, {} })
+    eq(r.pin[2][24], 1); eq(E.stage(mp, 1, { { 4, 1 }, { 10, 5 } }), nil)
+    local g = pos("gul", 1, { [24] = 1, [12] = 1 }, { [7] = 1, [20] = 14 }, { rolls = { 3, 0 } }); roll(g, 5, 5)
+    eq(E.stage(g, 1, {}).next, { { 12, 7 } }); r = E.stage(g, 1, { { 12, 7 } }); eq({ r.done, r.left, r.next }, { false, { 5, 5, 5 }, { { 7, 2 } } })
+    r = E.stage(g, 1, { { 12, 7 }, { 7, 2 } }); eq({ r.done, r.left }, { true, { 5, 5 } })
+  end)
+  it("stage agrees with legal and apply on random positions", function()
+    local x = 20261123
+    local function rnd(lo, hi) x = (x * 16807) % 2147483647; return lo + x % (hi - lo + 1) end
+    local function has(list, st)
+      for _, y in ipairs(list) do if y[1] == st[1] and y[2] == st[2] then return true end end
+      return false
+    end
+    local games, positions, checked, bad, early = 0, 0, 0, 0, 0
+    while games < 30 do
+      local s, guard = E.new{}, 0
+      while not E.over(s) and guard < 100000 do
+        guard = guard + 1
+        local a = E.system(s)
+        if a and a.need == "dice" then
+          if not E.apply(s, 0, { k = "dice", d = { rnd(1, 6), rnd(1, 6) } }) then bad = bad + 1 end
+        elseif a then
+          if not E.apply(s, 0, a) then bad = bad + 1 end
+        else
+          local seat = s.turn
+          if positions < 400 then
+            positions = positions + 1
+            for _, m in ipairs(E.legal(s, seat)) do
+              local pre = {}
+              for k = 0, #m.steps - 1 do
+                local r = E.stage(s, seat, pre)
+                if not r then
+                  bad = bad + 1
+                elseif r.done then -- a proper prefix may end where another whole move ends (5-1: 4/0 = 4/3 3/0)
+                  early = early + 1
+                  if not E.apply(E.restore(E.snapshot(s)), seat, { k = "move", steps = pre }) then bad = bad + 1 end
+                elseif not has(r.next, m.steps[k + 1]) then
+                  bad = bad + 1
+                end
+                pre[#pre + 1] = m.steps[k + 1]
+              end
+              local r = E.stage(s, seat, m.steps)
+              if not r or r.done ~= true or #r.next ~= 0 then bad = bad + 1 end
+              checked = checked + 1
+            end
+            for _, st in ipairs(E.stage(s, seat, {}).next) do
+              if E.stage(s, seat, { st }) == nil then bad = bad + 1 end
+            end
+          end
+          local m = E.auto(s, seat)
+          if not m or not E.apply(s, seat, m) then bad = bad + 1; break end
+          if s.phase == "game" or s.phase == "match" then games = games + 1 end
+        end
+      end
+      if not E.over(s) then bad = bad + 1 end
+    end
+    eq(bad, 0)
+    ok(checked >= 1000, "checked " .. checked); ok(early < checked / 100, "early " .. early)
   end)
 end)
 

@@ -13,8 +13,9 @@ ns.Engines = ns.Engines or {}
     Std/Тапа: the seats move in opposite directions, seat 2's q is seat 1's 25-q.
     Гюлбара: both move the same way round, seat 2's q is seat 1's (q+11)%24+1 (seat 2's 24 = seat 1's 12).
  4. Dice: system action {k="dice", d={a,b}} at seat 0, values 1..6. Randomness: E.system answers
-    {k="dice", need="dice", r="open"} / {k="dice", need="dice", r="roll", s=seat}; the supplier
-    applies it without need and with d (apply refuses an action carrying need with "need").
+    {k="dice", need="dice", r="open"} / {k="dice", need="dice", r="roll", s=seat}; the supplier,
+    the extension "dice" (E.ext), applies it without need and with d on every client (apply
+    refuses an action carrying need with "need").
  5. Opening (game 1 only): one dice action is the opening roll, d[1] = seat 1's die, d[2] = seat
     2's die; a tie rolls again; the higher die starts and then rolls both dice anew (the opening
     dice are not played). opts.first is ignored (the opening roll decides).
@@ -46,12 +47,22 @@ ns.Engines = ns.Engines or {}
     the same seat. If a number cannot be fully played, the opponent plays the remainder (the
     unplayed steps of that number, then the higher numbers) with its own checkers, then rolls
     for its own turn; whatever the opponent cannot play of the remainder is lost.
-12. A seat that leaves while the match is live loses the match (E.leave).
+12. A seat that leaves while the match is live loses the match (E.leave); E.result names it (left).
+
+ STATE AND ACTIONS
+ Open game: every client holds the whole state, so there is no E.view (snapshots are whole).
+ E.stage(s, seat, steps): the partial move `steps` ({from, to} pairs in that order) of the seat on
+ turn -> {pts, pin, bar, off, left, done, next}, or nil when it cannot begin a move E.apply
+ accepts: the position after it (fresh tables), the dice still open (first die assignment that
+ still leads to a legal move), done = apply would accept it as the whole move, next = every
+ {from, to} that may follow (from descending, then to descending; {} when done).
+ E.again: once a match is over the host may start a new one; it begins with the opening roll
+ (no E.nextFirst).
 ]]
 
 local E = {
   id = "tabla", minSeats = 2, maxSeats = 2, TARGET = 5, CASCADE_ROLL = 4,
-  VARIANTS = { "std", "tapa", "gul" }, options = {},
+  VARIANTS = { "std", "tapa", "gul" }, options = {}, ext = { "dice" }, again = true,
 }
 ns.Engines.tabla = E
 
@@ -387,7 +398,7 @@ function E.over(s) return s.phase == "match" end
 
 function E.result(s)
   if s.phase ~= "match" then return nil end
-  return { winners = { s.winner }, losers = { 3 - s.winner } }
+  return { winners = { s.winner }, losers = { 3 - s.winner }, left = s.quit }
 end
 
 function E.leave(s, seat)
@@ -396,7 +407,79 @@ function E.leave(s, seat)
   s.turn, s.left, s.cv, s.xfer = nil, nil, nil, nil
 end
 
-function E.view(s) return copy(s) end
+-- The legal moves and the viability memo of the last staged turn: a move is staged one click at a
+-- time, so consecutive calls share them. Keyed by everything gen reads.
+local staged = {}
+
+-- The position after the partial move `steps` of `seat` (see STATE AND ACTIONS), or nil.
+function E.stage(s, seat, steps)
+  if s.phase ~= "move" or s.turn ~= seat or type(steps) ~= "table" then return nil end
+  local var = s.var
+  local sk = var .. "|" .. seat .. "|" .. table.concat(s.left, ",") .. "|" .. key(s)
+  if staged.k ~= sk then
+    local _, byKey = gen(s)
+    staged = { k = sk, byKey = byKey, memo = {} }
+  end
+  local byKey, memo = staged.byKey, staged.memo
+  -- A position with dice `rem` still leads to a legal move.
+  local function viable(p, rem)
+    local pk = key(p)
+    local mk = pk .. "|" .. table.concat(rem, ",")
+    if memo[mk] == nil then
+      local v = byKey[pk] ~= nil
+      if not v and not p.won then
+        local lo = p.bar[seat] > 0 and 25 or 1
+        for _, d in ipairs(distinct(rem)) do
+          for from = 25, lo, -1 do
+            local n = step(var, p, seat, from, d)
+            if n and viable(n, without(rem, d)) then v = true break end
+          end
+          if v then break end
+        end
+      end
+      memo[mk] = v
+    end
+    return memo[mk]
+  end
+  -- Plays steps[i..] from p with dice rem; collects every viable dice left after the last step.
+  local final, rems = nil, {}
+  local function play(p, i, rem)
+    if i > #steps then final = p; rems[#rems + 1] = rem; return end
+    if p.won then return end
+    local st = steps[i]
+    if type(st) ~= "table" then return end
+    local from, to = st[1], st[2]
+    if type(from) ~= "number" or type(to) ~= "number" then return end
+    for _, d in ipairs(distinct(rem)) do
+      if from - d == to or (to == 0 and from - d < 0) then
+        local n, t = step(var, p, seat, from, d)
+        local r = n and without(rem, d)
+        if n and t == to and viable(n, r) then play(n, i + 1, r) end
+      end
+    end
+  end
+  play(copyPos(s), 1, s.left)
+  if not final then return nil end
+  local done = byKey[key(final)] ~= nil
+  local nxt, seen = {}, {}
+  if not done and not final.won then
+    local lo = final.bar[seat] > 0 and 25 or 1
+    for _, rem in ipairs(rems) do
+      for _, d in ipairs(distinct(rem)) do
+        for from = 25, lo, -1 do
+          local n, to = step(var, final, seat, from, d)
+          if n and not seen[from * 32 + to] and viable(n, without(rem, d)) then
+            seen[from * 32 + to] = true; nxt[#nxt + 1] = { from, to }
+          end
+        end
+      end
+    end
+    table.sort(nxt, function(a, b) if a[1] ~= b[1] then return a[1] > b[1] end return a[2] > b[2] end)
+  end
+  return { pts = final.pts, pin = final.pin, bar = final.bar, off = final.off,
+           left = copy(rems[1]), done = done, next = nxt }
+end
+
 function E.snapshot(s) return copy(s) end
 function E.restore(t) return copy(t) end
 
