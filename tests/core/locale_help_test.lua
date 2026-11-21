@@ -140,6 +140,17 @@ describe("locale and help", function()
     -- The void rule: named, and the next player deals.
     ok(T.bg["help.fair.bad"]:find("раздава следващият", 1, true), "the void rule is not in the fair help")
     ok(T.en["help.fair.bad"]:find("the next player deals", 1, true), "the void rule is not in the fair help (en)")
+    -- A reload alone keeps the dealer's deck; the void is for a dealer who left or crashed.
+    ok(T.bg["help.fair.bad"]:find("само презареди играта, аддонът му пази тестето и ръката продължава", 1, true), "the reload rule is not in the fair help")
+    ok(T.en["help.fair.bad"]:find("only reloads the game, their addon keeps the deck and the hand goes on", 1, true), "the reload rule is not in the fair help (en)")
+    ok(not T.bg["fair.tip.void"]:find("презареди", 1, true) and not T.en["fair.tip.void"]:find("reload", 1, true), "a reload no longer voids a hand")
+    -- The announce check at the end of a deal, and how the 90 of a capot count (rule 12 of engines/belot.lua).
+    ok(T.bg["help.belot.announce"]:find("Обява без покритие не носи точки", 1, true), "the announce check is not in the Белот help")
+    ok(T.en["help.belot.announce"]:find("scores nothing and does not cancel anybody else's", 1, true), "the announce check is not in the Белот help (en)")
+    ok(T.bg["help.belot.valat"]:find("90 точки, преди сборът да се раздели на десет", 1, true), "how the 90 count")
+    ok(T.bg["help.belot.valat"]:find("след удвояването", 1, true), "the 90 in „Без коз“")
+    ok(T.en["help.belot.valat"]:find("90 points are added to its total for the deal, before the total is divided by ten", 1, true), "how the 90 count (en)")
+    eq(T.en["help.belot.fair"], "Below the table it says whether the last deal was “verified”. The deal passes to the next player each time, as at a real table.")
     eq(T.en["santase.swap"], "Swap the nine")
     eq(T.bg["help.deathroll.example"], "Иван и Мария играят от 1000. Иван хвърля 642. Мария хвърля от 1 до 642 и вади 87. Иван вади 12, Мария вади 3. Иван хвърля от 1 до 3 и вади 1. Иван губи и черпи.")
     eq(T.en["deathroll.roll"], "Roll")
