@@ -178,6 +178,26 @@ local function inGroup(guid)
   return IsGUIDInGroup ~= nil and IsGUIDInGroup(guid) and true or false
 end
 
+local function asks(fn, ...)
+  if type(fn) ~= "function" then return nil end
+  local ok, got = pcall(fn, ...)
+  return ok and got or nil
+end
+
+-- env.groupedWith(name): is `name` (normalized full name) in my party or raid?
+-- From my own client's data only: its GUID from my guild roster scan in my
+-- group, or the name in UnitInRaid / UnitInParty / the group roster; never a
+-- GUID a player announced about itself (a host could name one outside my group).
+local function groupedWith(name)
+  local guid = Adapter.guids[name]
+  if guid and inGroup(guid) then return true end
+  if asks(UnitInRaid, name) or asks(UnitInParty, name) then return true end
+  for i = 1, (asks(GetNumGroupMembers) or 0) do
+    if Names.normalize(asks(GetRaidRosterInfo, i)) == name then return true end
+  end
+  return false
+end
+
 -- A bot's env (Bots.spawn replaces send); bots keep their settings in memory.
 -- Of the roll and group calls a bot has only env.random (see ns.RollChat.env).
 function Adapter.botEnv(name, cls)
@@ -204,6 +224,7 @@ function Adapter.createClient(name, send)
   local _, cls = UnitClass("player")
   local env = baseEnv(name, UnitGUID("player"), cls)
   env.send, env.status, env.inGroup, env.db, env.log = send, status, inGroup, ns.db, Adapter.log
+  env.groupedWith = groupedWith
   local guild = GetGuildInfo("player")
   env.guild = guild and guild .. "-" .. GetRealmName() or nil
   env.member = Adapter.isMember
@@ -274,6 +295,7 @@ local lastOnline
 -- newcomer's first messages is harmless: HI and TBL repeat, and a guild member's
 -- client answers my own HI.
 Adapter.members = {} -- normalized name -> true, from the latest roster scan
+Adapter.guids = {}   -- normalized name -> GUID, from the same scan (env.groupedWith)
 local lastRosterAsk
 
 function Adapter.isMember(name)
@@ -290,17 +312,17 @@ end
 
 local function scanRoster()
   local myGuid = UnitGUID("player")
-  local online, members = {}, {}
+  local online, members, guids = {}, {}, {}
   for i = 1, (GetNumGuildMembers()) do
     local raw, _, _, _, _, _, _, _, isOnline, _, _, _, _, _, _, _, guid = GetGuildRosterInfo(i)
     local name = Names.normalize(raw)
     if name then
       if guid == myGuid then found(name) end
       online[name] = isOnline and true or false
-      members[name] = true
+      members[name], guids[name] = true, guid
     end
   end
-  Adapter.members = members
+  Adapter.members, Adapter.guids = members, guids
   local client = ns.client
   if client and lastOnline then
     for name, was in pairs(lastOnline) do

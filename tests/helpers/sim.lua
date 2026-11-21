@@ -90,6 +90,8 @@ function Sim:newEnv(name, opts)
   end
   env.status = function() return { combat = status.combat, instance = status.instance, busy = status.busy } end
   env.inGroup = function(guid) return group[guid] == true end
+  -- My own roster's answer by name (the adapter's env.groupedWith): here the GUID of that name, through env.inGroup.
+  env.groupedWith = function(who) return env.inGroup(sim:guidOf(who)) == true end
   env.random = function(lo, hi) return table.remove(sim.nextRandom, 1) or hi end
   env.log = function() end
   env.strictHooks = true -- an extension hook error fails the test (see Session:hook)

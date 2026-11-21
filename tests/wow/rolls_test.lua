@@ -108,6 +108,20 @@ describe("wow: roll line", function()
     eq(w.rolls, { { 1, 1000 }, { "1", "500" }, { 1, 500 }, { 1, 500 } })
   end)
 
+  it("env.groupedWith asks my own roster: the guild roster's GUID in my group, or the name in my group", function()
+    local w = setup()
+    local env = w.ns.client.env
+    eq(env.groupedWith(B), false)
+    w.group["Player-1-00000002"] = true; eq(env.groupedWith(B), true) -- B's GUID from my guild roster
+    w.group = {}; eq(env.groupedWith(B), false)
+    w:member(B); w:deliver("GUILD", B, { v = 1, t = "HI", ver = "0.1.0", cls = "PRIEST", id = "Player-1-00000099" })
+    w.group["Player-1-00000099"] = true; eq(env.groupedWith(B), false) -- the GUID B announced does not count
+    w.partyNames[B] = true; eq(env.groupedWith(B), true); w.partyNames = {}
+    w.raidNames[B] = true; eq(env.groupedWith(B), true); w.raidNames = {}
+    w.party.size, w.groupRoster = 2, { ME .. "-Forever", B .. "-Forever" }; eq(env.groupedWith(B), true)
+    eq(w.ns.Adapter.botEnv("Бот Иванов", "PRIEST").groupedWith, nil)
+  end)
+
   it("env.roll, env.group and env.groupInvite reach the game API; a bot env has only random", function()
     local w = setup()
     local env = w.ns.client.env

@@ -64,6 +64,8 @@ function Wow.new(opts)
     roster = {}, rosterRequests = 0, inGuild = false, combat = false, instance = false,
     dnd = false, group = {}, money = 0, icons = {}, sounds = {}, reloads = 0,
     rolls = {}, groupInvites = {}, accepted = 0, popupsHidden = {},
+    -- My group roster by name: unit names UnitInParty / UnitInRaid know, and GetRaidRosterInfo's rows.
+    partyNames = {}, raidNames = {}, groupRoster = {},
     party = { grouped = false, leader = false, raid = false, size = 0 },
     -- Trade and mail: the open trade's money, the "NPC" unit (the trade partner),
     -- the inbox rows {sender, subject, money}, whether the mailbox is open.
@@ -144,6 +146,9 @@ function Wow.new(opts)
   G.IsInRaid = function() return self.party.raid end
   G.UnitIsGroupLeader = function(unit) return unit == "player" and self.party.leader end
   G.GetNumGroupMembers = function() return self.party.size end
+  G.UnitInParty = function(name) return self.partyNames[name] == true end
+  G.UnitInRaid = function(name) if self.raidNames[name] then return 1 end end
+  G.GetRaidRosterInfo = function(i) return self.groupRoster[i] end
   G.RAID_CLASS_COLORS = { MAGE = { r = 0.25, g = 0.78, b = 0.92 } }
   G.SOUNDKIT = { TELL_MESSAGE = 3081 }
   G.PlaySound = function(id, channel) self.sounds[#self.sounds + 1] = { id, channel } end

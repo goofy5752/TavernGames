@@ -621,12 +621,20 @@ describe("stakes: play, fix round 1", function()
     eq(#b.session.state.rolls, 0)
     sim:run(C.ROLL_FINAL_WAIT)
     eq(Rolls.audit(Rolls.auditOf(b, gid)), "roll"); eq(Rolls.audit(b.session), nil)
-    -- A roll my log confirmed late, its verdict still pending when I stand up: "unseen", never "ok".
+    -- A roll my log confirmed late but before I stood up keeps its "ok" (round 2, M4: no honest host framed).
     sim, a, b, _, tid = drTable({ B }, SK)
     roll(sim, a, 50); roll(sim, b, 30)
     sim.canSee = function(from, to) return not (from == A and to == B) end
     roll(sim, a, 1); gid = tid .. "/" .. a.session.seq
     sim:run(1); b:rollSeen("Иван", 1, 1, 30); eq(Rolls.check(b.session, 3), "ok")
+    b:stand(); eq(Rolls.audit(Rolls.auditOf(b, gid)), "unseen") -- still pending: not clean
+    sim:run(C.ROLL_FINAL_WAIT)
+    eq(Rolls.check(Rolls.auditOf(b, gid), 3), "ok"); eq(Rolls.audit(Rolls.auditOf(b, gid)), nil)
+    -- One without any verdict when I stood up has its final verdict: "unseen".
+    sim, a, b, _, tid = drTable({ B }, SK)
+    roll(sim, a, 50); roll(sim, b, 30)
+    sim.canSee = function(from, to) return not (from == A and to == B) end
+    roll(sim, a, 1); gid = tid .. "/" .. a.session.seq
     b:stand(); sim:run(C.ROLL_FINAL_WAIT)
     eq(Rolls.check(Rolls.auditOf(b, gid), 3), "unseen"); eq(Rolls.audit(Rolls.auditOf(b, gid)), "unseen")
   end)
@@ -648,7 +656,8 @@ describe("stakes: play, fix round 1", function()
     eq(Rolls.audit(b.session), "roll"); eq(b.session.stakeFoul, nil)
     a.session.state = a.session:newGame(1); a.session.seq = a.session.seq + 1
     a:send("WHISPER", B, { v = 1, t = "TCK", tid = tid, e = a.session.epoch, q = a.session.seq }); sim:run(1)
-    eq(#b.session.state.rolls, 0); eq(b.session.stakeFoul, "roll")
+    -- The replaced game's record stays with the running one (round 2: no side table).
+    eq(#b.session.state.rolls, 0); eq(b.session.stakeFoul, "unseen"); eq(Rolls.audit(b.session), "roll")
   end)
 
   it("the break leaves AUTO_GRACE for the transport; a snapshot dates no end", function()
@@ -676,7 +685,7 @@ describe("stakes: play, fix round 1", function()
     ok(b.session:gameOver()); eq(b.session.stakeLive, false); eq(b.session.stakeEndedAt, nil)
   end)
 
-  it("death roll: my roll outside the host's group is no foul; a host change drops my roll", function()
+  it("death roll: my roll outside the host's group is no foul; a host change keeps my roll", function()
     local sim, a, b = drTable({ B }, SK)
     roll(sim, a, 50)
     b.env.inGroup = function() return false end
@@ -686,13 +695,13 @@ describe("stakes: play, fix round 1", function()
     local s = b.session
     sim:run(C.OFFLINE_STAND_SECONDS + C.PING_EVERY + 1)
     eq(b.session, nil); eq(s.stakeFoul, nil)
-    -- In the group it counts, until my host changes.
+    -- In the group it counts, and a host change keeps it (round 2, C3).
     sim, a, b = drTable({ B }, SK)
     roll(sim, a, 50)
     sim.canSee = function(from, to) return not (from == B and to == A) end
     eq(Rolls.withHost(b.session), true)
     roll(sim, b, 40); eq(b.session.myRoll, { n = 40, max = 50 })
-    b.session:hook("hostChanged"); eq(b.session.myRoll, nil)
+    b.session.host = P; b.session:hook("hostChanged"); eq(b.session.myRoll, { n = 40, max = 50 })
   end)
 
   it("a watcher without /roll whose lobby lost the table still gets no staked seat", function()
@@ -723,5 +732,148 @@ describe("stakes: play, fix round 1", function()
     local later = Util.copy(nextRound); later.round = 3
     ok(not L(won, later))
     ok(not L(mine, nextRound)) -- round 1 still running is not followed by round 2
+  end)
+end)
+
+describe("stakes: play, fix round 2", function()
+  it("Морски шах: an abort with both seats full, then a start, is forged against that game", function()
+    local sim, a, b = tttTable(SK)
+    playOut(sim, a, b); ok(b.session:gameOver())
+    a.session:event(0, { k = "abort" }); sim:run(0); eq(b.session.status, "aborted")
+    a.session:event(0, { k = "start" }); sim:run(0)
+    eq(b.session.stakeLive, true); eq(b.session.stakeFoul, "forged")
+    -- A seat my client saw empty and filled again by a sit: the start is the table's.
+    local c, tid
+    sim, a, b, c, tid = tttMariaOnTurn(SK)
+    c:watch(tid); sim:run(1)
+    b:stand(); sim:run(0)
+    local d = sim:add("Гошо Гошев", { cls = "MAGE" }); sim:run(1)
+    d:sit(tid, 2, SK); sim:run(1)
+    eq(c.session.stakeLive, true); eq(c.session.stakeFoul, nil); eq(d.session.stakeFoul, nil)
+  end)
+
+  it("the grouping check is my own roster's, never the host's announced GUID", function()
+    local sim, a, b = drTable({ B }, SK)
+    roll(sim, a, 50)
+    b.presence.peers[A].guid = "Player-0000-99999999" -- what a host may announce about itself
+    eq(Rolls.withHost(b.session), true)
+    b.presence.peers[A].guid = nil
+    eq(Rolls.withHost(b.session), true)
+    sim.canSee = function(from, to) return not (from == B and to == A) end
+    roll(sim, b, 40); eq(b.session.myRoll, { n = 40, max = 50 })
+    -- Outside my roster's group it is false, whatever the host announces.
+    b.presence.peers[A].guid = b.env.guid
+    b.env.groupedWith = function() return false end
+    eq(Rolls.withHost(b.session), false)
+  end)
+
+  it("the same host at a new epoch is no host change: my roll stays and its idle stand is the foul roll", function()
+    local sim, a, b, _, tid = drTable({ B }, SK)
+    roll(sim, a, 50)
+    sim.canSee = function(from, to) return not (from == B and to == A) end
+    roll(sim, b, 40); eq(b.session.myRoll, { n = 40, max = 50 })
+    a.session.epoch = a.session.epoch + 1
+    a:send("WHISPER", B, { v = 1, t = "TCK", tid = tid, e = a.session.epoch, q = a.session.seq }); sim:run(1)
+    eq(b.session.epoch, a.session.epoch); eq(b.session.myRoll, { n = 40, max = 50 }); eq(b.session.stakeFoul, nil)
+    ok(b.session.rolling, "the roll under way is not dropped by the same host's new epoch")
+    local s = b.session
+    sim:run(C.OFFLINE_STAND_SECONDS)
+    eq(s.seats[2], false); eq(s.stakeFoul, "roll")
+  end)
+
+  it("a snapshot that does for my seat what I did not is forged", function()
+    -- Морски шах: a mark of mine I never sent, brought by a snapshot I was made to ask for.
+    local sim, a, b, _, tid = tttMariaOnTurn(SK)
+    local function ask()
+      a.session.seq = a.session.seq + 1
+      a:send("WHISPER", B, { v = 1, t = "TCK", tid = tid, e = a.session.epoch, q = a.session.seq }); sim:run(1)
+    end
+    ok(TTT.apply(a.session.state, 2, { k = "mark", c = 7 })); ask()
+    eq(b.session.state.board[7], 2); eq(b.session.stakeFoul, "forged")
+    -- My own mark, sent and dropped on the way back, then brought by a snapshot: no foul.
+    sim, a, b, _, tid = tttMariaOnTurn(SK)
+    sim.bus.filter = function(from, to, _, m)
+      if from == A and to == B and m.t == "EV" then return {} end
+      return { m }
+    end
+    ok(b:act({ k = "mark", c = 7 })); sim:run(1); sim.bus.filter = nil
+    a:send("WHISPER", B, { v = 1, t = "TCK", tid = tid, e = a.session.epoch, q = a.session.seq }); sim:run(1)
+    eq(b.session.state.board[7], 2); eq(b.session.stakeFoul, "unseen")
+    -- My timeout, due by my clock and missed on the way: no foul either.
+    sim, a, b, _, tid = tttMariaOnTurn(SK)
+    sim.bus.filter = function(from, to, _, m)
+      if from == A and to == B and m.t == "EV" then return {} end
+      return { m }
+    end
+    sim:run(C.TURN_DEFAULT + C.AUTO_GRACE); sim.bus.filter = nil
+    a:send("WHISPER", B, { v = 1, t = "TCK", tid = tid, e = a.session.epoch, q = a.session.seq }); sim:run(1)
+    eq(b.session.state.board[2], 2); eq(b.session.stakeFoul, "unseen")
+    -- A new match without my „Реванш“.
+    sim, a, b, _, tid = tttTable(SK)
+    playOut(sim, a, b); ok(b.session:gameOver())
+    sim.bus.filter = function(from, to, _, m)
+      if from == A and to == B and m.t == "EV" then return {} end
+      return { m }
+    end
+    ok(a:act({ k = "rematch" })); a.session:play(2, { k = "rematch" }); sim:run(0); sim.bus.filter = nil
+    a:send("WHISPER", B, { v = 1, t = "TCK", tid = tid, e = a.session.epoch, q = a.session.seq }); sim:run(1)
+    eq(b.session:gameOver(), false); eq(b.session.stakeFoul, "forged")
+    -- Death Roll: a roll of mine no chat ever showed.
+    sim, a, b, _, tid = drTable({ B }, SK)
+    roll(sim, a, 50)
+    ok(DR.apply(a.session.state, 2, { k = "roll", n = 20, max = 50, src = "seen" })); ask()
+    eq(#b.session.state.rolls, 2); eq(b.session.stakeFoul, "forged")
+    -- Death Roll: my seat gone at 60 s, in a snapshot I asked for; at 180 s by my clock it is the idle stand.
+    -- (Its EV and the SNO "gone" to my SYN are lost on the way: only the snapshot tells me.)
+    for _, at in ipairs({ 60, C.OFFLINE_STAND_SECONDS }) do
+      sim, a, b, _, tid = drTable({ B }, SK)
+      roll(sim, a, 50)
+      a.session.idleTimer.cancel()
+      sim.bus.filter = function(from, to, _, m)
+        if from == A and to == B and (m.t == "EV" or m.t == "SNO") then return {} end
+        return { m }
+      end
+      sim:run(at)
+      ns.Succession.untrack(a.session, B)
+      a.session:event(0, { k = "stand", seat = 2, why = "idle" }); sim:run(0)
+      local s = b.session
+      s.lastSyn = nil; s:requestSync(); sim:run(0); sim.bus.filter = nil
+      a.session:snapshotTo(B); sim:run(0)
+      eq(s.stakeFoul, at == 60 and "forged" or "unseen")
+    end
+  end)
+
+  it("a verdict pending when a snapshot replaces my game updates that game's record", function()
+    local sim, a, b, _, tid = drTable({ B }, SK)
+    roll(sim, a, 50)
+    a.session:play(2, { k = "roll", n = 20, max = 50, src = "seen" }); sim:run(0) -- no chat line of mine
+    a.session.state = a.session:newGame(1); a.session.seq = a.session.seq + 1
+    a:send("WHISPER", B, { v = 1, t = "TCK", tid = tid, e = a.session.epoch, q = a.session.seq }); sim:run(1)
+    eq(#b.session.state.rolls, 0); eq(Rolls.audit(b.session), "unseen") -- pending reads unseen ...
+    sim:run(C.ROLL_VERIFY_WAIT)
+    eq(Rolls.audit(b.session), "roll") -- ... until its verdict replaces it
+  end)
+
+  it("a game a stand ends keeps its roll record", function()
+    local sim, a, b, _, tid = drTable({ B }, SK)
+    sim.canSee = function(from, to) return not (from == A and to == B) end
+    roll(sim, a, 50) -- Мария never sees it: pending
+    ns.Succession.untrack(a.session, B)
+    a.session:event(0, { k = "stand", seat = 2, why = "offline" }); sim:run(0)
+    local gid = tid .. "/" .. a.session.seq
+    ok(Rolls.auditOf(b, gid), "no record for the game the stand ended")
+    sim:run(C.ROLL_FINAL_WAIT)
+    eq(Rolls.audit(Rolls.auditOf(b, gid)), "unseen")
+  end)
+
+  it("a /reload on my turn: an honest idle stand is unseen, not stand", function()
+    local sim, a, b = drTable({ B }, SK)
+    roll(sim, a, 50)
+    sim:run(100)
+    b = sim:relog(B); sim:run(1)
+    eq(b.session.stakeFoul, "unseen"); eq(b.session.stakeTurn.seen, false)
+    local s = b.session
+    sim:run(C.OFFLINE_STAND_SECONDS - 101)
+    eq(s.seats[2], false); eq(s.stakeFoul, "unseen")
   end)
 end)

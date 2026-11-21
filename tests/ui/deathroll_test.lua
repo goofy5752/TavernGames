@@ -195,7 +195,10 @@ describe("ui: Death Roll view", function()
     local s = client.session
     s.state.staked = true; client.events:emit("session", s); w:advance(0)
     eq(#w:texts(w.ns.L("roll.nohost")), 1)
+    -- The GUID the host announced in its HI does not count: only my own roster.
     w.group["Player-1-00000002"] = true; client.events:emit("session", s); w:advance(0)
+    eq(#w:texts(w.ns.L("roll.nohost")), 1)
+    w.partyNames["Мария Стоянова"] = true; client.events:emit("session", s); w:advance(0)
     eq(#w:texts(w.ns.L("roll.nohost")), 0)
   end)
 
