@@ -8,7 +8,7 @@
 
 **Tech Stack:** Lua 5.1, WoW Forever client (`## Interface: 16001`), the stage 1 Ace3 subset, `bash t.sh`, `tests/helpers/sim.lua`, `tests/helpers/wow.lua`. No new texture, no .NET run (the parity fixtures are only replayed).
 
-**Spec:** `docs/superpowers/specs/2026-11-20-tavern-games-design.md` (5.3 Белот, 5.3а, 5.4 for the forfeit idea, 6.2, 6.3, 6.5). Roadmap: `docs/superpowers/plans/2026-11-20-games-roadmap.md` (Stage C). Stage B plan (format, contracts, the end state this plan builds on): `docs/superpowers/plans/2026-11-21-stageB-fairness-santase.md`. Engine contract and rulings: `.superpowers/sdd/engines-parallel/contract.md`, `.superpowers/sdd/engines-parallel/progress.md` (B1–B4), `.superpowers/sdd/2026-11-21-stageB-fairness-santase/progress.md` (PB1–PB8). Card style: mockup `docs/mockups/07-wow-authentic.html`, variant 1, as already built in `ui/Cards.lua`.
+**Spec:** `docs/superpowers/specs/2026-11-20-tavern-games-design.md` (5.3 Белот, 5.3а, 5.4 for the forfeit idea, 6.2, 6.3, 6.5). Roadmap: `docs/superpowers/plans/2026-11-20-games-roadmap.md` (Stage C). Stage B plan (format, contracts, the end state this plan builds on): `docs/superpowers/plans/2026-11-21-stageB-fairness-santase.md`. Engine contract and rulings: `docs/superpowers/notes/engine-contract.md` (the committed copy; Task 10 adds its Addendum 4), `.superpowers/sdd/engines-parallel/progress.md` (B1–B4), `.superpowers/sdd/2026-11-21-stageB-fairness-santase/progress.md` (PB1–PB8). Card style: mockup `docs/mockups/07-wow-authentic.html`, variant 1, as already built in `ui/Cards.lua`.
 
 **Stage C starts on `feature/games` after `feature/stageB` (Tasks 1–13 and its final fix wave) is merged.** Line numbers quoted below are from stageB `2dc5951` and may have moved; names are binding. It consumes from B: `ns.Ext.fair` / `ns.Deal` (`Deal.status`, `Deal.missing`, `Deal.handOver`), `ns.Fair`, sessions on views (`Session:snapshotFor`, `Session:armAuto`, `Session:gameOver`, `Session.startable`), `engine.again` / `engine.nextFirst`, `ns.Cards`, `v.fairLine`, `v.startButton`, the `cards` help block, `Games.PLAYABLE`.
 
@@ -19,7 +19,8 @@ Everything in the stage 1, stage A and stage B constraint files still holds (`.s
 - Protocol stays `v=1`. Stage C adds **no message type and no field**. Belot's own action shapes travel inside `ACT`/`EV` (table below).
 - Belot's rules are the rule table at the top of `engines/belot.lua`; stage C changes no rule of the auction, the tricks, the announces or the score. `bash t.sh tests/engines/belot_test.lua` keeps replaying all 60 fixture matches of `tests/fixtures/belot/`; the fixtures and `tools/belot-parity/` are not touched.
 - Teams: team 1 = seats 1+3, team 2 = seats 2+4. `"result"`: `winners = {w, w + 2}`, `losers = {3 − w, 5 − w}` (seats); `losers[k]` is paired with `winners[k]`.
-- Dealer: an engine with `E.dealer(state)` names the dealer of the next round itself; Belot: `(state.first + 2) % 4 + 1`, the seat before the one that bids first (first match: seat 4, then 1, 2, 3, …; a passed-out deal moves it on, a void does not). Engines without `E.dealer` keep B's formula `p[(n + 1) % #p + 1]`.
+- Dealer: an engine with `E.dealer(state)` names the dealer of the next round itself; Belot: `(state.first + 2) % 4 + 1`, the seat before the one that bids first (first match: seat 4, then 1, 2, 3, …; a passed-out deal and a void move it on; the no-deal reopen applies no void, so the same dealer deals it). Engines without `E.dealer` keep B's formula `p[(n + 1) % #p + 1]`. PC1 amends PB8 for Belot: the deal keeps rotating across matches (`E.nextFirst = prev.first % 4 + 1`), the previous loser does not lead the next match.
+- `core/Deal.lua` is split first (Task 0): the `ns.Ext.fair` hooks live in `core/DealHooks.lua`, which reaches Deal's private helpers only through `Deal.int`. New code goes into new files; neither file grows toward the old 962 lines.
 - Timeout = the automatic move of the player's **own** client (the host's clock only for the host's own seat, as in B): in the auction a pass; in the tricks first every announce held, then the lowest legal card. Nobody passes or plays for an offline player: after `OFFLINE_STAND_SECONDS = 180` he is stood up, the match ends and his team loses (no money, no ledger).
 - Bots: `E.BOT_BID = 34`, `E.BOT_LUCK = 6`; a bot bids suits only (never Без коз, Всичко коз, контра or реконтра); the fourth to speak never passes a deal out.
 - The face rule of stage B is unchanged. A bubble, a plate note or the model shows an announce by its kind only, never a face my view lacks.
@@ -44,9 +45,11 @@ Also pinned: the fair dealer is the Belot dealer and a host naming another is re
 
 ```
 engines/belot.lua            fair contract, void, dealer, nextFirst, view keeps played cards (Task 1); announce, auto, bot (Task 2)
-core/Deal.lua                the dealer of a round: E.dealer first, else the formula
+core/Deal.lua                the dealer of a round: E.dealer first, else the formula (dealerFor); shrinks in Task 0
+core/DealHooks.lua           NEW (Task 0): the ns.Ext.fair hooks, wellFormed, fits, agrees moved out of Deal.lua; `fits` follows dealerFor (Task 3)
 core/Games.lua               PLAYABLE.belot
 core/Lifecycle.lua           "result" gains left and names
+core/Member.lua              Member.adopt keeps seatedBefore (Task 4)
 core/Bots.lua                E.bot before playAuto; a bot host fills its table with bots
 core/HallLayout.lua          + HallLayout.ring
 core/Help.lua                topic "belot"
@@ -61,7 +64,7 @@ tests/ui/{hall,table,book}_test.lua, tests/ui/{belot_model,belot}_test.lua NEW, 
 docs/superpowers/notes/2026-11-stageC-ingame-checks.md  NEW
 ```
 
-TOC: `ui/games/BelotModel.lua`, then `ui/games/BelotView.lua`, after `ui/games/SantaseView.lua`.
+TOC: `core/DealHooks.lua` right after `core/Deal.lua` (Task 0); `ui/games/BelotModel.lua`, then `ui/games/BelotView.lua`, after `ui/games/SantaseView.lua`.
 
 ### Shared contracts (additions to stages 1, A and B)
 
@@ -84,6 +87,24 @@ TOC: `ui/games/BelotModel.lua`, then `ui/games/BelotView.lua`, after `ui/games/S
 
 # Part C1 — Belot at the table, proven in the simulator
 
+### Task 0: Split core/Deal.lua (no behaviour change)
+
+**Files:**
+- Create: `core/DealHooks.lua`; Modify: `core/Deal.lua`, `TavernGames.toc`
+
+**Interfaces:**
+- Consumes: stage B's `core/Deal.lua` (962 lines at `6736b40`).
+- Produces:
+  - `core/DealHooks.lua`: the `ns.Ext.fair` hook table plus `wellFormed`, `fits`, `agrees` (today's lines 604–914 of `core/Deal.lua`), moved verbatim. It starts with `local Deal = ns.Deal; local int = Deal.int` and local aliases of what it uses.
+  - `Deal.int`: one table exporting the file-locals the moved code uses: `isInt`, `STAGES`, `PRIVATE`, `foul`, `sawCommit`, `commitFits`, `participantsFit`, `revealFits`, `dealerOf`, `armWait`, `stopWait`, `revise`, `seedsIn`, `takeOver`. Its comment says: private to `core/Deal.lua` and `core/DealHooks.lua`, nothing else reads it. `Deal.status`, `Deal.missing`, `Deal.handOver`, `Deal.open` stay public in `Deal.lua`.
+  - `TavernGames.toc`: `core/DealHooks.lua` on the line after `core/Deal.lua`. Any test helper that lists files by hand gets it in the same place.
+  - Both header comments say what lives where. No behaviour changes; `ns.Ext.fair` is assigned at load exactly as before (tests that swap `ns.Ext.fair = REAL` keep working).
+
+- [ ] **Step 1: Run `bash t.sh`.** Record `N passed, 0 failed`.
+- [ ] **Step 2: Move** the hooks and the three checks into `core/DealHooks.lua`, export the helpers through `Deal.int`, add the TOC line, update both header comments. Change nothing else.
+- [ ] **Step 3: Run `bash t.sh`.** Expected: the same `N passed, 0 failed`. `wc -l core/Deal.lua core/DealHooks.lua`: each well under 962 (about 600 and about 350).
+- [ ] **Step 4: Commit.** `git add core/Deal.lua core/DealHooks.lua TavernGames.toc` — `refactor(core): the fair hooks move from Deal.lua into DealHooks.lua`, trailer `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`
+
 ### Task 1: The Belot engine joins the fair contract
 
 **Files:**
@@ -94,7 +115,7 @@ TOC: `ui/games/BelotModel.lua`, then `ui/games/BelotView.lua`, after `ui/games/S
 - Produces:
   - `E.ext = {"fair"}`, `E.again = true`. `E.new` sets `full = true`; `E.view` sets `full = false` on every copy it returns.
   - `{k="deal"}` at seat 0: on a state with `full == true` the deck must hold all 32 faces at indices 1..32 (`"deck"`); on a view any subset or none (as today).
-  - `{k="void"}` at seat 0 (another seat: `"seat"`) in phase `"bid"`, `"play"` or `"score"` (else `"phase"`): phase `"deal"`, `turn` nil, `deck = {}`, `hands` four empty lists, `bids = {}`, `contract` nil, `passes = 0`, `open = false`, the play fields as `resetPlay` leaves them; `round`, `first`, `score`, `hang`, `res` untouched.
+  - `{k="void"}` at seat 0 (another seat: `"seat"`) in phase `"bid"`, `"play"` or `"score"` (else `"phase"`): phase `"deal"`, `turn` nil, `deck = {}`, `hands` four empty lists, `bids = {}`, `contract` nil, `passes = 0`, `open = false`, the play fields as `resetPlay` leaves them; `first = first % 4 + 1` (as a passed-out deal does, so the next seat bids first and `E.dealer` names the next seat: PB6b, engine-contract Addendum 3); `res = nil` (the hanging points live in `s.hang`); `round`, `score`, `hang` untouched.
   - `E.dealer(s) = (s.first + 2) % 4 + 1`. `E.nextFirst(prev, occupied) = prev.first % 4 + 1` when that seat is occupied, else nil (the deal keeps going round into the next match).
   - `E.view(s, seat)`: besides the seat's own hand, in phase `"play"` every deck index that is in no hand (the cards played in this deal; this replaces „the current trick and the last taken trick“). A view of the auction still shows only the own five cards. Reason: `{k="score"}` needs the face of every announce's card, and a client that came by snapshot mid-deal would otherwise be refused (`"show"`) and resync; a host in that position would stall.
   - Header: rule 3 gains „the dealer is the seat before `first`“; „STATE AND ACTIONS“ states the view rule, `full`, `void`, `E.again`/`E.nextFirst`.
@@ -115,13 +136,13 @@ it("the dealer sits before the seat that bids first and moves on every deal", fu
   eq(E.dealer(E.new { first = 3 }), 2); eq(E.dealer(E.new { first = 4 }), 3)
   eq(E.nextFirst({ first = 4 }, { true, true, true, true }), 1); eq(E.nextFirst({ first = 2 }, { true, true, false, true }), nil)
 end)
-it("void annuls the running deal; the same seat bids first again and no point moves", function()
+it("void annuls the running deal; the next seat bids first and deals, and no point moves", function()
   local s = started(DECK_A, "S P P P"); plays(s, "AH 9H 8H TS AC")
-  s.score, s.hang = { 30, 12 }, 4
+  s.score, s.hang, s.res = { 30, 12 }, 4, { round = 0 }
   ok(E.apply(s, 0, { k = "void" }))
-  eq({ s.phase, s.round, s.first, s.passes, s.open }, { "deal", 1, 1, 0, false }); eq(s.turn, nil); eq(s.contract, nil)
+  eq({ s.phase, s.round, s.first, s.passes, s.open }, { "deal", 1, 2, 0, false }); eq(s.turn, nil); eq(s.contract, nil); eq(s.res, nil); eq(E.dealer(s), 1)
   eq(s.deck, {}); eq(s.hands, { {}, {}, {}, {} }); eq(s.bids, {}); eq(s.ann, {}); eq(s.pts, { 0, 0 }); eq(s.score, { 30, 12 }); eq(s.hang, 4)
-  eq({ E.system(s) }, { { k = "deal", need = "deck" }, 0 }); deal(s, DECK_A); eq(s.turn, 1)
+  eq({ E.system(s) }, { { k = "deal", need = "deck" }, 0 }); deal(s, DECK_A); eq(s.turn, 2)
   eq({ E.apply(E.new {}, 0, { k = "void" }) }, { nil, "phase" }); eq({ E.apply(started(DECK_A, "S"), 2, { k = "void" }) }, { nil, "seat" })
 end)
 it("a view plus the deck is the full state, in the auction and mid-play", function()
@@ -208,12 +229,13 @@ end)
 ### Task 3: Belot at the table — the dealer, the deal in two parts, the auction clock
 
 **Files:**
-- Modify: `core/Deal.lua`, `core/Games.lua`, `tests/core/games_test.lua`, `tests/core/member_test.lua`, `tests/core/bots_test.lua`, `tests/ui/hall_test.lua`, `tests/wow/slash_test.lua`; Test: `tests/core/belot_table_test.lua`
+- Modify: `core/Deal.lua`, `core/DealHooks.lua`, `core/Games.lua`, `tests/core/games_test.lua`, `tests/core/member_test.lua`, `tests/core/bots_test.lua`, `tests/ui/hall_test.lua`, `tests/wow/slash_test.lua`; Test: `tests/core/belot_table_test.lua`
 
 **Interfaces:**
 - Consumes: Tasks 1–2; stage B `ns.Deal`, `ns.Ext.fair`, `Session:armAuto`.
 - Produces:
-  - `core/Deal.lua`: the file-local `dealerOf(p, n)` becomes `dealerFor(s, p)`: `d = engine.dealer and s.state and engine.dealer(s.state)`; `d` when it is one of `p`, else `p[((s.fairN or 0) + 1) % #p + 1]`. Used at both places `dealerOf` is used today: `Deal.open` and the `open` check of the `table` hook. The header comment says so.
+  - `core/Deal.lua`: the file-local `dealerOf(p, n)` becomes `dealerFor(s, p)`: `d = engine.dealer and s.state and engine.dealer(s.state)`; `d` when it is one of `p`, else `p[((s.fairN or 0) + 1) % #p + 1]`. Used at every place `dealerOf` is used: `Deal.open`, the `open` check of the `table` hook, and the two checks in `fits` (both in `core/DealHooks.lua`, reached through `Deal.int.dealerFor`). The header comments of both files say so, and so does the `fits` comment.
+  - `fits` (snapshot rounds, `core/DealHooks.lua`): a shuffle (`commit`/`seed`) round checks `fr.d == dealerFor(s, fr.p)`. A dealt round that is still running (`not Deal.handOver(s)`) checks the same. A dealt round that is over, or a `done` round: an engine without `E.dealer` keeps the formula (`dealerOf(fr.p, fr.n - 1)`); with `E.dealer` it only checks that `fr.d` is one of `fr.p`, because after the score or a pass-out `first` has already moved on. Reason: a newcomer or a relogged player must keep the round (PB7, PB6b); with the formula every Belot SNP round would be dropped and the table would stall (a relogged player never sends PRQ, a relogged dealer never asks for the void).
   - `Games.PLAYABLE.belot = true` (comment: tabla D, holdem E remain).
 
 - [ ] **Step 1: Write the failing tests** (`tests/core/belot_table_test.lua`). Helpers: `table4()` = a new sim, `a, b, c, d, w` added in that order, `sim:run(1)`; `tid = a:openTable{ game = "belot", access = "guild", turn = 45 }`, `sim:run(3)`; `w:watch(tid)`, `sim:run(1)`; `b:sit(tid, 2)`, `c:sit(tid, 3)`, `d:sit(tid, 4)`, each followed by `sim:run(1)`; returns `sim, tid`. `at(seat)` = `sim.clients[a.session.seats[seat]]`. `bid(str)` = for each token the client on turn does `:act{ k = "bid", b = token }` (must return true), then `sim:run(1)`. `autoPlay(n)` = `n` times: no seat on turn → stop; `at(turn):playAuto()`; `sim:run(1)`. `known(cl)` = the number of faces in `cl.session.state.deck`. `verdicts(cl)`, `sentOf(t)`, `faces(v)` as in stage B with the pattern `^[789TJQKA][CDHS]$`. `E = ns.Engines.belot`.
@@ -229,7 +251,9 @@ it("four players get five cards, then three more; the dealer is the seat before 
   bid("S P P P"); eq({ a.session.state.phase, a.session.state.turn, #a.session.state.hands[2] }, { "play", 1, 8 })
   eq({ known(a), known(b), known(c), known(d), known(w) }, { 8, 8, 8, 8, 0 }); eq(#sentOf("PRV"), 6)
   for _, m in ipairs(sentOf("PRV")) do eq(m.from, D) end
-  eq(ns.Ext.fair.table(b.session, { k = "fair", op = "open", h = 99, d = 2, p = { 1, 2, 3, 4 } }), nil)   -- not the Belot dealer
+  local h = b.session.seq + 1                                                                    -- a host naming another dealer is refused
+  eq(ns.Ext.fair.table(b.session, { k = "fair", op = "open", h = h, d = 3, p = { 1, 2, 3, 4 } }), nil)   -- d = 3 is the formula's seat p[(1 + 1) % 4 + 1]
+  eq(ns.Ext.fair.table(b.session, { k = "fair", op = "open", h = h, d = 2, p = { 1, 2, 3, 4 } }), nil)   -- no positive control: it would replace b's round
 end)
 it("the deal passes to the next seat every deal, played or passed out, and every deal is проверена", function()
   --[[ table4(); verdicts on a, c and w; dealers = {a.session.fair.d}. Deal 1: bid("C P P P"); autoPlay until no seat is on turn; sim:run(3)
@@ -264,17 +288,17 @@ end)
 Existing tests to change: `tests/core/games_test.lua` (the list test: `ok(G.engine("belot") == ns.Engines.belot)`, `ok(G.list()[4].engine == ns.Engines.belot)`, `eq(G.list()[5].engine, nil)`; the TBL test uses `g="tabla"` with `s={A,false}`); `tests/core/member_test.lua` around line 42 (`tabla` as the gated engine, `s={A, B}`); `tests/core/bots_test.lua` (`hostTable("tabla")` is nil); `tests/ui/hall_test.lua` (four active games, two dimmed: indices 1–4 and 5–6; the dimmed click uses `games[5]`); `tests/wow/slash_test.lua` (the two `bots host belot` → „не е готова“ checks use `tabla`; new: `w:slash("bots host belot"); w:advance(1)` lists a table with `game == "belot"`).
 
 - [ ] **Step 2: Run `bash t.sh tests/core/belot_table_test.lua`.** Expected: FAIL (`openTable` returns nil, `"game"`).
-- [ ] **Step 3: Implement** the two edits and the test changes.
+- [ ] **Step 3: Implement** `dealerFor` at all four sites (`Deal.open`, the `table` open check, both `fits` checks, the last two in `core/DealHooks.lua`), `PLAYABLE.belot`, and the test changes.
 - [ ] **Step 4: Run the file, then `bash t.sh`.** Expected: `5 passed, 0 failed`; all pass (the `hicard` and Сантасе deal tests keep the formula: neither engine has `dealer`).
-- [ ] **Step 5: Commit.** `git add core/Deal.lua core/Games.lua tests/core/belot_table_test.lua tests/core/games_test.lua tests/core/member_test.lua tests/core/bots_test.lua tests/ui/hall_test.lua tests/wow/slash_test.lua` — `feat: Белот at the table on a fair deal; the engine names the dealer`
+- [ ] **Step 5: Commit.** `git add core/Deal.lua core/DealHooks.lua core/Games.lua tests/core/belot_table_test.lua tests/core/games_test.lua tests/core/member_test.lua tests/core/bots_test.lua tests/ui/hall_test.lua tests/wow/slash_test.lua` — `feat: Белот at the table on a fair deal; the engine names the dealer`
 
 ### Task 4: Leaving, going offline, the dealer's reload, the team result
 
 **Files:**
-- Modify: `core/Lifecycle.lua`; Test: `tests/core/belot_table_test.lua`
+- Modify: `core/Lifecycle.lua`, `core/Member.lua`; Test: `tests/core/belot_table_test.lua`
 
 **Interfaces:**
-- Produces: `Session:noteResult()` — the `"result"` payload gains `left = r.left` and `names = copy(self.seatedBefore or self.seats)`; whenever the engine has no result yet it stores `self.seatedBefore = copy(self.seats)` (so `names` is the table as it sat before the stand that ended the game). The header comment of the file names both fields.
+- Produces: `Session:noteResult()` — the `"result"` payload gains `left = r.left` and `names = copy(self.seatedBefore or self.seats)`; whenever the engine has no result yet it stores `self.seatedBefore = copy(self.seats)` (so `names` is the table as it sat before the stand that ended the game). `Member.adopt` also sets `s.seatedBefore = copy(s.seats)` when the adopted state has no result, so a member that came by snapshot and whose first event is the ending stand still names the leaver (`Session.lua` stays untouched). The header comment of `core/Lifecycle.lua` names both fields.
 - Nothing else changes: a stand at a live Belot table already ends the match through `E.leave`, the host's `abortIfShort` then aborts the short table and drops the round (no verdict for that deal), `startable` says `"short"`, and a fourth player sitting down starts a new match by `startIfFull`.
 
 - [ ] **Step 1: Write the failing tests** (appended to `tests/core/belot_table_test.lua`; `results(cl)` = the list of `"result"` payloads of that client; `rigged()` = `ns.Ext.fair = {}` before `table4()` and `ns.Ext.fair = REAL` at the end of the test, with `local REAL = ns.Ext.fair` at file scope, so nothing deals by itself; `dealAll(deck)` = `a.session:play(0, { k = "deal", deck = deck }); sim:run(1)` (a test shortcut: every client knows every face); `playFirst(n)` = `n` times: the client on turn plays the first card of its hand (`i = hands[turn][1]`, `c = deck[i]` from its own state), `sim:run(1)`).
@@ -296,11 +320,16 @@ it("a player offline for three minutes is stood up and his team loses", function
   eq({ a.session.state.phase, a.session.state.turn, #a.session.state.bids, #ra }, { "bid", 2, 1, 0 })    -- nobody passed for him
   sim:run(30); eq(#ra, 1); eq({ ra[1].winners, ra[1].losers, ra[1].left, ra[1].names[2] }, { { 1, 3 }, { 2, 4 }, 2, B })
 end)
-it("the dealer relogs mid-deal: void, the same dealer deals again, no point moved", function()
+it("the dealer relogs mid-deal: void, the next seat deals, no point moved", function()
   local sim = table4(); local seen = verdicts(a); local h1 = a.session.fair.h
   bid("S P P P"); autoPlay(1); local d2 = sim:relog(D); sim:run(8)
-  eq(seen, { "void" }); ok(a.session.fair.h ~= h1); eq({ a.session.fair.d, a.session.fair.stage }, { 4, "dealt" }); ok(d2.session.fair.deck ~= nil)
-  eq({ a.session.state.phase, a.session.state.round, a.session.state.first, a.session.state.turn }, { "bid", 1, 1, 1 }); eq(a.session.state.score, { 0, 0 })
+  eq(seen, { "void" }); ok(a.session.fair.h ~= h1); eq({ a.session.fair.d, a.session.fair.stage }, { 1, "dealt" })
+  ok(a.session.fair.deck ~= nil); eq(d2.session.fair.deck, nil)                                  -- PB6b: the voiding dealer does not deal again
+  eq({ a.session.state.phase, a.session.state.round, a.session.state.first, a.session.state.turn }, { "bid", 1, 2, 2 }); eq(a.session.state.score, { 0, 0 })
+end)
+it("a member that came by snapshot still names the leaver", function()
+  --[[ table4(); x = sim:add("Нов Гледач"); bid("S P P P"); autoPlay(2); x:watch(tid); sim:run(3) (x adopts a snapshot, no result yet:
+  x.session.seatedBefore == { A, B, C, D }); rx = results(x); c:stand(); sim:run(2): #rx == 1, rx[1].left == 3, rx[1].names == { A, B, C, D } ]]
 end)
 it("a player who relogs after an announce still scores the deal", function()
   --[[ rigged(); table4(); dealAll(DECK_A); bid("S P P P"); plays AH, 9H, 8H by the seat on turn; ok(d:act{ k = "ann", a = { { t = "s4", i = 4 } } }); sim:run(1);
@@ -324,10 +353,10 @@ it("вътре and контра score the same on every client", function()
 end)
 ```
 
-- [ ] **Step 2: Run `bash t.sh tests/core/belot_table_test.lua`.** Expected: the first two new tests FAIL (`left` and `names` are nil); the other three pass already and stay as regression pins.
-- [ ] **Step 3: Implement** `noteResult`.
-- [ ] **Step 4: Run the file, then `bash t.sh`.** Expected: `10 passed, 0 failed`; all pass.
-- [ ] **Step 5: Commit.** `git add core/Lifecycle.lua tests/core/belot_table_test.lua` — `feat(core): the result names who left; Белот forfeits, voids and team scores pinned`
+- [ ] **Step 2: Run `bash t.sh tests/core/belot_table_test.lua`.** Expected: the first two new tests and the snapshot-member test FAIL (`left` and `names` are nil); the other three pass already and stay as regression pins.
+- [ ] **Step 3: Implement** `noteResult` and the `Member.adopt` line.
+- [ ] **Step 4: Run the file, then `bash t.sh`.** Expected: `11 passed, 0 failed`; all pass.
+- [ ] **Step 5: Commit.** `git add core/Lifecycle.lua core/Member.lua tests/core/belot_table_test.lua` — `feat(core): the result names who left; Белот forfeits, voids and team scores pinned`
 
 ### Task 5: Bots that bid, and bot tables that fill
 
@@ -338,7 +367,7 @@ end)
 - Consumes: `E.bot`, `client:act`, `client:invite`, `Bots:idle`, `bot.invites.sent`.
 - Produces:
   - `nextAction(bot)`: on its turn a bot does `local a = engine.bot and engine.bot(st, s.mySeat, bot.env.random)`; `bot:act(a)` when `a` is not nil, else `bot:playAuto()`. Still after `MOVE_AFTER`.
-  - Filling: `FILL_AFTER = 1`. After any session change of a bot that hosts an **open** table with `2 <= s:seatedCount() < engine.minSeats` and no invitation of its own pending (`next(bot.invites.sent) == nil`), it invites `self:idle()` once `FILL_AFTER` has passed (one bot per change, so a table of four fills in about three seconds after the first guest sat). `behave` gets the `Bots` object for this. A table of a two-player game never fills this way.
+  - Filling: `FILL_AFTER = 1`. After any session change of a bot that hosts a table with `status ~= "live"` (open, or aborted after a stand) and `2 <= s:seatedCount() < engine.minSeats` and no invitation of its own pending (`next(bot.invites.sent) == nil`), it invites `self:idle()` once `FILL_AFTER` has passed (one bot per change, so a table of four fills in about three seconds after the first guest sat). `behave` gets the `Bots` object for this. A table of a two-player game never fills this way.
   - The header comment of `core/Bots.lua` states both.
 
 - [ ] **Step 1: Write the failing tests** (`setup()` and `mentions` as in the file).
@@ -365,7 +394,8 @@ end)
 it("a bot-hosted Белот table fills with bots once I sit, and the bot host starts the next match", function()
   --[[ tid = bots:hostTable("belot"); sim:run(3): one seat taken. a:sit(tid, 2); sim:run(8): a.session:seatedCount() == 4, seats 3 and 4 are
   bots (bots.isBot), a.session.status == "live". Play to the end as above with my seat 2; sim:run(6): a.session.state.score == {0, 0} and
-  the phase is "bid". A bot table of Морски шах with me seated invites nobody (no INV in the bots' traffic: bots.list[k].invites.sent stays empty) ]]
+  the phase is "bid". Then a bot at seat 3 stands (bots.list[k]:stand()); sim:run(8): the table was "aborted" with 3 seated and is filled again,
+  a.session:seatedCount() == 4 and the status is "live". A bot table of Морски шах with me seated invites nobody (no INV in the bots' traffic: bots.list[k].invites.sent stays empty) ]]
 end)
 ```
 
@@ -434,7 +464,7 @@ end)
   - `bubbles[seat]` = a list of locale keys, absent when empty, built **only** from the state: auction → `"belot.bid." .. b` of the seat's last entry in `state.bids`; tricks → for every entry of `state.ann` of that seat, `"belot.ann." .. t` when `t ~= "b"` and `state.trickNo <= 2`, and `"belot.ann.b"` when `t == "b"` and its card `i` is in `state.trick`, or in `state.last.cards` while `state.trick` is empty.
   - `contract` = `state.contract` (nil in the auction before a bid); `dealer` = `E.dealer(state)` in phases `"bid"`, `"play"`, `"score"`, else nil; `score = {us = state.score[team], them = state.score[3 − team], hang = state.hang}`.
   - `summary` (phase `"deal"` or `"match"` with `state.res`, else nil) = `{passed = res.contract == nil, contract = res.contract, us = res.pts[team], them = res.pts[3 − team], hang = res.hang, valat = res.valat, inside, hanging, anns}` with `inside` = a contract whose declarer's team has the smaller `res.raw`, `hanging` = a contract with equal `res.raw`, `anns = {{seat, t, v, on}, …}` copied from `res.ann` in its order.
-  - `text = {key, …}`: phase `"match"` → `{"belot.left", name}` when `state.left`; else seated → `{state.winner == team and "belot.match.us" or "belot.match.them"}`; a watcher → `{"belot.match.names", name of seat winner, name of seat winner + 2}`. Phase `"deal"` with a passed-out `res` → `{"belot.passed"}`. Auction → `{"belot.yourBid"}` when `mine`, else `{"belot.waitFor", name on turn}`. Tricks → `{"belot.yourTurn"}` or `{"belot.waitFor", name}`. Otherwise nil.
+  - `text = {key, …}`: `E.over(state)` (not a `phase == "match"` comparison of its own) → `{"belot.left", name}` when `state.left`; else seated → `{state.winner == team and "belot.match.us" or "belot.match.them"}`; a watcher → `{"belot.match.names", name of seat winner, name of seat winner + 2}`. Phase `"deal"` with a passed-out `res` → `{"belot.passed"}`. Auction → `{"belot.yourBid"}` when `mine`, else `{"belot.waitFor", name on turn}`. Tricks → `{"belot.yourTurn"}` or `{"belot.waitFor", name}`. Otherwise nil.
 
 - [ ] **Step 1: Write the failing tests.** File scope: `guildWow()` as in the other UI tests; `M, E = w.ns.BelotModel, w.ns.Engines.belot`; `sess(state, seat)` = `{ game = "belot", status = "live", mySeat = seat, seats = { A, B, C, D }, state = state }` (`seat` nil = a watcher, `state` then `E.view(st, 0)`); `at(st, q)` = `M.build(sess(E.view(st, q), q))`; `started`, `plays`, `ann`, `idx`, `deckOf`, `DECK_A` copied from the engine test; `faces(v)` as in Task 3, sorted.
 
@@ -509,12 +539,12 @@ end)
 
 **Interfaces:**
 - Consumes: `ns.BelotModel.build`, `ns.Cards`, `HallLayout.ring` positions (through `model.pos`), `client:act`, `TableFrame.registerView`, `W.Button`, `W.edges`, `W.Label`, `W.colored`.
-- Produces: `TableFrame.registerView("belot", View)` with `View.ring = true`, `View.build(parent)`, `View.update(f, s)`, `View.seatNote(s, seat)` (`L("belot.dealer")` for `E.dealer(state)` in phases `"bid"`, `"play"`, `"score"`, else `""`). The built frame (as large as `parent`) exposes `myFan`, `trick[0..3]` (card widgets by position), `bidButtons[b]` for `b` in `P C D H S N A X R`, `announceButton`, `peekButton`, `bubbles[0..3]` (frames with `.text`), `contract`, `score`, `summary`, `text`.
-- `View.update` stores `f.session = s`; every click acts on `f.session` through `ns.client:act(a)` and then redraws. `f.peek` (the last trick is showing) is set by `peekButton` and ends with any table event (the key `tid/epoch/seq`, as „Обяви“ in Сантасе). A match that is over is read through the model (`E.over`), not through `phase == "match"` comparisons of its own.
+- Produces: `TableFrame.registerView("belot", View)` with `View.ring = true`, `View.build(parent)`, `View.update(f, s)`, `View.seatNote(s, seat)` = `M.build(s).dealer == seat and L("belot.dealer") or ""` (the dealer rule lives only in the model). The built frame (as large as `parent`) exposes `myFan`, `trick[0..3]` (card widgets by position), `bidButtons[b]` for `b` in `P C D H S N A X R`, `announceButton`, `peekButton`, `bubbles[0..3]` (frames with `.text`), `contract`, `score`, `summary`, `text`.
+- `View.update` stores `f.session = s` and, as SantaseView does (ledger B11), keeps `f.names` / `f.namesTid`: refreshed from `s.seats` while `not E.over(state)` (reset when the table id changes); it calls `M.build(s, f.peek, f.names)`, so the end-of-match line can name a leaver whose seat is already `false`. Every click acts on `f.session` through `ns.client:act(a)` and then redraws. `f.peek` (the last trick is showing) is set by `peekButton` and ends with any table event (the key `tid/epoch/seq`, as „Обяви“ in Сантасе). A match that is over is read through the model (`E.over`), not through `phase == "match"` comparisons of its own.
 - Drawing, offsets from the frame's `TOPLEFT` (frame 532 × 328):
   - `trick[2]` at `(246, −56)`, `trick[0]` at `(246, −122)`, `trick[3]` at `(200, −89)`, `trick[1]` at `(292, −89)`; each shows the card of the seat at that position, hidden when that seat has not played. While peeking the four cards are the last trick, in the `"dim"` look.
   - Bid buttons 24 high, shown only for `model.bids[b]`: `C D H S` 40 wide at `x = 180, 224, 268, 312`, `y = −60`, each showing its suit from the `suits` texture (16 px, `Cards.COORD`, hearts and diamonds in `red`, the others in `ink`); `N` and `A` 84 wide at `(180, −88)` and `(268, −88)`; `P` 84 wide at `(180, −116)`; `X` and `R` 84 wide at `(268, −116)` (never both legal). A click sends `{k="bid", b}`.
-  - `summary`: one wrapped text 300 wide, its top centre at `(266, −64)`, shown when `model.summary` is set (the trick is empty then). Lines, in this order, joined by newlines: `L("belot.passed")` alone for a passed-out deal; else `L("belot.contract", <game>)` with `<game>` = `L("belot.bid." .. b)`, wrapped in `L("belot.x2", …)` / `L("belot.x4", …)` when doubled, then `L("belot.by", <declarer's name>)` on the same line after two spaces; `L("belot.sum.points", us, them)`; `L("belot.sum.inside.us")` or `.them` when `inside` (us = the declarer is on my team); `L("belot.sum.hanging", hang)` when `hanging`; `L("belot.sum.valat")` when `valat`; one line per announce: `L("belot.sum.ann", name, L("belot.ann." .. t), v)` when `on`, else `L("belot.sum.off", name, L("belot.ann." .. t))` in `inkDim`.
+  - `summary`: one wrapped text 170 wide (x 181–351, clear of the side plates at x 10–175 and 357–522), font 11, its top centre at `(266, −64)`, shown when `model.summary` is set (the trick is empty then). Lines, in this order, joined by newlines: `L("belot.passed")` alone for a passed-out deal; else `L("belot.contract", <game>)` with `<game>` = `L("belot.bid." .. b)`, wrapped in `L("belot.x2", …)` / `L("belot.x4", …)` when doubled, then `L("belot.by", <declarer's name>)` on the same line after two spaces; `L("belot.sum.points", us, them)`; `L("belot.sum.inside.us")` or `.them` when `inside` (us = the declarer is on my team); `L("belot.sum.hanging", hang)` when `hanging`; `L("belot.sum.valat")` when `valat`; one line per announce: `L("belot.sum.ann", name, L("belot.ann." .. t), v)` when `on`, else `L("belot.sum.off", name, L("belot.ann." .. t))` in `inkDim`.
   - `text`: heading 15, centred on `(266, −192)`; gold in phases `"deal"` and `"match"`; a name in it is class-coloured (`W.colored`).
   - `myFan`: `Cards.fan`, its bottom centre 60 px above the frame's bottom edge. A click on a card that is not dimmed sends its `play` action, the variant with `b = true` when `E.legal` offers one (a belote is never left unsaid).
   - `announceButton` 124 × 24 at `(392, −172)`, shown when `model.announce`; text `L("belot.announce", <the kinds, joined by ", ">)`; a click sends `model.announce`. `peekButton` 124 × 24 at `(16, −172)`, text `L("belot.peek")`, shown when `model.canPeek`, gold-edged while peeking.
@@ -563,7 +593,9 @@ it("the score, the contract and the deal's summary: вътре, контра, an
   f.summary:GetText() (colour codes stripped) has the lines „Игра: Купа, контра  каза Мария Стоянова“, „Ние +32 · Вие +0“, „Вътре са!“,
   „Иван Петров: Терца, 20“, „Мария Стоянова: Терца (не се брои)“, „Пешо Тодоров: Белот, 20“ in that order; no trick card is visible.
   With st.hang = 9: „до 151 · висят 9“. Mid-play (started(DECK_A, "S P P P")): f.contract shows „Игра: Пика“ and „каза Иван Петров“,
-  f.summary is hidden. View.seatNote(sess, 4) == „разд.“ and "" for seat 1; "" for every seat in phase "match" ]]
+  f.summary is hidden. View.seatNote(sess, 4) == „разд.“ and "" for seat 1; "" for every seat in phase "match".
+  f.summary is 170 wide and its font size is 11. A leaver: draw(f, st, 1) with seats { A, B, C, D } (f.names is filled), then
+  st.phase, st.winner, st.left = "match", 2, 3 and sess.seats[3] = false, draw again: f.text:GetText() (colour codes stripped) == „Kiro Barley стана от масата. Отборът му губи.“ ]]
 end)
 it("a watcher sees backs, no button and the teams by place", function()
   --[[ draw(f, st, nil) on E.view(started(DECK_A, "S P P P"), 0): eight cards in f.myFan, every face nil; shown(f) == {}; announceButton hidden;
@@ -589,7 +621,7 @@ end)
 
 **Interfaces:**
 - Produces: `ns.Help.topics` ids `{"hall", "ttt", "deathroll", "santase", "belot", "fair", "soon"}`. Topic `belot` (title `game.belot`), blocks in this order: `p1`, `example`, `bids`, `contra`, `cards` (kind `cards`, `JH 9H AH TH KH QH`), `trick`, `announce` (kind `cards`, `9H TH JH`), `belote` (kind `cards`, `KS QS`), `score`, `valat`, `time`, `fair`. The quoted-label test also covers `^help%.belot%.`.
-- Locale, pinned bg (en = faithful translations in the same simple tone, quoting the English labels of Task 8):
+- Locale: the `help.belot.*` keys go in a new section `-- Rules book: Белот` after `-- Rules book: Сантасе` in both locale files. Pinned bg (en = faithful translations in the same simple tone, quoting the English labels of Task 8):
   - `help.belot.p1` = „Белот се играе от четирима, двама срещу двама. Партньорът ти седи срещу теб. Играе се с 32 карти, от седмица до асо. Печели отборът, който пръв мине 151 точки.“
   - `help.belot.example` = „Иван, Мария, Kiro и Пешо сядат на маса. Иван и Kiro са един отбор, Мария и Пешо са другият. Всеки получава пет карти. Иван държи вале и деветка купа и казва „Купа“. Мария казва „Пас“, Kiro и Пешо също. Играта е на купа. Всеки получава още три карти и Иван играе пръв.“
   - `help.belot.bids` = „Игрите по сила са спатия, каро, купа, пика, после „Без коз“ и най-силната „Всичко коз“. Можеш да кажеш само по-силна игра от вече казаната, или „Пас“. Наддаването свършва, когато след казана игра трима подред кажат „Пас“. Ако и четиримата кажат „Пас“, картите се раздават отново.“
@@ -600,7 +632,7 @@ end)
   - `help.belot.belote` = „Поп и дама от коза в една ръка са белот: 20 точки. Не натискаш нищо. Щом изиграеш едната от двете, аддонът го казва сам.“
   - `help.belot.score` = „Накрая всеки отбор брои картите във взятките си, обявите си и 10 точки за последната взятка. Сборът се дели на десет и се записва. Ако отборът, казал играта, има по-малко от другия, той е вътре: всичко отива при противника. При равни точки играта е висяща: точките на казалия чакат и ги взима отборът, който спечели следващото раздаване.“
   - `help.belot.valat` = „Отбор, който вземе всичките осем взятки, прави капо и получава 90 точки отгоре. С капо обаче партия не се затваря: трябва да минеш 151 в раздаване без капо.“
-  - `help.belot.time` = „Ако времето ти изтече при наддаването, аддонът казва „Пас“. Ако изтече при игра, той обявява каквото държиш и играе най-слабата ти позволена карта. Ако някой стане от масата или го няма повече от три минути, партията свършва и неговият отбор губи. После домакинът натиска „Нова игра“.“
+  - `help.belot.time` = „Ако времето ти изтече при наддаването, аддонът казва „Пас“. Ако изтече при игра, той обявява каквото държиш и играе най-слабата ти позволена карта. Ако някой стане от масата или го няма повече от три минути, партията свършва и неговият отбор губи. Щом някой седне на свободния стол, започва нова партия. След нормален край домакинът натиска „Нова игра“.“ (en the same; the quote count is kept.)
   - `help.belot.fair` = „Под масата пише дали последното раздаване е „проверена“ игра. Раздава всеки път следващият по ред, както на истинска маса.“
   - `help.soon.p` = „Скоро идват Табла и Тексас Холдем, и игра на залог с тефтер на дълговете.“; `help.soon.example` = „Засега в кръчмата се играят Морски шах, Death Roll, Сантасе и Белот. Другите игри стоят бледи в списъка, с надпис „Скоро“. Щом станат готови, правилата им ще се появят тук, в книжката.“
 
@@ -627,7 +659,7 @@ end)
 ### Task 10: In-game check list and documentation
 
 **Files:**
-- Create: `docs/superpowers/notes/2026-11-stageC-ingame-checks.md`; Modify: `docs/superpowers/plans/2026-11-20-stage1-platform-tictactoe.md` (`### Shared contracts`: a subsection „Stage C additions“), `.superpowers/sdd/engines-parallel/contract.md` (an addendum: `E.dealer`, `E.bot`, `E.announce`, Belot's view keeps the played cards, `E.auto` plays the lowest card)
+- Create: `docs/superpowers/notes/2026-11-stageC-ingame-checks.md`; Modify: `docs/superpowers/plans/2026-11-20-stage1-platform-tictactoe.md` (`### Shared contracts`: a subsection „Stage C additions“), `docs/superpowers/notes/engine-contract.md` (the committed copy; „Addendum 4 (stage C)“: `E.dealer`, `E.bot`, `E.announce`, Belot's view keeps the played cards, `E.auto` plays the lowest card, and that PC1 amends PB8 for Belot: `E.nextFirst` rotates the deal across matches, the previous loser does not lead)
 
 **Interfaces:** none. The notes file holds the table below with a `Result` column, every row `not yet measured`. Nothing is marked passed on the strength of the unit tests.
 
@@ -649,16 +681,16 @@ end)
 | 11 | four characters at one table | everyone gets cards; no trace shows another player's hand; „… раздава…“ names the seat marked „разд.“; all four read „проверена“ |
 | 12 | контра and реконтра between real players | the buttons appear for the right team only; the summary shows the doubled points for the side with more |
 | 13 | a player who is not the dealer `/reload`s mid-deal | the cards are back within about two seconds; the trick and the score are right; the deal reads „не съм я гледал цялата“ for that player only and is scored without the „resynced“ banner |
-| 14 | the dealer `/reload`s mid-deal | „Ръката е анулирана. Раздава се отново.“ on all four; the same player deals; no point moved |
+| 14 | the dealer `/reload`s mid-deal | „Ръката е анулирана от <name>. Раздава следващият.“ on all four; the next player deals (PB6b); no point moved |
 | 15 | a player logs out on its turn | nothing is played or bid for it; back within three minutes: play goes on; after three minutes it is stood up, „… стана от масата. Отборът му губи.“, the banner „Играта е прекъсната.“; a new player on the free chair starts a new match |
 | 16 | a player presses „Стани“ mid-deal | the same ending at once; the result names the two winners |
 | 17 | a watcher from the start, and one who comes mid-deal | backs only, no buttons, „Долу и горе … · Ляво и дясно …“; its trace has no card that was not played |
 | 18 | count the whispers of one deal with `/tavern debug` (four players, no watcher) | the host sends about 140 addon whispers per deal (about 46 events to three members), each other player about 12; during the shuffle about 20 leave the host within a second: no visible ChatThrottleLib delay, no deal that hangs at „Разбъркваме заедно…“ |
 | 19 | the table at UI scale 0.65 and 1.0 | nothing overlaps on the 532 × 328 felt: the side plates and the bid buttons, the bubbles and the trick, my fan and my plate, the fairness line |
 
-- [ ] **Step 3: Update the two documents**: the stage 1 plan's Shared contracts gets this plan's three contract items (engine options, the action table, the `"result"` fields) under „Stage C additions“; the engines contract gets the addendum.
+- [ ] **Step 3: Update the two documents**: the stage 1 plan's Shared contracts gets this plan's three contract items (engine options, the action table, the `"result"` fields) under „Stage C additions“; the engines contract (`docs/superpowers/notes/engine-contract.md`) gets Addendum 4, including the PB8 note for Belot's `E.nextFirst`.
 - [ ] **Step 4: Report to the user** which rows need four characters, that bots never double (row 12 cannot be seen solo), and the decisions of the Self-review.
-- [ ] **Step 5: Commit.** `git add docs/superpowers/notes/2026-11-stageC-ingame-checks.md docs/superpowers/plans/2026-11-20-stage1-platform-tictactoe.md .superpowers/sdd/engines-parallel/contract.md` — `docs: stage C in-game check list and contract additions`
+- [ ] **Step 5: Commit.** `git add docs/superpowers/notes/2026-11-stageC-ingame-checks.md docs/superpowers/plans/2026-11-20-stage1-platform-tictactoe.md docs/superpowers/notes/engine-contract.md` — `docs: stage C in-game check list and contract additions`
 
 ---
 
@@ -667,7 +699,7 @@ end)
 - **Spec coverage:** 5.3 Белот (four players, two teams, to 151, the rule list) → the engine as merged, unchanged in its rules (Tasks 1–2 add contract functions only; the 60 parity matches stay green); „Обявите се показват като балон над играча“ → Tasks 7–8; valid cards raised, invalid dimmed → Tasks 7–8; 5.3а topic in bg/en with tavern talk and card pictures → Task 9; 6.2 timeout = automatic action, lowest valid card → Task 2 (`E.auto`), Task 3 (the auction clock); 6.3 step 1 „раздаващият се ротира по реда на местата, като в Белот“ → Tasks 1 and 3 (`E.dealer`); steps 2–5 with n = 4 → stage B's code, exercised in Task 3; „dealer leaves mid-hand → annulled“ → Task 4; 6.5 bots and trace → Task 5, check list rows 1–2, 18; roadmap „team seats, team score, team result“ → Tasks 4, 6–8; ruling B4 (bots must bid) → Tasks 2, 5; ruling G1 (flip the flag) → Task 3.
 - **Verified before writing:** the stage B code was run in the simulator with a throwaway patch of the engine (fair contract, void, the view rule) and no other change: a four-player match with a watcher ran to 155:81 in 13 deals, every deal „проверена“ on all five clients, no resync; four idle players passed a deal out at 45-second steps and were dealt again; a stand, three minutes offline and the dealer's relog behaved as Task 4 pins them; without the view rule a player who relogged after an announce resynced at the score, with it he did not; the numbers `{252, 0}` → `{25, 0}` and `{0, 252}` → `{0, 50}`, every `E.auto` / `E.bot` vector of Task 2, and „300 bot deals, none passed out“ come from those runs. Not run (they need the code of Tasks 1–3): the dealer sequence `{4, 1, 2, 3}` and everything in `ui/`.
 - **Decisions the plan makes beyond the spec (the user may contest):**
-  1. **The fair dealer is the Belot dealer.** `E.dealer` lets the engine name the seat (the one before the first bidder); it still rotates strictly by seat and depends on nothing a player can influence, which is what ruling PB2 was about. The deal keeps going round into the next match instead of restarting at seat 2.
+  1. **The fair dealer is the Belot dealer.** `E.dealer` lets the engine name the seat (the one before the first bidder); it still rotates strictly by seat and depends on nothing a player can influence, which is what ruling PB2 was about. The deal keeps going round into the next match instead of restarting at seat 2. A void passes the deal on (PB6b), so a dealer cannot re-deal a hand it dislikes by reloading.
   2. **Nobody acts for an offline player, not even a pass.** The table waits up to three minutes, then he is stood up, the match ends and his team loses (spec 5.4's forfeit without money). The host could pass for him in the auction, but his card turn would stall the table anyway, and it would need an edit of `core/Session.lua`, which has one line of room.
   3. A player who stands up ends the match for his team at once; the short table is then „прекъсната“ and that last deal gets no fairness verdict (stage B behaviour for Сантасе, kept). A new fourth player starts a new match without „Нова игра“.
   4. **A timeout plays the lowest legal card** (and first announces everything held) instead of the engine's earlier „first or random“ card.
