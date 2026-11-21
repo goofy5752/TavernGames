@@ -100,7 +100,7 @@ describe("holdem at the table", function()
     sim:run(5); eq({ st().button, st().hand, cl[1].session.fair.h, cl[1].session.fair.d }, { 2, 2, 9, 2 })
   end)
 
-  it("three players to a showdown: one event a street; the folded kings stay in the dealer's whisper", function()
+  it("three players to a showdown: one event a street; the folded hand stays in the dealer's whisper", function()
     tableN(3); ok(cl[1]:startGame()); sim:run(3); local mark = #sim.sent; local deck = deckOf(5, 3)
     eq({ deck[1], deck[4], st().order, st().turn, cl[1].session.seq }, { "9C", "3D", { 2, 3, 1 }, 1, 7 })   -- seat 2's two cards (re-derived under KEY(i): the kings are seat 1's now)
     act("call"); act("fold"); act("check"); sim:run(1); eq({ st().phase, st().turn, #st().board }, { "bet", 3, 3 })
@@ -909,19 +909,21 @@ describe("holdem: what a full table costs", function()
     end
     eq({ st().phase, #st().last.shown, host().session.seq }, { "done", 6, 38 })                 -- 38 = the 6 events before the mark (five sits, the start) and the 32 after
     local n, bytes, biggest, events, byType = cost(mark)
-    eq({ events, byType }, { 32, { EV = 192, PRV = 5, TCK = 6 } })                              -- 32 events to 6 members; the dealer's 5 private whispers; one TCK round falls inside the hand
-    eq(n, 203); ok(bytes <= 32500, "bytes " .. bytes)                                            -- measured 30 300-31 050 (the EVs alone about 29 000, as planned)
+    local tck = byType.TCK or 0; byType.TCK = nil
+    eq({ events, byType }, { 32, { EV = 192, PRV = 5 } })                                       -- 32 events to 6 members; the dealer's 5 private whispers
+    ok(tck <= 6, "TCK " .. tck); eq(n, 197 + tck); ok(bytes <= 32500, "bytes " .. bytes)         -- at most one TCK round falls inside the hand (the heartbeat's phase decides)                                            -- measured 30 300-31 050 (the EVs alone about 29 000, as planned)
     ok(biggest - 40 <= 2 * 255, "one event is more than two addon message parts: " .. biggest)
     ok(biggest >= 400 and biggest <= 430, "the commits event: " .. biggest)                     -- six distinct commits: measured 409-413 (about 370 packed)
     local s1 = cl[1].session; local d = s1.deadline; s1.deadline = s1.client.env.now() + 12.25; eq(s1:left(), 13); s1.deadline = d   -- the sim's clock is whole seconds: check the rounding itself
   end)
-  it("an ordinary hand (three fold before the flop, three check it down) costs about half", function()
+  it("an ordinary hand (three fold before the flop, three check it down) costs about 70 % of it", function()
     tableN(6); ok(cl[1]:startGame()); sim:run(1); local mark = #sim.sent; sim:run(2)
     for _ = 1, 3 do act("fold") end
     for _ = 1, 200 do
       local t = st().turn; if not t then if st().phase == "done" then break end; sim:run(1) else act(st().bet > st().p[t].bet and "call" or "check") end
     end
     eq(st().phase, "done"); local n, bytes, _, _, byType = cost(mark)
-    eq(byType, { EV = 138, PRV = 5 }); eq(n, 143); ok(bytes <= 23500, "bytes " .. bytes)       -- 23 events to 6 members and the dealer's 5 private whispers; measured 22 000-22 500
+    local tck = byType.TCK or 0; byType.TCK = nil
+    eq(byType, { EV = 138, PRV = 5 }); ok(tck <= 6, "TCK " .. tck); eq(n, 143 + tck); ok(bytes <= 23500, "bytes " .. bytes)       -- 23 events to 6 members and the dealer's 5 private whispers; measured 22 000-22 500
   end)
 end)

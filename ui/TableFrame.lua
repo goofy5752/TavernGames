@@ -20,12 +20,13 @@ local _, ns = ...
 -- a table that does not start by the host waits for a second player, or for
 -- more players when its engine needs more than two seats), an aborted
 -- match, a silent host, and for RESYNC_SECONDS after "desync" the resync note.
--- On a card table (ns.Deal.status) one line at the bottom edge of the felt:
+-- The fairness line is ui/TablePanels.lua's (TableFrame.panels.renderFair,
+-- .fairTooltip): on a card table (ns.Deal.status) one line at the bottom edge of the felt:
 -- the shuffle under way or the verdict on the last hand; on a dice table
 -- (ns.Dice.status when Deal has none, the tooltip ns.Dice.tip) the throw
 -- under way or the last one's verdict; at a sealed table (ns.Book.status when
 -- neither has one, the tooltip ns.Book.tip) the book's count of hands; it
--- opens the rules book on "fair" (ui/TablePanels.lua draws it).
+-- opens the rules book on "fair".
 -- Title bar: the game, the access, turn time and table options, the watcher
 -- count and ⓘ (topic = game id). Bottom: „Стани“
 -- (watchers: „Към залата“; in a running match of a team game it first asks
