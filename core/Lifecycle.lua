@@ -16,11 +16,23 @@ local copy = ns.Util.copy
 -- filterAct passes a member's action through their act hooks until one drops it.
 -- Hooks: act, applied, auto (see the shared contracts), adopted(s, prevState)
 -- after a snapshot replaced my state, hostChanged(s) when my table changed host.
+-- A hook that raises counts as nil: the error goes to env.log ("error", "ext",
+-- "<ext>.<hook>", message), so it cannot cut short the request, event or
+-- snapshot handling around it (e.g. the sitter's SNP after a sit).
 function Session:hook(name, ...)
   local ext, out = self:engine().ext or {}, nil
   for i = 1, #ext do
     local x = ns.Ext[ext[i]]
-    local r = x and x[name] and x[name](self, ...)
+    local r = nil
+    if x and x[name] then
+      local ok, got = pcall(x[name], self, ...)
+      if ok then
+        r = got
+      else
+        local env = self.client.env
+        if env.log then env.log("error", "ext", ext[i] .. "." .. name, tostring(got)) end
+      end
+    end
     if out == nil then out = r end
   end
   return out

@@ -77,13 +77,17 @@ function RollChat.env(env, bot)
   if type(RandomRoll) == "function" then
     env.roll = function(lo, hi) RandomRoll(lo, hi) end
   end
-  env.group = function()
-    return {
-      grouped = IsInGroup() and true or false,
-      leader = UnitIsGroupLeader("player") and true or false,
-      raid = IsInRaid() and true or false,
-      size = GetNumGroupMembers() or 0,
-    }
+  -- Without all four group functions: no env.group, so core handles no group.
+  if type(IsInGroup) == "function" and type(UnitIsGroupLeader) == "function"
+      and type(IsInRaid) == "function" and type(GetNumGroupMembers) == "function" then
+    env.group = function()
+      return {
+        grouped = IsInGroup() and true or false,
+        leader = UnitIsGroupLeader("player") and true or false,
+        raid = IsInRaid() and true or false,
+        size = GetNumGroupMembers() or 0,
+      }
+    end
   end
   local invite = C_PartyInfo and C_PartyInfo.InviteUnit
   if type(invite) ~= "function" then invite = InviteUnit end

@@ -107,6 +107,24 @@ describe("party", function()
     sim:run(10); eq(c:groupInviteFrom("Иван"), false)
   end)
 
+  it("an extension that errors after the sit is traced, and the sitter still gets the table", function()
+    local sim, a, b = clients()
+    local lines = {}
+    a.env.log = function(dir, channel, peer, msg) lines[#lines + 1] = { dir, channel, peer, msg } end
+    a.env.group = function() error("no IsInRaid") end
+    local tid = a:openTable{game="deathroll", access="guild", turn=45}; sim:run(3)
+    b:sit(tid, 2); sim:run(1)
+    ok(b.session and b.session.mySeat == 2, "the sitter has no table")
+    eq(a.session.seats[2], B); eq(a.lobby:get(tid).seats[2], B)
+    local errors = {}
+    for _, l in ipairs(lines) do
+      if l[1] == "error" then errors[#errors + 1] = l end
+    end
+    eq(#errors, 1); eq({ errors[1][2], errors[1][3] }, { "ext", "party.applied" })
+    ok(tostring(errors[1][4]):find("no IsInRaid", 1, true), tostring(errors[1][4]))
+    sim:run(11); eq(b.session.mySeat, 2)
+  end)
+
   it("missing lists who is outside my group, for any seated client", function()
     local sim, a, b, c = clients({ [B] = { group = { A } } })
     local tid = a:openTable{game="deathroll", access="guild", turn=45}; sim:run(3)

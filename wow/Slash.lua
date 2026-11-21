@@ -16,6 +16,7 @@ local ROLL_PROBE_WAIT = 3 -- seconds /tavern probe roll waits for its roll line
 local PROBE_APIS = {
   "InitiateTrade", "C_TradeInfo.SetTradeMoney", "SetSendMailMoney", "SendMail", "issecretvalue", "IsGUIDInGroup",
   "RandomRoll", "C_PartyInfo.InviteUnit", "InviteUnit", "AcceptGroup", "UnitIsGroupLeader", "StaticPopup_Hide",
+  "IsInGroup", "IsInRaid", "GetNumGroupMembers",
 }
 -- /tavern bots host|invite <game>: short names for engine ids.
 local GAME_ALIAS = { dr = "deathroll" }
