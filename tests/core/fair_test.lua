@@ -45,6 +45,8 @@ describe("fair", function()
   it("an honest hand is ok; each kind of fault is named", function()
     eq({ F.audit(H, rec()) }, { "ok" })
     local r = rec(); r.seeds = { SEED }; eq({ F.audit(H, r) }, { "bad", "seeds" })
+    r = rec(); r.p = { 2, 1 }; eq({ F.audit(H, r) }, { "bad", "seeds" })                              -- p not in ascending seat order
+    r = rec(); r.p = { 1, 1 }; eq({ F.audit(H, r) }, { "bad", "seeds" })
     r = rec(); r.seeds[2] = ZERO; eq({ F.audit(H, r) }, { "bad", "commit" })
     r = rec(); r.log[1][2].deck[5] = "KC"; eq({ F.audit(H, r) }, { "bad", "deal" })
     r = rec(); table.remove(r.log, 1); eq({ F.audit(H, r) }, { "bad", "deal" })

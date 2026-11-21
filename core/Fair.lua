@@ -42,12 +42,16 @@ function Fair.full(view, deck)
 end
 
 -- Checks a closed hand; first failure wins. rec = {tid, h, p, commits, seeds,
--- base, log, priv}: seeds in p order, commits by seat, base = the engine
+-- base, log, priv}: p = the participants' seats, strictly ascending (else
+-- "seeds"), seeds in p order, commits by seat, base = the engine
 -- snapshot when the round opened, log = {seat, a} since then, priv = faces I
 -- was shown privately. -> "ok" | "bad", why
 function Fair.audit(engine, rec)
   local p, seeds, commits = rec.p, rec.seeds, rec.commits or {}
   if type(seeds) ~= "table" or #seeds ~= #p then return "bad", "seeds" end
+  for k = 1, #p do
+    if type(p[k]) ~= "number" or (k > 1 and p[k] <= p[k - 1]) then return "bad", "seeds" end
+  end
   for k = 1, #p do
     if type(seeds[k]) ~= "string" then return "bad", "seeds" end
   end
