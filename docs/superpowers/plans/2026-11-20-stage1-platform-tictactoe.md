@@ -263,6 +263,35 @@ An invited player who asks for a taken seat is seated at the lowest free seat.
 
 **Client event:** `"fair"` is also emitted for every closed throw: `{tid, game, h, verdict = "ok" | "alone" | "bad" | "unseen", why, at}`.
 
+
+#### Stage E additions
+
+**Engine, optional:** `E.players(state) -> {seat, ...}` ascending (who shuffles: the hand's seats that are still seated and not away); `E.dealer(state)` for Hold'em is the button, or the next participant when the button's seat has left; `E.inHand(state) -> bool` (the fair layer's "hand over" is its negation); `E.sealed` (no reveal a hand; the book); `E.publicAuto` (the automatic move needs no hidden card: the host may play it for any seat after `AUTO_GRACE`); `E.watchers` (a cap below `MAX_WATCHERS`; Hold'em 1) and `E.maxSeats = 6`; `E.botFill` (a bot host invites idle bots up to this many seats); a system action `{k, need = "faces"}` (the dealer supplies it; a dealer step is accepted only when it carries every face the trial state needs). Engine state carries `state.g` (the game's identity, the seq of its `start` event). Details: Addendum 7 of `docs/superpowers/notes/engine-contract.md`.
+
+**Extension `cash`** (`engine.ext = {"fair", "cash"}`, in that order: `fair`'s hooks run first; `core/Cash.lua`, with `core/Book.lua`, `core/BookKeys.lua` and `core/BookCheck.lua` for the book). New hooks, under `pcall` like the others: `lapsed(s)` (host: a shuffle was not dealt in `FAIR_WAIT`, called before it is opened again), `leaving(s)` (my client is about to stand up); `hostChanged` also arms the step wait of the new host. `BookKeys` wraps `Session.onStand` (no line of `core/Session.lua`).
+
+**Protocol additions.** One field: `SNP.fr.k`. The shapes inside `ACT`/`EV`:
+
+| where | shape | meaning |
+|---|---|---|
+| `EV` seat 0 | `{k="fair", op="commits", h, c = {[seat] = commit}}` | every commit of a sealed round, in one event (instead of one `commit` a seat) |
+| `ACT` | `{k="book", op="step", h, a = {k = "street" \| "showdown", cards = {[i] = face}}}` | the dealer supplies the step the engine waits for; the host plays `a` at seat 0 only when it carries every face |
+| `ACT` | `{k="book", op="missing", h, m}` | the dealer names the seats whose seed it lacks (a seed lapse) |
+| `ACT` | `{k="book", op="key", m, g}` | my table key, 32 hex, for game `g`: before I stand up, and when the game is closed; a key of another game is refused without a foul |
+| `EV` seat 0 | `{k="book", op="keys", m = {[seat] = key}, f}` | published keys: a leaver's at once, everybody's at the close (may be empty); only the `f = true` final publish ends the book |
+| `EV` seat 0 | `{k="close"}`, `{k="away", seat}`, `{k="void"}` | the host ends the game after this hand; a silent seat sits out; the hand is annulled (every chip back, the button moves on) |
+| `ACT` -> `EV` seat n | `{k="back"}` | my seat is dealt in again |
+| `ACT` -> `EV` seat n | `{k="fold"}`, `{k="check"}`, `{k="call"}`, `{k="bet", to}`, `{k="raise", to}`, `{k="allin"}` | a move; `to` = my whole bet on this street |
+| `SNP.fr.k` | `{{seat, q, key}, ...}` or absent | the keys published in the running book, oldest first, at most `BOOK_KEYS = 24` |
+
+**Session fields (sealed games):** `s.book = {key, g, rec = {[h] = {p, c, f, who, tried}}, open = {h, ...}, keys = {{seat, q, m}, ...}, seen = {ok, bad, open}, n, given, wait, sent, out, published, closed, final, missing, forged}` (`g` = the seq of the game's `start` event); `s.turnAt` (my own `env.now()` when I applied the event that put my seat on turn); `s.handSeen`, `s.handNames`; `s.lapseOut` (host: seats named at a seed lapse and held out one hand), `s.backAsked`, `s.fairLapses[dealer]` (the amber lapse count, apart from `s.fairVoids`); `fair.pend` (host: commits not yet published), `fair.who`; timers `s.stepTimer`, `s.keysTimer`, `s.bookTimer`. `env.db.bookKeep = {tid, me, key, g}` and `env.db.bookSpent` (keys I have sent) beside `fairKeep`.
+
+**Client events:** `"hand"`: `{tid, game, opt, n, last, chips = {[seat] = chips after the hand}, names, at}` once a hand on every client that saw it end (`last` = a copy of `state.last`: `hand, contrib, won, pots = {{amount, eligible, winners}}, shown, cat, left`, or `void = true`). `"book"`: `{tid, game, hands, ok, bad, open, missing = {name, ...}, at}` when my book closes (and again when a late key goes into a further keys event). `"fair"` also carries `verdict = "sealed"` for every hand put into the book and `"bad"`, `why = "deal"` for a hand that fails the check; a seed lapse shows as `fair.lapse` (amber, with its own count, never an alarm).
+
+**Message budget (measured, Task 5; supersedes the pre-flight figures of the stage E plan's Volume).** An ordinary hand is 143 whispers (138 EV, 5 PRV) and 22.0-22.5 KB; a full ring of six seats and one watcher is 203 whispers (192 EV, 5 PRV, 6 TCK) and 30.3-31.1 KB (pinned: 203, at most 32 500 B); without the watcher about 25.9 KB; one watcher adds about 4.6 KB; six commits are about 370 bytes packed. Nine seats wait for a later message-budget stage.
+
+**Table geometry as built (Task 9, fix round 1; supersedes the plan's table).** Frame 760 x 532, felt 732 x 440. The note is at TOPLEFT (12, -366), 270 wide, left-justified, in the close button's place; row 3 (y -388, 26 high): fold 56 wide at x 476, call 86 at x 536, raise 100 at x 626; a label wider than its button minus 6 px steps its font down from 13 to 10.
+
 ---
 
 ### Task 1: Tooling, test runner, TOC skeleton
