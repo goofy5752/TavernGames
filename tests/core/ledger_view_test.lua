@@ -22,8 +22,8 @@ local function book()
   function b.debt(author, f, t, c, gid, n, at)
     return b.add(author, "D", { gid = gid or G1, g = "ttt", f = f, t = t, c = c, why = "lost" }, n, at)
   end
-  function b.confirm(author, d) return b.add(author, "C", { r = d.i }) end
-  function b.contest(author, d) return b.add(author, "N", { r = d.i, why = "no" }) end
+  function b.confirm(author, d) return b.add(author, "C", { r = d.i, dh = d.h }) end
+  function b.contest(author, d) return b.add(author, "N", { r = d.i, dh = d.h, why = "no" }) end
   function b.pay(t, f, c) return b.add(t, "P", { f = f, c = c, how = "hand" }) end
   function b.deny(author, e) return b.add(author, "X", { r = e.i, h = e.h }) end
   function b.view() return View.of(b.l) end
@@ -88,21 +88,52 @@ describe("ledger view: debts", function()
     eq(#v.debts, 2); eq(v.debts[1].ids, { M .. ":1" }); eq(v.debts[2].ids, { M .. ":1" })
     eq(v.debts[1].status, "confirmed"); eq(v.debts[2].status, "confirmed"); eq(View.net(v, M, I), 100000)
   end)
-  it("a C of a claim id with twins in two games confirms neither; in one game the smallest", function()
+  it("a C or N counts only for the D whose hash it names", function()
     local b = book(); local d = b.debt(I, M, I, 50000); b.confirm(M, d)
     b.debt(I, M, I, 5000000, G2, 1)
     local v = b.view()
-    eq(#v.debts, 2); eq(v.debts[1].status, "pending"); eq(v.debts[2].status, "pending"); eq(View.net(v, M, I), 0)
+    eq(#v.debts, 2); eq(v.debts[1].gid, G1); eq(v.debts[1].status, "confirmed"); eq(v.debts[1].c, 50000)
+    eq(v.debts[2].gid, G2); eq(v.debts[2].status, "pending"); eq(View.net(v, M, I), 50000)
     b = book(); d = b.debt(I, M, I, 50000); b.confirm(M, d); b.debt(I, M, I, 5000000, G1, 1)
     v = b.view()
     eq(#v.debts, 1); eq(v.debts[1].status, "confirmed"); eq(v.debts[1].c, 50000); eq(v.debts[1].clash, true)
     eq(#v.debts[1].ids, 1); eq(View.net(v, M, I), 50000)
-  end)
-  it("an N of a claim id with twins in two games contests both", function()
-    local b = book(); local d = b.debt(I, M, I, 50000); b.debt(I, M, I, 50000, G2, 1)
+    b = book(); d = b.debt(I, M, I, 50000); b.debt(I, M, I, 50000, G2, 1)
     b.debt(M, M, I, 50000, G1); b.debt(M, M, I, 50000, G2); b.contest(M, d)
+    v = b.view()
+    eq(v.debts[1].status, "contested"); eq(v.debts[2].status, "confirmed"); eq(View.net(v, M, I), 50000)
+    b = book(); d = b.debt(I, M, I, 50000); b.add(M, "C", { r = d.i, dh = string.rep("0", 16) })
+    eq(status(b), "pending")
+  end)
+  it("a twin and a denial of the original never move the debtor's C onto the copy", function()
+    local b = book(); local d = b.debt(I, M, I, 50000); b.confirm(M, d)
+    b.debt(I, M, I, 5000000, G1, 1); b.deny(I, d)
     local v = b.view()
-    eq(v.debts[1].status, "contested"); eq(v.debts[2].status, "contested"); eq(View.net(v, M, I), 0)
+    eq(#v.debts, 1); eq(v.debts[1].status, "pending"); eq(v.debts[1].c, 5000000); eq(View.net(v, M, I), 0)
+    b = book(); d = b.debt(I, M, I, 50000); b.confirm(M, d)
+    b.debt(I, M, I, 5000000, G2, 1); b.deny(I, d)
+    v = b.view()
+    eq(#v.debts, 1); eq(v.debts[1].gid, G2); eq(v.debts[1].status, "pending"); eq(View.net(v, M, I), 0)
+  end)
+  it("copies with lower hashes that evict the original never inherit the debtor's C", function()
+    local function body(c, at)
+      return { k = "D", i = I .. ":1", at = at, gid = G1, g = "ttt", f = M, t = I, c = c, why = "lost" }
+    end
+    local origAt, origH = nil, nil
+    for k = 1, 32 do
+      local h = Ledger.hash(body(50000, NOW - k))
+      if not origH or h > origH then origAt, origH = NOW - k, h end
+    end
+    local b = book(); local d = b.debt(I, M, I, 50000, G1, 1, origAt); b.confirm(M, d)
+    eq(d.h, origH)
+    local found, k = 0, 0
+    while found < 4 do
+      k = k + 1
+      if Ledger.hash(body(5000000, NOW - k)) < origH then b.debt(I, M, I, 5000000, G1, 1, NOW - k); found = found + 1 end
+    end
+    ok(not b.l:has(d.i, d.h), "the original is evicted")
+    local v = b.view()
+    eq(#v.debts, 1); eq(v.debts[1].status, "pending"); eq(v.debts[1].c, 5000000); eq(View.net(v, M, I), 0)
   end)
   it("debts are oldest first, by the claim's at, then key bytes", function()
     local b = book()
@@ -124,6 +155,20 @@ describe("ledger view: balances", function()
   it("a P counts only for its author as creditor", function()
     local b = book(); confirmed(b, M, I, 50000); b.pay(P, M, 50000)
     eq(View.gross(b.view(), M, I), 50000); eq(View.paid(b.view(), M, I), 0); eq(View.paid(b.view(), M, P), 50000)
+  end)
+  it("a P beyond the gross stays as the pair's credit", function()
+    local b = book(); confirmed(b, M, I, 50000, G1); b.pay(I, M, 90000)
+    eq(View.gross(b.view(), M, I), 0)
+    confirmed(b, M, I, 30000, G2)
+    eq(View.gross(b.view(), M, I), 0); eq(View.net(b.view(), M, I), 0)
+    confirmed(b, M, I, 20000, "t/1")
+    eq(View.gross(b.view(), M, I), 10000)
+  end)
+  it("an amount that is no whole copper (tampered saved variables) is no debt and no payment", function()
+    local b = book(); local d = confirmed(b, M, I, 50000, G1); local p = b.pay(I, M, 20000)
+    d.c, p.c = 25000.5, 1e12
+    local v = b.view()
+    eq(#v.debts, 0); eq(View.paid(v, M, I), 0)
   end)
   it("a denied P counts for nothing", function()
     local b = book(); confirmed(b, M, I, 50000); local p = b.pay(I, M, 20000); b.deny(I, p)

@@ -3,6 +3,7 @@ local Ledger, U, C = ns.Ledger, ns.Util, ns.Const
 
 local I, M, P = "Иван Петров", "Мария Колева", "Петър Иванов"
 local NOW = 1700000000
+local H16 = "fedcba9876543210" -- the hash of the D a C or N names
 
 local function L(me) return Ledger.new({}, me or "Иван Петров", function() return 1700000000 end) end
 -- A ledger of Иван over a store that holds his record (saved seq): no adoption window.
@@ -24,8 +25,8 @@ end
 local GOOD = {
   R = function() return entry("R", I, 1, { gid = I .. "#1700000000/12", g = "ttt", n = { I, M }, w = { 1 }, l = { 2 }, sk = 50000 }) end,
   D = function() return entry("D", I, 1, D) end,
-  C = function() return entry("C", M, 2, { r = I .. ":1" }) end,
-  N = function() return entry("N", M, 2, { r = I .. ":1", why = "forged" }) end,
+  C = function() return entry("C", M, 2, { r = I .. ":1", dh = H16 }) end,
+  N = function() return entry("N", M, 2, { r = I .. ":1", dh = H16, why = "forged" }) end,
   P = function() return entry("P", I, 3, { f = M, c = 50000, how = "trade" }) end,
   X = function() return entry("X", I, 4, { r = I .. ":1", h = "0123456789abcdef" }) end,
 }
@@ -56,7 +57,7 @@ describe("ledger entries", function()
   end)
   it("canon is the fixed field order; hash is 16 hex and ignores local fields", function()
     local l = L(); local e = l:make("D", D)
-    eq(Ledger.canon(e), "Иван Петров:1|D|1700000000|Иван Петров#1700000000/12|ttt|Мария Колева|Иван Петров|50000|lost|||||||")
+    eq(Ledger.canon(e), "Иван Петров:1|D|1700000000|Иван Петров#1700000000/12|ttt|Мария Колева|Иван Петров|50000|lost||||||||")
     eq(#e.h, 16); ok(e.h:match("^[0-9a-f]+$"))
     local w = Ledger.wire(e); eq(w.h, nil); eq(Ledger.hash(w), e.h)
     w.c = 50100; ok(Ledger.hash(w) ~= e.h)
@@ -70,12 +71,12 @@ describe("ledger entries", function()
   it("an X keeps the denied hash as its field h on the wire and in canon", function()
     local l = L(); local e = l:make("X", { r = I .. ":1", h = "0123456789abcdef" })
     eq(e.rh, "0123456789abcdef"); ok(e.h ~= "0123456789abcdef")
-    eq(Ledger.canon(e), "Иван Петров:1|X|1700000000|||||||Иван Петров:1|0123456789abcdef|||||")
+    eq(Ledger.canon(e), "Иван Петров:1|X|1700000000|||||||Иван Петров:1|0123456789abcdef||||||")
     local w = Ledger.wire(e); eq(w.h, "0123456789abcdef"); eq(w.rh, nil); eq(Ledger.hash(w), e.h)
   end)
   it("a list joins by commas and false is a dash", function()
     local e = entry("R", I, 1, { gid = "t/1", g = "deathroll", n = { I, false, M }, w = { 1 }, l = { 3 } })
-    eq(Ledger.canon(e), "Иван Петров:1|R|1700000000|t/1|deathroll|||||||||Иван Петров,-,Мария Колева|1|3")
+    eq(Ledger.canon(e), "Иван Петров:1|R|1700000000|t/1|deathroll|||||||||Иван Петров,-,Мария Колева|1|3|")
   end)
 end)
 
@@ -130,6 +131,14 @@ describe("ledger valid", function()
   it("C whose r is not an id", function()
     bad(with("C", "r", "Иван Петров"), "shape")
   end)
+  it("a C or N names its D by the hash dh: required, 16 lowercase hex, in canon and on the wire", function()
+    for _, k in ipairs({ "C", "N" }) do
+      bad(with(k, "dh", nil), "shape"); bad(with(k, "dh", "fedcba98"), "shape"); bad(with(k, "dh", "FEDCBA9876543210"), "shape")
+    end
+    bad(with("D", "dh", H16), "shape"); bad(with("P", "dh", H16), "shape")
+    eq(Ledger.canon(GOOD.C()), "Мария Колева:2|C|1700000000|||||||Иван Петров:1|||||||" .. H16)
+    eq(Ledger.wire(GOOD.N()).dh, H16)
+  end)
   it("P with f equal to its author", function()
     bad(with("P", "f", I), "right")
   end)
@@ -183,8 +192,8 @@ describe("ledger store", function()
       for n = 1, 3 do eq(l:add(entry("R", M, n, { gid = "t/" .. n, g = "ttt", n = { M, I }, w = { 1 }, l = { 2 } }), M), "new") end
       eq({ l:add(entry("R", M, 4, { gid = "t/4", g = "ttt", n = { M, I }, w = { 1 }, l = { 2 } }), M) }, { nil, "full" })
       eq(l:add(entry("D", M, 5, { gid = "t/3", g = "ttt", f = M, t = I, c = 100, why = "lost" }), M), "new")
-      eq(l:add(entry("C", M, 6, { r = I .. ":1" }), M), "new")
-      eq(l:add(entry("N", M, 7, { r = I .. ":2", why = "no" }), M), "new")
+      eq(l:add(entry("C", M, 6, { r = I .. ":1", dh = H16 }), M), "new")
+      eq(l:add(entry("N", M, 7, { r = I .. ":2", dh = H16, why = "no" }), M), "new")
       eq(l:add(paid(8), M), "new")
       eq(l:add(entry("X", M, 9, { r = M .. ":1", h = "0123456789abcdef" }), M), "new")
     end)
@@ -215,7 +224,7 @@ describe("ledger store", function()
   end)
   it("my counter jumps above every id seen under my name", function()
     local l = L()
-    local forged = entry("C", I, 9, { r = M .. ":1" })
+    local forged = entry("C", I, 9, { r = M .. ":1", dh = H16 })
     eq(l:add(forged, P), "new"); eq(l:seen(I), 9)
     local x = l:make("X", { r = forged.i, h = l:get(forged.i).h })
     eq(x.i, I .. ":10"); eq(l:denied(l:get(forged.i)), true)
@@ -288,12 +297,12 @@ end)
 describe("ledger hardening", function()
   it("a forged id far above my counter never moves it (C)", function()
     local l = settled(0)
-    eq(l:add(entry("C", I, 999999999, { r = M .. ":1" }), P), "new")
+    eq(l:add(entry("C", I, 999999999, { r = M .. ":1", dh = H16 }), P), "new")
     eq(l:seen(I), 999999999); eq(l:bump(999999999), false)
     eq(l:make("P", { f = M, c = 100, how = "hand" }).i, I .. ":1")
-    eq(l:add(entry("C", I, 1001, { r = M .. ":1" }), P), "new"); eq(l:bump(1001), true)
+    eq(l:add(entry("C", I, 1001, { r = M .. ":1", dh = H16 }), P), "new"); eq(l:bump(1001), true)
     eq(l:make("P", { f = M, c = 100, how = "hand" }).i, I .. ":1002")
-    eq(l:add(entry("C", I, 2003, { r = M .. ":1" }), P), "new")
+    eq(l:add(entry("C", I, 2003, { r = M .. ":1", dh = H16 }), P), "new")
     eq(l:make("P", { f = M, c = 100, how = "hand" }).i, I .. ":1003")
     eq(C.LEDGER_JUMP, 1000)
   end)
@@ -397,16 +406,16 @@ describe("ledger hardening, round 2", function()
   end)
   it("the far-id bound is measured from the counter saved at login (two steps)", function()
     local l = settled(0)
-    eq(l:add(entry("C", I, 1000, { r = M .. ":1" }), P), "new"); eq(l:bump(1000), true)
-    eq(l:add(entry("C", I, 2000, { r = M .. ":1" }), P), "new"); eq(l:bump(2000), false)
-    eq(l:add(entry("C", I, 1999, { r = M .. ":1" }), P), "new"); eq(l:bump(1999), false)
+    eq(l:add(entry("C", I, 1000, { r = M .. ":1", dh = H16 }), P), "new"); eq(l:bump(1000), true)
+    eq(l:add(entry("C", I, 2000, { r = M .. ":1", dh = H16 }), P), "new"); eq(l:bump(2000), false)
+    eq(l:add(entry("C", I, 1999, { r = M .. ":1", dh = H16 }), P), "new"); eq(l:bump(1999), false)
     eq(l:make("P", { f = M, c = 100, how = "hand" }).i, I .. ":1001")
     eq(l:bump(2001), true, "my own make moves the base")
   end)
   it("the adoption window of a new store ratchets from my live counter", function()
     local l = L()
     eq(l.fresh, true); eq(l.adopting, true); eq(settled(0).fresh, false)
-    eq(l:add(entry("C", I, 999999999, { r = M .. ":1" }), P), "new"); eq(l:bump(999999999), false)
+    eq(l:add(entry("C", I, 999999999, { r = M .. ":1", dh = H16 }), P), "new"); eq(l:bump(999999999), false)
     for _, n in ipairs({ 3, 1, 900, 2, 1800, 2700 }) do eq(l:bump(n), true, "adopts " .. n) end
     eq(l:bump(3701), false)
     eq(l:make("P", { f = M, c = 100, how = "hand" }).i, I .. ":2701")
@@ -415,7 +424,7 @@ describe("ledger hardening, round 2", function()
   end)
   it("a new store adopts my own entries it already holds at load", function()
     local src = L()
-    for _, n in ipairs({ 1, 2, 700 }) do src:add(entry("C", I, n, { r = M .. ":1" }), P) end
+    for _, n in ipairs({ 1, 2, 700 }) do src:add(entry("C", I, n, { r = M .. ":1", dh = H16 }), P) end
     local store = U.copy(src.store); store.me = nil
     local l = Ledger.new(store, I, function() return NOW end)
     eq(l.fresh, true); eq(l:make("P", { f = M, c = 100, how = "hand" }).i, I .. ":701")
@@ -448,7 +457,7 @@ describe("ledger hardening, round 2", function()
   end)
   it("make skips a number already held under my name", function()
     local l, store = settled(0)
-    eq(l:add(entry("C", I, 1001, { r = M .. ":1" }), P), "new")
+    eq(l:add(entry("C", I, 1001, { r = M .. ":1", dh = H16 }), P), "new")
     store.me[I].seq = 1000
     local again = Ledger.new(store, I, function() return NOW end)
     eq(again:make("P", { f = M, c = 100, how = "hand" }).i, I .. ":1002")

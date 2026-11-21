@@ -6,13 +6,14 @@ local _, ns = ...
 -- core/LedgerStore.lua. A stored entry keeps its own hash in `h`, plus `dr`
 -- (got from its author) or `rl` (relayed). An X's own field `h` (the denied
 -- entry's hash) is kept as `rh` in the store; `wire` and `canon` give it back as `h`.
+-- A C or N names the exact D it attests or contests: `r` its id, `dh` its 16-hex hash.
 local Ledger = {}
 ns.Ledger = Ledger
 
 local C, Sha256 = ns.Const, ns.Sha256
 local concat, floor = table.concat, math.floor
 
-local FIELDS = { "i", "k", "at", "gid", "g", "f", "t", "c", "why", "r", "h", "how", "sk", "n", "w", "l" }
+local FIELDS = { "i", "k", "at", "gid", "g", "f", "t", "c", "why", "r", "h", "how", "sk", "n", "w", "l", "dh" }
 local NAME_MAX, SIZE_MAX = 64, 600
 Ledger.ID_MAX = 999999999 -- the highest number of an id (9 digits)
 local PAID_MAX = 99999999999 -- copper: a payment is any whole amount up to the gold cap
@@ -22,7 +23,7 @@ local function set(...) local s = {} for _, v in ipairs({ ... }) do s[v] = true 
 local KINDS = {
   R = { gid = true, g = true, n = true, w = true, l = true, sk = false, why = false },
   D = { gid = true, g = true, f = true, t = true, c = true, why = true },
-  C = { r = true }, N = { r = true, why = true }, P = { f = true, c = true, how = true }, X = { r = true, h = true },
+  C = { r = true, dh = true }, N = { r = true, dh = true, why = true }, P = { f = true, c = true, how = true }, X = { r = true, h = true },
 }
 local WHY = { D = set("lost", "left", "offline", "idle"), N = set("forged", "roll", "stand", "amount", "no"),
   R = set("left", "offline", "idle") }
@@ -82,6 +83,7 @@ end
 -- Each field's check: the reason when it fails, else false (c and why are checked per kind).
 local function person(v) return not name(v) and "name" end
 local function seats(v) return not list(v, seat, 0) and "shape" end
+local function hex16(v) return not (type(v) == "string" and #v == 16 and v:find("^[0-9a-f]+$")) and "shape" end
 local CHECK = {
   gid = function(v) return not (type(v) == "string" and not v:find("|", 1, true) and v:find("./%d+$")) and "shape" end,
   g = function(v) return not (type(v) == "string" and #v <= 32 and v:find("^[%w_]+$")) and "shape" end,
@@ -89,7 +91,7 @@ local CHECK = {
   n = function(v) return not list(v, nameOrEmpty, 1) and "name" end,
   sk = function(v) return not ns.Stake.valid(v) and "amount" end,
   r = function(v) return not name(Ledger.author(v)) and "shape" end,
-  h = function(v) return not (type(v) == "string" and #v == 16 and v:find("^[0-9a-f]+$")) and "shape" end,
+  h = hex16, dh = hex16,
   how = function(v) return not HOW[v] and "shape" end,
 }
 local function amount(e)

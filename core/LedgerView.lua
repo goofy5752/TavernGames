@@ -5,30 +5,33 @@ local _, ns = ...
 -- are not denied. f's word about it is its own D (attesting that D's c), a C
 -- (attesting the claim it names) or an N; the newest by n decides (on a tie an N,
 -- then the smaller amount): "confirmed", "contested", or "pending" without one. A C
--- or N counts only when its author is the debt's f. A claim id can hold twins: a C
--- attests the smallest amount among its id's versions of which its author is f,
--- and only when they are all of one debt (a twin in another game would inherit
--- the confirmation); an N contests every debt with such a version. The amount is
--- f's newest attestation, else the smallest claim; clash: f attested an amount and
--- a creditor's claim names another. Only confirmed debts enter a balance:
+-- or N names one exact claim, by its id r and its hash dh, and counts only for
+-- that body and only when its author is the debt's f: a twin, a copy or a moved
+-- claim under the same id has no word of f's. The amount is f's newest
+-- attestation, else the smallest claim; clash: f attested an amount and a
+-- creditor's claim names another. Only confirmed debts enter a balance:
 -- gross(f, t) = max(0, confirmed f->t - the c of t's P with that f),
--- net(a, b) = gross(a, b) - gross(b, a). A row's open part is what is left of a
--- confirmed debt once the paid and netted copper of its pair has cleared that
--- pair's debts oldest first. View.of(L) is cached per store until L.rev changes.
+-- net(a, b) = gross(a, b) - gross(b, a); a P beyond the gross stays as credit of
+-- that pair. A row's open part is what is left of a confirmed debt once the paid
+-- and netted copper of its pair has cleared that pair's debts oldest first.
+-- View.of(L) is cached per store until L.rev changes; a rebuild is linear in the
+-- whole ledger (tens of ms on a large one), so callers ask for it once per batch
+-- of entries (a LEV) or behind a short debounce, never per entry or per frame.
 local Ledger, C = ns.Ledger, ns.Const
-local byteLess, max, min = ns.Util.byteLess, math.max, math.min
+local byteLess, max, min, floor = ns.Util.byteLess, math.max, math.min, math.floor
 
 local View = {}
 ns.LedgerView = View
 
 local cache = setmetatable({}, { __mode = "k" })
+local COPPER_MAX = 99999999999
 
 local function cell(t, a) t[a] = t[a] or {}; return t[a] end
 local function get(t, a, b) return t[a] and t[a][b] or 0 end
 local function add(t, a, b, c) local r = cell(t, a); r[b] = (r[b] or 0) + c end
 local function str(v) return type(v) == "string" end
--- A copper amount (the store's own saved variables could hold anything).
-local function copper(v) return type(v) == "number" and v >= 1 end
+-- A whole copper amount (the store's own saved variables could hold anything).
+local function copper(v) return type(v) == "number" and v >= 1 and v <= COPPER_MAX and v == floor(v) end
 local function claimOk(e, a)
   return str(e.gid) and str(e.f) and str(e.t) and e.f ~= e.t and (a == e.f or a == e.t)
     and copper(e.c) and type(e.at) == "number"
@@ -47,21 +50,13 @@ local function say(d, n, kind, c, id)
   if kind ~= "N" and newer(d.attest, n, kind, c) then d.attest = { n = n, kind = kind, c = c } end
 end
 
--- The C or N `e` of author a, number n, over the claim versions `vers` ({debt, claim}).
+-- The C or N `e` of author a, number n, over the claim bodies `vers` ({debt, claim})
+-- under its r: it counts for the body whose h is its dh, when a is that debt's f.
 local function word(e, a, n, vers)
-  local one, low
   for _, x in ipairs(vers or {}) do
     local d, claim = x[1], x[2]
-    if d.f == a then
-      if e.k == "N" then
-        say(d, n, "N", nil, e.i)
-      else
-        if one == nil then one = d elseif one ~= d then one = false end
-        low = min(low or claim.c, claim.c)
-      end
-    end
+    if d.f == a and claim.h == e.dh then say(d, n, e.k, e.k == "C" and claim.c or nil, e.i) end
   end
-  if one then say(one, n, "C", low, e.i) end
 end
 
 -- The status, amount and oldest claim of debt d, its working fields dropped.
@@ -99,7 +94,7 @@ local function build(L)
       byId[e.i] = byId[e.i] or {}
       byId[e.i][#byId[e.i] + 1] = { d, e }
       if a == e.f then say(d, n, "D", e.c, e.i) end
-    elseif (e.k == "C" or e.k == "N") and str(e.r) then
+    elseif (e.k == "C" or e.k == "N") and str(e.r) and str(e.dh) then
       words[#words + 1] = { e, a, n }
     elseif e.k == "P" and str(e.f) and copper(e.c) then
       add(v.pay, a, e.f, e.c)
