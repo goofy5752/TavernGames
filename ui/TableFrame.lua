@@ -7,11 +7,16 @@ local _, ns = ...
 -- turn a brass ring, a gold edge and the turn clock. The game's board in the
 -- middle, drawn by the view registered for the game id, 16 px lower for every
 -- plate row after the first (a view frame at most 236 high starts below two
--- rows of plates, which end 68 px from the top of the felt).
--- A banner across the felt: waiting for players (or for the host to start), an
--- aborted match, a silent host, and for RESYNC_SECONDS after "desync" the
--- resync note. On a card table (ns.Deal.status) one line at the bottom edge of
--- the felt: the shuffle under way or the verdict on the last hand; it opens the
+-- rows of plates, which end 68 px from the top of the felt). A view with
+-- `ring = true` (a team game) gets its plates around the felt instead
+-- (ns.HallLayout.ring: my seat at the bottom, the partner on top) and its
+-- board anchored TOPLEFT to the felt at 0, 0 (the view sizes it to the felt).
+-- A banner across the felt: waiting for players (or for the host to start;
+-- a table that does not start by the host waits for a second player, or for
+-- more players when its engine needs more than two seats), an aborted
+-- match, a silent host, and for RESYNC_SECONDS after "desync" the resync note.
+-- On a card table (ns.Deal.status) one line at the bottom edge of the felt:
+-- the shuffle under way or the verdict on the last hand; it opens the
 -- rules book on "fair". Title bar: the game, the access, turn time and table
 -- options, the watcher count and ⓘ (topic = game id). Bottom: „Стани“
 -- (watchers: „Към залата“), „Покани“ for the host while a seat is free (a list
@@ -20,8 +25,9 @@ local _, ns = ...
 -- over, and one line of news for SAY_SECONDS.
 --
 -- A view is { build(parent) -> frame, update(frame, session) } and may add
--- seatNote(session, seat) -> text for the plates. Client events only schedule
--- a redraw for the next frame (TableFrame.refresh), as in the hall.
+-- seatNote(session, seat) -> text for the plates and `ring = true`. Client
+-- events only schedule a redraw for the next frame (TableFrame.refresh), as in
+-- the hall.
 local Theme, W, L = ns.Theme, ns.W, ns.L
 
 local TableFrame = {
@@ -40,7 +46,7 @@ local PLATE_NAME_INSET = 28 + 64      -- the plate width the disc and the clock/
 local SAY_SECONDS, RESYNC_SECONDS = 5, 3
 local PICK_W, PICK_ROWS, PICK_ROW_H = 230, 8, 20
 
--- view: { build(parent) -> frame, update(frame, session), seatNote(session, seat)? }
+-- view: { build(parent) -> frame, update(frame, session), seatNote(session, seat)?, ring? }
 function TableFrame.registerView(gameId, view) TableFrame.views[gameId] = view end
 
 local function firstFree(seats)
@@ -209,10 +215,16 @@ function TableFrame.tick()
   end
 end
 
--- Places the plates on the grid of ns.HallLayout.plates -> the number of rows.
+-- Places the plates on the grid of ns.HallLayout.plates, or around the felt
+-- (ns.HallLayout.ring) for a ring view -> the number of rows.
 local function renderPlates(v, s, client)
   local n, view = #s.seats, TableFrame.views[s.game]
-  local spots, rows = ns.HallLayout.plates(n, v.areaW)
+  local spots, rows
+  if view and view.ring then
+    spots, rows = ns.HallLayout.ring(n, v.areaW, v.areaH, s.mySeat or 1)
+  else
+    spots, rows = ns.HallLayout.plates(n, v.areaW)
+  end
   local turn = s.status == "live" and s.state and s.state.turn
   for i = 1, n do
     local p, name, spot = plateWidget(v, i), s.seats[i], spots[i]
@@ -242,7 +254,8 @@ local function renderPlates(v, s, client)
   return rows
 end
 
--- The board in the middle, 16 px lower for every plate row after the first.
+-- The board in the middle, 16 px lower for every plate row after the first;
+-- a ring view's board over the whole felt.
 local function renderBoard(v, s, rows)
   for id, frame in pairs(TableFrame.built) do
     if id ~= s.game then frame:Hide() end
@@ -255,20 +268,25 @@ local function renderBoard(v, s, rows)
     TableFrame.built[s.game] = board
   end
   board:ClearAllPoints()
-  board:SetPoint("CENTER", v.area, "CENTER", 0, -6 - 16 * (rows - 1))
+  if view.ring then
+    board:SetPoint("TOPLEFT", v.area, "TOPLEFT", 0, 0)
+  else
+    board:SetPoint("CENTER", v.area, "CENTER", 0, -6 - 16 * (rows - 1))
+  end
   board:SetShown(s.state ~= nil)
   if s.state then view.update(board, s) end
 end
 
 -- Precedence: hostSilent > resynced > aborted > the open table's waiting line.
--- A host-started table waits for players, then for its host; a game that is
--- over shows none (the view says who lost).
+-- A host-started table waits for players, then for its host; any other open
+-- table for a second player, or for more players when its engine needs more
+-- than two seats; a game that is over shows none (the view says who lost).
 local function bannerKey(s, engine)
   if s.hostSilent then return "table.hostSilent" end
   if TableFrame.resyncTid == s.tid then return "table.resynced" end
   if s.status == "aborted" then return "table.aborted" end
   if s.status ~= "open" then return nil end
-  if engine.start ~= "host" then return "table.waiting" end
+  if engine.start ~= "host" then return engine.minSeats > 2 and "table.waitingMore" or "table.waiting" end
   if s:seatedCount() < engine.minSeats then return "table.waitingMore" end
   return s.role == "host" and "table.pressStart" or "table.waitingHost"
 end

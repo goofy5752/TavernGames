@@ -54,6 +54,13 @@ describe("hall layout", function()
     p, rows = H.plates(9, 532); eq(rows, 3); eq(p[9], { 357, -74, 165 }); eq(H.plates(1, 532), { { 171, -10, 190 } })
   end)
 
+  it("ring: my seat at the bottom, the next on the right, the partner on top", function()
+    local p, rows = H.ring(4, 532, 328, 1)
+    eq(p, { { 183.5, -276, 165 }, { 357, -105, 165 }, { 183.5, -10, 165 }, { 10, -105, 165 } }); eq(rows, 1)
+    eq(H.ring(4, 532, 328, 3), { { 183.5, -10, 165 }, { 10, -105, 165 }, { 183.5, -276, 165 }, { 357, -105, 165 } })
+    eq(H.ring(2, 532, 328, 1), (H.plates(2, 532)))
+  end)
+
   it("my table comes first, then open, then live", function()
     local r = function(tid, st, s) return { tid = tid, state = st, seats = s } end
     local input = { r("b#2", "live", { A, false }), r("c#3", "open", { "X", false }), r("a#1", "live", { "X", "Y" }), r("d#4", "open", { "Z", false }) }

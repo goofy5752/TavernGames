@@ -50,6 +50,27 @@ function HallLayout.plates(n, w)
   return out, math.ceil(n / cols)
 end
 
+-- Four plates 165 wide around a w x h felt for a team game, by the turn order
+-- counted from my seat me: me at the bottom, the next seat on the right, my
+-- partner at the top, the last on the left -> spots as plates, one row. Any
+-- other seat count: the grid of HallLayout.plates.
+function HallLayout.ring(n, w, h, me)
+  if n ~= 4 then return HallLayout.plates(n, w) end
+  local pw = 165
+  local around = {
+    [0] = { (w - pw) / 2, -(h - 52) },
+    [1] = { w - 175, -105 },
+    [2] = { (w - pw) / 2, -10 },
+    [3] = { 10, -105 },
+  }
+  local out = {}
+  for seat = 1, 4 do
+    local spot = around[(seat - me) % 4]
+    out[seat] = { spot[1], spot[2], pw }
+  end
+  return out, 1
+end
+
 -- Chair offsets from the table centre on a circle of radius r (y up): seat 1 at
 -- the top, the others clockwise.
 function HallLayout.chairs(seats, r)

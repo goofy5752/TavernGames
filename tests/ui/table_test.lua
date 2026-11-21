@@ -228,6 +228,17 @@ describe("ui: table frame", function()
     ok(v.line:IsVisible(), "line hidden")
     w:advance(5.1); eq(v.line:IsVisible(), false)
   end)
+
+  it("a ring view: four plates around the felt, the board over the whole felt, „Чакаме още играчи…“", function()
+    local w = withBots(); local T = w.ns.TableFrame
+    T.registerView("belot", { ring = true, update = function() end, build = function(parent)
+      local f = w.G.CreateFrame("Frame", nil, parent); f:SetSize(parent:GetWidth(), parent:GetHeight()); return f end })
+    w.ns.client:openTable{ game = "belot", access = "invite", turn = 45 }; w:advance(0); local v = T.view
+    eq(v.plates[1].frame.points[1], { "TOPLEFT", v.area, "TOPLEFT", 183.5, -276 }); eq(v.plates[3].frame.points[1], { "TOPLEFT", v.area, "TOPLEFT", 183.5, -10 })
+    eq(v.plates[2].frame.points[1], { "TOPLEFT", v.area, "TOPLEFT", 357, -105 }); eq(v.plates[4].frame.points[1], { "TOPLEFT", v.area, "TOPLEFT", 10, -105 })
+    eq(v.plates[4].frame:GetWidth(), 165); eq(#w:texts("Чакаме още играчи…"), 1); eq(#w:texts("Чакаме втори играч…"), 0)
+    eq(T.built.belot.points[1], { "TOPLEFT", v.area, "TOPLEFT", 0, 0 }); eq({ T.built.belot:GetSize() }, { 532, 328 })
+  end)
 end)
 
 describe("ui: table frame, host-started games", function()
