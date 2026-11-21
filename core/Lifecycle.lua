@@ -18,9 +18,12 @@ local copy, seatOf = ns.Util.copy, ns.Util.seatOf
 -- Extensions ns.Ext[x], x in engine.ext (a name not registered is skipped): hook
 -- calls `name` on every one that has it and returns the first non-nil result;
 -- filterAct passes a member's action through their act hooks until one drops it.
--- Hooks: act, applied, auto (see the shared contracts), adopted(s, prevState, m)
--- after the snapshot m replaced my state, hostChanged(s) when my table changed
--- host; need(s, action) (host: a system action that needs randomness),
+-- Hooks: act, applied, auto (see the shared contracts), adopted(s, prevState, m,
+-- how) after the snapshot m replaced my state (how: see Member.adopt),
+-- hostChanged(s) when my table changed host; refused(s, seat, a) (member: an
+-- event of my host that does not apply), forged(s, seat, a) (member, engine
+-- with `view`: an event for my seat that I did not send);
+-- need(s, action) (host: a system action that needs randomness),
 -- table(s, a) -> true (a seat-0 event the extension applied itself), snap(s)
 -- -> the SNP field `fr`. A hook that raises counts as nil: the error goes to
 -- env.log ("error", "ext", "<ext>.<hook>", message), so it cannot cut short the

@@ -118,13 +118,41 @@ local function onSnapshot(client, sender, m)
   end
 end
 
+-- My action goes to the host (Session.act) and is remembered, the last
+-- SENT_KEPT of them, until the host's event for my seat shows it.
+local SENT_KEPT = 8
+function Member.sendAct(s, a)
+  local sent = s.sent or {}
+  s.sent = sent
+  sent[#sent + 1] = copy(a)
+  if #sent > SENT_KEPT then table.remove(sent, 1) end
+  s.client:send("WHISPER", s.host, Session.message("ACT", { tid = s.tid, a = a }))
+end
+
+-- Is `a` an action I sent and have not seen come back -> bool. It is taken
+-- off the list together with the ones sent before it (the host dropped them).
+function Member.mine(s, a)
+  local sent = s.sent or {}
+  for i = 1, #sent do
+    if ns.Util.same(sent[i], a) then
+      for _ = 1, i do table.remove(sent, 1) end
+      return true
+    end
+  end
+  return false
+end
+
 -- Events are taken only from my host, at exactly my epoch, in order. An epoch
 -- is never adopted from an EV, and a stale member waits for its snapshot.
+-- With hidden hands (engine.view) nobody but my client moves for my seat, my
+-- timeouts included (Session:armAuto): an event for it that I did not send is
+-- reported to the extensions (hook `forged`) and applied like any other.
 local function onEvent(client, sender, m)
   local s = client.session
   if not s or s.role == "host" or s.tid ~= m.tid or s.host ~= sender or s.stale then return end
   if m.e ~= s.epoch or type(m.q) ~= "number" or m.q <= s.seq then return end
   if m.q > s.seq + 1 then return s:requestSync() end
+  if m.seat == s.mySeat and s:engine().view and not Member.mine(s, m.a) then s:hook("forged", m.seat, m.a) end
   if not s:apply(m.seat, m.a) then
     s:hook("refused", m.seat, m.a)
     client.events:emit("desync", s.tid)

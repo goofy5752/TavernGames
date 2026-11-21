@@ -487,7 +487,7 @@ function Session.act(client, a)
   if s.role == "host" then
     s:play(s.mySeat, a)
   else
-    client:send("WHISPER", s.host, message("ACT", { tid = s.tid, a = a }))
+    ns.Member.sendAct(s, a)
   end
   return true
 end

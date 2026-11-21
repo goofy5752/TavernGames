@@ -833,6 +833,12 @@ ns.Ext.fair = {
     if fair and fair.stage == "dealt" and fair.base then foul(fair, "play") end
   end,
 
+  -- Member: the host ordered a move for my seat that I did not send.
+  forged = function(s)
+    local fair = s.fair
+    if fair and fair.stage ~= "done" then foul(fair, "forged") end
+  end,
+
   hostChanged = function(s)
     local fair = s.fair
     -- The deal I asked for may have gone to the host that is gone: asked again

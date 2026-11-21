@@ -305,3 +305,35 @@ describe("deal cheats: the round a snapshot brings", function()
     ok(ns.Ext.fair.table(s, { k = "fair", op = "open", h = s.seq + 1, d = 2, p = { 1, 2, 3 } }))
   end)
 end)
+
+describe("deal cheats: a move in my name", function()
+  it("the host plays my card for me: my verdict is нередовна (forged) and the table hears it", function()
+    setup(true); a:startGame(); sim:run(1); auto(1); eq(a.session.state.turn, 2)
+    local h = a.session.fair.h
+    local want = H.auto(b.session.state, 2)
+    a.session:play(2, want, true)                                    -- the host-ordered "automatic" move of seat 2
+    sim:run(1); eq(b.session.fair.foul, "forged"); eq(c.session.fair.foul, nil)
+    finish(); sim:run(1)
+    eq({ got[b][1].h, got[b][1].verdict, got[b][1].why }, { h, "bad", "forged" })
+    eq(got[c][1].verdict, "ok")
+    eq(c.session.fairCry, { h = h, seat = 2, name = B, why = "forged" })
+  end)
+
+  it("my own moves, two in a row and my own timeout are mine", function()
+    setup(true); a:startGame(); sim:run(1)
+    local s = b.session
+    -- Two actions on their way at once: both come back, in order.
+    ns.Member.sendAct(s, { k = "x", n = 1 }); ns.Member.sendAct(s, { k = "x", n = 2 })
+    ok(ns.Member.mine(s, { k = "x", n = 1 })); ok(ns.Member.mine(s, { k = "x", n = 2 }))
+    eq(ns.Member.mine(s, { k = "x", n = 2 }), false)                 -- each of them once
+    -- One the host dropped is forgotten with the next one that comes back.
+    ns.Member.sendAct(s, { k = "x", n = 3 }); ns.Member.sendAct(s, { k = "x", n = 4 })
+    ok(ns.Member.mine(s, { k = "x", n = 4 })); eq(ns.Member.mine(s, { k = "x", n = 3 }), false)
+    for n = 1, 20 do ns.Member.sendAct(s, { k = "x", n = n }) end; eq(#s.sent, 8)
+    -- A whole hand where b's last move is its own deadline: проверена.
+    auto(1); eq(a.session.state.turn, 2); sim:run(46)
+    ok(a.session.state.turn ~= 2)
+    finish(); sim:run(1)
+    eq(got[b][1].verdict, "ok")
+  end)
+end)
