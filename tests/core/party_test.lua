@@ -110,6 +110,7 @@ describe("party", function()
   it("an extension that errors after the sit is traced, and the sitter still gets the table", function()
     local sim, a, b = clients()
     local lines = {}
+    a.env.strictHooks = false -- this checks the in-game behaviour: the error is contained
     a.env.log = function(dir, channel, peer, msg) lines[#lines + 1] = { dir, channel, peer, msg } end
     a.env.group = function() error("no IsInRaid") end
     local tid = a:openTable{game="deathroll", access="guild", turn=45}; sim:run(3)

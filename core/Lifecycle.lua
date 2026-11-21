@@ -31,6 +31,7 @@ function Session:hook(name, ...)
       else
         local env = self.client.env
         if env.log then env.log("error", "ext", ext[i] .. "." .. name, tostring(got)) end
+        if env.strictHooks then error(got, 0) end -- tests only: the WoW adapter never sets it
       end
     end
     if out == nil then out = r end

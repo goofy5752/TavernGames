@@ -144,6 +144,25 @@ describe("game lifecycle", function()
     eq(#sim.nextRandom, 0); eq(a.session.state.n[1], 2)   -- auto played for seat 1 after a fresh full turn
   end)
 
+  it("strictHooks: a throwing applied hook raises in tests, and is contained and logged in game", function()
+    local sim, a = running()
+    local E = Sim.ns.Ext.picktest
+    local old = E.applied
+    E.applied = function() error("boom hook") end
+    local lines = {}
+    a.env.log = function(dir, channel, peer, msg) lines[#lines + 1] = { dir, channel, peer, msg } end
+    local okRun, err = pcall(function()
+      eq(a.env.strictHooks, true)
+      raises(function() a.session:hook("applied", 1, { k = "x" }) end, "boom hook")
+      eq(#lines, 1); eq({ lines[1][1], lines[1][2], lines[1][3] }, { "error", "ext", "picktest.applied" })
+      a.env.strictHooks = false
+      eq(a.session:hook("applied", 1, { k = "x" }), nil)
+      eq(#lines, 2)
+    end)
+    E.applied = old
+    assert(okRun, err)
+  end)
+
   it("the act hook rewrites and drops a member's ACT", function()
     local sim, a, b, c, d, tid = running()
     ok(a:act{k="inc", by=1}); sim:run(1)

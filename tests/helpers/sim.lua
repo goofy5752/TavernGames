@@ -75,6 +75,7 @@ function Sim:newEnv(name, opts)
   env.inGroup = function(guid) return group[guid] == true end
   env.random = function(lo, hi) return table.remove(sim.nextRandom, 1) or hi end
   env.log = function() end
+  env.strictHooks = true -- an extension hook error fails the test (see Session:hook)
   return env
 end
 
