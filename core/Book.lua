@@ -4,7 +4,7 @@ local _, ns = ...
 -- deal of core/Deal.lua without a reveal a hand.
 -- Rule 2, key and seeds: every seated client has one table key per sitting,
 --   Fair.seed of its own (Book.key), kept in env.db.bookKeep = {tid, me, key,
---   g} so that it survives a /reload and a relog; g is the seq of the running
+--   g, h} so that it survives a /reload and a relog; g is the seq of the running
 --   game's `start` event, so a kept key is taken only for that game, and never
 --   one that is already among the book's published keys. Before it is
 --   published the key is in no message and never in the trace. A key I have
