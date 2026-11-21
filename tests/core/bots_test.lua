@@ -418,6 +418,13 @@ describe("bots for any game", function()
     eq({ ns.Book.status(s) }, { "seal.sealed", "inkDim", 8, 0 })
   end)
 
+  it("fill does not ask bots into a running game, but for an engine that takes them (botFill)", function()
+    local sim, a, _, bots = setup()
+    local tid = a:openTable{ game = "deathroll", access = "invite", turn = 30 }; ok(tid); eq(bots:fill(1), 1); sim:run(8)
+    eq(a.session:seatedCount(), 2); ok(a:startGame()); sim:run(1); eq({ a.session.status, #a.session.seats - a.session:seatedCount() }, { "live", 3 })
+    eq(bots:fill(), nil); sim:run(8); eq(a.session:seatedCount(), 2)
+  end)
+
   it("I host Холдем and fill my table with five bots; the close checks every hand", function()
     local sim, a, _, bots = setup(); local E = ns.Engines.holdem
     eq(bots:fill(), nil); local tid = a:openTable{ game = "holdem", access = "invite", turn = 30 }; ok(tid); eq(bots:fill(3), 3); sim:run(8)

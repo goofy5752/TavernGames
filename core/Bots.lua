@@ -319,10 +319,11 @@ local function fillMine(self)
 end
 
 -- Fills a table I host with idle bots -> how many are asked | nil (bot mode
--- off, or I host no table). See the header.
+-- off, I host no table, or its game runs and the engine takes nobody in
+-- then: no botFill). See the header.
 function Bots:fill(n)
   local s = self.client.session
-  if self.disabled or not s or s.role ~= "host" then return nil end
+  if self.disabled or not s or s.role ~= "host" or (s.status == "live" and not s:engine().botFill) then return nil end
   local free = #s.seats - s:seatedCount()
   local asked = math.min(n or free, free)
   self.wanted = { tid = s.tid, left = asked }
