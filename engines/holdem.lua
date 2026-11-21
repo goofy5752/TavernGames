@@ -11,7 +11,12 @@ RULES
     is folded at once (its chips in the pot stay there) and removed when the hand ends; any other seat is
     removed at once. A seat with 0 chips after a hand sits out (seats[s].out = true) until it leaves.
     When a chair is vacated its record of the last hand is flagged gone: whoever sits there next sees none
-    of those cards (E.view, E.hidden).
+    of those cards (E.view, E.hidden). A busted seat may stand up and sit down again for a fresh starting
+    stack (play chips). A join on a chair whose player stood up during this hand (leaving) is accepted, one
+    newcomer a chair: the leaver's hand is gone at once (flagged gone, the newcomer owes no face of it), its
+    chips behind go with it (state.last.left), everything it put in stays in the pot, an uncalled bet
+    included, and the newcomer is seated with the starting stack when the hand ends (not if he stood up
+    again before).
  3. Button: the first hand's button is the first playing seat at or after opts.first (default 1); every
     next hand it moves to the next playing seat clockwise (seat numbers upwards, 9 wraps to 1).
  4. Blinds: small blind = first playing seat left of the button, big blind = the next one; heads-up the
@@ -36,7 +41,8 @@ RULES
       it allin is refused ("amount") and the raise up to the cap is his biggest option. A bet/raise above
       the cap is refused ("amount"). The cap is never below the minimum raise: a full raise size is at most
       the raiser's bet, already in the pot, and pot + toCall holds at least a big blind whenever a seat that
-      can act faces it.
+      can act faces it. The cap counts the chips actually posted: a short blind counts what it put in, not
+      the full blind.
  8. An all-in raise smaller than a full raise does not change the minimum raise size and does not reopen
     the betting: a player who already acted on this street may raise again only if the bet grew by at least
     the full raise size since his last action (several short all-ins together can reopen it). Nobody may
@@ -48,8 +54,9 @@ RULES
 11. Showdown: every live hand is shown (no mucking). The last bettor/raiser of the river shows first,
     else the first live player left of the button; then clockwise. Best five of seven (holdem_eval.lua).
 12. Pots: contributions are layered by size. A layer only one player paid into is an uncalled bet and goes
-    back to him. A pot is won only by live players who paid its whole layer; folded chips stay in the pot
-    (a layer that only folded players paid into, which only a leave can cause, joins the pot below it).
+    back to him (not to a leaver whose chair was taken, rule 2). A pot is won only by live players who paid
+    its whole layer; folded chips stay in the pot (a layer that only folded players paid into, which only a
+    leave can cause, joins the pot below it).
     Consecutive layers with the same live players make one pot. Each pot is split among its best live hands;
     odd chips go one at a time to those winners in order from the first seat left of the button.
 13. state.last, the record of the finished hand: { hand = n, contrib = {[seat] = chips put in minus chips
@@ -57,7 +64,24 @@ RULES
     {seats}, winners = {seats}}, ...} (main pot first), shown = {seats in showdown order} ({} without a
     showdown), cat = {[seat] = hand category}, left = {[seat] = chips a leaver took} }.
     sum(won) == sum(contrib) always.
-14. A cash table has no match end: E.result is nil, E.over is false. E.auto: check if possible, else fold.
+14. A cash table has no match end: E.result is nil; E.over is false until the game is closed (rule 17).
+    E.auto: check if possible, else fold.
+15. {k="void"} at seat 0, only during a hand (phase deal, bet, street or showdown; else "phase"): every
+    seat dealt in gets back all it put in this hand, nothing is shown, state.last = {hand, void = true,
+    contrib = {}, won = {}, pots = {}, shown = {}, cat = {}, left}; leavers go and busted seats sit out as
+    after any hand. The hand count and the button stay, so the next hand moves the button on.
+16. {k="away", seat} at seat 0 sits an occupied seat out ("seat" if empty or already away): in a hand it is
+    folded as a leave folds it (its chips stay in the pot) but it keeps its chair; an away seat is not a
+    playing seat (rule 1) and is dealt no hand. {k="back"} by the seat itself, in any phase, only while it
+    is away ("seat"): it is dealt in again from the next hand.
+17. {k="close"} at seat 0 ("phase" once given): the running hand is played out, then the phase is
+    "closed" (at once outside a hand): the game is over (E.over), nothing is dealt, hand and join are
+    refused with "phase" (join already once the close is given).
+18. Who shuffles and deals (E.players, E.dealer): the players of a hand are the seats of state.order still
+    in their chair, not leaving and not away, ascending ({} before the first hand); the dealer is the
+    button while it is one of them, else the next of them clockwise after it (nil without a button).
+19. A street or the showdown on a state that lacks one of its faces (a view): E.system returns
+    {k="street"/"showdown", need="faces"}, 0; the faces come from whoever holds the deck.
 
 HAND HANDSHAKE (the deck comes from the fairness layer, so the engine cannot deal on its own)
  - phase "idle"/"done": E.system returns {k="hand"} once 2+ seats can play. The host applies it: the button
@@ -73,14 +97,20 @@ HAND HANDSHAKE (the deck comes from the fairness layer, so the engine cannot dea
  - phase "street": E.system returns {k="street", cards = {[i] = face}} = the next street's faces (flop,
    turn or river); applied everywhere, it deals that street.
  - phase "showdown": E.system returns {k="showdown", cards = {[i] = face}} = the board and every live hand;
-   applied everywhere, it settles the pots. Phase "done", state.last is the record.
+   applied everywhere, it settles the pots. Phase "done" ("closed" after a close), state.last is the record.
+ - At the table only the dealer (E.dealer) holds the deck: on everybody else's view E.system says
+   {k="street"/"showdown", need="faces"} (rule 19); the dealer supplies the street and the showdown with
+   their faces and the host applies that action everywhere.
  - {k="show", cards} at seat 0 fills faces on a view; on the full state it only checks them.
 ]==]
 local _, ns = ...
 ns.Engines = ns.Engines or {}
 local H = ns.HoldemEval
 
-local E = { id = "holdem", minSeats = 2, maxSeats = 9, start = "host",
+-- maxSeats is what a table offers (the message budget of the sealed deal, see the stage E plan); the
+-- engine itself plays any seats it is given on its 9 chairs.
+local E = { id = "holdem", minSeats = 2, maxSeats = 6, start = "host",
+  ext = { "fair", "cash" }, again = true, sealed = true, publicAuto = true, watchers = 1, botFill = 6,
   HAND_DELAY = 4, IDLE_DELAY = 2, STREET_DELAY = 1 }
 ns.Engines.holdem = E
 
@@ -125,7 +155,7 @@ local function nextSeat(from, pred)
 end
 
 local function playingFn(s)
-  return function(i) local st = s.seats[i]; return st and st.chips > 0 and not st.leaving end
+  return function(i) local st = s.seats[i]; return st and st.chips > 0 and not st.leaving and not st.away end
 end
 local function countPlaying(s)
   local n, f = 0, playingFn(s)
@@ -210,6 +240,22 @@ local function sameSet(a, b)
   return true
 end
 
+-- The end of a hand once the chips are paid out and s.last is written: leavers go with their chips
+-- (a taken chair gets the newcomer's fresh stack), a seat with 0 chips sits out.
+local function settle(s)
+  for i = 1, CHAIRS do
+    local st = s.seats[i]
+    if st and st.leaving then
+      s.last.left[i] = st.chips
+      s.seats[i] = st.taken and { chips = s.stack, out = false, leaving = false } or false
+      s.p[i].gone = true          -- kept for the table display, no longer anyone's own hand
+    elseif st then
+      st.out = st.chips == 0
+    end
+  end
+  s.phase, s.turn = s.closing and "closed" or "done", nil
+end
+
 -- scores: nil when everyone else folded; else {[seat] = score} for every live seat
 local function finish(s, scores, cats, showOrder)
   local c, levels, seenL = {}, {}, {}
@@ -228,7 +274,7 @@ local function finish(s, scores, cats, showOrder)
       end
     end
     local amt, top = (L - prev) * #payers, pots[#pots]
-    if #payers == 1 then
+    if #payers == 1 and not s.p[payers[1]].gone then   -- not when the chair was taken (rule 2)
       refund[payers[1]] = (refund[payers[1]] or 0) + amt       -- uncalled
     elseif #eligible == 0 and top then
       top.amount = top.amount + amt                             -- dead chips join the pot below
@@ -268,17 +314,7 @@ local function finish(s, scores, cats, showOrder)
   for _, i in ipairs(showOrder or {}) do s.shown[i] = true end
   s.last = { hand = s.hand, contrib = contrib, won = won, pots = pots, shown = showOrder or {},
     cat = cats or {}, left = {} }
-  for i = 1, CHAIRS do
-    local st = s.seats[i]
-    if st and st.leaving then
-      s.last.left[i] = st.chips
-      s.seats[i] = false
-      s.p[i].gone = true          -- kept for the table display, no longer anyone's own hand
-    elseif st then
-      st.out = st.chips == 0
-    end
-  end
-  s.phase, s.turn = "done", nil
+  settle(s)
 end
 
 -- After any change inside a hand: settle a fold-win, close the street, or move the turn.
@@ -421,7 +457,7 @@ local function leave(s, seat)
   if not isInt(seat) or seat < 1 or seat > CHAIRS or not s.seats[seat] then return nil, "seat" end
   local st, p = s.seats[seat], s.p[seat]
   if inHand(s) and p then
-    if st.leaving then return true end
+    if st.leaving then st.taken = nil; return true end   -- a newcomer on the chair stands up again
     st.leaving = true
     if not p.folded then
       p.folded = true
@@ -431,6 +467,55 @@ local function leave(s, seat)
     s.seats[seat] = false
     if p then p.gone = true end   -- last hand's record of this chair belongs to nobody now
   end
+  return true
+end
+
+-- rule 2: an empty chair, or one whose player stood up during this hand (the leaver's hand is gone at once)
+local function join(s, seat)
+  if s.closing then return nil, "phase" end
+  if not isInt(seat) or seat < 1 or seat > CHAIRS then return nil, "seat" end
+  local st = s.seats[seat]
+  if not st then
+    s.seats[seat] = { chips = s.stack, out = false, leaving = false }
+    return true
+  end
+  if not (inHand(s) and st.leaving and not st.taken) then return nil, "seat" end
+  st.taken, s.p[seat].gone = true, true
+  return true
+end
+
+-- rule 15: every chip back, nothing shown, the hand is over
+local function void(s)
+  if not inHand(s) then return nil, "phase" end
+  for _, i in ipairs(s.order) do
+    local p, st = s.p[i], s.seats[i]
+    if st then st.chips = st.chips + p.total end
+    p.bet, p.total = 0, 0
+  end
+  s.shown = {}
+  s.last = { hand = s.hand, void = true, contrib = {}, won = {}, pots = {}, shown = {}, cat = {}, left = {} }
+  settle(s)
+  return true
+end
+
+-- rule 16: the seat sits out; in a hand it is folded as a leave folds it, but it keeps its chair
+local function away(s, seat)
+  local st = isInt(seat) and s.seats[seat]
+  if not st or st.away then return nil, "seat" end
+  local p = s.p[seat]
+  st.away = true
+  if inHand(s) and p and not p.folded then
+    p.folded = true
+    progress(s, s.turn == seat and seat or nil)
+  end
+  return true
+end
+
+-- rule 17: the running hand is played out, then the game is over
+local function close(s)
+  if s.closing then return nil, "phase" end
+  s.closing = true
+  if not inHand(s) then s.phase, s.turn = "closed", nil end
   return true
 end
 
@@ -512,7 +597,7 @@ function E.apply(s, seat, a)
   if a.need ~= nil then return nil, "need" end
   local k = a.k
   if k == "hand" or k == "deal" or k == "street" or k == "showdown" or k == "show"
-     or k == "join" or k == "leave" then
+     or k == "join" or k == "leave" or k == "void" or k == "away" or k == "close" then
     if seat ~= 0 then return nil, "seat" end
     if k == "hand" then return startHand(s) end
     if k == "deal" then return deal(s, a) end
@@ -520,8 +605,15 @@ function E.apply(s, seat, a)
     if k == "showdown" then return showdown(s, a) end
     if k == "show" then return fillCards(s, a.cards) end
     if k == "leave" then return leave(s, a.seat) end
-    if not isInt(a.seat) or a.seat < 1 or a.seat > CHAIRS or s.seats[a.seat] then return nil, "seat" end
-    s.seats[a.seat] = { chips = s.stack, out = false, leaving = false }
+    if k == "void" then return void(s) end
+    if k == "away" then return away(s, a.seat) end
+    if k == "close" then return close(s) end
+    return join(s, a.seat)
+  end
+  if k == "back" then                -- rule 16: in any phase, before the turn check
+    local st = isInt(seat) and s.seats[seat]
+    if not st or not st.away then return nil, "seat" end
+    st.away = false
     return true
   end
   return act(s, seat, a)
@@ -554,16 +646,90 @@ function E.auto(s, seat)
   return { k = "check" }
 end
 
+-- A bot's move, on its view (nil off turn or without both own faces): a level 1-3 from its cards
+-- (preflop the two ranks, postflop its best hand), a raise of half the pot now and then (40 / 8 / 3 in 100
+-- by level), else check, call by level and price, or fold.
+local function botLevel(s, mine)
+  if #s.board == 0 then
+    local a, b = H.rank(mine[1]), H.rank(mine[2])
+    local hi, lo = math.max(a, b), math.min(a, b)
+    local score
+    if hi == lo then score = 40 + 2 * hi
+    else
+      score = hi + lo
+      if H.suit(mine[1]) == H.suit(mine[2]) then score = score + 3 end
+      if hi - lo <= 1 then score = score + 2 end
+    end
+    return score >= 26 and 3 or score >= 18 and 2 or 1
+  end
+  local f = { mine[1], mine[2] }
+  for _, i in ipairs(s.board) do
+    if s.deck[i] == nil then return nil end
+    f[#f + 1] = s.deck[i]
+  end
+  local _, cat = H.best(f)
+  return cat >= H.TWOPAIR and 3 or cat == H.PAIR and 2 or 1
+end
+
+function E.bot(s, seat, random)
+  if s.phase ~= "bet" or s.turn == nil or s.turn ~= seat then return nil end
+  local p = s.p[seat]
+  local mine = { s.deck[p.cards[1]], s.deck[p.cards[2]] }
+  if not mine[1] or not mine[2] then return nil end
+  local level = botLevel(s, mine)
+  if not level then return nil end
+  local r, pot, toCall = random(1, 100), 0, s.bet - p.bet
+  for _, i in ipairs(s.order) do pot = pot + s.p[i].total end
+  if r <= (level == 3 and 40 or level == 2 and 8 or 3) then
+    for _, a in ipairs(E.legal(s, seat)) do
+      if a.k == "bet" or a.k == "raise" then
+        return { k = a.k, to = math.max(a.to, math.min(a.max, s.bet + math.floor(pot / 2))) }
+      end
+    end
+  end
+  if toCall <= 0 then return { k = "check" } end
+  if level == 3 or (level == 2 and toCall <= math.max(s.bb, math.floor(pot / 2)))
+     or (level == 1 and toCall <= s.bb and r <= 50) then
+    return { k = "call" }
+  end
+  return { k = "fold" }
+end
+
 function E.system(s)
   if s.phase == "idle" or s.phase == "done" then
     if countPlaying(s) >= 2 then return { k = "hand" }, s.phase == "done" and E.HAND_DELAY or E.IDLE_DELAY end
   elseif s.phase == "deal" then
     return { k = "deal", need = "deck" }, 0
-  elseif s.phase == "street" then
-    return { k = "street", cards = facesOf(s, streetIdx(s)) }, E.STREET_DELAY
-  elseif s.phase == "showdown" then
-    return { k = "showdown", cards = facesOf(s, showdownIdx(s)) }, E.STREET_DELAY
+  elseif s.phase == "street" or s.phase == "showdown" then
+    local idx = s.phase == "street" and streetIdx(s) or showdownIdx(s)
+    for _, i in ipairs(idx) do
+      if s.deck[i] == nil then return { k = s.phase, need = "faces" }, 0 end   -- rule 19
+    end
+    return { k = s.phase, cards = facesOf(s, idx) }, E.STREET_DELAY
   end
+end
+
+E.inHand = inHand
+
+-- rule 18: who shuffles: the hand's seats still seated and not away, ascending (a gone record is
+-- nobody's: its chair was vacated, whoever sits there now was not dealt in)
+local function here(s, i)
+  local p, st = s.p[i], s.seats[i]
+  return p ~= nil and not p.gone and st and not st.leaving and not st.away
+end
+
+function E.players(s)
+  local t = {}
+  for _, i in ipairs(s.order) do if here(s, i) then t[#t + 1] = i end end
+  table.sort(t)
+  return t
+end
+
+-- rule 18: who deals: the button, else the next of those seats after it
+function E.dealer(s)
+  if not s.button then return nil end
+  if here(s, s.button) then return s.button end
+  return nextSeat(s.button, function(i) return here(s, i) end)
 end
 
 function E.view(s, seat)
@@ -589,7 +755,7 @@ function E.hidden(s, seat)
 end
 
 function E.result() return nil end
-function E.over() return false end
+function E.over(s) return s.phase == "closed" end
 function E.snapshot(s) return copy(s) end
 function E.restore(t) return copy(t) end
 
