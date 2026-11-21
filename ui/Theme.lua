@@ -28,6 +28,12 @@ local Theme = {
     good = hex("9fd17a"),
     cardInk = hex("22170f"),   -- black suits and ranks on a card face
     cardEdge = hex("c7ad82"),  -- the card face edge
+    boardField = hex("2a140b"), -- the Табла board field (mockup 07, variant 1)
+    boardBar = hex("3a2010"),   -- its bar and tray
+    pointLight = hex("e9d9b6"), -- the light points (the dark ones are #7a1f24)
+    bone = hex("f3e8d0"),       -- the light checker
+    walnut = hex("3b1d10"),     -- the dark checker
+    glow = hex("ffd100"),       -- a legal target
   },
   font = {
     heading = MEDIA .. "fonts\\AlegreyaSC-Bold.ttf",
@@ -41,6 +47,7 @@ local Theme = {
     wood = 256, felt = 256, frame = 64, ring = 128, tabletop = 128, chair = 64, chair_empty = 64,
     button = { 128, 32 }, button_hi = { 128, 32 }, glow = 128, info = 32, icon = 64,
     card = { 64, 128 }, card_back = { 64, 128 }, suits = { 128, 32 }, -- suits: club, diamond, heart, spade
+    point = { 32, 128 }, checker = 64, dice = { 128, 64 }, -- Табла: dice = faces 1-4 on top, 5 and 6 below
   },
 }
 

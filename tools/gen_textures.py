@@ -414,6 +414,61 @@ def tex_suits(rng):
     return w, h, render(w, h, px)
 
 
+# Табла board pieces (mockup 07, variant 1). White ones are tinted in code.
+DICE_CREAM = hex_rgb("#f6ecd6")
+DICE_RIM = hex_rgb("#8a6a2b")
+# Pip places of the mockup's 30 px die, scaled to a 32 px cell in tex_dice.
+PIPS = {1: [(15, 15)], 2: [(9, 9), (21, 21)], 3: [(9, 9), (15, 15), (21, 21)],
+        4: [(9, 9), (21, 9), (9, 21), (21, 21)],
+        5: [(9, 9), (21, 9), (15, 15), (9, 21), (21, 21)],
+        6: [(9, 8), (21, 8), (9, 15), (21, 15), (9, 22), (21, 22)]}
+
+
+def tex_point(rng):
+    """A white triangle, base the whole top edge, tip at the bottom centre."""
+    w, h = 32, 128
+    tri = [(0.0, 0.0), (32.0, 0.0), (16.0, 128.0)]
+    return w, h, render(w, h, lambda x, y: WHITE + (cover(sd_convex(x, y, tri)),))
+
+
+def tex_checker(rng):
+    """A white disc with a grey rim and an inner ring, tinted in code."""
+    w = h = 64
+    grey = (0.45, 0.45, 0.45)
+
+    def px(x, y):
+        d = math.hypot(x - 32.0, y - 32.0)
+        a = cover(d - 30.0)
+        if a <= 0.0:
+            return (0.0, 0.0, 0.0, 0.0)
+        col = mix(grey, WHITE, cover(-(d - 27.0)))
+        col = mix(col, grey, cover(abs(d - 18.0) - 1.0))
+        return col + (a,)
+    return w, h, render(w, h, px)
+
+
+def tex_dice(rng):
+    """Six 32x32 faces: 1-4 on the top row, 5 and 6 below; the last two cells empty."""
+    w, h = 128, 64
+    k = 32.0 / 30.0
+
+    def px(x, y):
+        col, row = int(x // 32), int(y // 32)
+        face = row * 4 + col + 1
+        if face > 6:
+            return (0.0, 0.0, 0.0, 0.0)
+        lx, ly = x - col * 32.0, y - row * 32.0
+        sd = sd_round_rect(lx, ly, 1.0, 1.0, 31.0, 31.0, 5.0)
+        a = cover(sd)
+        if a <= 0.0:
+            return (0.0, 0.0, 0.0, 0.0)
+        out = mix(DICE_RIM, DICE_CREAM, cover(sd + 2.0))
+        for (px_, py_) in PIPS[face]:
+            out = mix(out, RED_PAINT, cover(sd_circle(lx, ly, px_ * k, py_ * k, 3.0)))
+        return out + (a,)
+    return w, h, render(w, h, px)
+
+
 TEXTURES = [
     ("wood", tex_wood), ("felt", tex_felt), ("frame", tex_frame), ("ring", tex_ring),
     ("tabletop", tex_tabletop), ("chair", tex_chair), ("chair_empty", tex_chair_empty),
@@ -421,6 +476,7 @@ TEXTURES = [
     ("info", tex_info), ("icon", tex_icon),
     # Appended, so the shared rng stays where it was for every file above.
     ("card", tex_card), ("card_back", tex_card_back), ("suits", tex_suits),
+    ("point", tex_point), ("checker", tex_checker), ("dice", tex_dice),
 ]
 
 

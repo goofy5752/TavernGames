@@ -11,6 +11,8 @@ describe("theme", function()
       local f = io.open("media/" .. name .. ".tga", "rb"); ok(f, "missing media/" .. name .. ".tga")
       if f then local d = f:read(18); f:close(); eq({ d:byte(13) + d:byte(14) * 256, d:byte(15) + d:byte(16) * 256, d:byte(17) }, { w, h, 32 }, name); n = n + 1 end
     end
-    eq(Theme.texSize.card, { 64, 128 }); eq(Theme.texSize.card_back, { 64, 128 }); eq(Theme.texSize.suits, { 128, 32 }); ok(n >= 15)
+    eq(Theme.texSize.card, { 64, 128 }); eq(Theme.texSize.card_back, { 64, 128 }); eq(Theme.texSize.suits, { 128, 32 })
+    eq(Theme.texSize.point, { 32, 128 }); eq(Theme.texSize.checker, 64); eq(Theme.texSize.dice, { 128, 64 }); ok(n >= 18)
+    eq({ Theme.rgb("glow") }, { 1, 209 / 255, 0 })
   end)
 end)
