@@ -82,16 +82,17 @@ end
 
 -- I leave my bot table; B (real) hosts a live game from 100 in which I hold
 -- seat 2 and B is on turn: its TBL and the SNP that seats me.
-local function seatedAtB(w)
+-- `seats` and `st` replace that table's seats and game state.
+local function seatedAtB(w, seats, st)
   w.ns.client:stand(); w:advance(0)
   hello(w, B, "Player-1-00000002")
   local tid = B .. "#1"
   local tbl = { tid = tid, g = "deathroll", h = B, e = 1, ac = "guild", tn = 45, st = "live",
-                s = { B, ME, false, false, false }, w = 0, o = { start = 100 } }
+                s = seats or { B, ME, false, false, false }, w = 0, o = { start = 100 } }
   local announce = { v = 1, t = "TBL" }
   for k, v in pairs(tbl) do announce[k] = v end
   w:deliver("GUILD", B, announce)
-  local st = { players = { 1, 2 }, turn = 1, start = 100, max = 100, rolls = {}, phase = "play" }
+  st = st or { players = { 1, 2 }, turn = 1, start = 100, max = 100, rolls = {}, phase = "play" }
   w:deliver("WHISPER", B, { v = 1, t = "SNP", tid = tid, e = 1, q = 1, tbl = tbl, st = st, left = 45 })
   w:advance(0)
   local s = w.ns.client.session
@@ -211,6 +212,40 @@ describe("ui: Death Roll view", function()
     w:advance(1)
     eq(s.seats[2], false); eq(s.state.phase, "over"); eq(s.state.loser, nil)
     eq(#w:texts("Играта свърши без губещ."), 1); eq(V.rollButton:IsVisible(), false)
+  end)
+
+  it("a newcomer on the chair of the loser who left is neither the loser nor the first to roll", function()
+    local w, V, View = setup()
+    local s = w.ns.client.session
+    s:play(1, { k = "roll", n = 50, max = 100, src = "ask" })
+    s:play(2, { k = "roll", n = 1, max = 50, src = "ask" })
+    w:advance(0)
+    eq(#plainTexts(w, "Бот Иванов хвърли 1 и губи!"), 1)
+    for _, bot in ipairs(w.ns.bots.list) do
+      if bot.env.me == BOT then bot:stand() end
+    end
+    w:advance(1)
+    hello(w, B, "Player-1-00000002")
+    w:deliver("WHISPER", B, { v = 1, t = "SIT", tid = s.tid, seat = 2 }); w:advance(0)
+    eq(s.seats[2], B)
+    local cells = View.cells(s)
+    eq({ cells[2].seat, cells[2].name }, { 1, ME }); eq({ cells[3].seat, cells[3].name }, { 2, nil })
+    eq(plain(V.cells[3].label:GetText()):find("Мария", 1, true), nil)
+    eq(#plainTexts(w, "хвърли 1 и губи!"), 0)
+    ok(w.ns.client:startGame()); w:advance(0)
+    eq(s.state.turn, 1)
+  end)
+
+  it("the rolls of my chair from before I sat down are not mine", function()
+    local w, V, View = setup()
+    local st = { players = { 1, 3 }, turn = 1, start = 100, max = 60, phase = "play",
+                 rolls = { { seat = 2, n = 80, max = 100, src = "seen" }, { seat = 3, n = 60, max = 80, src = "seen" } } }
+    seatedAtB(w, { B, ME, C, false, false }, st)
+    local s = w.ns.client.session
+    local cells = View.cells(s)
+    eq({ cells[2].seat, cells[2].name }, { 2, nil }); eq({ cells[3].seat, cells[3].name }, { 3, C })
+    eq(plain(V.cells[2].label:GetText()):find(w.ns.L("deathroll.you"), 1, true), nil)
+    eq(plain(V.cells[3].label:GetText()):sub(1, 4), "Kiro")
   end)
 
   it("the group line names who is outside my group, or why I cannot invite", function()

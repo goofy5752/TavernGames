@@ -53,6 +53,15 @@ describe("deathroll", function()
     eq(E.nextFirst(nil, {true,true}), nil)
   end)
 
+  it("a loser who left is out of the game: no result, and his chair does not roll first", function()
+    local s = new({true,true,true}, 1); ok(roll(s,1,1)); eq(E.playing(s, 1), true)
+    eq(E.result(s), {losers={1}, winners={2,3}})
+    E.leave(s, 1); eq(E.playing(s, 1), false); eq(E.playing(s, 2), true); eq(E.over(s), true)
+    eq(E.result(s), nil); eq(E.nextFirst(s, {true,true,true}), nil)
+    -- A seat that sat down after the start is not in the game either.
+    s = new({true,false,true}, 1); eq(E.playing(s, 2), false); eq(E.playing(s, 3), true)
+  end)
+
   it("snapshot round-trips and is a copy", function()
     local s = new({true,true}, 1); ok(roll(s,1,57)); local t = E.snapshot(s); t.rolls[1].n = 99; t.rolls[2] = {}
     eq(s.rolls[1].n, 57); eq(#s.rolls, 1); eq(E.snapshot(E.restore(E.snapshot(s))), E.snapshot(s))

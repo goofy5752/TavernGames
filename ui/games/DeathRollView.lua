@@ -40,7 +40,8 @@ end
 
 -- The trail, left to right, at most MAX_CELLS cells: {kind="start", n} when
 -- every roll fits beside it, else {kind="more"} and the newest rolls; each roll
--- {kind="roll", n, seat, name, tag} (tag "mismatch" | "table" | "unseen" | nil);
+-- {kind="roll", n, seat, name, tag} (name nil once that seat left the game, so
+-- whoever took the chair since is not named; tag "mismatch" | "table" | "unseen" | nil);
 -- while the game runs, last, {kind="next", seat, name} for the player on turn.
 function View.cells(s)
   local st, out = s.state, {}
@@ -55,7 +56,8 @@ function View.cells(s)
   end
   for i = from, #rolls do
     local r = rolls[i]
-    out[#out + 1] = { kind = "roll", n = r.n, seat = r.seat, name = s.seats[r.seat] or nil, tag = tagOf(s, i, r) }
+    local name = E.playing(st, r.seat) and s.seats[r.seat] or nil
+    out[#out + 1] = { kind = "roll", n = r.n, seat = r.seat, name = name, tag = tagOf(s, i, r) }
   end
   if playing then out[#out + 1] = { kind = "next", seat = st.turn, name = s.seats[st.turn] or nil } end
   return out
@@ -157,7 +159,7 @@ local function labelText(c, s)
   if c.kind == "start" then
     text = L("deathroll.startLabel")
   elseif c.kind ~= "more" then
-    text = c.seat == s.mySeat and L("deathroll.you") or c.name and W.firstWord(c.name) or ""
+    text = c.name and (c.seat == s.mySeat and L("deathroll.you") or W.firstWord(c.name)) or ""
   end
   if c.tag == "unseen" then
     text = text .. "?"
@@ -240,7 +242,8 @@ local function statusLine(s, myTurn, client)
   local st = s.state
   if s:gameOver() then
     local result = E.result(st)
-    if not result then return L("deathroll.void"), Theme.color.inkDim end
+    -- A loser who has left since: nobody seated now is named.
+    if not result then return (not st.loser) and L("deathroll.void") or nil, Theme.color.inkDim end
     local loser = s.seats[result.losers[1]]
     if loser then return L("deathroll.lost", W.colored(client, loser)), Theme.color.gold end
     return nil
