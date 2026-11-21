@@ -42,10 +42,13 @@ function Fair.full(view, deck)
 end
 
 -- Checks a closed hand; first failure wins. rec = {tid, h, p, commits, seeds,
--- base, log, priv}: p = the participants' seats, strictly ascending (else
--- "seeds"), seeds in p order, commits by seat, base = the engine
+-- base, log, priv, faces}: p = the participants' seats, strictly ascending
+-- (else "seeds"), seeds in p order, commits by seat, base = the engine
 -- snapshot when the round opened, log = {seat, a} since then, priv = faces I
--- was shown privately. -> "ok" | "bad", why
+-- was shown privately. Without base (I did not see the hand from its start)
+-- there is no replay: the seeds are still checked against the commits, and
+-- priv and `faces` (every face my state knows now) against the deck they give
+-- ("dealt", "deal"). -> "ok" | "bad", why | "unseen"
 function Fair.audit(engine, rec)
   local p, seeds, commits = rec.p, rec.seeds, rec.commits or {}
   if type(seeds) ~= "table" or #seeds ~= #p then return "bad", "seeds" end
@@ -60,6 +63,15 @@ function Fair.audit(engine, rec)
   end
 
   local deck = Fair.deck(engine.DECK, seeds, Fair.handId(rec.tid, rec.h))
+  if not rec.base then
+    for i, f in pairs(rec.priv or {}) do
+      if deck[i] ~= f then return "bad", "dealt" end
+    end
+    for i, f in pairs(rec.faces or {}) do
+      if deck[i] ~= f then return "bad", "deal" end
+    end
+    return "unseen"
+  end
   local dealt = false
   for _, e in ipairs(rec.log) do
     local a = e[2]

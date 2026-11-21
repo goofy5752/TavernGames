@@ -259,10 +259,9 @@ local function judge(s)
   end
   if fair.foul then return Deal.close(s, "bad", fair.foul) end
   if fair.lied then return Deal.close(s, "bad", "dealt") end
-  if not fair.base then return Deal.close(s, "unseen") end
   local verdict, why = Fair.audit(s:engine(), {
     tid = s.tid, h = fair.h, p = fair.p, commits = fair.held, seeds = fair.out,
-    base = fair.base, log = fair.log, priv = fair.priv,
+    base = fair.base, log = fair.log, priv = fair.priv, faces = s.state and s.state.deck,
   })
   Deal.close(s, verdict, why)
 end
@@ -534,14 +533,49 @@ ns.Member.handlers.PRQ = onAsk
 
 -- A round as SNP.fr carries it: {h, d, p, c, st, n}.
 local function wellFormed(fr)
-  if type(fr) ~= "table" or not isInt(fr.h) or type(fr.d) ~= "number" or type(fr.c) ~= "table"
-      or not STAGES[fr.st] or type(fr.n) ~= "number" or type(fr.p) ~= "table" or #fr.p < 2 then
+  if type(fr) ~= "table" or not isInt(fr.h) or not isInt(fr.d) or type(fr.c) ~= "table"
+      or not STAGES[fr.st] or not isInt(fr.n) or fr.n < 0 or type(fr.p) ~= "table" or #fr.p < 2 then
     return false
   end
   for k = 1, #fr.p do
-    if type(fr.p[k]) ~= "number" or (k > 1 and fr.p[k] <= fr.p[k - 1]) then return false end
+    if not isInt(fr.p[k]) or (k > 1 and fr.p[k] <= fr.p[k - 1]) then return false end
   end
   return contains(fr.p, fr.d)
+end
+
+-- Does the round of the snapshot m fit my table, as an open event would have
+-- to (rule 10b)? Its seats exist and it is not from the future; the dealer is
+-- the one the count of hands gives. A round new to me, from the host I know:
+-- its number is above every round I have seen, and events I did not see lie
+-- between. While a round new to me is still being shuffled its participants
+-- are seated, and I am one of them unless I sat down after it opened.
+local function fits(s, m, how)
+  local fr, fair = m.fr, s.fair
+  if not wellFormed(fr) or fr.h > m.q or fr.p[1] < 1 or fr.p[#fr.p] > #s.seats then return false end
+  local known = fair ~= nil and fair.h == fr.h
+  if not known and not (how.fresh or how.changed) then
+    if m.q == how.q or fr.h <= math.max(fair and fair.h or 0, s.fairLast and s.fairLast.h or 0) then return false end
+  end
+  if fr.st == "dealt" or fr.st == "done" then
+    return fr.n >= 1 and fr.d == dealerOf(fr.p, fr.n - 1)
+  end
+  if not known then
+    for k = 1, #fr.p do
+      if not s.seats[fr.p[k]] then return false end
+    end
+    if s.mySeat and not contains(fr.p, s.mySeat) and not (how.fresh or how.sat) then return false end
+  end
+  return fr.d == dealerOf(fr.p, fr.n)
+end
+
+-- Is the snapshot's round of my number the round I hold: the same
+-- participants and dealer, and no commit I hold changed?
+local function agrees(fair, fr)
+  if fr.d ~= fair.d or not ns.Util.same(fr.p, fair.p) then return false, "round" end
+  for seat, c in pairs(fr.c) do
+    if fair.held[seat] ~= nil and fair.held[seat] ~= c then return false, "commit" end
+  end
+  return true
 end
 
 ns.Ext.fair = {
@@ -567,7 +601,8 @@ ns.Ext.fair = {
   table = function(s, a)
     if a.k ~= "fair" then return nil end
     if a.op == "open" then
-      if not isInt(a.h) or not participantsFit(s, a.p) or a.d ~= dealerOf(a.p, s.fairN or 0) then return nil end
+      -- Its number is its own place in the order of events (h = seq + 1).
+      if a.h ~= s.seq + 1 or not participantsFit(s, a.p) or a.d ~= dealerOf(a.p, s.fairN or 0) then return nil end
       local old = s.fair
       s.fair = {
         h = a.h, d = a.d, p = copy(a.p), dealer = s.seats[a.d], commits = {}, held = {}, stage = "commit",
@@ -677,13 +712,34 @@ ns.Ext.fair = {
     if s.role == "host" and not s.fairTimer and s.fair == fair and Deal.handOver(s) then armWait(s, fair.h) end
   end,
 
-  -- Member: the round from the host's snapshot (rule 10b).
+  -- Member: the round from the host's snapshot (rule 10b), checked as an open
+  -- would be (fits). "unseen" is honest only when I came or logged in again
+  -- mid-hand, the host changed, or I asked for the snapshot after losing an
+  -- event (how.fresh / how.changed / how.asked, see Member.adopt). A snapshot
+  -- my own host pushes on me that skips events is a foul ("round") on the
+  -- round I hold and on the one it brings. So is my round coming back with
+  -- other participants or another dealer, or gone or at another stage in a
+  -- snapshot of the very event I am at.
   adopted = function(s, prev, m, how)
-    local fr = m and m.fr
-    local good, fair = wellFormed(fr), s.fair
-    -- A hand I still held open that the host has closed or replaced: I missed its end.
-    if fair and fair.stage == "dealt" and not (good and fr.h == fair.h and fr.st == "dealt") then
-      Deal.close(s, "unseen", nil, fair)
+    how = how or { fresh = true }
+    local fr, fair = m and m.fr, s.fair
+    local good = fits(s, m, how)
+    local pushed = not (how.fresh or how.changed or how.asked) and m.q ~= how.q
+    local same = good and fair ~= nil and fr.h == fair.h
+    if same then
+      local ok, why = agrees(fair, fr)
+      if not ok and how.changed then
+        same = false -- a new host's round under my round's number: another round
+      elseif not ok and why == "round" then
+        foul(fair, "round")
+      end
+    end
+    if fair and fair.stage ~= "done" then
+      local still = m.q == how.q and not how.changed and not (same and fr.st == fair.stage)
+      if pushed or still then foul(fair, "round") end
+      -- A hand I still held open that the host has closed or replaced: I missed its end.
+      local gone = not same or (fair.stage == "dealt" and fr.st ~= "dealt")
+      if gone and (fair.stage == "dealt" or fair.foul) then Deal.close(s, "unseen", nil, fair) end
     end
     if not good then
       s.fair = nil
@@ -691,7 +747,7 @@ ns.Ext.fair = {
       if type(fr) == "table" and isInt(fr.n) and fr.n >= 0 then s.fairN = fr.n end
       return
     end
-    if fair and fair.h == fr.h then
+    if same then
       for seat, c in pairs(fr.c) do sawCommit(s, fair, seat, c) end
       fair.commits, fair.stage = copy(fr.c), fr.st
       -- Events I missed: I cannot replay this hand.
@@ -703,7 +759,8 @@ ns.Ext.fair = {
     else
       fair = {
         h = fr.h, d = fr.d, p = copy(fr.p), dealer = s.seats[fr.d] or nil, commits = copy(fr.c),
-        stage = fr.st, priv = {}, fresh = true, held = {}, reload = how and how.fresh or nil,
+        stage = fr.st, priv = {}, fresh = true, held = {}, reload = how.fresh or nil,
+        foul = pushed and "round" or nil,
       }
       for seat, c in pairs(fr.c) do sawCommit(s, fair, seat, c) end
       s.fair = fair
@@ -724,6 +781,14 @@ ns.Ext.fair = {
   -- hand is over waits for the reveal (after the last hand of a match nothing
   -- else would; mid-match `need` finds the wait armed), and takes over a
   -- dealt hand once its snapshots are out.
+  -- Member: an event of my host that does not apply. In a hand I have seen
+  -- whole so far that is evidence, not bad luck: the resync that follows must
+  -- not turn the hand into "unseen".
+  refused = function(s)
+    local fair = s.fair
+    if fair and fair.stage == "dealt" and fair.base then foul(fair, "play") end
+  end,
+
   hostChanged = function(s)
     if s.role ~= "host" then return stopWait(s) end
     local fair = s.fair

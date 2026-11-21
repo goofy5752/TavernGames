@@ -163,3 +163,145 @@ describe("deal cheats: the shuffle", function()
     sim:run(1); eq(a.session.seq, q)
   end)
 end)
+
+-- The last snapshot the host sent to `name`, as a message of its own.
+local function snapshotFor(name)
+  for i = #sim.sent, 1, -1 do
+    local m = sim.sent[i]
+    if m.msg.t == "SNP" and m.target == name then return ns.Util.copy(m.msg) end
+  end
+  error("no snapshot for " .. name)
+end
+
+-- `cl` loses every EV until the returned function is called.
+local function deaf(cl)
+  cl.receive = function(self, channel, sender, msg)
+    if msg.t == "EV" then return end
+    return ns.Client.receive(self, channel, sender, msg)
+  end
+  return function() cl.receive = nil end
+end
+
+describe("deal cheats: the round a snapshot brings", function()
+  -- The shuffle of hand 1 held open (b never commits); c's snapshot of it.
+  local function shuffling()
+    setup(true); sim:offline(B); a:startGame(); sim:run(1)
+    eq({ a.session.fair.stage, c.session.fair.stage }, { "commit", "commit" })
+    a.session:snapshotTo(C); sim:run(0)
+    return snapshotFor(C)
+  end
+
+  it("a round whose participants are not the seated players is refused; a deal on it is нередовна", function()
+    local m = shuffling()
+    eq(m.fr.p, { 1, 2, 3 })
+    m.fr.p, m.fr.d, m.fr.h, m.fr.c = { 1, 2 }, 1, m.fr.h + 1, {}; m.q = m.q + 1 -- c is no seed source any more
+    c.session.asked = true
+    c:receive("WHISPER", A, m)
+    eq(c.session.fair, nil)
+    local s = c.session
+    c:receive("WHISPER", A, { v = 1, t = "EV", tid = tid, e = s.epoch, q = s.seq + 1, seat = 0, a = { k = "deal", deck = {} } })
+    eq({ last(c).verdict, last(c).why }, { "bad", "commit" })
+  end)
+
+  it("a round with another dealer than the turn gives, a seat that does not exist or a wrong count is refused", function()
+    for _, change in ipairs{
+      function(fr) fr.d = 1 end,                       -- the host makes itself the dealer
+      function(fr) fr.p = { 1, 2, 9 } end,
+      function(fr) fr.n = -1 end,
+      function(fr) fr.n = 0.5 end,
+      function(fr) fr.h = fr.h + 100 end,              -- a round from the future
+    } do
+      local m = shuffling()
+      eq(m.fr.d, 2)
+      change(m.fr); m.fr.h = m.fr.h + 1; m.fr.c = {}; m.q = m.q + 1; c.session.asked = true
+      c:receive("WHISPER", A, m)
+      eq(c.session.fair, nil)
+    end
+    -- The same snapshot unchanged is taken.
+    local m = shuffling()
+    c.session.asked = true; c:receive("WHISPER", A, m)
+    eq(c.session.fair.h, m.fr.h)
+  end)
+
+  it("another round that already carries a commit under my seat: нередовна (mine)", function()
+    local m = shuffling()
+    local mine = c.session.fair.own; ok(mine)
+    m.fr.h, m.q = m.fr.h + 1, m.q + 1; m.fr.c = { [3] = mine }
+    c.session.asked = true
+    c:receive("WHISPER", A, m)
+    eq({ c.session.fair.h, c.session.fair.foul }, { m.fr.h, "mine" })
+    -- A client that has just logged in again cannot know: it takes the commit.
+    local c2 = sim:relog(C); sim:run(2)
+    eq(c2.session.fair.stage, "commit"); ok(c2.session.fair.commits[3]); eq(c2.session.fair.foul, nil)
+  end)
+
+  it("the same round with other participants or another dealer: нередовна (round)", function()
+    local m = shuffling()
+    m.fr.d = 3; m.fr.n = 1
+    c.session.asked = true; c:receive("WHISPER", A, m)
+    eq({ c.session.fair.d, c.session.fair.foul }, { 2, "round" })
+  end)
+
+  it("a snapshot I did not ask for that skips events of a hand I was watching whole: нередовна (round)", function()
+    setup(true); a:startGame(); sim:run(1); auto(1)
+    local hear = deaf(c); auto(1); hear()
+    a.session:snapshotTo(C); sim:run(1)                              -- pushed on me
+    eq(c.session.seq, a.session.seq)
+    finish(); sim:run(1)
+    eq({ last(c).verdict, last(c).why }, { "bad", "round" }); eq(last(a).verdict, "ok")
+  end)
+
+  it("a snapshot I asked for after losing an event: не съм я гледал цялата", function()
+    setup(true); a:startGame(); sim:run(1); auto(1)
+    local hear = deaf(c); auto(1); hear()
+    c.session:requestSync(); sim:run(1)
+    eq(c.session.seq, a.session.seq)
+    finish(); sim:run(1)
+    eq({ last(c).verdict, last(c).why }, { "unseen", nil })
+  end)
+
+  it("a snapshot of the very event I am at that drops my hand or ends it: нередовна (round), not unseen", function()
+    for _, change in ipairs{
+      function(fr) return { n = fr.n } end,                          -- no round at all
+      function(fr) fr.st = "done"; return fr end,
+      function(fr) fr.h = fr.h + 1; return fr end,
+    } do
+      setup(true); a:startGame(); sim:run(1); auto(1)
+      a.session:snapshotTo(C); sim:run(0)
+      local m = snapshotFor(C); eq(m.q, c.session.seq)
+      local h = c.session.fair.h
+      m.fr = change(m.fr); c.session.asked = true
+      c:receive("WHISPER", A, m)
+      eq({ last(c).h, last(c).verdict, last(c).why }, { h, "bad", "round" })
+    end
+  end)
+
+  it("an event my engine refuses during a hand is evidence: нередовна (play), not unseen", function()
+    setup(true); a:startGame(); sim:run(1); auto(1)
+    local s = c.session
+    local desync = 0; c:on("desync", function() desync = desync + 1 end)
+    c:receive("WHISPER", A, { v = 1, t = "EV", tid = tid, e = s.epoch, q = s.seq + 1, seat = 1, a = { k = "play", i = 12, c = "AD" } })
+    eq(desync, 1); eq(c.session.fair.foul, "play")
+    sim:run(1); finish(); sim:run(1)
+    eq({ last(c).verdict, last(c).why }, { "bad", "play" })
+  end)
+
+  it("with no replay left the shuffle and every face I saw are still checked against the revealed deck", function()
+    setup()
+    local real = ns.Deck.permutation
+    ns.Deck.permutation = function(key, n) local p = real(key, n); p[1], p[2] = p[2], p[1]; return p end
+    a:startGame(); sim:run(1); ns.Deck.permutation = real
+    d:watch(tid); sim:run(1)                                         -- came mid-hand: nothing to replay
+    eq(d.session.fair.base, nil)
+    finish(); sim:run(1)
+    eq({ last(d).verdict, last(d).why }, { "bad", "deal" })
+    -- The honest case stays "unseen" (deal_audit_test: a watcher who came mid-hand).
+  end)
+
+  it("an open whose number is not the event's own is refused", function()
+    setup(true); sim:offline(B); a:startGame(); sim:run(1)
+    local s = c.session
+    eq(ns.Ext.fair.table(s, { k = "fair", op = "open", h = s.seq, d = 2, p = { 1, 2, 3 } }), nil)
+    ok(ns.Ext.fair.table(s, { k = "fair", op = "open", h = s.seq + 1, d = 2, p = { 1, 2, 3 } }))
+  end)
+end)

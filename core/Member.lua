@@ -31,7 +31,7 @@ end
 function Session:requestSync()
   local now = self.client.env.now()
   if self.lastSyn and now - self.lastSyn < C.SYN_MIN_GAP then return end
-  self.lastSyn = now
+  self.lastSyn, self.asked = now, true
   if self.stale and not self.mySeat then
     self.client:send("WHISPER", self.host, Session.message("WAT", { tid = self.tid }))
   else
@@ -47,6 +47,13 @@ function Member.adopt(client, sender, m)
   local fresh = client.session == nil -- no memory of this table (a relog, or I just came)
   local s = client.session or setmetatable({ client = client }, Session)
   local prevState, prevHost = s.state, s.host
+  -- How this snapshot came, for the extensions: fresh, from a host new to me
+  -- (changed), answering a request of mine (asked: SYN, WAT or SIT), with a
+  -- seat I did not have (sat); q = my seq before it.
+  local how = {
+    fresh = fresh, changed = not fresh and (prevHost ~= sender or s.epoch ~= m.e or s.stale == true),
+    asked = s.asked == true, sat = seat ~= nil and s.mySeat == nil, q = s.seq,
+  }
   if s.role == "host" then Succession.demote(s) end
   s.tid, s.role, s.mySeat, s.host = m.tid, seat and "player" or "watcher", seat, sender
   s.epoch, s.seq, s.seats = m.e, m.q, copy(t.s)
@@ -58,14 +65,14 @@ function Member.adopt(client, sender, m)
   s.resultSeen = s.state ~= nil and engine.result ~= nil and engine.result(s.state) ~= nil
   s.status = t.st == "live" and "live" or (s.state and "aborted" or "open")
   s.deadline = type(m.left) == "number" and client.env.now() + m.left or nil
-  s.stale, s.sitAsked = nil, nil
+  s.stale, s.sitAsked, s.asked = nil, nil, nil
   s.invited = {}
   s:addInvited(m.inv)
   client.pending, client.gaveUp = nil, nil
   client.session = s
   -- The extensions hear of a new host and of the state this snapshot replaced.
   if prevHost and prevHost ~= sender then s:hook("hostChanged") end
-  s:hook("adopted", prevState, m, { fresh = fresh })
+  s:hook("adopted", prevState, m, how)
   s:armAuto()
   if not s.pingTimer then s:schedulePing() end
   Succession.watchHost(s)
@@ -119,6 +126,7 @@ local function onEvent(client, sender, m)
   if m.e ~= s.epoch or type(m.q) ~= "number" or m.q <= s.seq then return end
   if m.q > s.seq + 1 then return s:requestSync() end
   if not s:apply(m.seat, m.a) then
+    s:hook("refused", m.seat, m.a)
     client.events:emit("desync", s.tid)
     return s:requestSync()
   end

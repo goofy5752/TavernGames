@@ -427,7 +427,7 @@ function Session.request(client, kind, tid, seat)
   if s and (s.tid ~= tid or s.role == "host") then return refuse(client, tid, "busy") end
   local host = s and s.host
   client.gaveUp = nil
-  if s then s.sitAsked = kind == "SIT" and client.env.now() or nil end -- see Party.inviteFrom
+  if s then s.sitAsked, s.asked = kind == "SIT" and client.env.now() or nil, true end -- see Party.inviteFrom, Member.adopt
   if not host then
     local rec = client.lobby:get(tid)
     if not rec then return refuse(client, tid, "gone") end
