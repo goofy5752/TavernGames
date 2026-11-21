@@ -203,7 +203,7 @@ describe("ledger store", function()
     for n = 1, 5000 do
       local h = string.format("%08x%08x", n * 7919, n)
       store.ev[M][n] = { i = Ledger.id(M, n), k = "R", at = NOW, gid = "t/" .. n, g = "ttt", n = { M, I }, w = { 1 }, l = { 2 }, h = h }
-      sum = (sum + tonumber(h:sub(1, 8), 16)) % 4294967296
+      sum = (sum + tonumber(h:sub(1, 6), 16) * 2 ^ 24 + tonumber(h:sub(7, 12), 16)) % 2 ^ 48
     end
     store.x[M] = 0 -- a stale saved x is ignored
     local calls, hex = 0, ns.Sha256.hex
@@ -211,10 +211,12 @@ describe("ledger store", function()
     local s, err = pcall(function()
       local l = Ledger.new(store, I, function() return NOW end)
       eq(calls, 0, "a load hashes nothing")
-      eq(l:vector()[M].x, string.format("%06x", sum % 16777216))
+      local function x12(v) return string.format("%06x%06x", math.floor(v / 2 ^ 24), v % 2 ^ 24) end
+      eq(l:vector()[M].x, x12(sum)); eq(#l:vector()[M].x, 12)
       eq(l:add(paid(5001), M), "new"); eq(calls, 1, "one add hashes one body")
-      sum = (sum + tonumber(l:get(M .. ":5001").h:sub(1, 8), 16)) % 4294967296
-      eq(l:vector()[M].x, string.format("%06x", sum % 16777216))
+      local h = l:get(M .. ":5001").h
+      sum = (sum + tonumber(h:sub(1, 6), 16) * 2 ^ 24 + tonumber(h:sub(7, 12), 16)) % 2 ^ 48
+      eq(l:vector()[M].x, x12(sum))
       eq(l:vector()[M].n, 5001)
       calls = 0
       local d = l:digest(); eq(l:digest(), d); eq(calls, 1, "the digest is cached")
@@ -237,7 +239,7 @@ describe("ledger store", function()
     for _, n in ipairs({ 1, 2, 3, 5 }) do
       a:add(paid(n), M)
       local x = a:vector()[M].x
-      ok(x:match("^%x%x%x%x%x%x$")); ok(not xs[x], "x changes with every add"); xs[x] = true
+      ok(x:match("^" .. ("%x"):rep(12) .. "$")); ok(not xs[x], "x changes with every add"); xs[x] = true
     end
     eq(a:vector()[M].n, 3)
     a:add(paid(4), M); eq(a:vector()[M].n, 5); ok(not xs[a:vector()[M].x])
@@ -264,8 +266,9 @@ describe("ledger store", function()
     eq(ids(up), { M .. ":4", M .. ":5", M .. ":5" }); ok(U.byteLess(up[2].h, up[3].h), "a twin after its sibling")
     local list = l:list(M)
     eq(#list, 6)
-    local first = l:get(M .. ":1"); eq(list[1], "1." .. first.h:sub(1, 6))
-    for _, s in ipairs(list) do ok(s:match("^%d+%.%x%x%x%x%x%x$"), s) end
+    local first = l:get(M .. ":1"); eq(list[1], "1." .. first.h)
+    for _, s in ipairs(list) do ok(s:match("^%d+%." .. ("%x"):rep(16) .. "$"), s) end
+
     eq(l:above(P, 0), {}); eq(l:list(P), {})
   end)
   it("each walks authors in byte order, then n, then h", function()

@@ -57,6 +57,9 @@ function Ledger.canon(e)
   return concat(out, "|")
 end
 function Ledger.hash(e) return Sha256.hex(Ledger.canon(e)):sub(1, 16) end
+-- A stored body as an item of a list (L:list, the sync's LID): "<n>.<its 16-hex h>".
+function Ledger.item(b) return select(2, Ledger.author(b.i)) .. "." .. b.h end
+
 -- The entry as sent: its canonical fields only (lists copied), an X's denied hash as h.
 function Ledger.wire(e)
   local w = {}

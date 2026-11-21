@@ -4,7 +4,7 @@ local _, ns = ...
 -- The store is a plain table the caller owns (saved variables):
 --   ev[author][n] = the first body of an id; tw[author][n] = its further
 --   versions (at most 3); me[name] = {seq, born}, my counter; x[author] = the
---   sum mod 2^32 of the first 8 hex of each of that author's bodies' h.
+--   sum mod 2^48 of the first 12 hex of each of that author's bodies' h (exact in a double).
 -- A load files every sound body again (hashing nothing) and recomputes x; a
 -- body that is not sound (no 16-hex h, an X without r or rh, filed under
 -- another id, a copy of a body already filed, a fifth version) is dropped. The
@@ -18,7 +18,7 @@ local _, ns = ...
 -- the ids of mine the store holds at load are adopted in ascending order.
 local Ledger, C, Util, Sha256 = ns.Ledger, ns.Const, ns.Util, ns.Sha256
 local concat, sort, byteLess = table.concat, table.sort, ns.Util.byteLess
-local BODIES_MAX, W32, W24 = 4, 4294967296, 16777216
+local BODIES_MAX, W48, W24 = 4, 281474976710656, 16777216
 
 local Store = {}; Store.__index = Store
 Ledger.Store = Store -- core/LedgerDeny.lua adds Store:denied
@@ -42,7 +42,8 @@ local function sound(b, a, n)
   local ba, bn = Ledger.author(b.i)
   return ba == a and bn == n
 end
-local function word(h) return tonumber(h:sub(1, 8), 16) end
+-- The first 12 hex of h as a number, in two halves: tonumber(s, 16) stops at 2^32 - 1 (strtoul).
+local function word(h) return tonumber(h:sub(1, 6), 16) * W24 + tonumber(h:sub(7, 12), 16) end
 local function whole(v) return type(v) == "number" and v == math.floor(v) end
 
 -- The ledger over `store`, for me; `epoch` is my clock. A load hashes nothing.
@@ -109,7 +110,7 @@ function Store:move(a, n, b, gone)
     s.ev[a][n] = b
   end
   if #tw == 0 then s.tw[a][n] = nil end
-  s.x[a] = ((s.x[a] or 0) + (gone and -1 or 1) * word(b.h)) % W32
+  s.x[a] = ((s.x[a] or 0) + (gone and -1 or 1) * word(b.h)) % W48
   self:advance(a)
 end
 -- The body held under (a, n) with b's h and canonical form, or nil.
@@ -191,11 +192,13 @@ end
 function Store:each(fn)
   for _, a in ipairs(keys(self.store.ev, byteLess)) do for _, e in ipairs(self:above(a, 0)) do fn(e) end end
 end
--- {[author] = {n, x}}: n the highest k with 1..k all held, x the low 24 bits of the sum as 6 hex.
+-- {[author] = {n, x}}: n the highest k with 1..k all held, x the 48-bit sum as 12 hex
+-- (two halves of 24 bits: %x of a number above 2^32 is not safe in Lua 5.1).
 function Store:vector()
   local out = {}
   for a, byN in pairs(self.store.ev) do
-    if next(byN) then out[a] = { n = self.run[a] or 0, x = string.format("%06x", self.store.x[a] % W24) } end
+    local x = self.store.x[a]
+    if next(byN) then out[a] = { n = self.run[a] or 0, x = string.format("%06x%06x", math.floor(x / W24), x % W24) } end
   end
   return out
 end
@@ -215,12 +218,13 @@ function Store:above(a, n)
   end
   return out
 end
--- {"<seq>.<h6>", ...}, one per body of the author.
+-- {"<seq>.<h>", ...} (Ledger.item), one per body of the author.
 function Store:list(a)
   local out = {}
-  for j, b in ipairs(self:above(a, 0)) do out[j] = select(2, Ledger.author(b.i)) .. "." .. b.h:sub(1, 6) end
+  for j, b in ipairs(self:above(a, 0)) do out[j] = Ledger.item(b) end
   return out
 end
+
 -- The highest number held for an author, holes and denied entries included.
 function Store:seen(a) return self.top[a] or 0 end
 -- My counter is at least n -> true; false (it stays) when n is more than

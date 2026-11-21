@@ -36,6 +36,7 @@ core/LedgerNet.lua
 core/LedgerSend.lua
 core/LedgerQueue.lua
 core/LedgerSync.lua
+core/LedgerSyncPage.lua
 core/Presence.lua
 core/Lobby.lua
 core/Succession.lua

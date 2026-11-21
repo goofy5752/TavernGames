@@ -149,7 +149,7 @@ describe("ledger sync: the exchange", function()
     sim:run(40)
     eq(#whispers(sim, ANA, "LVC", mark), 1)
     local back = whispers(sim, BOR, "LVC r", mark)
-    eq(#back, 1); eq(back[1].msg.r, true); eq(back[1].msg.a, { [DARA] = { n = 0, x = "000000" } })
+    eq(#back, 1); eq(back[1].msg.r, true); eq(back[1].msg.a, { [DARA] = { n = 0, x = "000000000000" } })
     eq(c[ANA].ledger:digest(), c[BOR].ledger:digest())
     eq(holds(c[BOR], DARA .. ":3"), 1); eq(holds(c[ANA], ELENA .. ":5"), 1)
   end)
@@ -163,6 +163,7 @@ describe("ledger sync: the exchange", function()
     local ids = {}
     for _, s in ipairs(whispers(sim, BOR, "LEV", mark, ANA)) do for _, e in ipairs(s.msg.ev) do ids[#ids + 1] = e.i end end
     eq(ids, { VERA .. ":4", VERA .. ":5" }) -- 5 again, a dup
+    eq(c[ANA].ledgerSync.stats.got, 1) -- stored ones only, the dup not counted
     eq(holds(c[ANA], VERA .. ":4"), 1); eq(c[ANA].ledger:digest(), c[BOR].ledger:digest())
   end)
 end)
@@ -285,9 +286,10 @@ describe("ledger sync: limits", function()
     local sim, c = world(ANA, BOR)
     give(c[BOR], pays(ZH, 1, 400))
     local mark = #sim.sent
-    -- A vector that lacks every author, whispered by hand under Ана's name: at most 300 go
-    -- (50 batches in 100 s, before the heartbeat at 120 s tells Ана that she really lacks them).
+    -- A vector that lacks every author, whispered by hand under Ана's name, then its f (so Борис
+    -- waits for nothing): at most 300 go (50 batches in 100 s, before the heartbeat at 120 s).
     c[BOR].ledgerSync:receive(ANA, { v = 1, t = "LVC", a = {} })
+    c[BOR].ledgerSync:receive(ANA, { v = 1, t = "LEV", ev = {}, f = true })
     sim:run(110)
     local lev = whispers(sim, BOR, "LEV", mark, ANA)
     eq(entries(lev), 300); eq(lev[#lev].msg.f, true)
@@ -311,6 +313,8 @@ describe("ledger sync: limits", function()
     a:receive("WHISPER", BOR, { v = 1, t = "LEV", ev = { pay(BOR, 1) } }); sim:run(1)
     local own = a.ledger:get(BOR .. ":1")
     ok(own, "the sender's own: taken"); eq(own.dr, true)
+    a:receive("WHISPER", BOR, { v = 1, t = "LEV", ev = pays(BOR, 4, 8) }); sim:run(1)
+    eq(a.ledger:seen(BOR), 1) -- outside an exchange at most LIVE_MAX (4) of his own, as on GUILD
     -- Inside an open exchange with Борис (Ана asks him: he holds 60 entries she lacks).
     give(c[BOR], pays(GOSHO, 1, 60))
     hello(sim, BOR)
@@ -344,7 +348,7 @@ describe("ledger sync: limits", function()
     sim:run(60)
     eq(#whispers(sim, ANA, "LVC", mark), 0)
     inside[ANA] = false
-    sim:run(25)
+    while #whispers(sim, BOR, "LEV", mark) < 2 and sim.clock < 120 do sim:run(1) end
     eq(#whispers(sim, ANA, "LVC", mark), 1)
     local lev = whispers(sim, BOR, "LEV", mark)
     ok(#lev >= 2 and #lev < 10, "running: " .. #lev)
@@ -522,11 +526,11 @@ describe("ledger sync: the budget (packed with the real wire)", function()
       end
     end
     ok(live >= 2, "cut by bytes: " .. live); eq(sent, 4)
-    -- A vector of 60 authors with 25-byte names is one page.
+    -- A vector of 45 authors with 25-byte names and 4-digit n is one page (x is 12 hex).
     local v = {}
-    for _ = 1, 60 do v[named(25)] = { n = 1000 + rnd(4000), x = string.format("%06x", rnd(16777216)) } end
+    for _ = 1, 45 do v[named(25)] = { n = 1000 + rnd(4000), x = string.format("%06x%06x", rnd(16777216), rnd(16777216)) } end
     local size = packed({ v = 1, t = "LVC", a = v })
-    ok(size <= 1500, "LVC 60: " .. size)
+    ok(size <= 1500, "LVC 45: " .. size)
     -- HI grows by at most 16 packed bytes.
     local hi = c[ANA].presence:hi(false)
     local with = packed(hi)
@@ -558,21 +562,24 @@ describe("ledger sync: the budget (packed with the real wire)", function()
     eq(c[BOR].ledger:seen(authors[100]), 1); eq(c[ANA].ledger:digest(), c[BOR].ledger:digest())
   end)
 
-  it("a vector of 60 authors with 25-byte names is one page", function()
-    local sim, c = world(ANA, BOR)
-    for k = 1, 60 do give(c[ANA], { { i = Ledger.id(named(25), 1), k = "P", at = EPOCH0, f = ZH, c = 100 + k, how = "hand" } }) end
-    local mark = #sim.sent
-    hello(sim, ANA, BOR)
-    sim:run(40)
-    local pages = whispers(sim, ANA, "LVC", mark, BOR)
-    eq(#pages, 1); eq(pages[1].msg.m, nil)
-    local count = 0
-    for _ in pairs(pages[1].msg.a) do count = count + 1 end
-    eq(count, 60); ok(packed(pages[1].msg) <= 1500, "LVC 60: " .. packed(pages[1].msg))
+  it("a vector of 45 authors with 25-byte names is one page; of 60, two (x is 12 hex)", function()
+    for _, case in ipairs({ { 45, 1 }, { 60, 2 } }) do
+      local sim, c = world(ANA, BOR)
+      for k = 1, case[1] do give(c[ANA], { { i = Ledger.id(named(25), 1), k = "P", at = EPOCH0, f = ZH, c = 100 + k, how = "hand" } }) end
+      local mark = #sim.sent
+      hello(sim, ANA, BOR)
+      sim:run(40)
+      local pages, count = whispers(sim, ANA, "LVC", mark, BOR), 0
+      eq(#pages, case[2]); eq(pages[#pages].msg.m, nil)
+      for _, s in ipairs(pages) do
+        for _ in pairs(s.msg.a) do count = count + 1 end
+        ok(packed(s.msg) <= 1500, "LVC page: " .. packed(s.msg))
+      end
+      eq(count, case[1]); eq(c[ANA].ledger:digest(), c[BOR].ledger:digest())
+    end
   end)
 
   it("the rate: 60 entries in 10 batches, two seconds apart", function()
-
     local sim, c = world(ANA, BOR, VERA)
     give(c[BOR], pays(ZH, 1, 60))
     local mark = #sim.sent
@@ -609,15 +616,20 @@ describe("ledger sync: the budget (packed with the real wire)", function()
     end
     local mark = #sim.sent
     hello(sim, BOR)
-    sim:run(25)
+    while #whispers(sim, BOR, "LEV", mark) == 0 and sim.clock < 60 do sim:run(1) end
+    local first = whispers(sim, BOR, "LEV", mark)[1].at
+    sim:run(25) -- still nothing: the callback is held
     eq(#whispers(sim, BOR, "LEV", mark), 1)
-    sim:run(20) -- still nothing: the callback is held (Ана gives up 30 s after the batch)
-    eq(#whispers(sim, BOR, "LEV", mark), 1)
-    env.send = send
     held[1]()
     sim:run(0)
-    ok(#whispers(sim, BOR, "LEV", mark) >= 2, "the next one after done")
+    local lev = whispers(sim, BOR, "LEV", mark)
+    eq(#lev, 2); eq(lev[2].at, first + 25) -- the next one right after done
+    -- A done that never comes: the next whisper goes LEDGER_SYNC_TIMEOUT s later.
+    sim:run(C.LEDGER_SYNC_TIMEOUT - 1); eq(#whispers(sim, BOR, "LEV", mark), 2)
+    sim:run(1); lev = whispers(sim, BOR, "LEV", mark)
+    eq(#lev, 3); eq(lev[3].at, lev[2].at + C.LEDGER_SYNC_TIMEOUT)
   end)
+
 
   it("the GUILD parts: my live LEVs and sync HI stay within 10 parts in any 10 s", function()
     local sim, c = world(ANA, BOR)
@@ -683,7 +695,131 @@ describe("ledger sync: the budget (packed with the real wire)", function()
     while a.ledgerSync:busy() do sim:run(1) end
     ok(sim.clock < start + C.LEDGER_ADOPT_WAIT, "before the window would end by itself")
     eq(a.ledgerNet:adopting(), false)
+    -- Serving someone else's exchange does not close it.
+    local d = sim:add(DARA)
+    eq(d.ledgerNet:adopting(), true)
+    d.ledgerSync:receive(BOR, { v = 1, t = "LVC", a = {} })
+    d.ledgerSync:receive(BOR, { v = 1, t = "LEV", ev = {}, f = true })
+    sim:run(1)
+    eq(d.ledgerSync:busy(), false); eq(d.ledgerNet:adopting(), true)
+
+  end)
+end)
+
+describe("ledger sync: fix round 1", function()
+  -- Борис serves Ана's hand-sent exchange; `page` is one more page of a vector that promises more.
+  local page = { v = 1, t = "LVC", a = {}, m = true }
+
+  it("I1: only a valid word of the partner keeps my exchange open", function()
+    local sim, c = world(ANA, BOR)
+    local b = c[BOR]
+    b.ledgerSync:receive(ANA, U.copy(page))
+    local x = b.ledgerSync.serve
+    ok(x and x.peer == ANA, "Борис serves Ана")
+    for _ = 1, 3 do -- empty LEVs without f and LIDs of no LID asked for, every 10 s
+      sim:run(10)
+      b.ledgerSync:receive(ANA, { v = 1, t = "LEV", ev = {} })
+      b.ledgerSync:receive(ANA, { v = 1, t = "LID", au = VERA, l = {} })
+    end
+    eq(b.ledgerSync.serve, nil) -- given up 30 s after the last page
+    eq(x.v, nil) -- its pages are dropped
+  end)
+
+  it("I1: an exchange lives at most LEDGER_EX_MAX s; then that peer waits a full peer gap", function()
+    local sim, c = world(ANA, BOR)
+    local b = c[BOR]
+    b.ledgerSync:receive(ANA, U.copy(page))
+    local opened = sim.clock
+    for _ = 1, 5 do sim:run(20); b.ledgerSync:receive(ANA, U.copy(page)) end -- a valid page every 20 s
+    sim:run(opened + C.LEDGER_EX_MAX - 1 - sim.clock); ok(b.ledgerSync.serve, "open at 119 s")
+    sim:run(1); eq(b.ledgerSync.serve, nil)
+    local closed = sim.clock
+    sim:run(C.LEDGER_PEER_GAP - C.LEDGER_JITTER_MIN - 1)
+    b.ledgerSync:receive(ANA, U.copy(page)); eq(b.ledgerSync.serve, nil) -- within the gap from the close
+    b.ledgerSync:receive(ANA, { v = 1, t = "LEV", ev = { pay(VERA, 1) } })
+    eq(b.ledger:seen(VERA), 0) -- no exchange: no foreign entry
+    sim:run(closed + C.LEDGER_PEER_GAP - sim.clock)
+    b.ledgerSync:receive(ANA, U.copy(page)); ok(b.ledgerSync.serve, "served again after the gap")
+  end)
+
+  it("I1: past LEDGER_EX_PAGES pages of a kind the exchange closes, as asker and as responder", function()
+    local sim, c = world(ANA, BOR)
+    local a, b = c[ANA], c[BOR]
+    for _ = 1, C.LEDGER_EX_PAGES do b.ledgerSync:receive(ANA, U.copy(page)) end
+    local x = b.ledgerSync.serve
+    ok(x, "10 pages: open")
+    b.ledgerSync:receive(ANA, U.copy(page)); eq(b.ledgerSync.serve, nil); eq(x.v, nil)
+    -- As asker: Борис answers with a vector that never ends.
+    give(a, { pay(ZH, 1) }) -- her digest differs from the one Борис last told her
+    sim:offline(BOR)
+    a.ledgerSync:begin(BOR)
+    ok(a.ledgerSync.ask, "Ана asks Борис")
+    for _ = 1, C.LEDGER_EX_PAGES + 1 do a.ledgerSync:receive(BOR, { v = 1, t = "LVC", a = {}, r = true, m = true }) end
+    eq(a.ledgerSync.ask, nil); eq(a.ledgerSync.last[BOR], sim.clock)
+  end)
+
+  it("I2: the responder serves only the byte-lower name, and not again within the peer gap", function()
+    local sim, c = world(ANA, BOR, VERA)
+    local b = c[BOR]
+    b.ledgerSync:receive(VERA, { v = 1, t = "LVC", a = {} }) -- Вера is the higher name
+    eq(b.ledgerSync.serve, nil)
+    b.ledgerSync:receive(VERA, { v = 1, t = "LEV", ev = { pay(ZH, 1) } })
+    eq(b.ledger:seen(ZH), 0)
+    local mark = #sim.sent
+    b.ledgerSync:receive(ANA, { v = 1, t = "LVC", a = {} })
+    b.ledgerSync:receive(ANA, { v = 1, t = "LEV", ev = {}, f = true })
+    sim:run(1)
+    eq(b.ledgerSync.serve, nil) -- served and done
+    sim:run(10)
+    b.ledgerSync:receive(ANA, { v = 1, t = "LVC", a = {} }); eq(b.ledgerSync.serve, nil)
+    b.ledgerSync:receive(ANA, { v = 1, t = "LEV", ev = { pay(ZH, 2) } }); eq(b.ledger:seen(ZH), 0)
+    eq(#whispers(sim, BOR, "LEV", mark), 1) -- one f for the one exchange
+    sim:run(C.LEDGER_PEER_GAP)
+    b.ledgerSync:receive(ANA, { v = 1, t = "LVC", a = {} }); ok(b.ledgerSync.serve, "after the gap")
+  end)
+
+  it("I3: LID items carry the full hash; a body whose h shares 6 hex with another still syncs", function()
+    local real = Ledger.hash
+    local mine, forged = pay(VERA, 4, 500), pay(VERA, 4, 900)
+    local rh = real(mine)
+    local fc = Ledger.canon(forged)
+    Ledger.hash = function(e) -- a ground collision of the first 6 hex
+      local h = real(e)
+      return Ledger.canon(e) == fc and rh:sub(1, 6) .. h:sub(7) or h
+    end
+    local okRun, err = pcall(function()
+      local sim, c = world(ANA, BOR)
+      give(c[ANA], pays(VERA, 1, 3)); give(c[ANA], { mine })
+      give(c[BOR], pays(VERA, 1, 3)); give(c[BOR], { forged })
+      eq(c[BOR].ledger:get(VERA .. ":4").h:sub(1, 6), rh:sub(1, 6))
+      local mark = #sim.sent
+      hello(sim, ANA, BOR)
+      sim:run(40)
+      for _, cl in ipairs({ c[ANA], c[BOR] }) do eq(holds(cl, VERA .. ":4"), 2) end
+      for _, s in ipairs(whispers(sim, ANA, "LID", mark)) do
+        for _, it in ipairs(s.msg.l) do ok(it:match("^%d+%." .. ("[0-9a-f]"):rep(16) .. "$"), it) end
+      end
+      eq(c[ANA].ledger:digest(), c[BOR].ledger:digest())
+    end)
+    Ledger.hash = real
+    ok(okRun, err)
+  end)
+
+  it("I3: x is 12 hex: a body whose h is 000000 at hex 3-8 still changes it", function()
+    local real = Ledger.hash
+    local e = pay(VERA, 1)
+    local okRun, err = pcall(function()
+      Ledger.hash = function(b) local h = real(b); return h:sub(1, 2) .. "000000" .. h:sub(9) end
+      local L = Ledger.new({}, "Никой", function() return EPOCH0 end)
+      L:add(pay(VERA, 2), "Някой")
+      local before = L:vector()[VERA].x
+      L:add(e, "Някой")
+      eq(#before, 12); ok(L:vector()[VERA].x ~= before, "x moved")
+    end)
+    Ledger.hash = real
+    ok(okRun, err)
   end)
 end)
 
 ns.LedgerNet.size = stand
+
