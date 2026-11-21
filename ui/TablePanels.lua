@@ -98,7 +98,7 @@ local function renderFair(v, s)
   -- The dealer's seat emptied during the deal (the hand is void soon): no name to show.
   if key == "fair.dealing" and arg == nil then key = "fair.shuffle" end
   local text = arg ~= nil and L(key, arg, arg2) or L(key)
-  local claimer = (key == "fair.last" or key:sub(1, 9) == "fair.void") and ns.Deal.claim(s) or nil
+  local claimer = (key == "fair.last" or key == "fair.lapse" or key:sub(1, 9) == "fair.void") and ns.Deal.claim(s) or nil
   if claimer then text = text .. " · " .. L("fair.claim", claimer) end
   line.text:SetText(text)
   local verdict = key == "fair.last" and s.fairLast.verdict
@@ -128,13 +128,13 @@ local function fairTooltip(tip)
   if last and last.verdict == "bad" then
     text = L("fair.tip.bad", known("fair.why." .. tostring(last.why)) or L("fair.why.unknown"))
   elseif last then
-    text = known("fair.tip." .. tostring(last.verdict))
+    text = known("fair.tip." .. tostring(last.lapse and "lapse" or last.verdict))
   end
   local r, g, b = Theme.rgb("ink")
   tip:SetText(text or TableFrame.view.fairLine.text:GetText(), r, g, b, 1, true)
   local key = ns.Deal.status(s)
   local claimer, claim = ns.Deal.claim(s)
-  if claimer and (key == "fair.last" or (key or ""):sub(1, 9) == "fair.void") then
+  if claimer and (key == "fair.last" or key == "fair.lapse" or (key or ""):sub(1, 9) == "fair.void") then
     r, g, b = Theme.rgb("gold")
     tip:AddLine(L("fair.tip.claim", claimer, known("fair.cry." .. tostring(claim)) or L("fair.why.unknown")), r, g, b, true)
   end

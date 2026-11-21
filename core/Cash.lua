@@ -160,6 +160,15 @@ local function lapsed(s)
   end
 end
 
+-- Host: no hand can start without the seats a lapse holds out (heads-up; the
+-- rest named or sitting out): those that asked are back, until one can.
+local function release(s)
+  local e = s:engine()
+  for q, out in pairs(s.role == "host" and s.lapseOut or {}) do
+    if out.back and not (e.inHand(s.state) or e.system(s.state)) then s.lapseOut[q] = nil; s:play(q, { k = "back" }) end
+  end
+end
+
 -- Whatever the table owes my round now: a dealt hand that is over goes into
 -- the book; a shuffle whose hand is over (leaves settled it before the deal)
 -- is dropped; then the step, and my seat comes back if it sits out.
@@ -176,6 +185,7 @@ local function react(s)
   end
   armStep(s)
   ns.Member.comeBack(s)
+  release(s)
   -- A forged event that ended the hand before any shuffle opened: my last hand carries it.
   local last = s.fairLast
   local open = s.fair and s.fair.stage ~= "done"
@@ -192,7 +202,7 @@ ns.Ext.cash = {
     local st = s.state
     if a.k == "back" and st and s:engine().inHand(st) and contains(st.order or {}, seat) then return nil end
     local out = a.k == "back" and s.lapseOut and s.lapseOut[seat]
-    if out then out.back = true; return nil end
+    if out then out.back = true; release(s); return nil end
     if a.k ~= "book" then return a end
     ns.Book.request(s, seat, a)
     return nil
@@ -209,6 +219,7 @@ ns.Ext.cash = {
     elseif k == "sit" and s.status == "live" and s.state then
       engine.apply(s.state, 0, { k = "join", seat = a.seat })
       ns.Book.of(s).given[a.seat] = nil
+      if s.lapseOut then s.lapseOut[a.seat] = nil end -- a newcomer is not the seat a lapse named
       -- A sit does not re-arm the timers, and two players may now be enough for a hand.
       if s.role == "host" and not s.state.turn then s:armTimers() end
     elseif k == "hand" then
@@ -219,7 +230,7 @@ ns.Ext.cash = {
       -- Host: the commits of a round I opened are collected here (a round I take over has none).
       if s.role == "host" then s.fair.pend = s.fair.pend or {} end
       if s.forgedNext then foul(s.fair, "forged"); s.forgedNext = nil end
-    elseif k == "deal" and s.lapseOut then
+    elseif k == "deal" and s.lapseOut and s.role == "host" then
       -- Host: a hand dealt without the seats a lapse named; they are back now if they asked.
       for q, out in pairs(s.lapseOut) do
         if s.state.hand > out.h then s.lapseOut[q] = nil; if out.back then s:play(q, { k = "back" }) end end

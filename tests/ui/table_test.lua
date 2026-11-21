@@ -446,6 +446,22 @@ describe("ui: table frame, card fairness", function()
     w:hover(v.fairLine); eq(tip.lines, { w.ns.L("fair.tip.ok") })
   end)
 
+  it("a lapse is amber with its own tooltip, and another player's claim about it shows on both", function()
+    local w, v = santaseWithBot(); local s = w.ns.client.session
+    local tip = w.G.GameTooltip
+    s.fair, s.fairSeen = nil, { ok = 1, bad = 0 }
+    s.fairLast, s.fairLapses = { h = 5, verdict = "void", dealer = BOT, lapse = true, n = 1 }, { [BOT] = 1 }; w.ns.TableFrame.render()
+    local line = w.ns.L("fair.lapse", BOT, 1)
+    eq(v.fairLine.text:GetText(), line); eq(color(v.fairLine.text), rgb(w, "gold"))
+    w:hover(v.fairLine); eq(tip.lines, { w.ns.L("fair.tip.lapse") })
+    ok(w.ns.L("fair.tip.lapse") ~= w.ns.L("fair.tip.void") and w.ns.L("fair.tip.lapse") ~= "fair.tip.lapse", "its own text")
+    s.fairCry = { h = 5, seat = 2, name = BOT, why = "mine" }; w.ns.TableFrame.render()
+    eq(v.fairLine.text:GetText(), line .. " · Бот Иванов твърди, че е нередовна"); eq(color(v.fairLine.text), rgb(w, "gold"))
+    w:hover(v.fairLine)
+    eq(tip.lines, { w.ns.L("fair.tip.lapse"),
+      "Бот Иванов твърди: неговата част от разбъркването е подменена. Твоят аддон не може да провери това." })
+  end)
+
   it("every reason has a text, and an unknown or missing one never shows a raw key", function()
     local w, v = santaseWithBot(); local s = w.ns.client.session
     local tip = w.G.GameTooltip

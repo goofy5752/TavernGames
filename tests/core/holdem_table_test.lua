@@ -543,3 +543,47 @@ describe("holdem: silence, the host held to it (fix round 2)", function()
     s.role = "player"; ns.Ext.cash.hostChanged(s); eq({ s.stepTimer, s.stepWaits }, { nil, nil })
   end)
 end)
+
+describe("holdem: a seat a lapse named is held only while a hand can start without it (fix round 4)", function()
+  -- Runs until the lapse of the open round voided the hand and `seat`'s back is held on the host.
+  local function heldBack(seat)
+    local s = cl[1].session
+    for _ = 1, 30 do if s.lapseOut and s.lapseOut[seat] and s.lapseOut[seat].back then break end; sim:run(1) end
+    ok(s.lapseOut and s.lapseOut[seat] and s.lapseOut[seat].back, "seat " .. seat .. "'s back is held")
+  end
+  it("I-A: heads-up, the lapse names the other seat: it is back at once and the next hand is dealt", function()
+    tableN(2); tap(cl[1], function(m, from) return m.t == "SED" and from == N[2] end)             -- seat 2's seeds never reach the host
+    ok(cl[1]:startGame()); sim:run(3); eq({ cl[1].session.fair.stage, cl[1].session.fair.d }, { "seed", 1 })
+    sim:run(20); eq({ st().last.void, st().seats[1].away, st().seats[2].away }, { true, false, false })
+    eq(sim:count(function(m) return m.from == N[2] and m.msg.t == "ACT" and m.msg.a.k == "back" end), 1)
+    sim:run(5); eq({ st().hand, st().phase, E.players(st()), cl[1].session.fair.d }, { 2, "bet", { 1, 2 }, 2 })
+    eq({ cl[2].session.fair.foul, ns.Deal.alarm(cl[2].session) }, { nil, false })
+  end)
+  it("I-A: three seats, the dealer names both others: one is back so that a hand can start, the other misses it", function()
+    tableN(3); tap(cl[1], function(m, from) return m.t == "SED" and (from == N[2] or from == N[3]) end)
+    ok(cl[1]:startGame()); sim:run(23); eq({ st().last.void, st().seats[1].away, st().seats[2].away, st().seats[3].away }, { true, false, false, true })
+    sim:run(5); eq({ st().hand, st().phase, E.players(st()), st().seats[3].away }, { 2, "bet", { 1, 2 }, false })   -- back once it was dealt
+    eq(sim:count(function(m) return m.target == W and m.msg.t == "EV" and m.msg.a.k == "back" end), 3)
+  end)
+  it("I-A: three seats, the third stands while the named seat is held: the named seat is back and plays", function()
+    tableN(3); tap(cl[1], function(m, from) return m.t == "SED" and from == N[2] end)
+    ok(cl[1]:startGame()); sim:run(3); heldBack(2); eq({ st().seats[2].away, st().phase }, { true, "done" })
+    cl[3]:stand(); sim:run(1); eq({ st().seats[3], st().seats[2].away, cl[1].session.lapseOut[2] }, { false, false, nil })
+    sim:run(5); eq({ st().hand, st().phase, E.players(st()) }, { 2, "bet", { 1, 2 } })
+  end)
+  it("I-3 at three seats: the withholder misses the hand the dealer and the third seat play", function()
+    tableN(3); ok(cl[1]:startGame()); sim:run(3); auto(3); eq(st().phase, "done")
+    tap(cl[2], function(m, from) return m.t == "SED" and from == N[3] end)                             -- seat 3 withholds its seed from dealer 2
+    sim:run(25); eq({ st().hand, st().last.void, st().seats[2].away, st().seats[3].away }, { 2, true, false, true })
+    sim:run(6); eq({ st().hand, st().phase, E.players(st()), st().seats[3].away }, { 3, "bet", { 1, 2 }, false })
+    auto(6); eq({ st().last.hand, st().last.void }, { 3, nil })
+  end)
+  it("m-A, m-D: a demoted host releases nobody; a sit on a held chair ends its hold", function()
+    tableN(4); tap(cl[1], function(m, from) return m.t == "SED" and from == N[2] end)
+    ok(cl[1]:startGame()); sim:run(3); heldBack(2); local s = cl[1].session; local seq = s.seq
+    s.role = "player"; s.state.hand = s.state.hand + 1; ns.Ext.cash.applied(s, 0, { k = "deal" })
+    eq({ s.seq, s.lapseOut[2] ~= nil }, { seq, true }); s.role = "host"; s.state.hand = s.state.hand - 1
+    cl[2]:stand(); sim:run(1); local c5 = sim:add(N[5]); sim.envs[N[5]].random = rnd(5); sim:run(1); c5:sit(tid, 2); sim:run(1)
+    eq({ s.seats[2], s.lapseOut[2] }, { N[5], nil })
+  end)
+end)
