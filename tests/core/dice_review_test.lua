@@ -271,3 +271,48 @@ describe("final review: my own loading screen (I2)", function()
     ns.Locale.set("bg")
   end)
 end)
+
+describe("final review: a match I walk into (I1)", function()
+  it("a new table of the same host that takes me into a running match: its dice are unseen for me, never ok; my first whole throw is (fr1)", function()
+    local tid = table2(); local atB, sa = fairs(b), a.session
+    sa:cancelTimers(); a:send("GUILD", nil, ns.Session.message("END", { tid = tid, e = sa.epoch }))
+    local nt = A .. "#1700000777"                                     -- the modified host rebrands its table at once
+    sa.tid, sa.seats[2], sa.seq = nt, false, sa.seq + 5; a.lobby:remove(tid); sim:run(1); eq(b.session, nil)
+    sa.lastAnnounce = nil; sa:sendTBL(); sim:run(3); ok(b.lobby:get(nt) ~= nil)
+    b:sit(nt, 2)                                                       -- an honest click; the answer is made by hand
+    sa.seats[2] = B
+    local st, h = sa.state, sa.seq - 1
+    local x = grind(nt, h, { 6, 6 })
+    st.dice, st.left, st.cv, st.xfer, st.phase, st.turn = { 6, 6 }, { 6, 6, 6, 6 }, nil, nil, "move", 1
+    sa.diceProof, sa.throw = { h = h, c = { Fair.commit(x) }, s = { x }, r = 1, t = st.rolls[1] }, nil
+    sa:snapshotTo(B); sim:run(1); local s = b.session
+    eq({ s.tid, s.mySeat, s.status, s.state.dice }, { nt, 2, "live", { 6, 6 } })
+    eq({ ns.Dice.status(s) }, { "dice.unseen", "gold" }); eq({ #atB, atB[1].h, atB[1].verdict }, { 1, h, "unseen" }); eq(s.diceSeen.ok, 0)
+    ns.Succession.track(sa, B); ok(a:act(E.auto(sa.state, 1))); sim:run(2)   -- the next throw I see from its open
+    eq({ ns.Dice.status(s) }, { "dice.ok", "good" }); eq({ #atB, atB[2].verdict, s.diceSeen.ok, ns.Dice.alarm(s) }, { 2, "ok", 1, false })
+  end)
+
+  it("a watcher that joins a running match: the dice on the board and a throw already open are unseen, the next throw is ok", function()
+    local tid = table2(); local X = "Нов Гледач"
+    local x = sim:add(X, { cls = "ROGUE" }); sim:run(1)
+    local env, on = sim.envs[B], true; local send = env.send
+    env.send = function(channel, target, msg)                           -- B's seed is late: the throw stays open
+      if on and msg.t == "ACT" and msg.a.op == "seed" then return end
+      return send(channel, target, msg)
+    end
+    ok(a:act(E.auto(a.session.state, 1))); sim:run(1); eq(a.session.throw.done, nil)
+    local atX = fairs(x); x:watch(tid); sim:run(1); local s = x.session
+    eq({ s.role, s.throw.h, s.throw.late }, { "watcher", a.session.throw.h, true })
+    eq({ #atX, atX[1].verdict, s.diceLast.verdict }, { 1, "unseen", "unseen" }); eq({ ns.Dice.status(s) }, { "dice.rolling", "inkDim" })
+    on = false; sim:run(4); eq(a.session.throw.done, true)
+    eq({ ns.Dice.status(s) }, { "dice.unseen", "gold" }); eq({ #atX, atX[2].verdict, b.session.diceLast.verdict }, { 2, "unseen", "ok" })
+    ok(b:act(E.auto(b.session.state, 2))); sim:run(2)
+    eq({ ns.Dice.status(s) }, { "dice.ok", "good" }); eq({ atX[3].verdict, s.diceSeen.ok, ns.Dice.alarm(s) }, { "ok", 1, false }); eq(s.state, a.session.state)
+  end)
+
+  it("a seat taken at a table that has not started, and a login back to my seat, are as before: no amber line", function()
+    table2(); eq({ ns.Dice.status(b.session) }, { "dice.ok", "good" }); eq(b.session.diceSeen, { ok = 2, alone = 0, bad = 0 })
+    local b2 = sim:crash(B); sim:run(3); local s = b2.session
+    eq({ s ~= nil and s.mySeat, s.diceLast, ns.Dice.status(s) }, { 2, nil, nil })
+  end)
+end)

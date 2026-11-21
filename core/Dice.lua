@@ -129,7 +129,7 @@ local function finish(s, throw, seeds, state)
   local thrown, _, r, t = s:engine().thrown, nil, nil, nil
   if thrown then _, r, t = thrown(state or s.state) end
   s.diceProof = { h = throw.h, c = copy(throw.commits), s = copy(seeds), r = r, t = t }
-  local verdict = throw.foul and "bad" or throw.alone and "alone" or throw.reload and "unseen" or "ok"
+  local verdict = throw.foul and "bad" or throw.alone and "alone" or (throw.reload or throw.late) and "unseen" or "ok"
   close(s, throw.h, verdict, throw.foul, throw)
 end
 

@@ -130,7 +130,7 @@ ext.adopted = function(s, prev, m, how)
   if rec then
     for i = 1, #FIELDS do s[FIELDS[i]] = rec[FIELDS[i]] end
     prev = rec.state
-    how = { asked = rec.away == true, away = rec.away, sat = how.sat, q = rec.q }
+    how = { asked = rec.away == true, away = rec.away, sat = how.sat, q = rec.q, req = how.req }
     if s.diceHost ~= s.host then hostChanged(s) end
   end
   adopted(s, prev, m, how)

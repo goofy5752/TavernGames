@@ -49,10 +49,12 @@ function Member.adopt(client, sender, m)
   local prevState, prevHost = s.state, s.host
   -- How this snapshot came, for the extensions: fresh, from a host new to me
   -- (changed), answering a request of mine (asked: SYN, WAT or SIT), with a
-  -- seat I did not have (sat); q = my seq before it.
+  -- seat I did not have (sat); q = my seq before it; req: it takes me in at
+  -- my own SIT or WAT (a newcomer, not a login back to a seat I held).
   local how = {
     fresh = fresh, changed = not fresh and (prevHost ~= sender or s.epoch ~= m.e or s.stale == true),
     asked = s.asked == true, sat = seat ~= nil and s.mySeat == nil, q = s.seq,
+    req = fresh and client.pending ~= nil,
   }
   if s.role == "host" then Succession.demote(s) end
   s.tid, s.role, s.mySeat, s.host = m.tid, seat and "player" or "watcher", seat, sender

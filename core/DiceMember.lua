@@ -123,14 +123,21 @@ ns.Ext.dice.adopted = function(s, prev, m, how)
   local old = not how.fresh
   local sameHost = old and not s.diceNew
   s.diceNew, s.diceHost = nil, s.host
-  local held, fr = s.throw, m.fr
+  local held, fr, last0, proof0 = s.throw, m.fr, s.diceLast, s.diceProof
   local p = type(fr) == "table" and fr.p or nil
+  -- I walk into a running match at my own SIT or WAT.
+  local late = how.req and s.status == "live" and s.state ~= nil and not s:engine().over(s.state)
   local x, y = int.proved(s, m, p)
   if x and old and held and not held.done and held.h == p.h then prev = closed(s, prev, held, p, x, y) or prev end
   local bad, drift = int.forgery(s, prev, m, how, old, sameHost, p, x, y)
   -- A throw I did not see close, or open steps I did not see played.
   local unseen = not bad and old and ((x ~= nil and not same(p, s.diceProof)) or drift)
   if bad then forged(s, bad) elseif x then s.diceProof = copy(p) end
+  -- What was thrown before I came I did not witness: the dice on the board
+  -- are unseen for me (unless they are of the throw I hold), never "ok".
+  if late and not bad and s.diceLast == last0 and not (old and (x == nil or same(p, proof0))) then
+    int.close(s, x and p.h or m.q, "unseen")
+  end
   local good = fits(s, m, how, held)
   local kept = good == true and held ~= nil and not held.done and held.h == fr.h
   if good ~= "old" and held and not held.done and not kept and (held.asked or held.sent or held.foul) then
@@ -148,7 +155,8 @@ ns.Ext.dice.adopted = function(s, prev, m, how)
     if held and not held.done then s.throw = nil; int.stopTimer(s); Dice.forget(s) end
     return
   end
-  local d, g, throw = fr.d, 3 - fr.d, kept and held or { h = fr.h, d = fr.d, r = int.wantsDice(s).s or 0 }
+  -- A throw already open when I came (late) is not one I saw whole either.
+  local d, g, throw = fr.d, 3 - fr.d, kept and held or { h = fr.h, d = fr.d, r = int.wantsDice(s).s or 0, late = late or nil }
   if kept and fr.c[d] ~= held.commits[d] then int.foul(held, "commit") end
   s.throw, throw.sent = throw, nil -- my throw keeps my seed; what I sent is asked again
   throw.commits = { [d] = fr.c[d], [g] = fr.c[g] }
