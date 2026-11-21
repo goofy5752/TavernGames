@@ -26,7 +26,8 @@ local copy, seatOf = ns.Util.copy, ns.Util.seatOf
 -- hostChanged(s) when my table changed host; refused(s, seat, a) (member: an
 -- event of my host that does not apply), forged(s, seat, a) (member, engine
 -- with `view`: an event for my seat that I did not send and that is no public
--- timeout due by my own clock, or an away that folds my hand; Member.timedOut),
+-- timeout due by my own clock, or a seat-0 event no honest host plays now;
+-- Member.timedOut, Member.unasked),
 -- stuck(s) (my deadline passed and I have no automatic move to make: e.g. my cards are missing);
 -- need(s, action) (host: a system action that needs randomness), lapsed(s)
 -- (host: a shuffle was not dealt in FAIR_WAIT; called before it is opened again),

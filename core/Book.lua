@@ -142,6 +142,23 @@ function Book.seal(s, verdict)
   ns.Deal.close(s, verdict or "sealed")
 end
 
+-- The hand on my state ended and I have not told it yet: event "hand" (Cash).
+function Book.told(s)
+  local st = s.state
+  local last = st and st.last
+  if not last or last.hand == s.handSeen then return end
+  s.handSeen = last.hand
+  local chips = {}
+  for i, x in pairs(st.seats) do
+    if x then chips[i] = x.chips end
+  end
+  local client = s.client
+  client.events:emit("hand", {
+    tid = s.tid, game = s.game, opt = copy(s.opt), n = last.hand, last = copy(last), chips = chips,
+    names = copy(s.handNames or s.seats), at = client.env.epoch(),
+  })
+end
+
 -- The book's line under the felt -> key, tone, arg, arg2 | nil (nil for an
 -- engine that is not sealed, without a book, or before the first hand ends).
 function Book.status(s)

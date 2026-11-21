@@ -21,20 +21,19 @@ local _, ns = ...
 --   modified host plays one);
 -- - a hand that is over is sealed into the book (Book.seal), a shuffle whose
 --   hand was settled before the deal (leaves) is dropped; every client that
---   saw a hand end emits "hand" once (its state.last, the chips after it, the
---   names when it began);
+--   saw a hand end emits "hand" once (Book.told);
 -- - silence (host): a shuffle not dealt in FAIR_WAIT (hook `lapsed`) sits out
---   the participants whose commit is missing, or in stage seed its dealer
---   ({k="away", seat}); a step still not come FAIR_WAIT after it was due voids
---   the hand (every chip back) and sits the dealer out. A client that sees its
---   own seat away is here: it asks {k="back"} and is dealt in from the next
---   hand. The turn clock: core/Session.lua (armTimers) and Member.timedOut.
+--   the participants whose commit is missing, or in stage seed its dealer and
+--   the seats it named as missing ({k="away", seat}); a step not come FAIR_WAIT
+--   after it was due voids the hand and sits the dealer out. A seat that sees
+--   itself away asks {k="back"} once its hand is over (Member.comeBack); a
+--   member flags an away or a void no honest host plays now (Member.unasked).
+--   The turn clock: Session:armTimers and Member.timedOut.
 -- Nothing is sent from the `table` hook (core/DealHooks.lua says why).
--- Session fields: s.stepTimer (the dealer's step; on a host that does not
--- deal, the step's wait); s.handSeen (the hand number of the last state.last
--- I saw), s.handNames (the seats when the last hand began); s.backAsked (my
--- back is asked while my seat stays away); the round's fair.who = {[seat] =
--- name} of its participants at the open.
+-- Session fields: s.stepTimer, s.stepWaits, s.dueKey, s.dueAt (armStep);
+-- s.handSeen, s.handNames (the seats when the last hand began); s.backAsked;
+-- s.forgedNext (a forged event before the round opened); the round's fair.who
+-- = {[seat] = name} at the open, fair.openedAt (my clock), fair.missing.
 local Cash = {}
 ns.Cash = Cash
 
@@ -67,10 +66,20 @@ function Cash.submit(s, a)
 end
 
 -- Host: a book action by `seat`; it never reaches the engine. op "step": the
--- dealer of my round gives the faces of the step the engine waits for.
+-- dealer of my round gives the faces of the step the engine waits for. op
+-- "missing": the dealer of a shuffle in stage seed names the participants
+-- whose seed it lacks (fair.missing; they sit out with it if the shuffle lapses).
 function request(s, seat, a)
   local fair, step = s.fair, a.a
-  if a.op ~= "step" or not fair or s.status ~= "live" or a.h ~= fair.h or seat ~= fair.d or fair.stage ~= "dealt" then return end
+  if not fair or s.status ~= "live" or a.h ~= fair.h or seat ~= fair.d then return end
+  if a.op == "missing" and fair.stage == "seed" and type(a.seats) == "table" then
+    local out = {}
+    for _, q in ipairs(a.seats) do
+      if q ~= seat and contains(fair.p, q) and not contains(out, q) then out[#out + 1] = q end
+    end
+    fair.missing = out
+  end
+  if a.op ~= "step" or fair.stage ~= "dealt" then return end
   local want = s:engine().system(s.state)
   if not (want and want.need == "faces" and type(step) == "table" and step.k == want.k and type(step.cards) == "table") then
     return
@@ -102,38 +111,70 @@ local function ask(s, fair, seq)
   end
 end
 
--- Host that does not deal: the step is FAIR_WAIT overdue and the table still
--- stands at the same event: the dealer is gone; the hand is void (every chip
--- back) and the dealer sits out.
-local function overdue(s, fair, seq)
+-- The step my state waits for, the faces of a street or of the showdown of
+-- a dealt round, as a key "h:k:board size" -> string | nil.
+local function dueKey(s)
+  local fair = s.fair
+  if not (fair and fair.stage == "dealt" and s.status == "live" and s.state) then return nil end
+  local want = s:engine().system(s.state)
+  return want and want.need == "faces" and (fair.h .. ":" .. want.k .. ":" .. #s.state.board) or nil
+end
+
+-- Host: the step is FAIR_WAIT overdue and still the one due: the dealer is
+-- gone; the hand is void (every chip back) and the dealer sits out.
+local function overdue(s, fair, key)
   s.stepTimer = nil
-  if s.client.session ~= s or s.role ~= "host" or s.fair ~= fair or s.seq ~= seq or fair.stage ~= "dealt" then return end
+  if s.client.session ~= s or s.role ~= "host" or s.fair ~= fair or dueKey(s) ~= key then return end
   local d = fair.d
   s:play(0, { k = "void" })
   s:play(0, { k = "away", seat = d })
 end
 
--- The step: armed again on every react, in a live game whose engine needs the
--- faces of a dealt round. The dealer that holds the deck asks; a host that
--- does not deal waits FAIR_WAIT for it.
+-- Dealer, stage seed: the participants whose seed has not reached me, to the
+-- host (op "missing"), FAIR_WAIT / 2 after the open.
+local function name(s, fair)
+  s.stepTimer = nil
+  if s.client.session ~= s or s.fair ~= fair or fair.stage ~= "seed" or s.mySeat ~= fair.d then return end
+  local missing = {}
+  for _, q in ipairs(fair.p) do
+    if q ~= fair.d and not (fair.seeds and fair.seeds[q]) then missing[#missing + 1] = q end
+  end
+  if #missing > 0 then Cash.submit(s, { k = "book", op = "missing", h = fair.h, seats = missing }) end
+end
+
+-- My round's timer (s.stepTimer), on every react. s.dueKey/s.dueAt: the step
+-- due and my env.now() when it became due (nil: due already in a snapshot).
+-- - The dealer that holds the deck asks for the step STREET_DELAY after every
+--   event, again every FAIR_ASK_GAP (`ask`).
+-- - The host, unless it deals with its deck, voids the hand FAIR_WAIT after
+--   the step became due; other events (a sit, a stand) do not restart that
+--   wait (s.stepWaits = the key it waits on).
+-- - The dealer of a round in stage seed names the seats whose seed it lacks.
 local function armStep(s)
+  local fair, key, now = s.fair, dueKey(s), s.client.env.now()
+  if key ~= s.dueKey then s.dueKey, s.dueAt = key, now end
+  local dealing = key and fair.deck and s.mySeat == fair.d
+  local waits = key and not dealing and s.role == "host" and key
+  local names = fair and fair.stage == "seed" and s.mySeat == fair.d and s.status == "live" and ("seed:" .. fair.h)
+  local keep = waits or names or nil
+  if keep and s.stepTimer and s.stepWaits == keep then return end
   if s.stepTimer then s.stepTimer.cancel(); s.stepTimer = nil end
-  local fair, engine = s.fair, s:engine()
-  if not (fair and fair.stage == "dealt" and s.status == "live" and s.state) then return end
-  local want = engine.system(s.state)
-  if not (want and want.need == "faces") then return end
-  local seq = s.seq
-  if fair.deck and s.mySeat == fair.d then
-    s.stepTimer = s.client:after(engine.STREET_DELAY or 0, function() ask(s, fair, seq) end)
-  elseif s.role == "host" and s.mySeat ~= fair.d then
-    s.stepTimer = s.client:after(C.FAIR_WAIT, function() overdue(s, fair, seq) end)
+  s.stepWaits = keep
+  if waits then
+    s.stepTimer = s.client:after(math.max(0, (s.dueAt or now) + C.FAIR_WAIT - now), function() overdue(s, fair, key) end)
+  elseif names then
+    local at = math.max(C.FAIR_ASK_GAP, (fair.openedAt or now) + C.FAIR_WAIT / 2 - now)
+    s.stepTimer = s.client:after(at, function() name(s, fair) end)
+  elseif dealing then
+    local seq = s.seq
+    s.stepTimer = s.client:after(s:engine().STREET_DELAY or 0, function() ask(s, fair, seq) end)
   end
 end
 
 -- Host: the shuffle was not dealt in FAIR_WAIT (hook `lapsed`, before it is
 -- opened again). In stage commit every participant whose commit is missing
--- sits out (its blind stays in the pot); in stage seed the dealer does, so
--- the deal passes to the next participant.
+-- sits out (its blind stays in the pot); in stage seed the dealer does with
+-- every seat it named as missing (op "missing"): the deal passes on.
 local function lapsed(s)
   local fair = s.fair
   if s.role ~= "host" or not fair then return end
@@ -145,38 +186,10 @@ local function lapsed(s)
     end
   elseif fair.stage == "seed" then
     s:play(0, { k = "away", seat = fair.d })
+    for _, q in ipairs(fair.missing or {}) do
+      if q ~= s.mySeat then s:play(0, { k = "away", seat = q }) end
+    end
   end
-end
-
--- My seat sits out in a live game: I am here, so it is dealt in again from
--- the next hand ({k="back"}), asked once while it stays away (s.backAsked; a
--- snapshot asks again). A seat dealt into the running hand asks once that
--- hand is over: back, it would count again among the hand's players (rule
--- 18), and so in the shuffle reopened without it and in the dealer named.
-local function comeBack(s)
-  local st = s.state
-  local mine = s.mySeat and st and st.seats[s.mySeat]
-  if not (s.status == "live" and type(mine) == "table" and mine.away) then s.backAsked = nil; return end
-  if s.backAsked or s:gameOver() or (s:engine().inHand(st) and contains(st.order or {}, s.mySeat)) then return end
-  s.backAsked = true
-  Session.act(s.client, { k = "back" })
-end
-
--- The hand on my state ended and I have not told it yet: event "hand".
-local function told(s)
-  local st = s.state
-  local last = st and st.last
-  if not last or last.hand == s.handSeen then return end
-  s.handSeen = last.hand
-  local chips = {}
-  for i, x in pairs(st.seats) do
-    if x then chips[i] = x.chips end
-  end
-  local client = s.client
-  client.events:emit("hand", {
-    tid = s.tid, game = s.game, opt = copy(s.opt), n = last.hand, last = copy(last), chips = chips,
-    names = copy(s.handNames or s.seats), at = client.env.epoch(),
-  })
 end
 
 -- Whatever the table owes my round now: a dealt hand that is over goes into
@@ -194,12 +207,15 @@ local function react(s)
     end
   end
   armStep(s)
-  comeBack(s)
+  ns.Member.comeBack(s)
 end
 
 ns.Ext.cash = {
-  -- Host: a book action is handled here and never played as it is.
+  -- Host: a book action is handled here and never played as it is. A seat
+  -- dealt into the running hand is back only once it is over (comeBack).
   act = function(s, seat, a)
+    local st = s.state
+    if a.k == "back" and st and s:engine().inHand(st) and contains(st.order or {}, seat) then return nil end
     if a.k ~= "book" then return a end
     request(s, seat, a)
     return nil
@@ -212,6 +228,7 @@ ns.Ext.cash = {
       -- A new game, a new book (Book.of replaces the old one).
       s.state.g = s.seq
       ns.Book.of(s)
+      s.forgedNext = nil
     elseif k == "sit" and s.status == "live" and s.state then
       engine.apply(s.state, 0, { k = "join", seat = a.seat })
       ns.Book.of(s).given[a.seat] = nil
@@ -221,16 +238,27 @@ ns.Ext.cash = {
       s.handNames = copy(s.seats)
     elseif k == "fair" and a.op == "open" and s.fair then
       s.fair.who = namesOf(s, s.fair.p)
+      s.fair.openedAt = s.client.env.now()
       -- Host: the commits of a round I opened are collected here (a round I take over has none).
       if s.role == "host" then s.fair.pend = s.fair.pend or {} end
+      if s.forgedNext then foul(s.fair, "forged"); s.forgedNext = nil end
     elseif k == "street" and s.fair and s.fair.stage == "dealt" and faceless(s.state, a.cards) then
       foul(s.fair, "deal")
     end
     react(s)
-    told(s)
+    ns.Book.told(s)
   end,
 
   lapsed = lapsed,
+
+  -- A new host waits for an overdue step itself; a demoted one stops.
+  hostChanged = function(s) if s.state then armStep(s) end end,
+
+  -- Member: a forged event while no round runs (the hand is dealt in, its
+  -- shuffle not open yet, Member.unasked): the round that opens next carries it.
+  forged = function(s)
+    if not (s.fair and s.fair.stage ~= "done") then s.forgedNext = true end
+  end,
 
   -- Member: the state of a snapshot (a book of another game is replaced by Book.of).
   adopted = function(s)
@@ -241,6 +269,8 @@ ns.Ext.cash = {
     s.handNames = s.handNames or copy(s.seats)
     if s.fair and not s.fair.who then s.fair.who = namesOf(s, s.fair.p) end
     s.backAsked = nil
+    local key = dueKey(s)
+    if key ~= s.dueKey then s.dueKey, s.dueAt = key, nil end
     react(s)
   end,
 }

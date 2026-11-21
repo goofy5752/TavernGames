@@ -307,16 +307,18 @@ describe("holdem: leaving, silence and the clock", function()
     end
   end)
   it("the host deals and a seed never reaches it: it sits itself out, the deal passes on, it is back after the hand", function()
-    tableN(3); local mark = #sim.sent
+    tableN(4); local mark = #sim.sent
     tap(cl[1], function(m, from) return m.t == "SED" and from == N[2] end)                         -- seat 2's seeds never reach the host
     ok(cl[1]:startGame()); sim:run(3); eq({ cl[1].session.fair.stage, cl[1].session.fair.d }, { "seed", 1 })
-    sim:run(20)
-    eq(kinds(evs(W, mark)), { "start", "hand", "open", "commits", "away", "open", "commits", "deal" }); eq(evs(W, mark)[5], { k = "away", seat = 1 })
-    eq({ cl[1].session.fair.d, cl[1].session.fair.p, cl[1].session.fair.stage, st().seats[1].away, st().p[1].folded }, { 2, { 2, 3 }, "dealt", true, true })
+    sim:run(20)                                                                                      -- the host named seat 2 (op "missing"): both sit out
+    eq(kinds(evs(W, mark)), { "start", "hand", "open", "commits", "away", "away", "open", "commits", "deal" })
+    eq({ evs(W, mark)[5], evs(W, mark)[6] }, { { k = "away", seat = 1 }, { k = "away", seat = 2 } })
+    eq({ cl[1].session.fair.d, cl[1].session.fair.p, cl[1].session.fair.stage, st().seats[1].away, st().p[1].folded }, { 3, { 3, 4 }, "dealt", true, true })
     eq(sim:count(function(m) return m.target == W and m.msg.t == "EV" and m.msg.a.k == "back" end), 0)   -- not while the hand it was dealt into runs
-    auto(1); eq({ st().phase, st().seats[1].away }, { "done", false })                               -- seat 2 folds: the hand is over and the host is back
-    eq(kinds(evs(W, mark)), { "start", "hand", "open", "commits", "away", "open", "commits", "deal", "fold", "back" })
-    sim:run(5); eq({ st().hand, E.players(st()), cl[1].session.fair.p }, { 2, { 1, 2, 3 }, { 1, 2, 3 } })
+    auto(1); eq({ st().phase, st().seats[1].away }, { "done", false })                               -- seat 4 folds: the hand is over and the host is back
+    eq(kinds(evs(W, mark)), { "start", "hand", "open", "commits", "away", "away", "open", "commits", "deal", "fold", "back", "back" })
+    eq({ st().seats[2].away, ns.Deal.alarm(cl[2].session) }, { false, false })
+    sim:run(5); eq({ st().hand, E.players(st()), cl[1].session.fair.p }, { 2, { 1, 2, 3, 4 }, { 1, 2, 3, 4 } })
   end)
   it("a member that reloads in stage seed sends its seed again", function()
     tableN(3); ok(cl[1]:startGame()); sim:run(3); auto(3); eq(st().phase, "done")
@@ -372,5 +374,78 @@ describe("holdem: leaving, silence and the clock", function()
     for _, c in ipairs{ cl[1], cl[3], w } do
       local b = c.session.book; eq({ b.n, b.rec[h] ~= nil, c.session.fairLast.verdict }, { 2, true, "void" })
     end
+  end)
+end)
+
+describe("holdem: silence, the host held to it (fix round 1)", function()
+  -- Hand 2 of a three-seat table (seat 2 deals) up to its flop due; the dealer's own step is held back.
+  local function hand2FlopDue(n)
+    tableN(n or 3); ok(cl[1]:startGame()); sim:run(3); auto(n or 3); sim:run(5); eq(cl[1].session.fair.d, 2)
+    act("call"); act("call"); act("check")
+    local s2 = cl[2].session; if s2.stepTimer then s2.stepTimer.cancel(); s2.stepTimer = nil end
+    sim:offline(N[2]); eq(st().phase, "street")
+  end
+  it("I1: the host changes while a street waits on a silent dealer: the new host voids it FAIR_WAIT after it was due", function()
+    tableN(3); ok(cl[1]:startGame()); sim:run(3); act("call"); act("call"); act("check")             -- hand 1: the host deals; the flop is due
+    local s1 = cl[1].session; ok(s1.stepTimer, "the dealer's step is armed"); s1.stepTimer.cancel(); s1.stepTimer = nil
+    sim:offline(N[1]); local due, before = sim.clock, nil
+    for _ = 1, 150 do if host() then break end; before = cl[3].session.state.phase; sim:run(1) end
+    local took = sim.clock; ok(host() and host() ~= cl[1], "a new host"); eq(before, "street")       -- still standing there until the takeover
+    sim:run(2)
+    eq({ st().phase, st().last.void, st().seats[1].away, took - due >= ns.Const.FAIR_WAIT }, { "done", true, true, true })
+    for _, c in ipairs{ cl[2], cl[3] } do eq(c.session.fairLast.verdict, "void") end                -- an honest void: nobody calls it forged
+    ok(w.session.fairLast.verdict ~= "bad", "the watcher, back by WAT after the event, missed the end: unseen")
+  end)
+  it("I2: an away of my seat after my blind and before its shuffle opens is forged; the next round carries it", function()
+    tableN(3); local need, once = ns.Ext.fair.need, true
+    ns.Ext.fair.need = function(s, a)
+      if once and s == cl[1].session then once = false; s:play(0, { k = "away", seat = 2 }) end         -- the host sits seat 2 out right after its blind
+      return need(s, a)
+    end
+    ok(cl[1]:startGame()); sim:run(3); ns.Ext.fair.need = need
+    eq({ st().seats[2].away, st().p[2].folded, cl[1].session.fair.p }, { true, true, { 1, 3 } })
+    eq({ cl[2].session.fair.foul, cl[3].session.fair.foul, w.session.fair.foul }, { "forged", nil, nil })
+    auto(3); eq({ cl[2].session.fairLast.verdict, cl[2].session.fairLast.why, ns.Deal.alarm(cl[3].session) }, { "bad", "forged", false })
+  end)
+  it("I2: an away of my seat in stage commit is forged before FAIR_WAIT; at FAIR_WAIT, my commit lost, it is not", function()
+    tableN(3); sim:offline(N[2]); ok(cl[1]:startGame()); sim:run(3); eq(cl[1].session.fair.stage, "commit")
+    cl[1].session:play(0, { k = "away", seat = 3 }); sim:run(1)
+    eq({ cl[3].session.fair.foul, w.session.fair.foul }, { "forged", nil })
+    tableN(3); tap(cl[1], function(m, from) return m.t == "ACT" and from == N[3] and m.a.op == "commit" end)   -- seat 3's commit never reaches the host
+    ok(cl[1]:startGame()); sim:run(3); eq(cl[1].session.fair.stage, "commit"); sim:run(19)
+    eq({ cl[1].session.fair.p, st().seats[3].away, cl[3].session.fair.foul }, { { 1, 2 }, true, nil })
+    auto(3); eq({ st().phase, st().seats[3].away, ns.Deal.alarm(cl[3].session), cl[3].session.fairSeen.bad }, { "done", false, false, 0 })
+  end)
+  it("I3: a member that withholds its seed sits out with the dealer and never deals that hand", function()
+    tableN(4); ok(cl[1]:startGame()); sim:run(3); auto(4); eq(st().phase, "done")
+    tap(cl[2], function(m, from) return m.t == "SED" and from == N[3] end)                             -- seat 3 withholds its seed from dealer 2
+    local mark = #sim.sent; sim:run(5); eq({ cl[1].session.fair.stage, cl[1].session.fair.d }, { "seed", 2 })
+    sim:run(20)
+    eq(sim:count(function(m) return m.from == N[2] and m.msg.t == "ACT" and m.msg.a.op == "missing" and ns.Util.same(m.msg.a.seats, { 3 }) end), 1)
+    local e = evs(W, mark); eq({ e[#e - 4], e[#e - 3] }, { { k = "away", seat = 2 }, { k = "away", seat = 3 } })
+    eq(kinds({ e[#e - 2], e[#e - 1], e[#e] }), { "open", "commits", "deal" })
+    eq({ cl[1].session.fair.d, cl[1].session.fair.p, st().seats[3].away }, { 4, { 1, 4 }, true })
+    eq({ cl[2].session.fair.foul, cl[3].session.fair.foul, ns.Deal.alarm(cl[3].session) }, { nil, nil, false })   -- both aways came at FAIR_WAIT
+    sim.envs[N[3]].send("WHISPER", N[1], ns.Session.message("ACT", { tid = tid, a = { k = "back" } })); sim:run(1)
+    eq(st().seats[3].away, true)                                                                       -- not back while the hand it sat out of runs
+  end)
+  it("I4: a void earlier than FAIR_WAIT by my own clock is forged; the overdue one is not", function()
+    tableN(3); ok(cl[1]:startGame()); sim:run(3); auto(3); sim:run(5); eq({ st().hand, st().phase }, { 2, "bet" })
+    cl[1].session:play(0, { k = "void" }); sim:run(1)                                                  -- in the betting, its dealer at the table
+    eq({ cl[3].session.fairLast.verdict, cl[3].session.fairLast.why, w.session.fairLast.why }, { "bad", "forged", "forged" })
+    hand2FlopDue(); sim:run(10); cl[1].session:play(0, { k = "void" }); sim:run(1)                     -- the step is due, 10 s only
+    eq({ cl[3].session.fairLast.verdict, cl[3].session.fairLast.why }, { "bad", "forged" })
+    hand2FlopDue(); sim:run(21)
+    eq({ st().last.void, cl[3].session.fairLast.verdict, w.session.fairLast.verdict, ns.Deal.alarm(cl[3].session) }, { true, "void", "void", false })
+  end)
+  it("M2: a sit and a stand while the step is overdue do not put the void off", function()
+    hand2FlopDue(); local c4 = sim:add(N[4]); sim.envs[N[4]].random = rnd(4); sim:run(9)
+    c4:sit(tid, 4); sim:run(5); eq(host().session.seats[4], N[4]); c4:stand(); sim:run(6)
+    eq({ st().phase, st().last.void, st().seats[2].away }, { "done", true, true })
+  end)
+  it("a dealer that lost its deck cannot void a sealed hand at once; the host's wait does it", function()
+    tableN(3); ok(cl[1]:startGame()); sim:run(3); auto(3); sim:run(5); eq(cl[1].session.fair.d, 2)
+    cl[2].session.fair.voidAsked = nil; ns.Deal.submit(cl[2].session, { k = "fair", op = "void", h = cl[2].session.fair.h }); sim:run(1)
+    eq({ st().phase, st().hand }, { "bet", 2 })
   end)
 end)

@@ -164,13 +164,42 @@ function Member.timedOut(s, m)
   return s.state ~= nil and ns.Util.same(m.a, engine.auto(s.state, m.seat))
 end
 
--- A seat-0 away of my seat that folds a hand nobody may fold for me: my round
--- is dealt, or every commit is in and I am not its dealer. (The legitimate
--- aways: a silent commit, the dealer after its void or in stage seed.)
-local function awayForged(s, seat, a)
+-- Has FAIR_WAIT passed by my own clock since `at` (nil: I did not see it
+-- begin, a snapshot brought it)? AUTO_GRACE is left for the transport: my
+-- clock starts when the host's event reaches me, after the host's own.
+local function waited(s, at)
+  return at == nil or s.client.env.now() >= at + C.FAIR_WAIT - C.AUTO_GRACE
+end
+
+-- A seat-0 event of a sealed table (core/Cash.lua) that no honest host plays
+-- now, while the hand runs -> bool:
+-- - an away of my seat while I am in the hand (dealt in, not folded), from the
+--   blinds on; except in stage commit once FAIR_WAIT has passed since the open
+--   with my commit not in, in stage seed for its dealer, or for any seat once
+--   FAIR_WAIT has passed (the dealer names who sent it no seed); after a void
+--   the hand is over;
+-- - a void earlier than FAIR_WAIT after the open (a shuffle) or after the step
+--   became due (a dealt hand; fair.openedAt, s.dueAt), unless the dealer's
+--   seat has left the hand's dealer (a stand mid-hand, a new host's takeover).
+function Member.unasked(s, seat, a)
+  local engine, st = s:engine(), s.state
+  if seat ~= 0 or type(a) ~= "table" or not (engine.sealed and st and engine.inHand(st)) then return false end
   local fair = s.fair
-  if seat ~= 0 or type(a) ~= "table" or a.k ~= "away" or a.seat ~= s.mySeat or not fair then return false end
-  return fair.stage == "dealt" or (fair.stage == "seed" and fair.d ~= s.mySeat)
+  local round = fair and fair.stage ~= "done" and fair or nil
+  if a.k == "away" then
+    local p = s.mySeat and a.seat == s.mySeat and st.p and st.p[s.mySeat]
+    if not p or p.folded then return false end
+    if round and round.stage == "commit" then
+      return not (waited(s, round.openedAt) and round.commits[s.mySeat] == nil)
+    end
+    if round and round.stage == "seed" then return not (round.d == s.mySeat or waited(s, round.openedAt)) end
+    return true
+  elseif a.k == "void" then
+    if not round then return true end
+    if round.stage ~= "dealt" then return not waited(s, round.openedAt) end
+    return s.seats[round.d] == round.dealer and not (s.dueKey and waited(s, s.dueAt))
+  end
+  return false
 end
 
 -- Events are taken only from my host, at exactly my epoch, in order. An epoch
@@ -179,7 +208,7 @@ end
 -- timeouts included (Session:armAuto), but for the host's public timeout once
 -- my own clock ran out (Member.timedOut): an event for it that I did not send
 -- is reported to the extensions (hook `forged`) and applied like any other;
--- so is an away that folds my hand (awayForged). s.turnAt: my env.now() when
+-- so is a seat-0 event of a sealed table no honest host plays now (unasked). s.turnAt: my env.now() when
 -- an event I applied put my seat on turn (nil while it is not on turn).
 local function onEvent(client, sender, m)
   local s = client.session
@@ -188,7 +217,7 @@ local function onEvent(client, sender, m)
   if m.q > s.seq + 1 then return s:requestSync() end
   if m.seat == s.mySeat and s:engine().view and not Member.mine(s, m.a) and not Member.timedOut(s, m) then
     s:hook("forged", m.seat, m.a)
-  elseif awayForged(s, m.seat, m.a) then
+  elseif Member.unasked(s, m.seat, m.a) then
     s:hook("forged", m.seat, m.a)
   end
   local turn = s.state and s.state.turn
@@ -245,6 +274,22 @@ local function onEnd(client, sender, m)
     client.pending = nil
     Session.refuse(client, m.tid, "gone")
   end
+end
+
+-- A sealed table (core/Cash.lua, after every event and snapshot, the host's
+-- own seat too): my seat sits out in a live game, I am here, so it is dealt
+-- in again from the next hand ({k="back"}), asked once while it stays away
+-- (s.backAsked; a snapshot asks again). A seat dealt into the running hand
+-- asks once that hand is over: back, it would count again among the hand's
+-- players (rule 18), and so in the shuffle reopened without it and in the
+-- dealer named (the host refuses such a back, Cash's act hook).
+function Member.comeBack(s)
+  local st = s.state
+  local mine = s.mySeat and st and st.seats[s.mySeat]
+  if not (s.status == "live" and type(mine) == "table" and mine.away) then s.backAsked = nil; return end
+  if s.backAsked or s:gameOver() or (s:engine().inHand(st) and ns.Util.contains(st.order or {}, s.mySeat)) then return end
+  s.backAsked = true
+  Session.act(s.client, { k = "back" })
 end
 
 Member.handlers = { SNP = onSnapshot, EV = onEvent, TCK = onTick, SNO = onRefusal, END = onEnd }

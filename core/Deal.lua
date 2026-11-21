@@ -264,7 +264,7 @@ local function request(s, seat, a)
     -- Not while the engine's next step is its own (Белот: the eight tricks
     -- are played, the score follows): that deal is complete.
     local step = s:engine().system(s.state)
-    if seat == fair.d and fair.stage == "dealt" and not s:gameOver() and not (step and not step.need)
+    if seat == fair.d and fair.stage == "dealt" and not s:gameOver() and not (step and not step.need) and not s:engine().sealed
         and (not Deal.handOver(s) or lateVoid(s)) then
       s:play(0, { k = "void" })
     end
