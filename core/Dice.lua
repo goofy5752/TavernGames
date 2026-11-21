@@ -220,8 +220,11 @@ ns.Ext.dice = {
     if a.op == "open" then
       -- Opened over a running throw (of the same host: a host change drops
       -- it) after my seed went out: a second try at the dice.
-      local old, mine = throw.replaced, s.diceMine
+      local old, mine, me = throw.replaced, s.diceMine, s.mySeat
       throw.replaced = nil
+      -- Opened under my own seat number, or while my seat bears another name:
+      -- I never opened it (a host that rewrote the seats).
+      if s.role ~= "host" and me and (throw.d == me or s.seats[me] ~= s.client.env.me) then foul(throw, "forged") end
       if old and (old.sent or old.foul) then close(s, old.h, "bad", old.foul or "dodge", old) end
       if s.role == "host" then
         if mine and mine.h == a.h then throw.seed, throw.own = mine.seed, a.c; own(s, throw, a.c) end

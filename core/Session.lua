@@ -113,7 +113,7 @@ function Session:apply(seat, a)
   if k == "sit" or k == "stand" then
     if type(a.seat) ~= "number" or self.seats[a.seat] == nil then return nil end
     if k == "sit" then
-      if type(a.name) ~= "string" then return nil end
+      if type(a.name) ~= "string" or self.seats[a.seat] then return nil end -- never onto a taken seat
       self.seats[a.seat] = a.name
     else
       self.seats[a.seat] = false
