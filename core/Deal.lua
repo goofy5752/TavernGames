@@ -15,18 +15,28 @@ local _, ns = ...
 --   Seeds still out FAIR_WAIT after the hand ended: the hand is "bad",
 --   "noreveal" - closed by the next open, or after the last hand of a match by
 --   EV {k="fair", op="noreveal", h} (host only) or at the latest by the next start.
+-- Failures: a shuffle not dealt FAIR_WAIT after its open is opened again
+-- (a new h, fresh seeds), and a stand during the shuffle reopens it at once.
+-- A player missing faces of its hand asks the dealer again (PRQ): at once
+-- after adopting a dealt hand, else after FAIR_ASK_GAP. A dealer without its
+-- deck (a reload) or whose seat stands mid-hand: the hand is void (EV seat 0
+-- {k="void"}), nothing scores, and the deal is asked for again.
+-- A member whose snapshot shows that a hand it held open was closed or
+-- replaced closes it "unseen" (it missed the end).
 -- Seeds, decks and private faces live in the session only; the round that
--- leaves the client (SNP.fr) is public: h, d, p, the commits, the stage, n.
+-- leaves the client (SNP.fr) is public: h, d, p, the commits, the stage, n
+-- (with no round open, only n).
 --
 -- Session fields: s.fair = the round {h, d, p, dealer (name), commits, stage
 -- ("commit"|"seed"|"dealt"|"done"), seed, seedSent, seeds, deck, dealing, sent,
--- pub, priv, lied, base, log, q, fresh, revealed, out (the published seeds),
--- wantOpen (host: the engine asked for the next deal), replaced (the round an
--- open replaced while still "dealt")}; s.fairEarly[h][sender] = seeds that
--- reached the dealer before its last commit event; s.fairN = hands dealt in
--- this match; s.fairTimer (host) = the round's wait (FAIR_WAIT): for a
--- shuffle from the open until the deal, for a reveal from the engine's ask for
--- the next deck. s.fairLast = {h, verdict, why, dealer} of the last closed
+-- pub, priv, lied, base, log, q, fresh (adopted from a snapshot, not asked
+-- yet), voidAsked, revealed, out (the published seeds), wantOpen (host: the
+-- engine asked for the next deal), replaced (the round an open replaced while
+-- still "dealt")}; s.fairEarly[h][sender] = seeds that reached the dealer
+-- before its last commit event; s.fairN = hands dealt in this match;
+-- s.fairTimer (host) = the round's wait (FAIR_WAIT): for a shuffle from the
+-- open until the deal, for a reveal from the end of the hand. s.askTimer =
+-- my next PRQ. s.fairLast = {h, verdict, why, dealer} of the last closed
 -- hand; s.fairSeen = {ok, bad} hands closed so far in this match.
 -- Nothing is sent from the `table` hook: an event sent from inside
 -- Session:apply would overtake the one being applied. Sending happens in
@@ -114,6 +124,9 @@ local function request(s, seat, a)
     end
   elseif op == "reveal" then
     if seat == fair.d and revealFits(s, a.s) then s:play(0, { k = "fair", op = "reveal", h = fair.h, s = copy(a.s) }) end
+  elseif op == "void" then
+    -- The dealer lost its deck while the hand runs.
+    if seat == fair.d and fair.stage == "dealt" and not Deal.handOver(s) then s:play(0, { k = "void" }) end
   end
 end
 
@@ -135,18 +148,24 @@ local function stopWait(s)
 end
 
 -- The one handler of s.fairTimer: it acts only on my own table, as its host,
--- for the same round. A hand whose reveal never came is given up: the next
--- round opens (and its open closes this one "noreveal"); after the last hand
--- of a match, which opens no round, EV {k="fair", op="noreveal", h} closes it.
--- While the wait is armed, `need` does not reopen a running shuffle.
+-- for the same round. A shuffle not dealt yet is opened again (a participant
+-- is silent; Deal.open checks the engine still wants a deck). A hand whose
+-- reveal never came is given up: the next round opens (and its open closes
+-- this one "noreveal"); after the last hand of a match, which opens no round,
+-- EV {k="fair", op="noreveal", h} closes it. While the wait is armed, `need`
+-- does not reopen a running shuffle.
 local function fairWaitOver(s, h)
   s.fairTimer = nil
   local fair = s.fair
-  if s.client.session ~= s or s.role ~= "host" or not fair or fair.h ~= h or fair.stage ~= "dealt" then return end
-  if fair.wantOpen then
+  if s.client.session ~= s or s.role ~= "host" or not fair or fair.h ~= h then return end
+  if fair.stage == "commit" or fair.stage == "seed" then
     Deal.open(s)
-  elseif Deal.handOver(s) then
-    s:play(0, { k = "fair", op = "noreveal", h = h })
+  elseif fair.stage == "dealt" then
+    if fair.wantOpen then
+      Deal.open(s)
+    elseif Deal.handOver(s) then
+      s:play(0, { k = "fair", op = "noreveal", h = h })
+    end
   end
 end
 
@@ -155,10 +174,12 @@ local function armWait(s, h)
   s.fairTimer = s.client:after(C.FAIR_WAIT, function() fairWaitOver(s, h) end)
 end
 
--- Host: opens round h = seq + 1; always replaces the round's wait.
+-- Host: opens round h = seq + 1 while the engine wants a deck; always
+-- replaces the round's wait.
 function Deal.open(s)
   local p = occupiedSeats(s.seats)
-  if #p < 2 then return end
+  local action = s.state and s:engine().system(s.state)
+  if #p < 2 or not (action and action.need == "deck") then return end
   local h = s.seq + 1
   stopWait(s)
   armWait(s, h)
@@ -312,12 +333,32 @@ local function reveal(s)
   Deal.submit(s, { k = "fair", op = "reveal", h = fair.h, s = list })
 end
 
+-- Participant: PRQ{tid, h}, send me all my faces again.
+local function ask(s)
+  local fair = s.fair
+  s.client:send("WHISPER", fair.dealer, Session.message("PRQ", { tid = s.tid, h = fair.h }))
+end
+
+-- Participant: asks again FAIR_ASK_GAP from now, and every FAIR_ASK_GAP after
+-- that while a face of this round's hand is still missing (one timer).
+local function askLater(s)
+  if s.askTimer then return end
+  local fair = s.fair
+  s.askTimer = s.client:after(C.FAIR_ASK_GAP, function()
+    s.askTimer = nil
+    if s.client.session ~= s or s.fair ~= fair or fair.stage ~= "dealt" or not Deal.missing(s) then return end
+    ask(s)
+    askLater(s)
+  end)
+end
+
 -- Whatever my role owes the round now (idempotent).
 function Deal.react(s)
   local fair = s.fair
   if not fair then return end
   local me = s.mySeat
   local part = me ~= nil and contains(fair.p, me)
+  if fair.stage ~= "dealt" then fair.fresh = nil end -- I see this deal happen: nothing to ask for
   if fair.stage == "commit" then
     if part and not fair.seed and fair.commits[me] == nil then
       local env = s.client.env
@@ -337,8 +378,23 @@ function Deal.react(s)
     end
   elseif fair.stage == "dealt" then
     Deal.learn(s, {})
-    if me == fair.d and fair.deck then Deal.sync(s) end
-    if me == fair.d and not fair.revealed and Deal.handOver(s) then reveal(s) end
+    if me == fair.d then
+      if fair.deck then
+        Deal.sync(s)
+        if not fair.revealed and Deal.handOver(s) then reveal(s) end
+      elseif not fair.voidAsked and not Deal.handOver(s) then
+        -- My deck is gone (a reload): nobody can be dealt the rest of this hand.
+        fair.voidAsked = true
+        Deal.submit(s, { k = "fair", op = "void", h = fair.h })
+      end
+    elseif part and Deal.missing(s) then
+      if fair.fresh then
+        fair.fresh = nil
+        ask(s)
+      else
+        askLater(s)
+      end
+    end
   end
 end
 
@@ -385,8 +441,22 @@ local function onPrivate(client, sender, m)
   Deal.learn(s, m.cards)
 end
 
+-- PRQ{tid, h}: a participant of my round lost its faces; the dealer with the
+-- deck sends them all again.
+local function onAsk(client, sender, m)
+  local s = client.session
+  if not s or s.tid ~= m.tid then return end
+  local fair = s.fair
+  if not fair or fair.h ~= m.h or fair.stage ~= "dealt" or not fair.deck or s.mySeat ~= fair.d then return end
+  local seat = seatOf(s.seats, sender)
+  if not seat or not contains(fair.p, seat) then return end
+  fair.sent[seat] = {}
+  Deal.sync(s)
+end
+
 ns.Member.handlers.SED = onSeed
 ns.Member.handlers.PRV = onPrivate
+ns.Member.handlers.PRQ = onAsk
 
 ---------------------------------------------------------------------------
 -- Hooks
@@ -476,6 +546,14 @@ ns.Ext.fair = {
       return
     end
     local fair = s.fair
+    if k == "void" then
+      -- The hand is annulled; the host's timers ask for the deal again.
+      if s.role == "host" then stopWait(s) end
+      Deal.close(s, "void", nil, fair and fair.stage ~= "done" and fair or false)
+      if (s.fairN or 0) > 0 then s.fairN = s.fairN - 1 end
+      s.fair = nil
+      return
+    end
     local op = k == "fair" and a.op
     -- A hand whose seeds never came out: closed before anything else.
     if op == "open" and fair.replaced then
@@ -505,6 +583,15 @@ ns.Ext.fair = {
     elseif op == "noreveal" then
       return Deal.close(s, "bad", "noreveal")
     end
+    if k == "stand" and s.role == "host" then
+      -- A stand during the shuffle: the round restarts without that seat.
+      if fair.stage == "commit" or fair.stage == "seed" then return Deal.open(s) end
+      -- The dealer's seat stands mid-hand, taking the deck with it.
+      if a.seat == fair.d and fair.stage == "dealt" and not Deal.handOver(s) and not s:gameOver()
+          and s:seatedCount() >= s:engine().minSeats then
+        return s:play(0, { k = "void" })
+      end
+    end
     Deal.react(s)
     -- Host: the hand (or the match) is over and no reveal yet: its wait starts.
     if s.role == "host" and not s.fairTimer and s.fair == fair and Deal.handOver(s) then armWait(s, fair.h) end
@@ -513,11 +600,17 @@ ns.Ext.fair = {
   -- Member: the round from the host's snapshot (rule 10b).
   adopted = function(s, prev, m)
     local fr = m and m.fr
-    if not wellFormed(fr) then
+    local good, fair = wellFormed(fr), s.fair
+    -- A hand I still held open that the host has closed or replaced: I missed its end.
+    if fair and fair.stage == "dealt" and not (good and fr.h == fair.h and fr.st == "dealt") then
+      Deal.close(s, "unseen", nil, fair)
+    end
+    if not good then
       s.fair = nil
+      -- No round open: the hands dealt so far still decide the next dealer.
+      if type(fr) == "table" and isInt(fr.n) and fr.n >= 0 then s.fairN = fr.n end
       return
     end
-    local fair = s.fair
     if fair and fair.h == fr.h then
       fair.commits, fair.stage = copy(fr.c), fr.st
       -- Events I missed: I cannot replay this hand.
@@ -534,12 +627,41 @@ ns.Ext.fair = {
     Deal.react(s)
   end,
 
-  -- Host: the round as SNP.fr (public data only).
+  -- Host: the round as SNP.fr (public data only); with no round, only n.
   snap = function(s)
     local fair = s.fair
-    if not fair then return nil end
+    if not fair then return { n = s.fairN or 0 } end
     return { h = fair.h, d = fair.d, p = copy(fair.p), c = copy(fair.commits), st = fair.stage, n = s.fairN or 0 }
   end,
+
+  -- My table changed host. A demoted host drops its wait. A new host whose
+  -- hand is over waits for the reveal (after the last hand of a match nothing
+  -- else would; mid-match `need` finds the wait armed).
+  hostChanged = function(s)
+    if s.role ~= "host" then return stopWait(s) end
+    local fair = s.fair
+    if fair and not s.fairTimer and Deal.handOver(s) then armWait(s, fair.h) end
+  end,
 }
+
+-- The table frame's fairness line -> locale key, argument | nil: nil for an
+-- engine without the extension "fair".
+function Deal.status(s)
+  if not contains(s:engine().ext or {}, "fair") then return nil end
+  local fair = s.fair
+  if fair and fair.stage == "commit" then
+    for _, q in ipairs(fair.p) do
+      local name = s.seats[q]
+      if q ~= s.mySeat and fair.commits[q] == nil and name then return "fair.waiting", name end
+    end
+    return "fair.shuffle"
+  elseif fair and fair.stage == "seed" then
+    return "fair.dealing", fair.dealer
+  end
+  local last = s.fairLast
+  if not last then return nil end
+  if last.verdict == "void" then return "fair.void" end
+  return "fair.last", last.verdict
+end
 
 return Deal

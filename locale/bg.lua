@@ -157,6 +157,16 @@ T["invite.auto.timeout"] = "%s не отговори."
 -- Rules book window
 T["book.intro"] = "Покажи въведението пак"
 
+-- Card fairness (table line)
+T["fair.shuffle"] = "Разбъркваме заедно…"
+T["fair.waiting"] = "Чакаме %s за разбъркването…"
+T["fair.dealing"] = "%s раздава…"
+T["fair.void"] = "Ръката е анулирана. Раздава се отново."
+T["fair.last"] = "Последната ръка: %s"
+T["fair.v.ok"] = "проверена"
+T["fair.v.bad"] = "нередовна"
+T["fair.v.unseen"] = "не съм я гледал цялата"
+
 -- First-run language choice (the same in both languages) and the intro cards
 T["lang.title"] = "Език / Language"
 T["lang.bg"] = "Български"
