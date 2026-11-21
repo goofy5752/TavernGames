@@ -29,6 +29,7 @@ Adapter.DEFAULTS = {
 }
 
 local ALERT = { EV = true, ACT = true, SNP = true }
+local BULK = { LVC = true, LID = true } -- the ledger's sync (and a whispered LEV) yields to the tables
 local CHANNELS = { GUILD = true, WHISPER = true }
 local WHO_WAIT = 5 -- seconds of roster lookup before asking the guild channel
 local NOT_FOUND_WINDOW = 5 -- seconds a whisper target's "player not found" line stays hidden
@@ -57,8 +58,11 @@ function Adapter.dbProxy(aceDB)
   })
 end
 
-function Adapter.priority(msg)
-  if type(msg) == "table" and ALERT[msg.t] then return "ALERT" end
+-- ChatThrottleLib's priority of a message on `channel`: a live GUILD LEV stays NORMAL.
+function Adapter.priority(msg, channel)
+  if type(msg) ~= "table" then return "NORMAL" end
+  if ALERT[msg.t] then return "ALERT" end
+  if BULK[msg.t] or (msg.t == "LEV" and channel == "WHISPER") then return "BULK" end
   return "NORMAL"
 end
 
@@ -121,7 +125,7 @@ local function rawSend(channel, target, msg)
     return
   end
   if channel == "WHISPER" then Adapter.whispered[target] = GetTime() end
-  addon:SendCommMessage(C.PREFIX, text, channel, target, Adapter.priority(msg))
+  addon:SendCommMessage(C.PREFIX, text, channel, target, Adapter.priority(msg, channel))
 end
 
 -- An adapter-level message (not from the Client), traced like the Client's own.
@@ -188,11 +192,16 @@ function ns.ready(fn)
   readyQueue[#readyQueue + 1] = fn
 end
 
--- The human Client under `name`; ready callbacks run before it starts.
+-- The human Client under `name`; ready callbacks run before it starts. Its
+-- ledger store is ns.db.ledger[guild .. "-" .. realm]; without a guild name
+-- now there is none (core/Client.lua logs it).
 function Adapter.createClient(name, send)
   local _, cls = UnitClass("player")
   local env = baseEnv(name, UnitGUID("player"), cls)
   env.send, env.status, env.inGroup, env.db, env.log = send, status, inGroup, ns.db, Adapter.log
+  local guild = GetGuildInfo("player")
+  env.guild = guild and guild .. "-" .. GetRealmName() or nil
+  env.member = Adapter.isMember
   env.loading, env.loadedAt = Adapter.loading, Adapter.loadedAt
   ns.RollChat.env(env, false)
   local client = ns.Client.new(env)

@@ -85,6 +85,7 @@ local function build(L)
   local v = { rev = L.rev, debts = {}, sum = {}, pay = {}, peers = {}, denials = {}, rows = {} }
   local byKey, byId, words = {}, {}, {}
   L:each(function(e)
+    if e.un then return end -- an own entry put to me after a crash (core/LedgerNet.lua) counts for nothing
     if L:denied(e) then v.denials[#v.denials + 1] = e; return end
     local a, n = Ledger.author(e.i)
     if e.k == "D" and claimOk(e, a) then

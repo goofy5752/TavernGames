@@ -16,6 +16,16 @@ function Client.new(env)
   self.invites = ns.Invites.new(self)
   self.stakeNoted = false -- a db.stakeSat note was written in this run (see ns.Stake.note)
   ns.Stake.watch(self)
+  -- The guild's gold ledger (env.db.ledger[env.guild]); a client without a guild has none.
+  if env.guild and env.db then
+    local ledgers = env.db.ledger or {}
+    env.db.ledger = ledgers
+    ledgers[env.guild] = ledgers[env.guild] or {}
+    self.ledger = ns.Ledger.new(ledgers[env.guild], env.me, env.epoch)
+    self.ledgerNet = ns.LedgerNet.new(self, self.ledger)
+  elseif not env.guild and env.log then
+    env.log("ledger", nil, nil, "no guild: no ledger")
+  end
   return self
 end
 
@@ -45,6 +55,7 @@ end
 function Client:start()
   if self.running then return end
   self.running = true
+  if self.ledgerNet then self.ledgerNet:start() end
   self.presence:start()
 end
 
@@ -52,6 +63,7 @@ function Client:stop()
   if not self.running then return end
   self.running = false
   ns.Session.stop(self) -- keeps the seat; END only for a host alone (no HI: BYE follows)
+  if self.ledgerNet then self.ledgerNet:stop() end -- my entries of the last seconds still go out
   self:send("GUILD", nil, { v = C.PROTOCOL, t = "BYE" })
   for timer in pairs(self.timers) do timer.cancel() end
   self.timers = {}
@@ -64,11 +76,22 @@ end
 
 -- opts {game, access, turn, opt, stake} -> tid | nil, code ("busy" "game" "stake" "access" "turn" "opt").
 -- `stake`: copper (ns.Stake.valid), only for a game whose engine has `stakes = true`; nil = for fun.
-function Client:openTable(opts) return ns.Session.open(self, opts) end
+-- A client without a ledger (no guild: a bot) opens no staked table.
+function Client:openTable(opts)
+  if type(opts) == "table" and opts.stake ~= nil and not self.ledger then return nil, "stake" end
+  return ns.Session.open(self, opts)
+end
 
 -- Refusals arrive as the event "refused"(tid, why). `sk`: the table's stake I
--- accept (nil at a fun table); any other is refused "stake".
-function Client:sit(tid, seat, sk) ns.Session.request(self, "SIT", tid, seat, sk) end
+-- accept (nil at a fun table); any other is refused "stake". A client without a
+-- ledger (a bot) sits at no staked table -> nil, "stake" at once, nothing sent.
+function Client:sit(tid, seat, sk)
+  if not self.ledger then
+    local rec, s = self.lobby:get(tid), self.session
+    if sk ~= nil or (rec and rec.stake ~= nil) or (s and s.tid == tid and s.stake ~= nil) then return nil, "stake" end
+  end
+  ns.Session.request(self, "SIT", tid, seat, sk)
+end
 
 -- After "stakeAsk"(tid, sk): I accept that stake and keep my seat -> true | nil
 -- (nothing asked). Unaccepted, the end of the running game stands me up.
@@ -137,4 +160,5 @@ function Client:receive(channel, sender, msg)
   self.lobby:receive(channel, sender, msg)
   ns.Session.receive(self, channel, sender, msg)
   self.invites:receive(channel, sender, msg)
+  if self.ledgerNet then self.ledgerNet:receive(channel, sender, msg) end
 end

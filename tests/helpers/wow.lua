@@ -110,6 +110,10 @@ function Wow.new(opts)
   G.GetCurrentRegion = function() return 3 end
   G.GetCurrentRegionName = function() return "EU" end
   G.IsInGuild = function() return self.inGuild end
+  -- The guild's name while w.inGuild, unless w.guildName == false (the client has no guild data yet).
+  G.GetGuildInfo = function(unit)
+    if unit == "player" and self.inGuild and self.guildName ~= false then return self.guildName or "Механата", "Член", 1 end
+  end
   G.C_GuildInfo = { GuildRoster = function() self.rosterRequests = self.rosterRequests + 1 end }
   G.GetNumGuildMembers = function() return #self.roster, #self.roster end
   G.GetGuildRosterInfo = function(i)

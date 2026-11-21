@@ -9,6 +9,7 @@ local _, ns = ...
 -- one visit per node (L.visits counts them). A cycle can only come from
 -- tampered saved variables: a denier met again while it is still being settled
 -- counts as standing there, so the answer then depends on the query order.
+-- An X kept uncounted (`un`: an own entry put to me after a crash, core/LedgerNet.lua) denies nothing.
 local Store = ns.Ledger.Store
 
 local function key(b) return b.i .. "|" .. b.h end
@@ -19,7 +20,7 @@ local function settle(self, k)
   if memo[k] ~= nil then return memo[k] end
   local open = { [k] = true }
   local stack = { { k = k, list = {}, at = 1 } }
-  for x in pairs(deny[k] or {}) do stack[1].list[#stack[1].list + 1] = x end
+  for x in pairs(deny[k] or {}) do if not x.un then stack[1].list[#stack[1].list + 1] = x end end
   self.visits = (self.visits or 0) + 1
   while #stack > 0 do
     local top = stack[#stack]
@@ -34,7 +35,7 @@ local function settle(self, k)
     end
     if push then
       local frame = { k = push, list = {}, at = 1 }
-      for x in pairs(deny[push] or {}) do frame.list[#frame.list + 1] = x end
+      for x in pairs(deny[push] or {}) do if not x.un then frame.list[#frame.list + 1] = x end end
       open[push], stack[#stack + 1] = true, frame
       self.visits = (self.visits or 0) + 1
     else

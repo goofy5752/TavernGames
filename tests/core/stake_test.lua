@@ -258,12 +258,16 @@ describe("stake", function()
     local name = "Бот Тестов"
     local bot = sim:join(name, sim.makeEnv(name, "WARRIOR")); sim:run(1)
     local tid = a:openTable{ game = "ttt", access = "guild", turn = 45, stake = 50000 }; sim:run(3)
-    local refused = record(bot, "refused")
     local mark = #sim.sent
-    bot:sit(tid, 2); sim:run(1)
+    -- A bot has no ledger: its own sit refuses at once and sends nothing (F1 Task 5).
+    local r, why = bot:sit(tid, 2)
+    eq(r, nil); eq(why, "stake"); sim:run(1)
+    eq(#sent(sim, name, "SIT", mark), 0); eq(#sent(sim, A, "SNO", mark), 0)
+    -- A hand-sent SIT without sk still gets SNO "stake".
+    bot:send("WHISPER", A, { v = 1, t = "SIT", tid = tid, seat = 2 }); sim:run(1)
     local sno = sent(sim, A, "SNO", mark)
     eq(#sno, 1); eq(sno[1].target, name); eq(sno[1].msg.why, "stake")
-    eq(refused, { { tid, "stake" } }); eq(a.session.seats[2], false)
+    eq(a.session.seats[2], false)
   end)
 
   it("a bot declines an invitation to a staked table", function()
@@ -284,7 +288,10 @@ describe("stake", function()
     ns.Engines.fillstake = FS
     local done, err = pcall(function()
       local host = bots.list[2]
-      local tid = host:openTable{ game = "fillstake", access = "guild", turn = 45, stake = 50000 }; sim:run(1)
+      -- A bot has no ledger, so its client opens no staked table (F1 Task 5); the
+      -- session is opened past that check to pin Bots:fill's own guard.
+      eq({ host:openTable{ game = "fillstake", access = "guild", turn = 45, stake = 50000 } }, { nil, "stake" })
+      local tid = ns.Session.open(host, { game = "fillstake", access = "guild", turn = 45, stake = 50000 }); sim:run(1)
       a:sit(tid, 2, 50000); sim:run(5)
       eq(host.session.seats, { host.env.me, A, false }); eq(next(host.invites.sent), nil)
       a:stand(); sim:run(3)

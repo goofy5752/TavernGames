@@ -184,6 +184,41 @@ describe("wow adapter: comm", function()
     w.ns.client.env.send("GUILD", nil, { v = 1, t = "HI", f = function() end })
     eq(#w.sent, n)
   end)
+
+  it("the ledger's sync goes BULK; a live GUILD LEV stays NORMAL (Adapter.priority knows the channel)", function()
+    local w = guildWow()
+    local A = w.ns.Adapter
+    eq(A.priority({ t = "LVC" }, "WHISPER"), "BULK"); eq(A.priority({ t = "LID" }, "WHISPER"), "BULK")
+    eq(A.priority({ t = "LEV" }, "WHISPER"), "BULK"); eq(A.priority({ t = "LEV" }, "GUILD"), "NORMAL")
+    eq(A.priority({ t = "EV" }, "WHISPER"), "ALERT"); eq(A.priority({ t = "HI" }, "GUILD"), "NORMAL")
+    local env, n = w.ns.client.env, #w.sent
+    env.send("WHISPER", B, { v = 1, t = "LEV", ev = {} })
+    env.send("GUILD", nil, { v = 1, t = "LEV", ev = {} })
+    env.send("WHISPER", B, { v = 1, t = "LVC", a = {} })
+    env.send("WHISPER", B, { v = 1, t = "LID", au = B, l = {} })
+    eq({ w.sent[n + 1].prio, w.sent[n + 2].prio, w.sent[n + 3].prio, w.sent[n + 4].prio }, { "BULK", "NORMAL", "BULK", "BULK" })
+  end)
+end)
+
+describe("wow adapter: the guild ledger", function()
+  it("env.guild is the guild and the realm; the store is ns.db.ledger[env.guild]; env.member is the roster", function()
+    local w = guildWow()
+    local c = w.ns.client
+    eq(c.env.guild, "Механата-Forever"); ok(c.ledger and c.ledgerNet, "no ledger")
+    ok(w.G.TavernGamesDB.global.ledger["Механата-Forever"] == c.ledger.store, "the store is not in ns.db.ledger")
+    eq(c.env.member(B), true); eq(c.env.member(ME), true); eq(c.env.member("Гошо Тестов"), false)
+  end)
+
+  it("without a guild name when the client is created: no ledger, and a log line", function()
+    local w = Wow.new()
+    w.inGuild, w.roster, w.guildName = true, rosterWith(true), false
+    w:boot(); w:fire("GUILD_ROSTER_UPDATE")
+    local c = w.ns.client
+    ok(c, "no client"); eq(c.env.guild, nil); eq(c.ledger, nil); eq(c.ledgerNet, nil)
+    local logged = false
+    for _, line in ipairs(w.ns.Adapter.trace:lines()) do if line:find("no ledger", 1, true) then logged = true end end
+    ok(logged, "no log line")
+  end)
 end)
 
 describe("wow adapter: game events", function()

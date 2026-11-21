@@ -6,6 +6,8 @@ Sim.__index = Sim
 Sim.ns = Loader.ns()
 
 local EPOCH0 = 1700000000
+-- The saved variables a crash loses: their copy at the last client:stop() comes back (sim:crash).
+local CRASH_KEYS = { "ledger", "stakeSeen", "stakeLeft", "stakeSat" }
 
 -- Seeds. A sim client makes its seeds the plain way, SEED_BYTES values of its
 -- env.random as hex, so that a test can say what a seed will be (sim.nextRandom,
@@ -36,6 +38,7 @@ function Sim.new(ns)
     nextRolls = {},   -- results for env.roll, first to last; when empty: hi
     rolled = {},      -- every env.roll: { from, lo, hi, n }
     groupInvites = {}, -- every env.groupInvite: { from, name }
+    stopped = {},     -- name -> the CRASH_KEYS of its db at sim:add or its last client:stop()
   }, Sim)
   -- Whose server rolls `to` sees in chat, and the name it sees for `from`.
   self.canSee = function() return true end
@@ -91,8 +94,21 @@ function Sim:newEnv(name, opts)
   return env
 end
 
+-- Remembers a copy of the CRASH_KEYS of name's db: what sim:crash comes back to.
+function Sim:keep(name, db)
+  local copy = {}
+  for _, k in ipairs(CRASH_KEYS) do copy[k] = self.ns.Util.copy(db[k]) end
+  self.stopped[name] = copy
+end
+
 function Sim:join(name, env)
   local client = self.ns.Client.new(env)
+  local sim, stop = self, client.stop
+  -- A clean logout writes the saved variables (what sim:crash comes back to).
+  client.stop = function(c)
+    stop(c)
+    if sim.stopped[name] then sim:keep(name, env.db) end
+  end
   self.clients[name], self.envs[name] = client, env
   self.bus:join(name, function(channel, sender, msg)
     if self.offlineSet[name] or self.offlineSet[sender] then return end
@@ -135,11 +151,16 @@ function Sim:addFakes(env, opts)
   end
 end
 
+-- A human player's client: in the guild opts.guild (default "МЕХАНАТА") with a
+-- ledger store db.ledger, both kept across sim:relog (sim.makeEnv, a bot's env, has neither).
 function Sim:add(name, opts)
   opts = opts or {}
   self.options[name] = opts
   local env = self:newEnv(name, opts)
+  env.guild = opts.guild or "МЕХАНАТА"
+  env.db.ledger = env.db.ledger or {}
   self:addFakes(env, opts)
+  self:keep(name, env.db)
   return self:join(name, env), env
 end
 
@@ -153,16 +174,31 @@ function Sim:relog(name)
   for k, v in pairs(self.options[name] or {}) do opts[k] = v end
   opts.cls, opts.db = old.cls, old.db
   local env = self:newEnv(name, opts)
-  env.status, env.inGroup = old.status, old.inGroup
+  env.status, env.inGroup, env.guild = old.status, old.inGroup, old.guild
   if self.options[name] then self:addFakes(env, opts) end
   return self:join(name, env)
 end
 
 -- A relog after a crash, or on another computer: nothing of the saved
--- variables that a /reload keeps of a running deal (db.fairKeep) is there.
+-- variables that a /reload keeps of a running deal (db.fairKeep) is there,
+-- and the ledger and the stake notes are as at the last client:stop() (or sim:add).
 function Sim:crash(name)
-  self.envs[name].db.fairKeep = nil
+  local db, kept = self.envs[name].db, self.stopped[name]
+  db.fairKeep = nil
+  for _, k in ipairs(kept and CRASH_KEYS or {}) do db[k] = self.ns.Util.copy(kept[k]) end
   return self:relog(name)
+end
+
+-- Closes the adoption window and the login queue of every client's ledger
+-- (net:settle), so a test need not wait LEDGER_ADOPT_WAIT.
+function Sim:settle()
+  local names = {}
+  for name in pairs(self.clients) do names[#names + 1] = name end
+  table.sort(names, self.ns.Util.byteLess)
+  for _, name in ipairs(names) do
+    local net = self.clients[name].ledgerNet
+    if net then net:settle() end
+  end
 end
 
 -- The client shows a loading screen (on) or it just ended: the env flags of
