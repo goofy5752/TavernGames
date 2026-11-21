@@ -141,13 +141,13 @@ end
 -- name ever goes out for real, by GUILD or by WHISPER.
 local function humanSend(self)
   local orig, me = self.orig, self.env.me
-  return function(channel, target, msg)
+  return function(channel, target, msg, done) -- done: the ledger sync's done-callback (only a real send has one)
     self:retire()
     if channel == "WHISPER" and self.isBot[target] then return self:busSend(me, channel, target, msg) end
     local real = self:realCopy(msg)
     if real ~= nil then
       self:noteReal(real)
-      orig(channel, target, real)
+      orig(channel, target, real, done)
     end
     if channel == "GUILD" then self:busSend(me, channel, target, msg) end
   end

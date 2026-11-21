@@ -44,16 +44,20 @@ function Presence:mayReturn(tid)
   return self.been[tid] == true or home or next(self.been) == nil
 end
 
+-- My HI; `ld` is the digest of my ledger (none without a guild: a bot).
 function Presence:hi(re)
-  local env = self.client.env
-  return { v = C.PROTOCOL, t = "HI", ver = C.VERSION, cls = env.cls, id = env.guid, at = self.at, re = re }
+  local env, L = self.client.env, self.client.ledger
+  return { v = C.PROTOCOL, t = "HI", ver = C.VERSION, cls = env.cls, id = env.guid, at = self.at, re = re,
+    ld = L and L:digest() or nil }
 end
 
 function Presence:sendGuildHi(re)
   if self.pendingHi then self.pendingHi.cancel(); self.pendingHi = nil end
   self.lastHi = self.client.env.now()
   self.sentAt = self.at
-  self.client:send("GUILD", nil, self:hi(re))
+  local hi = self:hi(re)
+  self.sentLd = hi.ld -- the digest the guild last heard from me (core/LedgerSync.lua)
+  self.client:send("GUILD", nil, hi)
 end
 
 function Presence:heartbeat()
@@ -140,6 +144,9 @@ function Presence:receive(channel, sender, msg)
       self:changed()
     end
     if msg.re == true then self.client:send("WHISPER", sender, self:hi(false)) end
+    -- The digest of the peer's ledger (8 hex): the sync compares it with mine.
+    p.ld = type(msg.ld) == "string" and #msg.ld == 8 and msg.ld:find("^[0-9a-f]+$") and msg.ld or nil
+    if p.ld and self.client.ledgerSync then self.client.ledgerSync:peer(sender, p.ld) end
   elseif msg.t == "BYE" then
     self:remove(sender)
   elseif self.peers[sender] then

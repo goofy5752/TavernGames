@@ -116,16 +116,21 @@ local addon = LibStub("AceAddon-3.0"):NewAddon("TavernGames", "AceComm-3.0")
 ns.addon = addon
 local wire = ns.Wire.new(LibStub("AceSerializer-3.0"), LibStub("LibDeflate"))
 Adapter.wire = wire
+-- The ledger cuts its batches and counts its budget by the real packed size.
+ns.LedgerNet.size = function(msg) return #wire:pack(msg) end
 
--- To the addon channel; AceComm splits text above 255 bytes.
-local function rawSend(channel, target, msg)
+-- To the addon channel; AceComm splits text above 255 bytes. done (optional)
+-- runs once the last part has left (AceComm's callback per part), or at once when the message is dropped.
+local function rawSend(channel, target, msg, done)
   local okPack, text = pcall(wire.pack, wire, msg)
   if not okPack then
     Adapter.log("drop", channel, target, msg)
+    if done then done() end
     return
   end
   if channel == "WHISPER" then Adapter.whispered[target] = GetTime() end
-  addon:SendCommMessage(C.PREFIX, text, channel, target, Adapter.priority(msg, channel))
+  local callback = done and function(_, sent, total) if sent >= total then done() end end
+  addon:SendCommMessage(C.PREFIX, text, channel, target, Adapter.priority(msg, channel), callback)
 end
 
 -- An adapter-level message (not from the Client), traced like the Client's own.

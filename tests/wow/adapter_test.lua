@@ -198,6 +198,23 @@ describe("wow adapter: comm", function()
     env.send("WHISPER", B, { v = 1, t = "LID", au = B, l = {} })
     eq({ w.sent[n + 1].prio, w.sent[n + 2].prio, w.sent[n + 3].prio, w.sent[n + 4].prio }, { "BULK", "NORMAL", "BULK", "BULK" })
   end)
+
+  it("env.send's done-callback runs once the last part has left; the ledger measures with the real wire", function()
+    local w = guildWow()
+    local env, n, done = w.ns.client.env, #w.sent, 0
+    env.send("WHISPER", B, { v = 1, t = "LVC", a = {} }, function() done = done + 1 end)
+    local s = w.sent[n + 1]
+    ok(type(s.callback) == "function", "a callback is passed to SendCommMessage")
+    s.callback(s.arg, 255, 600); eq(done, 0) -- a first part
+    s.callback(s.arg, 600, 600); eq(done, 1) -- the last one
+    env.send("WHISPER", B, { v = 1, t = "HI" })
+    eq(w.sent[n + 2].callback, nil) -- no done: no callback
+    env.send("WHISPER", B, { v = 1, t = "LEV", f = function() end }, function() done = done + 1 end)
+    eq(done, 2) -- dropped (cannot be packed): done at once, the sync does not stall
+    local msg = { v = 1, t = "LVC", a = { [B] = { n = 3, x = "abcdef" } } }
+    eq(w.ns.LedgerNet.size(msg), #w.wire:pack(msg))
+  end)
+
 end)
 
 describe("wow adapter: the guild ledger", function()

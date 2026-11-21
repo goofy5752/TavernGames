@@ -23,6 +23,7 @@ function Client.new(env)
     ledgers[env.guild] = ledgers[env.guild] or {}
     self.ledger = ns.Ledger.new(ledgers[env.guild], env.me, env.epoch)
     self.ledgerNet = ns.LedgerNet.new(self, self.ledger)
+    self.ledgerSync = ns.LedgerSync.new(self, self.ledger, self.ledgerNet)
   elseif not env.guild and env.log then
     env.log("ledger", nil, nil, "no guild: no ledger")
   end
@@ -47,8 +48,9 @@ function Client:after(seconds, fn)
   return timer
 end
 
-function Client:send(channel, target, msg)
-  self.env.send(channel, target, msg)
+-- `done` (optional): called once the message has left (env.send's done-callback).
+function Client:send(channel, target, msg, done)
+  self.env.send(channel, target, msg, done)
   if self.env.log then self.env.log("out", channel, target, msg) end
 end
 
@@ -63,7 +65,7 @@ function Client:stop()
   if not self.running then return end
   self.running = false
   ns.Session.stop(self) -- keeps the seat; END only for a host alone (no HI: BYE follows)
-  if self.ledgerNet then self.ledgerNet:stop() end -- my entries of the last seconds still go out
+  if self.ledgerNet then self.ledgerNet:stop(); self.ledgerSync:stop() end -- my entries of the last seconds still go out
   self:send("GUILD", nil, { v = C.PROTOCOL, t = "BYE" })
   for timer in pairs(self.timers) do timer.cancel() end
   self.timers = {}
@@ -161,4 +163,7 @@ function Client:receive(channel, sender, msg)
   ns.Session.receive(self, channel, sender, msg)
   self.invites:receive(channel, sender, msg)
   if self.ledgerNet then self.ledgerNet:receive(channel, sender, msg) end
+  if self.ledgerSync and channel == "WHISPER" and (msg.t == "LVC" or msg.t == "LEV" or msg.t == "LID") then
+    self.ledgerSync:receive(sender, msg)
+  end
 end

@@ -24,11 +24,11 @@ local function record(client, event)
   return list
 end
 
--- The LEV messages `from` sent after sim.sent[mark], as sim.sent rows.
+-- The live (GUILD) LEV messages `from` sent after sim.sent[mark], as sim.sent rows (a whispered one is the sync's).
 local function levs(sim, from, mark)
   local out = {}
   for j, s in ipairs(sim.sent) do
-    if j > mark and s.from == from and s.msg.t == "LEV" then out[#out + 1] = s end
+    if j > mark and s.from == from and s.msg.t == "LEV" and s.channel == "GUILD" then out[#out + 1] = s end
   end
   return out
 end
@@ -521,8 +521,9 @@ describe("ledger net: my name", function()
     -- After the window: another body under an id I hold is denied.
     eq(i.ledgerNet:take(pay(I, 3, M, 52), P), "twin")
     eq(#xs(i), 2); eq(#i.ledgerNet:asks(), 0)
-    -- A store with my record never adopts; the window of a new one ends by itself.
+    -- A store with my record never adopts; the window of a new one ends by itself (alone: no exchange ends it first).
     m:stop(); m = sim:relog(M); sim:run(1); eq(m.ledgerNet:adopting(), false)
+    sim = Sim.new()
     local p = sim:add(P)
     sim:run(1); eq(p.ledgerNet:adopting(), true)
     sim:run(28); eq(p.ledgerNet:adopting(), true)
@@ -548,7 +549,7 @@ describe("ledger net: my name", function()
     sim:run(120); eq(shipped(sim, I, mark), 20)
     local denied = 0
     m.ledger:each(function(e) if e.k ~= "X" and m.ledger:denied(e) then denied = denied + 1 end end)
-    eq(denied, 0) -- М never held the forgeries; it holds the 20 X
+    eq(denied, 20) -- М holds the 20 X, and the sync (Task 6) brought it the forgeries: each is denied
     eq(m.ledger:seen(I), 120)
   end)
 end)

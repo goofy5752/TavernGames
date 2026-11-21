@@ -191,12 +191,14 @@ function Wow.new(opts)
     function addon.RegisterComm(obj, prefix, method)
       self.comm = { obj = obj, prefix = prefix, method = method or "OnCommReceived" }
     end
-    function addon.SendCommMessage(_, prefix, text, dist, target, prio)
+    -- callback: AceComm's, called per part sent (arg, bytes sent so far, bytes in all); a test calls it.
+    function addon.SendCommMessage(_, prefix, text, dist, target, prio, callback, arg)
       assert(type(prefix) == "string" and type(text) == "string" and type(dist) == "string")
       assert(prio == "BULK" or prio == "NORMAL" or prio == "ALERT", "bad prio " .. tostring(prio))
       self.sent[#self.sent + 1] = { prefix = prefix, text = text, dist = dist, target = target, prio = prio,
-                                    msg = self.wire:unpack(text) }
+                                    msg = self.wire:unpack(text), callback = callback, arg = arg }
     end
+
     self.addon = addon
     return addon
   end

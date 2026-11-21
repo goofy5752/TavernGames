@@ -16,3 +16,5 @@ Later tasks of the stage append their rows below.
 | 4 | `/tavern probe mail` at a mailbox with a letter with money from a guild character | the sender's form in the inbox row; the price line; whether a money value is a plain number (`issecretvalue`) | not yet measured |
 | 5 | send 1s by mail between two accounts | the delivery delay (one hour between accounts?); the fee actually taken | not yet measured |
 | 6 | several small trades and letters in a row | does an economy hold appear; its message text | not yet measured |
+| 7 | two characters, one with 30 entries more: `/tavern debug` on both | one `LVC`, `LEV` batches two seconds apart, no error, no disconnect; `/tavern` stays usable meanwhile | not yet measured |
+| 8 | the same while playing Холдем on the sending client | the table does not stall (the `LEV` batches come six seconds apart) | not yet measured |

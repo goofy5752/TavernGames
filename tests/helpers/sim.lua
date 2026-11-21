@@ -73,10 +73,12 @@ function Sim:newEnv(name, opts)
     cls = opts.cls or "WARRIOR",
     db = opts.db or { lang = "bg", introDone = false, busy = false, snoozeUntil = 0, debug = false, minimap = {} },
   }
-  env.send = function(channel, target, msg)
+  -- `done` (optional), the done-callback of AceComm's SendCommMessage: here at once.
+  env.send = function(channel, target, msg, done)
     if env.dead then return end
     sim.sent[#sim.sent + 1] = { at = sim.clock, from = name, channel = channel, target = target, msg = sim.ns.Util.copy(msg) }
     sim.bus:send(name, channel, target, msg)
+    if done then done() end
   end
   env.now = function() return sim.clock end
   env.epoch = function() return EPOCH0 + sim.clock end
