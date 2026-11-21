@@ -13,7 +13,8 @@ local _, ns = ...
 -- a new host (core/Succession.lua) applies its catch-up events with applyUnsent.
 -- A game whose engine has `view` is held as my seat's view on every client:
 -- snapshots are cut per recipient (snapshotFor) and a member's own clock plays
--- its own hand on timeout (armAuto).
+-- its own hand on timeout (armAuto), again every AUTO_RETRY seconds while the
+-- turn stays mine (the move was lost, or my cards had not come yet).
 local Session = ns.Session
 local copy, seatOf = ns.Util.copy, ns.Util.seatOf
 
@@ -24,7 +25,8 @@ local copy, seatOf = ns.Util.copy, ns.Util.seatOf
 -- how) after the snapshot m replaced my state (how: see Member.adopt),
 -- hostChanged(s) when my table changed host; refused(s, seat, a) (member: an
 -- event of my host that does not apply), forged(s, seat, a) (member, engine
--- with `view`: an event for my seat that I did not send);
+-- with `view`: an event for my seat that I did not send), stuck(s) (my
+-- deadline passed and I have no automatic move to make: e.g. my cards are missing);
 -- need(s, action) (host: a system action that needs randomness),
 -- table(s, a) -> true (a seat-0 event the extension applied itself), snap(s)
 -- -> the SNP field `fr`. A hook that raises counts as nil: the error goes to
@@ -99,20 +101,35 @@ function Session:snapshotFor(name)
   return engine.snapshot(engine.view(self.state, seatOf(self.seats, name) or 0))
 end
 
--- Member: after every applied EV and every adopted snapshot. In a live game
--- whose engine has `view`, on my own turn with a deadline, my client makes my
--- automatic move when the deadline passes (the host cannot: it does not see my
--- hand) unless the table moved on or I became its host meanwhile.
+-- After every applied EV and every adopted snapshot (the host: from its
+-- extension's `applied`). In a live game whose engine has `view`, on my own
+-- turn with a deadline, my client makes my automatic move when the deadline
+-- passes (the host cannot: it does not see my hand) unless the table moved on.
+-- While the table still stands at that very event the move is made again
+-- every AUTO_RETRY seconds, AUTO_RETRIES times at most: the ACT may have been
+-- lost (the host refuses a second one, "turn"), or there was no move to make
+-- yet because my cards had not come (hook `stuck`: they are asked for again).
+-- A host's own move at the deadline is its turn timer's (Session:armTimers);
+-- only the retries are made here.
+local AUTO_RETRY, AUTO_RETRIES = 5, 36
+
 function Session:armAuto()
   if self.autoTimer then self.autoTimer.cancel(); self.autoTimer = nil end
   local client, st = self.client, self.state
   if not (self.mySeat and self.status == "live" and st and self:engine().view) then return end
   if st.turn ~= self.mySeat or not self.deadline then return end
-  local seq = self.seq
-  self.autoTimer = client:after(math.max(0, self.deadline - client.env.now()), function()
+  local seq, tries = self.seq, 0
+  local function fire()
     self.autoTimer = nil
-    if client.session == self and self.seq == seq and self.role ~= "host" then Session.playAuto(client) end
-  end)
+    if client.session ~= self or self.seq ~= seq or self.status ~= "live" then return end
+    if (self.role ~= "host" or tries > 0) and not Session.playAuto(client) then self:hook("stuck") end
+    tries = tries + 1
+    -- A host's move is applied at once and has armed the next turn already.
+    if self.seq == seq and not self.autoTimer and tries <= AUTO_RETRIES then
+      self.autoTimer = client:after(AUTO_RETRY, fire)
+    end
+  end
+  self.autoTimer = client:after(math.max(0, self.deadline - client.env.now()), fire)
 end
 
 -- The engine's result turned from nil to a value: event "result" (once), with

@@ -671,7 +671,7 @@ Deal.int = {
   commitFits = commitFits, participantsFit = participantsFit, revealFits = revealFits,
   dealerOf = dealerOf, dealerFor = dealerFor, handDone = handDone, lateVoid = lateVoid,
   armWait = armWait, stopWait = stopWait,
-  revise = revise, seedsIn = seedsIn, takeOver = takeOver, request = request, judge = judge,
+  revise = revise, seedsIn = seedsIn, takeOver = takeOver, request = request, judge = judge, ask = ask,
 }
 
 -- The table frame's fairness line -> locale key, argument | nil: nil for an

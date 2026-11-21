@@ -325,6 +325,41 @@ describe("belot at the table", function()
     eq({ a.session.status, a.session.state.phase, a.session.state.score, a.session.fair.stage }, { "live", "bid", { 0, 0 }, "dealt" })
   end)
 
+  it("a timeout whose automatic move is lost is played again once the player is back", function()
+    local sim = table4(); ok(a:act{ k = "bid", b = "P" }); sim:run(1)
+    sim:offline(B); sim:run(60)                                                                  -- B's clock ran out at 45 s; its pass reached nobody
+    eq({ a.session.state.turn, #a.session.state.bids }, { 2, 1 })
+    sim:online(B); sim:run(6)
+    eq({ a.session.state.turn, #a.session.state.bids, a.session.state.bids[2] }, { 3, 2, { s = 2, b = "P" } })
+    local acts = 0
+    for _, m in ipairs(sentOf("ACT")) do
+      if m.from == B and m.msg.a.k == "bid" then acts = acts + 1 end
+    end
+    ok(acts >= 2 and acts <= 5, "B sent its pass " .. acts .. " times")                          -- every few seconds, not every tick
+    eq(#(b.session.sent or {}), 0)                                                               -- and remembers nothing it still waits for
+  end)
+
+  it("a timeout that passes while my cards are missing is played once they come", function()
+    local sim = table4()
+    local restoreB, restoreA = drop(b, "PRV"), drop(a, "PRV")                                     -- the three cards after the auction reach neither
+    bid("S P P P"); eq({ ns.Deal.missing(a.session), ns.Deal.missing(b.session), a.session.state.turn }, { true, true, 1 })
+    sim:run(47); eq({ a.session.state.turn, #a.session.state.trick, #a.session.state.ann }, { 1, 0, 0 })   -- the host's own seat: no move to make yet
+    restoreA(); sim:run(11)
+    eq(ns.Deal.missing(a.session), false)
+    for _ = 1, 3 do
+      if a.session.state.turn == 1 then sim:run(46) end                                          -- an announce first, then the card
+    end
+    eq({ a.session.state.turn, #a.session.state.trick }, { 2, 1 })
+    sim:run(47); eq({ a.session.state.turn, #a.session.state.trick }, { 2, 1 })                  -- a member's seat: the same
+    local prq = #sentOf("PRQ")
+    restoreB(); sim:run(11)
+    ok(#sentOf("PRQ") > prq, "B did not ask for its cards again"); eq(ns.Deal.missing(b.session), false)
+    for _ = 1, 3 do
+      if a.session.state.turn == 2 then sim:run(46) end
+    end
+    eq({ a.session.state.turn, #a.session.state.trick }, { 3, 2 })
+  end)
+
   it("a player offline for three minutes is stood up and his team loses", function()
     local sim = table4(); local ra = results(a)
     sim:offline(B); ok(a:act{ k = "bid", b = "P" }); sim:run(170)

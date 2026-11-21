@@ -121,12 +121,13 @@ local function onSnapshot(client, sender, m)
 end
 
 -- My action goes to the host (Session.act) and is remembered, the last
--- SENT_KEPT of them, until the host's event for my seat shows it.
+-- SENT_KEPT of them, until the host's event for my seat shows it (the same
+-- action sent again, a retried timeout, is remembered once).
 local SENT_KEPT = 8
 function Member.sendAct(s, a)
   local sent = s.sent or {}
   s.sent = sent
-  sent[#sent + 1] = copy(a)
+  if not ns.Util.same(sent[#sent], a) then sent[#sent + 1] = copy(a) end
   if #sent > SENT_KEPT then table.remove(sent, 1) end
   s.client:send("WHISPER", s.host, Session.message("ACT", { tid = s.tid, a = a }))
 end

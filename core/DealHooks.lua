@@ -17,7 +17,7 @@ local isInt, STAGES, PRIVATE, foul = int.isInt, int.STAGES, int.PRIVATE, int.fou
 local sawCommit, commitFits, participantsFit, revealFits = int.sawCommit, int.commitFits, int.participantsFit, int.revealFits
 local dealerOf, dealerFor, handDone, lateVoid = int.dealerOf, int.dealerFor, int.handDone, int.lateVoid
 local armWait, stopWait, revise = int.armWait, int.stopWait, int.revise
-local seedsIn, takeOver, request, judge = int.seedsIn, int.takeOver, int.request, int.judge
+local seedsIn, takeOver, request, judge, ask = int.seedsIn, int.takeOver, int.request, int.judge, int.ask
 
 ---------------------------------------------------------------------------
 -- Hooks
@@ -258,6 +258,8 @@ ns.Ext.fair = {
     Deal.react(s)
     -- Host: the hand (or the match) is over and no reveal yet: its wait starts.
     if s.role == "host" and not s.fairTimer and s.fair == fair and Deal.handOver(s) then armWait(s, fair.h) end
+    -- Host: my own seat's timeout is tried again like a member's (Session:armAuto).
+    if s.role == "host" then s:armAuto() end
   end,
 
   -- Member: the round from the host's snapshot (rule 10b), checked as an open
@@ -336,6 +338,13 @@ ns.Ext.fair = {
   refused = function(s)
     local fair = s.fair
     if fair and fair.stage == "dealt" and fair.base then foul(fair, "play") end
+  end,
+
+  -- My deadline passed and I have no automatic move: with faces of my hand
+  -- still missing the dealer is asked for them again, now.
+  stuck = function(s)
+    local fair = s.fair
+    if fair and fair.stage == "dealt" and s.mySeat ~= fair.d and contains(fair.p, s.mySeat) and Deal.missing(s) then ask(s) end
   end,
 
   -- Member: the host ordered a move for my seat that I did not send.
