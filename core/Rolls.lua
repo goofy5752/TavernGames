@@ -21,13 +21,20 @@ local _, ns = ...
 --   rollCheck   index in state.rolls -> "ok" | "unseen" | "mismatch"
 --   rollNotMine index -> true: a roll of my seat at a staked table that my
 --               client did not make (no own sighting ROLL_VERIFY_WAIT after it)
+--   rollPending index -> true: the verdict of that roll is still to come
 --   rolling     {seen = bool} while my roll is under way (seen: it showed up in chat)
 --   rollStuck   true when my server roll never showed up (the UI says: type /roll)
 --   rollUnheard true when the host of a staked game never played my seen roll
---   myRoll      {n, max}: my own roll seen on my current turn at its max
+--   myRoll      {n, max}: my own roll seen on my current turn at its max,
+--               while my client saw me in my host's group (Rolls.withHost)
 --   claim       {seat, n, max}: the member's claim the host holds (host only)
 -- All of them start empty with every new game (the start event, or a snapshot of
--- another game than the one I had); a host change drops `rolling` and `claim`.
+-- another game than the one I had); a host change drops `rolling`, `claim` and
+-- `myRoll`. rollCheck, rollNotMine and rollPending are the game's audit record:
+-- a verdict that comes after my session ended or the game was replaced is
+-- still written into it (and is then never "ok"), and at a staked table the
+-- record of a game a roll ended is kept as client.rollAudits[tid .. "/" .. q]
+-- (Rolls.auditOf), whatever comes next.
 local Rolls = {}
 ns.Rolls = Rolls
 
@@ -65,11 +72,12 @@ function Rolls.check(session, index)
   return session.rollCheck and session.rollCheck[index]
 end
 
--- The verdict on a recorded roll from my log: "ok" when I saw the same seat, max
--- and n. Otherwise nil, or with `final` "mismatch" (I saw that seat roll that
--- max with another n) or "unseen".
-local function verdict(s, entry, final)
-  local log, other = s.rollLog or {}, false
+-- The verdict on a recorded roll from my log of its game: "ok" when I saw the
+-- same seat, max and n. Otherwise nil, or with `final` "mismatch" (I saw that
+-- seat roll that max with another n) or "unseen".
+local function verdict(log, entry, final)
+  local other = false
+  log = log or {}
   for i = 1, #log do
     local g = log[i]
     if g.seat == entry.seat and g.max == entry.max then
@@ -96,15 +104,15 @@ end
 local function recheck(s)
   local rolls = s.rollCheck and s.state and s.state.rolls or {}
   for i = 1, #rolls do
-    if checked(rolls[i]) and s.rollCheck[i] ~= "ok" and verdict(s, rolls[i], false) then
+    if checked(rolls[i]) and s.rollCheck[i] ~= "ok" and verdict(s.rollLog, rolls[i], false) then
       setVerdict(s, i, "ok")
     end
   end
 end
 
 -- Did my client see itself roll `entry` (an own sighting of that n and max)?
-local function ownSeen(s, entry)
-  local log = s.rollLog or {}
+local function ownSeen(log, entry)
+  log = log or {}
   for i = 1, #log do
     local g = log[i]
     if g.own and g.n == entry.n and g.max == entry.max then return true end
@@ -113,43 +121,63 @@ local function ownSeen(s, entry)
 end
 
 -- The roll state.rolls[index] was just applied: "ok" at once when my log
--- confirms it, else the final verdict ROLL_VERIFY_WAIT later (same game only).
--- At a staked table a roll of my seat with no own sighting by then is not
--- mine (rollNotMine: a namesake's line, or one I never made).
+-- confirms it, else the final verdict ROLL_VERIFY_WAIT later, pending until
+-- then. At a staked table a roll of my seat with no own sighting by then is not
+-- mine (rollNotMine: a namesake's line, or one I never made). The verdict goes
+-- into the record of the roll's game even when my session ended or the game
+-- was replaced meanwhile; it is then "unseen" at best (never clean).
 local function verify(s, index)
   local entry = s.state.rolls[index]
   if not entry or not checked(entry) then return end
-  local v = verdict(s, entry, false)
+  local v = verdict(s.rollLog, entry, false)
   if v then setVerdict(s, index, v) end
   local mine = s.stake ~= nil and entry.seat == s.mySeat
-  if v and not (mine and not ownSeen(s, entry)) then return end
-  local client, check = s.client, s.rollCheck
+  if v and not (mine and not ownSeen(s.rollLog, entry)) then return end
+  local client, check, log = s.client, s.rollCheck, s.rollLog
+  s.rollNotMine, s.rollPending = s.rollNotMine or {}, s.rollPending or {}
+  local notMine, pending = s.rollNotMine, s.rollPending
+  pending[index] = true
   client:after(C.ROLL_VERIFY_WAIT, function()
-    if client.session ~= s or s.rollCheck ~= check then return end
-    if not check[index] then setVerdict(s, index, verdict(s, entry, true)) end
-    if mine and not ownSeen(s, entry) then
-      s.rollNotMine = s.rollNotMine or {}
-      s.rollNotMine[index] = true
-      Session.emit(client)
-    end
+    pending[index] = nil
+    local here, was, wasMine = client.session == s and s.rollCheck == check, check[index], notMine[index]
+    if not check[index] then check[index] = verdict(log, entry, true) end
+    if not here and check[index] == "ok" then check[index] = "unseen" end
+    if mine and not ownSeen(log, entry) then notMine[index] = true end
+    if here and (check[index] ~= was or notMine[index] ~= wasMine) then Session.emit(client) end
   end)
 end
 
--- What my client saw of the rolls of the game it holds -> nil | "roll" |
--- "unseen": "roll" when a recorded roll is one I saw with another number or a
--- roll of my seat I did not make, "unseen" when one I never saw (an entry
--- still without a verdict counts as nothing). From s.rollCheck and
--- s.rollNotMine only, never from s.rollLog (which keeps the last ROLL_LOG
+-- What my client saw of the rolls of a game -> nil | "roll" | "unseen", from
+-- its audit record (a session: the game it holds; or Rolls.auditOf's):
+-- "roll" when a recorded roll is one I saw with another number or a roll of
+-- my seat I did not make, "unseen" when one I never saw or whose verdict is
+-- still pending (pending is never clean). From rollCheck, rollNotMine and
+-- rollPending only, never from rollLog (which keeps the last ROLL_LOG
 -- sightings), so a long game keeps its early rolls. Final ROLL_FINAL_WAIT
 -- after the game's result: every verdict of it has been given by then.
 function Rolls.audit(s)
   if next(s.rollNotMine or {}) ~= nil then return "roll" end
-  local out = nil
+  local out = next(s.rollPending or {}) ~= nil and "unseen" or nil
   for _, v in pairs(s.rollCheck or {}) do
     if v == "mismatch" then return "roll" end
     if v == "unseen" then out = "unseen" end
   end
   return out
+end
+
+-- The audit record of the staked game of my client that ended with q, at
+-- table tid (gid "<tid>/<q>") -> record for Rolls.audit | nil.
+function Rolls.auditOf(client, gid)
+  return client.rollAudits and client.rollAudits[gid]
+end
+
+-- Does my client see me in my host's group (or am I the host) -> bool: only
+-- then can the host see my roll.
+function Rolls.withHost(s)
+  if s.role == "host" then return true end
+  local client = s.client
+  local peer = client.presence:get(s.host)
+  return peer ~= nil and peer.guid ~= nil and client.env.inGroup(peer.guid) == true
 end
 
 -- A server roll seen in chat by `client` (`shown` normalized; my own as env.me).
@@ -166,7 +194,7 @@ function Rolls.seen(client, shown, n, lo, hi)
   recheck(s)
   local st = s.state
   if s.status ~= "live" or not st or st.turn ~= seat or hi ~= st.max then return end
-  if own and seat == s.mySeat then s.myRoll = { n = n, max = hi } end
+  if own and seat == s.mySeat and Rolls.withHost(s) then s.myRoll = { n = n, max = hi } end
   if s.role == "host" then
     s:play(seat, { k = "roll", n = n, max = hi, src = "seen" })
   elseif st.staked then
@@ -251,7 +279,7 @@ end
 -- A new game: no verdict, sighting, roll under way or claim of the last one
 -- carries over (a sighting of game 1 must never confirm a claim in game 2).
 local function resetGame(s)
-  s.rollCheck, s.rollLog, s.rollNotMine = {}, {}, {}
+  s.rollCheck, s.rollLog, s.rollNotMine, s.rollPending = {}, {}, {}, {}
   s.rolling, s.rollStuck, s.claim, s.rollUnheard, s.myRoll = nil, false, nil, nil, nil
 end
 
@@ -278,21 +306,31 @@ local function applied(s, seat, a)
   s.rolling, s.rollStuck, s.claim, s.rollUnheard, s.myRoll = nil, false, nil, nil, nil
   s.rollCheck = s.rollCheck or {} -- joined mid-game: checks from here on
   verify(s, #s.state.rolls)
+  if s.stake ~= nil and s:gameOver() then -- the game's record, whatever comes next
+    s.client.rollAudits = s.client.rollAudits or {}
+    s.client.rollAudits[s.tid .. "/" .. s.seq] = { rollCheck = s.rollCheck, rollNotMine = s.rollNotMine, rollPending = s.rollPending }
+  end
 end
 
 ns.Ext.rolls = {
   act = act,
   applied = applied,
-  -- A snapshot replaced my state: another game's roll state is dropped.
+  -- A snapshot replaced my state: another game's roll state is dropped. At a
+  -- staked table what its audit found stays a foul of the running game
+  -- (core/Stakes.lua keeps it while that game ran on my client).
   adopted = function(s, prev)
-    if not sameGame(prev, s.state) then resetGame(s) end
+    if sameGame(prev, s.state) then return end
+    local found = s.stake ~= nil and Rolls.audit(s)
+    if found then ns.Stakes.foul(s, found) end
+    resetGame(s)
   end,
   -- My host changed (I took over, or I follow another): a claim held by the old
   -- host is gone with it, so the roll under way is dropped and the player may
   -- press „Хвърли“ again at once (a second server roll; the new host plays the
   -- first one it sees). A host that steps down drops the claim it held.
+  -- My own roll for the old host does not count with the new one (myRoll).
   hostChanged = function(s)
-    s.rolling, s.claim = nil, nil
+    s.rolling, s.claim, s.myRoll = nil, nil, nil
   end,
   auto = function(s)
     Rolls.roll(s.client, true)

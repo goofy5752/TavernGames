@@ -93,7 +93,7 @@ function Client:sit(tid, seat, sk)
   local rec, s = self.lobby:get(tid), self.session
   local staked = sk ~= nil or (rec and rec.stake ~= nil) or (s and s.tid == tid and s.stake ~= nil)
   if not self.ledger and staked then return nil, "stake" end
-  local engine = rec and ns.Games.engine(rec.game)
+  local engine = ns.Games.engine(rec and rec.game or (s and s.tid == tid and s.game))
   if staked and not self.env.roll and engine and engine.idle then
     ns.Session.refuse(self, tid, "roll")
     return nil, "roll"

@@ -9,17 +9,24 @@ local _, ns = ...
 --           (Member.onEvent, Member.timedOut), an event of my host my engine
 --           refused, a pushed snapshot that changes the game I hold, a staked
 --           flag in a snapshot that is not my accepted stake (Member.adopt), a
---           host-started game (engine.start "host", the one Session:canStart
---           gates) that began earlier than STAKE_BREAK after the last ended
---           by my clock (a member's check);
+--           start no honest host plays (a member's checks): one while a game
+--           runs, one of Морски шах (whose matches begin when sits fill the
+--           table, or by both players' „Реванш“) while the table is live, one
+--           of a host-started game (engine.start "host", the one
+--           Session:canStart gates) earlier than STAKE_BREAK after the last
+--           ended by my clock, AUTO_GRACE left for the transport;
 --   roll    an idle stand of my seat after my client saw its own roll on that
---           turn (the host ignored it);
+--           turn while it saw me in the host's group (the host ignored it;
+--           outside the group the host could not see it: no foul);
 --   stand   my seat stood up while my client ran and I did not ask, unless an
 --           idle stand my own clock agrees with;
 --   unseen  a snapshot I asked for or logged in with brought me into the game,
 --           or one from a changed host is a prefix of my game (or mine of it).
--- Fouls are reset when a new game begins; a foul raised by the event that
--- begins a game is set after the reset, so it counts against that game.
+-- Fouls are reset when an event begins a new game; a foul raised by that
+-- event is set after the reset, so it counts against that game. A snapshot
+-- never clears nor lowers the foul of a game that was running on my client.
+-- The host also whispers the stand of a seat (not "left") to the player stood
+-- up, so that client judges its own stand with its why.
 -- Death Roll's rolls are judged by Rolls.audit, not here.
 --
 -- Session fields (local, never sent):
@@ -29,7 +36,9 @@ local _, ns = ...
 --   stakeFoul    nil | "forged" | "roll" | "stand" | "unseen"
 --   stakePend    the foul of the event being handled, set at the end of the hook
 --   stakeTurn    {seat, at}: the seat on turn and my env.now() when it came on turn
---   stakeEndedAt my env.now() when the last game ended (Session:canStart's "break")
+--   stakeStatus  s.status after the last hook (the status before the event being handled)
+--   stakeEndedAt my env.now() when an event ended the last game (Session:canStart's
+--                "break"); nil when a snapshot ended it
 --   stakeIdle    my client stands up as host after its own idle turn (the note's why "idle")
 --   idleTimer    the host's idle stand: OFFLINE_STAND_SECONDS after the seat came on turn
 local Stakes = {}
@@ -102,18 +111,18 @@ local function armIdle(s)
 end
 
 -- At the end of every hook: is a game running; when one begins (or `fresh`: a
--- snapshot of another game) the roster is taken and the foul cleared; then
--- the foul of the event; the turn (`moved`: a game action restarts it) and
--- the idle timer.
-local function refresh(s, fresh, moved)
+-- start, or a snapshot of another game) the roster is taken and the foul
+-- cleared; then the foul of the event; the turn (`moved`: a game action
+-- restarts it) and the idle timer. `snap`: a snapshot, which dates no end.
+local function refresh(s, fresh, moved, snap)
   local now, on = s.client.env.now(), running(s)
   if on and (fresh or not s.stakeLive) then
     s.stakeRoster, s.stakeFoul, s.stakeTurn = roster(s), nil, nil
   elseif not on then
-    if s.stakeLive then s.stakeEndedAt = now end
+    if s.stakeLive then s.stakeEndedAt = not snap and now or nil end
     s.stakeRoster, s.stakeTurn = nil, nil
   end
-  s.stakeLive = on
+  s.stakeLive, s.stakeStatus = on, s.status
   if s.stakePend then Stakes.foul(s, s.stakePend); s.stakePend = nil end
   local turn, t = on and s.state.turn or nil, s.stakeTurn
   if not turn then
@@ -131,6 +140,7 @@ end
 -- on that turn at its max (Rolls: s.myRoll) an idle stand is "roll".
 local function stood(s, why)
   if not s.stakeLive or s.role == "host" then return end
+  if why == nil and s.seats[s.mySeat] ~= s.client.env.me then return end -- my stand's event judged it
   local t, now = s.stakeTurn, s.client.env.now()
   local idle = s:engine().idle and why ~= "offline" and why ~= "left"
   local mine = idle and t and t.seat == s.mySeat
@@ -141,7 +151,7 @@ end
 -- Does game state a lead to b in one game (b is a, or a later point of it)?
 -- Death Roll: the same start, a's rolls are b's first rolls. Морски шах: the
 -- same round with a's marks on b's board, or the next round after a's ended.
-local function leadsTo(a, b)
+function Stakes.leadsTo(a, b)
   if type(a) ~= "table" or type(b) ~= "table" then return false end
   if a.rolls and b.rolls then
     if a.start ~= b.start or #a.rolls > #b.rolls then return false end
@@ -160,14 +170,20 @@ local function leadsTo(a, b)
   return true
 end
 
+local leadsTo = Stakes.leadsTo
+
 -- A snapshot replaced my state (how: see Member.adopt). The very game I hold:
 -- nothing. My game carried on (or, from a changed host, one behind mine): the
 -- same game, "unseen". Anything else is another game. A snapshot nobody asked
 -- for that changes my game is "forged", from my own host always, from a
 -- changed host unless it is a prefix (F21); one I asked for or logged in with
 -- is "unseen". Its Death Roll state must say staked (Member.adopt set mine).
+-- The foul of a game that was running here stays, whatever the snapshot (the
+-- host can make me ask for one at will: a TCK or a gap); Rolls' adopted
+-- added what that game's roll audit found.
 local function adopted(s, prev, m, how)
   local st, was, on = s.state, s.stakeLive, running(s)
+  local kept = was and s.stakeFoul or nil
   if s:engine().idle and type(m.st) == "table" and m.st.staked ~= true then pend(s, "forged") end
   local identical = prev ~= nil and st ~= nil and same(prev, st) and was == on
   local cont = identical or leadsTo(prev, st) or (how.changed and leadsTo(st, prev))
@@ -175,18 +191,41 @@ local function adopted(s, prev, m, how)
     local pushed = not (how.changed or how.asked or how.fresh)
     pend(s, (pushed or (how.changed and not how.asked and not cont)) and "forged" or "unseen")
   end
-  refresh(s, not cont)
+  refresh(s, not cont, nil, true)
+  if kept then Stakes.foul(s, kept) end
+end
+
+-- A start no honest host plays now (a member's check, before the event's
+-- refresh): a game ran; Морски шах (no host start) at a live table; a
+-- host-started game inside the break.
+local function badStart(s)
+  local engine = s:engine()
+  if s.stakeLive or (engine.start ~= "host" and s.stakeStatus == "live") then return true end
+  return engine.start == "host" and s.stakeEndedAt ~= nil
+    and s.client.env.now() < s.stakeEndedAt + C.STAKE_BREAK - C.AUTO_GRACE
+end
+
+-- Host: the stand of another seat of the running game, but a leave (its
+-- player asked for it), goes to that player too: its client judges it.
+local function tellStood(s, a)
+  local name = s.stakeRoster and s.stakeRoster[a.seat]
+  if a.why == "left" or not name or name == s.client.env.me then return end
+  s.client:send("WHISPER", name, ns.Session.message("EV", {
+    tid = s.tid, e = s.epoch, q = s.seq, seat = 0, a = a, left = s:left(),
+  }))
 end
 
 ns.Ext.stakes = {
   applied = function(s, seat, a)
-    if seat == 0 and a.k == "start" and s.role ~= "host" and s:engine().start == "host" and s.stakeEndedAt
-        and s.client.env.now() < s.stakeEndedAt + C.STAKE_BREAK then
-      pend(s, "forged") -- the host gave no break: whoever wanted to leave could not
+    local start = seat == 0 and a.k == "start"
+    if start and s.role ~= "host" and badStart(s) then
+      pend(s, "forged")
+    elseif seat == 0 and a.k == "stand" and s.role == "host" then
+      tellStood(s, a)
     elseif seat == 0 and a.k == "stand" and a.seat == s.mySeat then
       stood(s, a.why)
     end
-    refresh(s, false, seat ~= 0)
+    refresh(s, start, seat ~= 0)
   end,
   forged = function(s) pend(s, "forged") end, -- the event is applied (or refused) next
   refused = function(s)

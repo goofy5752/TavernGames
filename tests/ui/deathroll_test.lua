@@ -188,6 +188,17 @@ describe("ui: Death Roll view", function()
     eq(#w:texts("Домакинът не видя"), 0)
   end)
 
+  it("my turn at a staked game outside the host's group: a warning before „Хвърли“", function()
+    local w = setup()
+    seatedAtB(w, nil, { players = { 1, 2 }, turn = 2, start = 100, max = 100, rolls = {}, phase = "play" })
+    local client = w.ns.client
+    local s = client.session
+    s.state.staked = true; client.events:emit("session", s); w:advance(0)
+    eq(#w:texts(w.ns.L("roll.nohost")), 1)
+    w.group["Player-1-00000002"] = true; client.events:emit("session", s); w:advance(0)
+    eq(#w:texts(w.ns.L("roll.nohost")), 0)
+  end)
+
   it("a long ladder keeps the newest rolls behind „…“; rolling 1 ends it with the loser named", function()
     local w, V, View = setup()
     local s = w.ns.client.session

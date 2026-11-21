@@ -289,9 +289,9 @@ describe("stakes: play", function()
     sim:run(C.STAKE_BREAK - 1); eq({ a:startGame() }, { nil, "break" })
     sim:run(1); ok(a:startGame()); sim:run(0)
     eq(b.session.stakeLive, true); eq(b.session.stakeFoul, nil)
-    -- A host that starts earlier: Мария's clock says no break was given.
+    -- A host that starts earlier: Мария's clock says no break was given (AUTO_GRACE left for the transport).
     sim, a, b = drTable({ B }, SK)
-    roll(sim, a, 1); sim:run(5)
+    roll(sim, a, 1); sim:run(C.STAKE_BREAK - C.AUTO_GRACE - 1)
     a.session:event(0, { k = "start", first = 1 }); a.session:recordChanged(); sim:run(0)
     eq(b.session.stakeLive, true); eq(b.session.stakeFoul, "forged")
     -- A fun table starts at once, as today.
@@ -406,7 +406,7 @@ describe("stakes: play", function()
     sim:run(100)
     ok(a.session.idleTimer, "no idle timer at the host")
     mark = #sim.sent
-    ns.Succession.follow(a.session, P, a.session.epoch + 1)
+    ns.Succession.follow(a.session, B, a.session.epoch + 1) -- Мария's epoch: she claims it, Иван stays a member
     eq(a.session.idleTimer, nil)
     sim:run(C.OFFLINE_STAND_SECONDS); eq(stands(A, mark), 0)
     -- ... and a timer left armed does nothing once I do not host.
@@ -493,7 +493,7 @@ describe("stakes: play", function()
     local sim, a, b = drTable({ B }, SK)
     sim.canSee = function(from, to) return not (from == A and to == B) end
     b:rollSeen("Иван", 41, 1, 100); roll(sim, a, 40)
-    eq(Rolls.audit(b.session), nil) -- no verdict yet
+    eq(Rolls.audit(b.session), "unseen") -- the verdict is pending: not clean
     sim:run(C.ROLL_VERIFY_WAIT)
     eq(Rolls.check(b.session, 1), "mismatch"); eq(Rolls.audit(b.session), "roll")
     -- Never seen: "unseen"; a later mismatch wins over it.
@@ -518,14 +518,15 @@ describe("stakes: play", function()
     eq(#b.session.state.rolls, 25); eq(#b.session.rollLog, C.ROLL_LOG)
     sim:run(C.ROLL_VERIFY_WAIT)
     eq(Rolls.check(b.session, 1), "unseen"); eq(Rolls.check(b.session, 2), "ok"); eq(Rolls.audit(b.session), "unseen")
-    -- Final ROLL_FINAL_WAIT after the result: the last roll's verdict was still open at it.
+    -- Final ROLL_FINAL_WAIT after the result: the last roll's verdict is pending at it.
     sim, a, b = drTable({ B }, SK)
     roll(sim, a, 50)
     sim.canSee = function(from, to) return not (from == A and to == B) end
     roll(sim, b, 30); roll(sim, a, 1)
-    ok(b.session:gameOver()); eq(Rolls.audit(b.session), nil)
-    sim:run(C.ROLL_FINAL_WAIT - 1); eq(Rolls.audit(b.session), nil)
-    sim:run(1); eq(Rolls.audit(b.session), "unseen")
+    ok(b.session:gameOver()); eq(Rolls.audit(b.session), "unseen")
+    sim:run(1); b:rollSeen("Иван", 1, 1, 30) -- the line comes late, but in time
+    sim:run(C.ROLL_FINAL_WAIT - 2); eq(Rolls.audit(b.session), "unseen")
+    sim:run(1); eq(Rolls.audit(b.session), nil)
     ok(C.ROLL_FINAL_WAIT >= C.ROLL_VERIFY_WAIT)
   end)
 
@@ -561,5 +562,166 @@ describe("stakes: play", function()
     end
     eq(told("offline", 10), "stand"); eq(told("left", 10), "stand")
     eq(told("idle", C.OFFLINE_STAND_SECONDS), nil); eq(told("idle", 60), "stand")
+  end)
+end)
+
+describe("stakes: play, fix round 1", function()
+  it("the host whispers a stand to the player it stood up, who judges it once", function()
+    local sim, a, b, c = drTable({ B, P }, SK)
+    roll(sim, a, 50)
+    local mark, s = #sim.sent, b.session
+    sim:run(C.OFFLINE_STAND_SECONDS)
+    local ev = events(sim, A, mark, B)
+    eq(#ev, 1); eq(ev[1].msg.a, { k = "stand", seat = 2, why = "idle" }); eq(ev[1].msg.q, s.seq)
+    eq(s.seats[2], false); eq(s.stakeFoul, nil)
+    -- Her next PNG gets SNO "gone": the stand is not judged a second time.
+    sim:run(C.PING_EVERY + 1); eq(b.session, nil); eq(s.stakeFoul, nil)
+    -- A leave is not told: its player asked for it.
+    mark = #sim.sent
+    c:stand(); sim:run(1)
+    eq(#events(sim, A, mark, P), 0); eq(a.session.seats[3], false)
+  end)
+
+  it("a start no honest host plays is forged, and counts against the game it starts", function()
+    -- Морски шах once the match is over, without „Реванш“ from me.
+    local sim, a, b = tttTable(SK)
+    playOut(sim, a, b); ok(b.session:gameOver())
+    a.session:event(0, { k = "start" }); sim:run(0)
+    eq(b.session.stakeLive, true); eq(b.session.stakeFoul, "forged"); eq(b.session.stakeRoster, { A, B })
+    -- Морски шах in the middle of a match.
+    sim, a, b = tttMariaOnTurn(SK)
+    a.session:event(0, { k = "start" }); sim:run(0)
+    eq(b.session.state.board[1], 0); eq(b.session.stakeFoul, "forged")
+    -- Death Roll while a game runs: a new game with its own roster, the foul against it.
+    local c, tid
+    sim, a, b, c, tid = drTable({ B }, SK)
+    roll(sim, a, 50)
+    c:sit(tid, 3, SK); sim:run(1); eq(b.session.stakeRoster, { A, B })
+    a.session:event(0, { k = "start", first = 2 }); sim:run(0)
+    eq(#b.session.state.rolls, 0); eq(b.session.stakeFoul, "forged"); eq(b.session.stakeRoster, { A, B, P })
+  end)
+
+  it("a roll verdict still pending when my session ends or the game is replaced is never clean", function()
+    -- A final roll for Мария's seat that no chat ever showed, then at once SNO "gone".
+    local sim, a, b, _, tid = drTable({ B }, SK)
+    roll(sim, a, 50)
+    a.session:play(2, { k = "roll", n = 1, max = 50, src = "seen" }); sim:run(0)
+    local gid = tid .. "/" .. a.session.seq
+    ok(b.session:gameOver()); eq(Rolls.audit(Rolls.auditOf(b, gid)), "unseen") -- pending: not clean
+    a:send("WHISPER", B, { v = 1, t = "SNO", tid = tid, why = "gone" }); sim:run(0)
+    eq(b.session, nil)
+    sim:run(C.ROLL_FINAL_WAIT)
+    eq(Rolls.audit(Rolls.auditOf(b, gid)), "roll")
+    -- The same, and the host starts the next game at once.
+    sim, a, b, _, tid = drTable({ B }, SK)
+    roll(sim, a, 50)
+    a.session:play(2, { k = "roll", n = 1, max = 50, src = "seen" }); sim:run(0)
+    gid = tid .. "/" .. a.session.seq
+    a.session:event(0, { k = "start", first = 1 }); sim:run(0)
+    eq(#b.session.state.rolls, 0)
+    sim:run(C.ROLL_FINAL_WAIT)
+    eq(Rolls.audit(Rolls.auditOf(b, gid)), "roll"); eq(Rolls.audit(b.session), nil)
+    -- A roll my log confirmed late, its verdict still pending when I stand up: "unseen", never "ok".
+    sim, a, b, _, tid = drTable({ B }, SK)
+    roll(sim, a, 50); roll(sim, b, 30)
+    sim.canSee = function(from, to) return not (from == A and to == B) end
+    roll(sim, a, 1); gid = tid .. "/" .. a.session.seq
+    sim:run(1); b:rollSeen("Иван", 1, 1, 30); eq(Rolls.check(b.session, 3), "ok")
+    b:stand(); sim:run(C.ROLL_FINAL_WAIT)
+    eq(Rolls.check(Rolls.auditOf(b, gid), 3), "unseen"); eq(Rolls.audit(Rolls.auditOf(b, gid)), "unseen")
+  end)
+
+  it("no snapshot clears or lowers the foul of the game that ran", function()
+    -- Морски шах: a forged move, then Иван rewrites the board and makes Мария ask (a TCK one ahead).
+    local sim, a, b, _, tid = tttMariaOnTurn(SK)
+    sim:run(10); a.session:play(2, TTT.auto(a.session.state, 2), true); sim:run(0)
+    eq(b.session.stakeFoul, "forged")
+    local st = a.session.state
+    st.board[1], st.board[3] = 0, 1
+    a.session.seq = a.session.seq + 1
+    a:send("WHISPER", B, { v = 1, t = "TCK", tid = tid, e = a.session.epoch, q = a.session.seq }); sim:run(1)
+    eq(b.session.state.board[3], 1); eq(b.session.stakeFoul, "forged")
+    -- Death Roll: a roll under my seat that I did not make, then an asked snapshot of another game.
+    sim, a, b, _, tid = drTable({ B }, SK)
+    roll(sim, a, 50)
+    a:rollSeen("Мария", 30, 1, 50); sim:run(0); sim:run(C.ROLL_VERIFY_WAIT)
+    eq(Rolls.audit(b.session), "roll"); eq(b.session.stakeFoul, nil)
+    a.session.state = a.session:newGame(1); a.session.seq = a.session.seq + 1
+    a:send("WHISPER", B, { v = 1, t = "TCK", tid = tid, e = a.session.epoch, q = a.session.seq }); sim:run(1)
+    eq(#b.session.state.rolls, 0); eq(b.session.stakeFoul, "roll")
+  end)
+
+  it("the break leaves AUTO_GRACE for the transport; a snapshot dates no end", function()
+    -- Иван's final roll reaches Мария a second late; he starts the next game at once when allowed.
+    local sim, a, b, _, tid = drTable({ B }, SK)
+    local held = {}
+    sim.bus.filter = function(from, to, _, m)
+      if from == A and to == B and m.t == "EV" then held[#held + 1] = m; return {} end
+      return { m }
+    end
+    roll(sim, a, 1); sim.bus.filter = nil
+    sim:run(1)
+    for _, m in ipairs(held) do sim.bus:send(A, "WHISPER", B, m) end
+    sim:run(0); ok(b.session:gameOver())
+    sim:run(C.STAKE_BREAK - 1); ok(a:startGame()); sim:run(0)
+    eq(b.session.stakeLive, true); eq(b.session.stakeFoul, nil)
+    -- The end comes by an asked snapshot: no end time of mine.
+    sim, a, b, _, tid = drTable({ B }, SK)
+    sim.bus.filter = function(from, to, _, m)
+      if from == A and to == B and m.t == "EV" then return {} end
+      return { m }
+    end
+    roll(sim, a, 1); sim.bus.filter = nil
+    a:send("WHISPER", B, { v = 1, t = "TCK", tid = tid, e = a.session.epoch, q = a.session.seq }); sim:run(1)
+    ok(b.session:gameOver()); eq(b.session.stakeLive, false); eq(b.session.stakeEndedAt, nil)
+  end)
+
+  it("death roll: my roll outside the host's group is no foul; a host change drops my roll", function()
+    local sim, a, b = drTable({ B }, SK)
+    roll(sim, a, 50)
+    b.env.inGroup = function() return false end
+    sim.canSee = function(from, to) return not (from == B and to == A) end
+    eq(Rolls.withHost(b.session), false)
+    roll(sim, b, 40); eq(b.session.myRoll, nil)
+    local s = b.session
+    sim:run(C.OFFLINE_STAND_SECONDS + C.PING_EVERY + 1)
+    eq(b.session, nil); eq(s.stakeFoul, nil)
+    -- In the group it counts, until my host changes.
+    sim, a, b = drTable({ B }, SK)
+    roll(sim, a, 50)
+    sim.canSee = function(from, to) return not (from == B and to == A) end
+    eq(Rolls.withHost(b.session), true)
+    roll(sim, b, 40); eq(b.session.myRoll, { n = 40, max = 50 })
+    b.session:hook("hostChanged"); eq(b.session.myRoll, nil)
+  end)
+
+  it("a watcher without /roll whose lobby lost the table still gets no staked seat", function()
+    local sim, a = setup()
+    local G = "Гошо Гошев"
+    local d = sim:add(G, { cls = "MAGE", roll = false }); sim:run(1)
+    local tid = a:openTable{ game = "deathroll", access = "guild", turn = 45, stake = SK }; sim:run(3)
+    d:watch(tid); sim:run(1); eq(d.session.tid, tid)
+    d.lobby:remove(tid)
+    local mark = #sim.sent
+    eq({ d:sit(tid, 2, SK) }, { nil, "roll" }); eq(#sent(sim, G, "SIT", mark), 0)
+  end)
+
+  it("Морски шах: a board that carries mine on is the same game (F21)", function()
+    local L = Stakes.leadsTo
+    local mine = TTT.new({})
+    ok(TTT.apply(mine, 1, { k = "mark", c = 1 }))
+    local more = Util.copy(mine); ok(TTT.apply(more, 2, { k = "mark", c = 5 }))
+    ok(L(mine, more)); ok(L(mine, mine)); ok(not L(more, mine))
+    local other = Util.copy(more); other.board[1] = 2
+    ok(not L(mine, other))
+    -- Round 1 won by seat 1, then the next round.
+    local won = TTT.new({})
+    for _, m in ipairs({ { 1, 1 }, { 2, 4 }, { 1, 2 }, { 2, 5 }, { 1, 3 } }) do ok(TTT.apply(won, m[1], { k = "mark", c = m[2] })) end
+    eq(won.phase, "round")
+    local nextRound = Util.copy(won); ok(TTT.apply(nextRound, 0, { k = "next" }))
+    ok(L(won, nextRound)); ok(not L(nextRound, won))
+    local later = Util.copy(nextRound); later.round = 3
+    ok(not L(won, later))
+    ok(not L(mine, nextRound)) -- round 1 still running is not followed by round 2
   end)
 end)
