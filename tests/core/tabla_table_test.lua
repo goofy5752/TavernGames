@@ -234,4 +234,17 @@ describe("tabla at the table", function()
     eq({ b.session.throw.foul, b.session.throw.h, #atB }, { "commit", 3, 0 })
     sim:run(9); eq({ atB[1].h, atB[1].verdict, atB[1].why }, { 3, "bad", "commit" }); eq(b.session.state, a.session.state)
   end)
+  it("a host that raises its own epoch over a throw I revealed to is caught; a host that really changed leaves it unheard", function()
+    local sim, tid = table2(); mute(B, "seed"); seat(); local atB = fairs(b)                 -- B holds throw 3 and has sent its seed
+    a.session.throw = nil; a.session.epoch = a.session.epoch + 1; a.session:sendTBL(); sim:run(1)   -- learnt from its TBL
+    eq({ #atB, atB[1].h, atB[1].verdict, atB[1].why }, { 1, 3, "bad", "dodge" })
+    eq({ b.session.diceUnheard, ns.Dice.alarm(b.session), b.session.host, b.session.epoch }, { nil, true, A, 2 })
+    sim, tid = table2(); mute(B, "seed"); seat(); atB = fairs(b)
+    a.session.throw = nil; a.session.epoch = a.session.epoch + 1; a.session:snapshotTo(B); sim:run(1)   -- learnt from its snapshot
+    eq({ #atB, atB[1].h, atB[1].verdict, atB[1].why, b.session.diceUnheard }, { 1, 3, "bad", "dodge", nil })
+    sim, tid = table2(); local lift = mute(B, "seed"); seat(); atB = fairs(b); sim:offline(A); lift()
+    for _ = 1, 100 do if b.session.role == "host" then break end; sim:run(1) end                 -- the host is gone: B hosts
+    eq({ b.session.role, #atB, b.session.diceUnheard, ns.Dice.alarm(b.session), b.session.throw.h }, { "host", 0, 1, false, 5 })
+    eq({ ns.Dice.status(b.session) }, { "dice.rolling", "inkDim" }); eq(ns.Dice.tip(b.session), { { "ink", "dice.tip" }, { "red", "dice.unheard", 1 } })
+  end)
 end)

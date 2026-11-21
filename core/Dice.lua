@@ -41,8 +41,8 @@ local function stopTimer(s)
 end
 
 local function foul(throw, why) throw.foul = throw.foul or why end
--- A commit under my seat that is not the one I sent: one of before I logged
--- in again (I cannot open it), else forged.
+local function unheard(s) s.diceUnheard = (s.diceUnheard or 0) + 1 end
+-- A commit under my seat that I did not send: of before my login, else forged.
 local function notMine(throw, relogged)
   if relogged then throw.reload = true else foul(throw, "mine") end
 end
@@ -60,9 +60,7 @@ local function close(s, h, verdict, why, throw)
     count[by or ""], s.diceAlone = (count[by or ""] or 0) + 1, count
     last.silent, last.n = s.seats[throw.alone] or nil, count[by or ""]
     -- My host threw without me although I had said my part.
-    if s.mySeat == throw.alone and (throw.asked or throw.sent) and not throw.reload then
-      s.diceUnheard = (s.diceUnheard or 0) + 1
-    end
+    if s.mySeat == throw.alone and (throw.asked or throw.sent) and not throw.reload then unheard(s) end
   end
   local client = s.client
   client.events:emit("fair", { tid = s.tid, game = s.game, h = h, verdict = verdict, why = why, at = client.env.epoch() })
@@ -236,11 +234,11 @@ ns.Ext.dice = {
     local good = fits(s, m, how, held)
     if good == "old" then return end
     local same = good and held ~= nil and not held.done and held.h == fr.h
-    -- A throw I had said my part to is gone or is another one: pushed on me
-    -- unasked by my own host it is a second try, else I missed its end.
+    -- A throw I had said my part to is gone or another one: unasked, or under
+    -- an epoch its opener (still my host) raised, a second try; else unheard.
     if held and not held.done and not same and (held.asked or held.sent or held.foul) then
-      local why = held.foul or (not how.asked and not how.changed and "dodge") or nil
-      if why then close(s, held.h, "bad", why, held) else s.diceUnheard = (s.diceUnheard or 0) + 1 end
+      local why = held.foul or ((how.changed or not how.asked) and "dodge") or nil
+      if why then close(s, held.h, "bad", why, held) else unheard(s) end
     end
     if not good then
       if held and not held.done then s.throw = nil; stopTimer(s) end
@@ -255,9 +253,12 @@ ns.Ext.dice = {
     myPart(s, throw)
   end,
 
-  -- Everyone: the throw died with its host (the new one does not hold the old
-  -- seed); the new host's timers offer `need` and it opens a new number.
+  -- Everyone: the throw died with its host. A running one whose opener hosts
+  -- on (it raised its own epoch) was a second try; else, my part said, unheard.
   hostChanged = function(s)
+    local t = s.throw
+    local why = t and not t.done and (t.foul or (s.seats[t.d] == s.host and "dodge"))
+    if why then close(s, t.h, "bad", why, t) elseif t and not t.done and (t.asked or t.sent) then unheard(s) end
     s.throw, s.diceMine = nil, nil
     stopTimer(s)
   end,
