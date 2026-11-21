@@ -23,6 +23,7 @@ local C, Fair, Session = ns.Const, ns.Fair, ns.Session
 local copy, seatOf, contains = ns.Util.copy, ns.Util.seatOf, ns.Util.contains
 
 local WHY = { forged = true } -- what a seat may complain of (op "protest")
+local CRIES = 5 -- complaints of one seat passed on in a match
 local function hex(x, n) return type(x) == "string" and #x == n and not x:find("[^0-9a-f]") end
 local function isCommit(c) return hex(c, 64) end
 local function isSeed(x) return hex(x, 2 * C.SEED_BYTES) end
@@ -179,11 +180,15 @@ ns.Ext.dice = {
   -- g's seed (checked against that commit) become my seat-0 events.
   act = function(s, seat, a)
     if a.k ~= "throw" then return a end
-    local throw, cry = s.throw, s.diceCry
-    -- A complaint is passed on once per seat and throw.
+    local throw = s.throw
+    -- A complaint is passed on once per seat and throw (s.diceCried), for a
+    -- number the table has reached, CRIES a seat in a match.
     if a.op == "protest" then
-      if not (cry and cry.h == a.h and cry.seat == seat) then
-        s:play(0, { k = "throw", op = "protest", h = a.h, seat = seat, why = a.why })
+      local said, h = s.diceCried or {}, a.h
+      local n = said[seat] or 0
+      if type(h) == "number" and h % 1 == 0 and h >= 1 and h <= s.seq and WHY[a.why] and n < CRIES and not said[seat .. ":" .. h] then
+        said[seat], said[seat .. ":" .. h], s.diceCried = n + 1, true, said
+        s:play(0, { k = "throw", op = "protest", h = h, seat = seat, why = a.why })
       end
       return nil
     end
@@ -197,6 +202,9 @@ ns.Ext.dice = {
     return nil
   end,
 
+  -- Host: a complaint changes nothing on the board: the turn clock runs on.
+  still = function(s, seat, a) return seat == 0 and a.k == "throw" and a.op == "protest" or nil end,
+
   -- Everyone, after every event.
   applied = function(s, seat, a)
     local k = seat == 0 and a.k
@@ -205,6 +213,7 @@ ns.Ext.dice = {
       s.throw, s.diceMine = nil, nil
       if k == "start" then
         s.diceLast, s.diceSeen, s.diceBad, s.diceAlone, s.diceUnheard, s.diceCry, s.diceProof = nil, nil, nil, nil, nil, nil, nil
+        s.diceCried = nil
       end
       Dice.forget(s)
       return stopTimer(s)

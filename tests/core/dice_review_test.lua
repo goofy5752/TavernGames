@@ -128,3 +128,26 @@ describe("final review: back to my seat after a /reload (I3)", function()
     eq(P.new({ env = {} }):mayReturn("X#1"), true)                     -- a bot's env has no db
   end)
 end)
+
+describe("final review: complaints (I5)", function()
+  local function protest(h) b:send("WHISPER", A, ns.Session.message("ACT", { tid = a.session.tid, a = { k = "throw", op = "protest", h = h, why = "forged" } })); sim:run(0) end
+  local function relayed() return sim:count(function(m) return m.target == W and m.msg.t == "EV" and m.msg.a.op == "protest" end) end
+
+  it("a guest that keeps complaining does not stop its own clock: a 30 s turn times out on time (fr4)", function()
+    table2(30); ok(a:act(E.auto(a.session.state, 1))); sim:run(1)
+    local s = a.session; eq({ s.state.turn, s.state.phase, s:left() }, { 2, "move", 30 })
+    sim:run(20); protest(3); eq({ relayed(), s:left(), b.session:left(), s.diceCry.h }, { 1, 10, 10, 3 })
+    sim:run(5); protest(6); eq({ relayed(), s:left(), b.session:left() }, { 2, 5, 5 })
+    sim:run(4); protest(3); protest(6); eq({ relayed(), s:left(), s.state.turn }, { 2, 1, 2 })
+    sim:run(1); eq(s.state.turn, 1); eq(sim:count(function(m) return m.target == B and m.msg.t == "EV" and m.msg.auto == true end), 1)
+  end)
+
+  it("a complaint is passed on once per seat and throw, only for a throw number the table has reached, a handful a match", function()
+    table2(); local s = a.session; local q = s.seq
+    protest(6); protest(6); eq({ relayed(), s.seq }, { 1, q + 1 })
+    protest(s.seq + 5); protest(0); protest(2.5); protest("6"); eq(relayed(), 1)
+    for h = 1, s.seq do protest(h) end
+    eq(relayed(), 5); eq(s.seq, q + 5)
+    s:play(0, { k = "start" }); sim:run(1); protest(3); eq(relayed(), 6)   -- a new match: heard again
+  end)
+end)

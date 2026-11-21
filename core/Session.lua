@@ -217,14 +217,14 @@ function Session:armTimers()
 end
 
 -- The next ordered event: applied, whispered to every member except `skip`, then
--- the extensions' `applied`; false when it does not apply. A sit, or a stand that
--- keeps the turn, leaves the running turn alone; others re-arm (abort stops them).
+-- the extensions' `applied`; false when it does not apply. A sit, a stand that keeps
+-- the turn, or an event an extension calls `still` leaves the running turn alone.
 function Session:event(seat, a, skip, auto)
   local turn = self.state and self.state.turn
   if not self:apply(seat, a) then return false end
   self.seq = self.seq + 1
   local k = seat == 0 and a.k
-  if k ~= "sit" and (k ~= "stand" or self.state and self.state.turn ~= turn) then self:armTimers() end
+  if k ~= "sit" and (k ~= "stand" or self.state and self.state.turn ~= turn) and not self:hook("still", seat, a) then self:armTimers() end
   local m = message("EV", {
     tid = self.tid, e = self.epoch, q = self.seq, seat = seat, a = a,
     auto = auto or nil, left = self:left(),

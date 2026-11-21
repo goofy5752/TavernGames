@@ -158,6 +158,9 @@ ns.Ext.fair = {
     return nil
   end,
 
+  -- Host: a complaint changes nothing at the table: the turn clock runs on.
+  still = function(s, seat, a) return seat == 0 and a.k == "fair" and a.op == "protest" or nil end,
+
   -- Everyone, after every event.
   applied = function(s, seat, a)
     -- Host: my own seat's timeout is tried again like a member's (Session:armAuto;

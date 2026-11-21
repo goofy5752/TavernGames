@@ -165,6 +165,18 @@ describe("deal cheats: the shuffle", function()
     a:receive("WHISPER", C, { v = 1, t = "ACT", tid = tid, a = { k = "fair", op = "protest", h = a.session.fair.h, why = "x" } })
     sim:run(1); eq(a.session.seq, q)
   end)
+
+  it("a seat that complains of two hands in turn is heard once for each, and no complaint restarts the turn clock (I5)", function()
+    setup(true); toHostDeal(); sim:run(4)
+    local s = a.session; local h1, h2 = s.fairLast.h, s.fair.h
+    ok(h1 ~= h2); local q, left = s.seq, s:left(); ok(left and left > 20)
+    for i = 1, 6 do
+      sim:run(2)
+      a:receive("WHISPER", C, { v = 1, t = "ACT", tid = tid, a = { k = "fair", op = "protest", h = i % 2 == 1 and h1 or h2, why = "dealt" } })
+      sim:run(0)
+    end
+    eq({ s.seq, s:left(), b.session:left() }, { q + 2, left - 12, left - 12 })
+  end)
 end)
 
 -- The last snapshot the host sent to `name`, as a message of its own.

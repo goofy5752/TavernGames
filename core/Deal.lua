@@ -219,9 +219,9 @@ local function request(s, seat, a)
     -- A seat says a hand was not fair to it: once per hand, for the round
     -- running or the last one closed.
     local last, cried = s.fairLast, s.fairCried or {}
-    if s.status == "live" and PRIVATE[a.why] and isInt(a.h) and cried[seat] ~= a.h
+    if s.status == "live" and PRIVATE[a.why] and isInt(a.h) and not cried[seat .. ":" .. a.h]
         and ((fair and a.h == fair.h) or (last and a.h == last.h)) then
-      cried[seat], s.fairCried = a.h, cried
+      cried[seat .. ":" .. a.h], s.fairCried = true, cried
       s:play(0, { k = "fair", op = "protest", h = a.h, seat = seat, why = a.why })
     end
     return
