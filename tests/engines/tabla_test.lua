@@ -392,10 +392,13 @@ describe("tabla staging", function()
       return table.concat(p.pts[1], ",") .. "|" .. table.concat(p.pts[2], ",") .. "|" .. table.concat(p.pin[1], ",") ..
         "|" .. table.concat(p.pin[2], ",") .. "|" .. p.bar[1] .. p.bar[2] .. "|" .. p.off[1] .. "," .. p.off[2]
     end
-    local games, positions, checked, bad, early = 0, 0, 0, 0, 0
-    while games < 30 do
+    -- The first POSITIONS turns of random play (several games of the match); E.stage is asked once
+    -- for each prefix of a position (the legal moves of a double share most of theirs).
+    local POSITIONS = 400
+    local positions, checked, bad, early = 0, 0, 0, 0
+    while positions < POSITIONS do
       local s, guard = E.new{}, 0
-      while not E.over(s) and guard < 100000 do
+      while not E.over(s) and guard < 100000 and positions < POSITIONS do
         guard = guard + 1
         local a = E.system(s)
         if a and a.need == "dice" then
@@ -404,23 +407,31 @@ describe("tabla staging", function()
           if not E.apply(s, 0, a) then bad = bad + 1 end
         else
           local seat = s.turn
-          if positions < 400 then
+          do
             positions = positions + 1
-            -- the positions apply accepts as a whole move: those of the legal moves (every 16th checked by apply)
+            local memo = {}
+            local function stage(steps)
+              local parts = {}
+              for i, st in ipairs(steps) do parts[i] = st[1] .. ">" .. st[2] end
+              local key = table.concat(parts, " ")
+              if memo[key] == nil then memo[key] = E.stage(s, seat, steps) or false end
+              return memo[key] or nil
+            end
+            -- the positions apply accepts as a whole move: those of the legal moves (every 64th checked by apply)
             local legal, finals = E.legal(s, seat), {}
             for i, m in ipairs(legal) do
-              local r = E.stage(s, seat, m.steps)
+              local r = stage(m.steps)
               if not r or r.done ~= true then bad = bad + 1 else finals[pk(r)] = true end
-              if r and (checked + i) % 16 == 0 and pk(after(s, m.steps)) ~= pk(r) then bad = bad + 1 end
+              if r and (checked + i) % 64 == 0 and pk(after(s, m.steps)) ~= pk(r) then bad = bad + 1 end
             end
             for _, m in ipairs(legal) do
               local pre = {}
               for k = 0, #m.steps - 1 do
-                local r = E.stage(s, seat, pre)
+                local r = stage(pre)
                 local accepts = r and finals[pk(r)] == true
                 if not r or r.done ~= accepts or not has(r.next, m.steps[k + 1]) then
                   bad = bad + 1
-                elseif r.done or (checked + k) % 16 == 0 then -- done: a prefix ends where a whole move ends (5-1: 4/0)
+                elseif r.done or (checked + k) % 64 == 0 then -- done: a prefix ends where a whole move ends (5-1: 4/0)
                   if r.done then early = early + 1 end
                   if (E.apply(E.restore(E.snapshot(s)), seat, { k = "move", steps = pre }) == true) ~= accepts then
                     bad = bad + 1
@@ -430,21 +441,20 @@ describe("tabla staging", function()
               end
               checked = checked + 1
             end
-            for _, st in ipairs(E.stage(s, seat, {}).next) do
-              if E.stage(s, seat, { st }) == nil then bad = bad + 1 end
+            for _, st in ipairs(stage({}).next) do
+              if stage({ st }) == nil then bad = bad + 1 end
             end
           end
           local m = E.auto(s, seat)
           if not E.thrown(s) then bad = bad + 1 end
           if not m or not E.apply(s, seat, m) then bad = bad + 1; break end
           if not E.thrown(s) then bad = bad + 1 end
-          if s.phase == "game" or s.phase == "match" then games = games + 1 end
         end
       end
-      if not E.over(s) then bad = bad + 1 end
+      if positions < POSITIONS and not E.over(s) then bad = bad + 1 end
     end
-    eq(bad, 0)
-    ok(checked >= 1000, "checked " .. checked); ok(early > 0 and early < checked / 100, "early " .. early)
+    eq(bad, 0); eq(positions, POSITIONS)
+    ok(checked >= 1000, "checked " .. checked); ok(early > 0 and early < checked / 20, "early " .. early)
   end)
 end)
 

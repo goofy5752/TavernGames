@@ -395,7 +395,8 @@ describe("bots for any game", function()
       local st = a.session.state; if E.over(st) then break end
       if st.turn == 2 and st.phase == "move" then a:playAuto() end; sim:run(1)
     end
-    eq(E.over(a.session.state), true); eq(#res, 1); for _, v in ipairs(fair) do eq(v, "ok") end
+    eq(E.over(a.session.state), true); eq(#res, 1); eq(res[1].left, nil)   -- ended by play, nobody stood up
+    ok(#fair >= 60, tostring(#fair)); for _, v in ipairs(fair) do eq(v, "ok") end
     sim:run(6); eq(a.session.state.score, { 0, 0 }); eq(#res, 1)
   end)
 

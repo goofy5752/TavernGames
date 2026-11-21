@@ -8,9 +8,12 @@ local ZERO, SA = ("00"):rep(16), ("01"):rep(16)
 local COMMIT = "352302489bc2fcf025cf00cda8308033f97ac87712ce90b4d7cd72c58e4c3af9"
 local FIRST = { { 24, 20 }, { 24, 20 }, { 13, 9 }, { 13, 9 } } -- a legal first move of seat 1 with 4:4
 local sim, a, b, w
+local REAL = ns.Ext.dice
 
--- A table of Табла hosted by a, watched by w; B is not seated yet.
+-- A table of Табла hosted by a, watched by w; B is not seated yet. The dice
+-- extension is the real one again (a `rigged` test that failed left it off).
 local function table2(turn)
+  ns.Ext.dice = REAL
   sim = Sim.new()
   a = sim:add(A, { cls = "MAGE" })
   b = sim:add(B, { cls = "PRIEST" })
@@ -129,12 +132,10 @@ local function pos(var, turn, m1, m2, o)
   return s
 end
 
-local REAL = ns.Ext.dice
-
--- A seated table where nothing throws by itself, every client at a copy of `state`.
+-- A seated table where nothing throws by itself, every client at a copy of `state`
+-- (nothing is thrown before B sits, so the extension goes off after table2).
 local function rigged(state)
-  ns.Ext.dice = {}
-  table2(); seat()
+  table2(); ns.Ext.dice = {}; seat()
   a.session.state, b.session.state, w.session.state = ns.Util.copy(state), ns.Util.copy(state), ns.Util.copy(state)
   return sim
 end
@@ -617,7 +618,7 @@ describe("tabla at the table", function()
     eq({ b.session.diceProof.h, #atB, atB[1].h, atB[1].verdict, atB[1].why }, { 6, 1, 6, "bad", "dodge" })
   end)
   it("nobody moves: the host's clock plays the first legal move for either seat", function()
-    local sim, tid = table2(30); seat(); local mark = #sim.sent
+    local sim, tid = table2(30); seat()
     eq({ a.session.state.turn, a.session:left(), E.auto(a.session.state, 1).steps }, { 1, 30, { { 24, 20 }, { 24, 20 }, { 20, 16 }, { 20, 16 } } })
     sim:run(29); eq(a.session.seq, 8); sim:run(1)
     eq({ a.session.state.turn, a.session.state.phase, a.session.state.dice, a.session.seq, a.session:left() }, { 2, "move", { 4, 3 }, 12, 30 })
@@ -628,7 +629,7 @@ describe("tabla at the table", function()
   it("a player offline for three minutes is stood up and loses; meanwhile the host throws alone", function()
     local sim, tid = table2(30); seat(); local res = results(a); sim:offline(B); local t0 = sim.clock
     for _ = 1, 200 do if #res > 0 then break end; sim:run(1) end
-    ok(sim.clock - t0 >= 180 and sim.clock - t0 <= 185); eq({ res[1].game, res[1].winners, res[1].losers, res[1].left, res[1].names }, { "tabla", { 1 }, { 2 }, 2, { A, B } })
+    eq(#res, 1); ok(sim.clock - t0 >= 180 and sim.clock - t0 <= 185); eq({ res[1].game, res[1].winners, res[1].losers, res[1].left, res[1].names }, { "tabla", { 1 }, { 2 }, 2, { A, B } })
     eq(a.session.status, "aborted"); ok(a.session.diceSeen.alone >= 3); eq(a.session.diceSeen.bad, 0)
   end)
   it("a player who stands up loses the match and the result names it", function()
