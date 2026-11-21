@@ -61,6 +61,7 @@ ns.Const = {
   LEDGER_AUTHOR_MAX = 5000,  -- R entries kept per author
   LEDGER_JUMP = 1000,        -- an id under my name this far above my counter is forged: it never moves the counter
   LEDGER_CLAIMS_OPEN = 20,   -- pending claims per creditor shown or asked about
+  LEDGER_MINE_ASK = 20,      -- own entries the guild holds and my store lost, put to me at once; past it denied
   LEDGER_ADOPT_WAIT = 30,    -- the adoption window of a new store; my own entries wait this long after login
   LEDGER_DENY_RATE = 8,      -- denials sent per minute
   LEDGER_COALESCE = 2,       -- my entries made within this long go out in one LEV

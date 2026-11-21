@@ -33,6 +33,7 @@ core/LedgerStore.lua
 core/LedgerDeny.lua
 core/LedgerView.lua
 core/LedgerNet.lua
+core/LedgerSend.lua
 core/Presence.lua
 core/Lobby.lua
 core/Succession.lua

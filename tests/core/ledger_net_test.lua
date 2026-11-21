@@ -222,16 +222,47 @@ describe("ledger net: my name", function()
     eq(i.ledgerNet:take(pay(I, 2, M, 5), P), "new")
     local x = xs(i)
     eq(#x, 1); eq(x[1].r, I .. ":2"); eq(x[1].i, I .. ":4"); eq(store(sim, I).me[I].seq, 4)
-    -- Another body under an id I hold, above my saved counter.
-    local mine = i.ledgerNet:make("P", { f = M, c = 7, how = "hand" })
-    eq(mine.i, I .. ":5")
-    eq(i.ledgerNet:take(pay(I, 5, M, 700), P), "twin")
-    x = xs(i)
-    eq(#x, 2); eq(x[2].r, I .. ":5"); ok(x[2].rh ~= mine.h, "my own body is not denied")
-    eq(i.ledger:denied(mine), false); eq(#i.ledgerNet:asks(), 0)
     -- An id far above my counter is forged too.
     eq(i.ledgerNet:take(pay(I, 5000, M, 5), P), "new")
-    eq(#xs(i), 3); eq(store(sim, I).me[I].seq, 7)
+    eq(#xs(i), 2); eq(store(sim, I).me[I].seq, 5)
+    -- Another body under an id I held at login (made in an earlier session).
+    local mine = i.ledgerNet:make("P", { f = M, c = 7, how = "hand" })
+    eq(mine.i, I .. ":6")
+    sim:run(2)
+    i = veteran(sim, I, 6)
+    eq(i.ledgerNet:take(pay(I, 6, M, 700), P), "twin")
+    x = xs(i)
+    eq(#x, 3); eq(x[3].r, I .. ":6"); ok(x[3].rh ~= mine.h, "my own body is not denied")
+    eq(i.ledger:denied(i.ledger:get(mine.i)), false); eq(#i.ledgerNet:asks(), 0)
+  end)
+
+  it("a body at an id I made in this run (a collision) is asked about; neither real entry is erased", function()
+    local sim, i, m = setup()
+    -- Mine has left already: it stays, the other body is put to me, nothing is denied.
+    local mine = i.ledgerNet:make("P", { f = M, c = 7, how = "hand" })
+    sim:run(2); ok(m.ledger:get(mine.i), "mine left")
+    local other = pay(I, 1, P, 900)
+    eq(m.ledgerNet:take(other, P), "twin"); eq(i.ledgerNet:take(other, P), "twin")
+    sim:run(3)
+    eq(#xs(i), 0); eq(#i.ledgerNet:asks(), 1); eq(i.ledgerNet:asks()[1].c, 900)
+    ok(i.ledger:has(mine.i, mine.h), "mine is kept")
+    local bodies = { m.ledger:get(mine.i) }
+    eq(#bodies[2], 1); eq(m.ledger:denied(bodies[1]), false); eq(m.ledger:denied(bodies[2][1]), false)
+    eq(View.paid(View.of(m.ledger), M, I), 7); eq(View.paid(View.of(m.ledger), P, I), 900)
+    eq(m.ledger:seen(I), 1) -- no copy of mine under another id
+    -- Mine has not left yet: it is made again under a fresh id, the old body never leaves.
+    local mark = #sim.sent
+    local soon = i.ledgerNet:make("P", { f = M, c = 8, how = "hand" })
+    eq(soon.i, I .. ":2")
+    eq(i.ledgerNet:take(pay(I, 2, P, 800), P), "twin")
+    sim:run(3)
+    eq(#xs(i), 0); eq(#i.ledgerNet:asks(), 2); eq(i.ledger:has(soon.i, soon.h), false)
+    local again = i.ledger:get(I .. ":3")
+    eq(again.k, "P"); eq(again.f, M); eq(again.c, 8); eq(again.how, "hand")
+    local l = levs(sim, I, mark)
+    eq(#l, 1); eq(#l[1].msg.ev, 1); eq(l[1].msg.ev[1].i, I .. ":3")
+    eq(m.ledger:has(soon.i, soon.h), false); ok(m.ledger:get(I .. ":3"), "the new copy left")
+    eq(View.paid(View.of(m.ledger), M, I), 15)
   end)
 
   -- The run of the crash question: И was paid 1g by М, crashed, and the guild shows it its P again.
@@ -305,6 +336,67 @@ describe("ledger net: my name", function()
     eq(#i.ledgerNet:asks(), 2); eq(i.ledger:denied(i.ledger:get(lost.i)), false)
     eq(i.ledgerNet:answer(true), true)
     eq(i.ledger:denied(i.ledger:get(lost.i)), true); eq(#xs(i), 1)
+  end)
+
+  it("a forgery seen in the login queue is denied by the next session after a /reload", function()
+    local sim, _, m = setup()
+    store(sim, I).me[I].seq = 9
+    sim.clients[I]:stop()
+    local i = sim:relog(I)
+    sim:run(1)
+    eq(i.ledgerNet:take(pay(I, 4, M, 5), P), "new")
+    eq(#xs(i), 0); eq(#store(sim, I).pending, 1)
+    local mark = #sim.sent
+    i:stop(); i = sim:relog(I); sim:run(1) -- the /reload
+    eq(#xs(i), 0)
+    sim:settle(); sim:run(2)
+    local x = xs(i)
+    eq(#x, 1); eq(x[1].r, I .. ":4"); eq(x[1].i, I .. ":10"); eq(#store(sim, I).pending, 0)
+    eq(shipped(sim, I, mark), 1); ok(m.ledger:get(I .. ":10"), "the X left")
+  end)
+
+  it("a far id refused in a new store's window is denied by the next session", function()
+    local sim = Sim.new()
+    local i = sim:add(I)
+    sim:add(M); sim:run(1)
+    eq(i.ledgerNet:take(pay(I, 5000, M, 5), M), "new")
+    i:stop(); i = sim:relog(I); sim:run(1)
+    eq(i.ledgerNet:adopting(), false); eq(#xs(i), 0)
+    sim:settle()
+    local x = xs(i)
+    eq(#x, 1); eq(x[1].r, I .. ":5000")
+  end)
+
+  it("an entry made in the first seconds after a login survives a /reload", function()
+    local sim, i, m = setup()
+    i:stop(); i = sim:relog(I); sim:run(1)
+    eq(i.ledgerNet:make("P", { f = M, c = 10000, how = "hand" }), "queued") -- „Уредено“
+    i:stop(); i = sim:relog(I); sim:run(1)
+    local mark = #sim.sent
+    sim:settle(); sim:run(2)
+    local got = m.ledger:get(I .. ":1")
+    ok(got, "made and sent"); eq(got.c, 10000); eq(shipped(sim, I, mark), 1)
+    i:stop(); i = sim:relog(I); sim:settle(); sim:run(2)
+    eq(m.ledger:seen(I), 1) -- made once
+  end)
+
+  it("the crash question is per entry, and at most LEDGER_MINE_ASK are open", function()
+    local sim = setup()
+    local i = veteran(sim, I, 0)
+    local a, b = pay(I, 1, M, 100), pay(I, 2, P, 200)
+    i.ledgerNet:take(a, M); i.ledgerNet:take(b, M)
+    local asks = i.ledgerNet:asks()
+    eq(#asks, 2)
+    eq(i.ledgerNet:answer(asks[1], true), true)
+    eq(#i.ledgerNet:asks(), 1); eq(i.ledgerNet:asks()[1].i, b.i); eq(View.paid(View.of(i.ledger), M, I), 100)
+    eq(i.ledgerNet:answer(a.i, false), nil) -- answered already
+    eq(i.ledgerNet:answer(b.i, false), true)
+    local x = xs(i)
+    eq(#x, 1); eq(x[1].r, b.i); eq(#i.ledgerNet:asks(), 0)
+    for n = 4, 3 + ns.Const.LEDGER_MINE_ASK do i.ledgerNet:take(pay(I, n, M, n), M) end
+    eq(#i.ledgerNet:asks(), ns.Const.LEDGER_MINE_ASK); eq(#xs(i), 1)
+    i.ledgerNet:take(pay(I, 900, M, 9), M)
+    eq(#i.ledgerNet:asks(), ns.Const.LEDGER_MINE_ASK); eq(#xs(i), 2); eq(xs(i)[2].r, I .. ":900")
   end)
 
   it("while logging in, my own entries wait", function()
