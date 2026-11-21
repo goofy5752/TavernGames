@@ -1,6 +1,7 @@
 local Wow = require("wow")
 
 local ME = "Иван Петров"
+local BOT = "Бот Иванов"
 
 -- In a guild, booted with the ui/ files, own name resolved, PLAYER_LOGIN fired.
 -- `fresh` keeps the first run pending (no language chosen, intro not seen).
@@ -31,7 +32,7 @@ local function framed(w, border)
 end
 
 describe("ui: rules book", function()
-  it("opens 640x480 on „Залата“ for nil or an unknown topic, framed at 12/12, with four topics", function()
+  it("opens 640x480 on „Залата“ for nil or an unknown topic, framed at 12/12, with six topics", function()
     local w = guildWow()
     local B, L = w.ns.HelpBook, w.ns.L
     B.open()
@@ -43,7 +44,13 @@ describe("ui: rules book", function()
     eq(B.paper.color, rgba(w, "cream"))
     local names = {}
     for i, t in ipairs(B.topics) do names[i] = t.id .. "=" .. t.button.text:GetText() end
-    eq(names, { "hall=Залата", "ttt=Морски шах", "deathroll=Death Roll", "soon=Скоро" })
+    eq(names, { "hall=Залата", "ttt=Морски шах", "deathroll=Death Roll", "santase=Сантасе", "fair=Защо раздаването е честно", "soon=Скоро" })
+    -- a long title wraps inside the list and its row grows to hold it
+    for _, t in ipairs(B.topics) do
+      local fs = t.button.text
+      ok(fs:GetWidth() <= 150, t.id .. " title wider than the list")
+      ok(t.button:GetHeight() >= fs:GetStringHeight(), t.id .. " title taller than its row")
+    end
     B.open("nope"); eq(B.current, "hall")
     eq(B.introLink.text:GetText(), "Покажи въведението пак")
     eq(w:newGlobals(), { "SLASH_TAVERNGAMES1", "TavernGamesDB" })
@@ -85,10 +92,10 @@ describe("ui: rules book", function()
     local B, L = w.ns.HelpBook, w.ns.L
     B.open("hall")
     local hallPage = B.page
-    w:click(B.topics[4].button)
+    w:click(B.topics[6].button)
     eq(B.current, "soon"); eq(hallPage:IsShown(), false); ok(B.page:IsVisible(), "soon page hidden")
     eq(B.page.blocks[1].text:GetText(), L("help.soon.p"))
-    eq({ B.topics[4].button.text:GetTextColor() }, rgba(w, "red"))
+    eq({ B.topics[6].button.text:GetTextColor() }, rgba(w, "red"))
     w:click(B.topics[1].button); ok(hallPage:IsVisible(), "hall page not back")
     w:click(B.close); eq(B.frame:IsShown(), false)
   end)
@@ -134,6 +141,69 @@ describe("ui: rules book", function()
     w:advance(0)
     w:click(w.ns.TableFrame.view.info)
     eq(B.current, "deathroll"); ok(B.frame:IsShown(), "book not open")
+  end)
+
+  it("the Сантасе topic draws its cards; ⓘ on a Сантасе table opens it; the fair topic is reachable", function()
+    local w = guildWow()
+    w:slash("bots")
+    w:advance(0); w:advance(0)
+    local B, L = w.ns.HelpBook, w.ns.L
+    B.open("santase")
+    eq(B.current, "santase")
+    local topic = w.ns.Help.get("santase")
+    local cards = {}
+    for i, b in ipairs(topic.blocks) do
+      local block = B.page.blocks[i]
+      eq(block.kind, b.kind); eq(block.text:GetText(), L(b.key)); ok(block.text:IsVisible(), b.key)
+      if b.kind == "cards" then
+        local _, _, _, _, textY = unpack(block.text.points[1])
+        for _, c in ipairs(block.cards) do
+          cards[#cards + 1] = c
+          ok(c.frame:IsVisible(), "card " .. tostring(c.face) .. " hidden")
+          eq(c.scale, 0.8)
+          local _, _, _, _, cardY = unpack(c.frame.points[1])
+          ok(cardY > textY, "card " .. c.face .. " not above its text")
+        end
+        -- 4 px apart
+        for k = 2, #block.cards do
+          local _, _, _, x1 = unpack(block.cards[k - 1].frame.points[1])
+          local _, _, _, x2 = unpack(block.cards[k].frame.points[1])
+          eq(x2 - x1, w.ns.Cards.W * 0.8 + 4)
+        end
+      end
+    end
+    eq(#cards, 8)
+    eq(cards[1].face, "AS"); eq(cards[1].rank:GetText(), "A")
+    eq(cards[7].face, "KH"); eq(cards[7].rank:GetText(), "K")
+    eq(cards[8].face, "QH"); eq(cards[8].rank:GetText(), "Q")
+    eq({ cards[7].rank:GetTextColor() }, rgba(w, "red")); eq({ cards[8].rank:GetTextColor() }, rgba(w, "red"))
+    eq({ cards[1].rank:GetTextColor() }, rgba(w, "cardInk"))
+
+    B.open("fair")
+    eq(B.current, "fair")
+    local starts = 0
+    for _, block in ipairs(B.page.blocks) do
+      local t = block.text:GetText()
+      if block.text:IsVisible() and t:sub(1, #"В игрите с карти никой не разбърква тестето сам") == "В игрите с карти никой не разбърква тестето сам" then
+        starts = starts + 1
+      end
+    end
+    eq(starts, 1)
+
+    B.frame:Hide()
+    w.ns.client:openTable{ game = "santase", access = "invite", turn = 45 }
+    w:advance(0)
+    local v = w.ns.TableFrame.view
+    w:click(v.inviteButton)
+    local row
+    for _, r in ipairs(v.picker.rows) do
+      if r.frame:IsVisible() and r.name:GetText() == BOT then row = r end
+    end
+    assert(row, "no row for the bot in the picker")
+    w:click(row.frame)
+    w:advance(2)
+    w:click(w.ns.TableFrame.view.info)
+    eq(B.current, "santase"); ok(B.frame:IsShown(), "book not open")
   end)
 
   it("„Покажи въведението пак“ reopens the intro at 1/4", function()

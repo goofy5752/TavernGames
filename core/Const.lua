@@ -39,4 +39,8 @@ ns.Const = {
 
   GROUP_INVITE_GAP = 30, -- the host invites the same player into its group at most this often
   PARTY_SIZE = 5,        -- members of a party (a raid has room for more)
+
+  FAIR_WAIT = 20,    -- an undealt shuffle round is reopened, an unrevealed hand given up, after this long
+  FAIR_ASK_GAP = 5,  -- missing private faces are asked for again this often
+  SEED_BYTES = 16,   -- random bytes in one seed
 }

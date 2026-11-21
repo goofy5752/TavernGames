@@ -96,8 +96,12 @@ describe("/tavern", function()
     local w = guildWow()
     local c = w.ns.client
     w:slash("bots host dr"); w:advance(1); eq(c.lobby:tables()[1].game, "deathroll")
+    w:slash("bots host santase"); w:advance(1); eq(#c.lobby:tables(), 2)
+    local games = {}
+    for _, rec in ipairs(c.lobby:tables()) do games[rec.game] = true end
+    eq(games, { deathroll = true, santase = true })
     w:slash("bots host belot"); eq(#w:chatWith(w.ns.L("bots.nogame")), 1); w:advance(1)
-    eq(#c.lobby:tables(), 1)
+    eq(#c.lobby:tables(), 2)
     w:slash("bots invite nonsense"); eq(#w:chatWith(w.ns.L("bots.nogame")), 2)
     w:slash("bots invite deathroll"); w:advance(1)
     ok(c.invites.received, "no invitation"); eq(c.invites.received.game, "deathroll")

@@ -348,6 +348,142 @@ describe("ui: table frame, host-started games", function()
   end)
 end)
 
+describe("ui: table frame, card fairness", function()
+  -- I open Сантасе „Само поканени“, „Бот Иванов“ takes the invitation through
+  -- the „Покани“ picker and a hand is dealt.
+  local function santaseWithBot()
+    local w = withBots()
+    w.ns.client:openTable{ game = "santase", access = "invite", turn = 45 }
+    w:advance(0)
+    local v = w.ns.TableFrame.view
+    w:click(v.inviteButton)
+    local row
+    for _, r in ipairs(v.picker.rows) do
+      if r.frame:IsVisible() and r.name:GetText() == BOT then row = r end
+    end
+    assert(row, "no row for the bot in the picker")
+    w:click(row.frame)
+    w:advance(2)
+    return w, v
+  end
+
+  it("a card table shows the last hand's verdict; a Морски шах table shows none", function()
+    local w, v = santaseWithBot(); local s = w.ns.client.session
+    local tip = w.G.GameTooltip
+    s.fairLast, s.fairSeen = { h = 5, verdict = "ok", dealer = BOT }, { ok = 1, bad = 0 }; w.ns.TableFrame.render()
+    ok(v.fairLine:IsVisible(), "no fairness line")
+    eq(v.fairLine.text:GetText(), "Последната ръка: проверена"); eq(color(v.fairLine.text), rgb(w, "good"))
+    eq(v.fairLine.points[1], { "BOTTOM", v.area, "BOTTOM", 0, 6 })
+    w:hover(v.fairLine); eq(tip.lines, { w.ns.L("fair.tip.ok") })
+    s.fairLast, s.fairSeen = { h = 9, verdict = "bad", why = "play", dealer = BOT }, { ok = 1, bad = 1 }; w.ns.TableFrame.render()
+    eq(v.fairLine.text:GetText(), "Последната ръка: нередовна"); eq(color(v.fairLine.text), rgb(w, "red"))
+    local opened; w.ns.HelpBook.open = function(id) opened = id end; w:click(v.fairLine); eq(opened, "fair")
+    w:hover(v.fairLine)
+    eq(#tip.lines, 2)
+    ok(tip.lines[1]:find("Проверката не излезе: изигран е ход", 1, true), tip.lines[1])
+    eq(tip.lines[2], "Нередовни ръце на тази маса: 1")
+    s.fairLast = { verdict = "void" }; w.ns.TableFrame.render()
+    eq(v.fairLine.text:GetText(), "Ръката е анулирана. Раздава се отново.")
+    eq(color(v.fairLine.text), rgb(w, "red")) -- a bad hand of this match stays red
+    s.fairSeen = { ok = 1, bad = 0 }; w.ns.TableFrame.render()
+    eq(color(v.fairLine.text), rgb(w, "inkDim"))
+    w:hover(v.fairLine); eq(tip.lines, { w.ns.L("fair.tip.void") })
+    ok(tip.lines[1]:find("раздава следващият", 1, true), tip.lines[1])
+    s.fairLast = { verdict = "unseen" }; w.ns.TableFrame.render()
+    eq(v.fairLine.text:GetText(), "Последната ръка: не съм я гледал цялата")
+    w:hover(v.fairLine); eq(tip.lines, { w.ns.L("fair.tip.unseen") })
+
+    local w2, v2 = matchWithBot()
+    eq(w2.ns.client.session.game, "ttt")
+    eq(v2.fairLine:IsShown(), false)
+  end)
+
+  it("a void names the dealer, and its second one in a match is counted in red", function()
+    local w, v = santaseWithBot(); local s = w.ns.client.session
+    local tip = w.G.GameTooltip
+    s.fair, s.fairSeen = nil, { ok = 2, bad = 0 }
+    s.fairLast, s.fairVoids = { h = 7, verdict = "void", dealer = BOT, n = 1 }, { [BOT] = 1 }; w.ns.TableFrame.render()
+    eq(v.fairLine.text:GetText(), "Ръката е анулирана от Бот Иванов. Раздава следващият.")
+    eq(color(v.fairLine.text), rgb(w, "inkDim"))
+    w:hover(v.fairLine); eq(tip.lines, { w.ns.L("fair.tip.void"), "Бот Иванов: анулирани или нераздадени ръце в тази игра: 1" })
+    s.fairLast, s.fairVoids = { h = 15, verdict = "void", dealer = BOT, n = 2 }, { [BOT] = 2 }; w.ns.TableFrame.render()
+    eq(v.fairLine.text:GetText(), "Бот Иванов анулира 2 ръце в тази игра. Раздава следващият.")
+    eq(color(v.fairLine.text), rgb(w, "red"))
+    s.fairLast = { h = 21, verdict = "ok", dealer = ME }; w.ns.TableFrame.render()
+    eq(v.fairLine.text:GetText(), "Последната ръка: проверена"); eq(color(v.fairLine.text), rgb(w, "red")) -- it stays red
+  end)
+
+  it("another player's complaint is a claim beside my own verdict: by name, amber, only for its hand", function()
+    local w, v = santaseWithBot(); local s = w.ns.client.session
+    local tip = w.G.GameTooltip
+    s.fair, s.fairSeen = nil, { ok = 1, bad = 0 }
+    s.fairLast = { h = 5, verdict = "ok", dealer = ME }
+    s.fairCry = { h = 5, seat = 2, name = BOT, why = "mine" }; w.ns.TableFrame.render()
+    eq(v.fairLine.text:GetText(), "Последната ръка: проверена · Бот Иванов твърди, че е нередовна")
+    eq(color(v.fairLine.text), rgb(w, "gold"))
+    w:hover(v.fairLine)
+    eq(tip.lines, { w.ns.L("fair.tip.ok"),
+      "Бот Иванов твърди: неговата част от разбъркването е подменена. Твоят аддон не може да провери това." })
+    s.fairLast, s.fairSeen = { h = 5, verdict = "bad", why = "play", dealer = ME }, { ok = 0, bad = 1 }; w.ns.TableFrame.render()
+    eq(v.fairLine.text:GetText(), "Последната ръка: нередовна · Бот Иванов твърди, че е нередовна")
+    eq(color(v.fairLine.text), rgb(w, "red"))                                    -- my own verdict is bad
+    s.fairLast, s.fairSeen = { h = 9, verdict = "ok", dealer = BOT }, { ok = 1, bad = 0 }; w.ns.TableFrame.render()
+    eq(v.fairLine.text:GetText(), "Последната ръка: проверена"); eq(color(v.fairLine.text), rgb(w, "good")) -- another hand
+    w:hover(v.fairLine); eq(tip.lines, { w.ns.L("fair.tip.ok") })
+  end)
+
+  it("every reason has a text, and an unknown or missing one never shows a raw key", function()
+    local w, v = santaseWithBot(); local s = w.ns.client.session
+    local tip = w.G.GameTooltip
+    s.fair, s.fairSeen = nil, { ok = 0, bad = 1 }
+    for _, why in ipairs{ "seeds", "commit", "deal", "dealt", "play", "noreveal", "mine", "round", "forged", "nodeal" } do
+      for _, lang in ipairs{ "bg", "en" } do
+        ok(w.ns.Locale.tables[lang]["fair.why." .. why], lang .. ": no text for " .. why)
+      end
+    end
+    for _, why in ipairs{ "mine", "commit", "round", "play", "forged", "dealt" } do -- what a seat may complain of
+      for _, lang in ipairs{ "bg", "en" } do
+        ok(w.ns.Locale.tables[lang]["fair.cry." .. why], lang .. ": no complaint text for " .. why)
+      end
+    end
+    for _, why in ipairs{ "xyz", false } do
+      s.fairLast = { h = 9, verdict = "bad", why = why or nil, dealer = BOT }; w.ns.TableFrame.render()
+      w:hover(v.fairLine)
+      ok(not tip.lines[1]:find("fair.", 1, true), tip.lines[1])
+      eq(tip.lines[1], "Проверката не излезе: причината не е известна. Кажи на останалите.")
+    end
+    s.fairLast = { h = 9, verdict = "odd" }; w.ns.TableFrame.render()
+    w:hover(v.fairLine)
+    for _, line in ipairs(tip.lines) do ok(not line:find("fair.", 1, true), line) end
+    ok(not v.fairLine.text:GetText():find("fair.", 1, true), v.fairLine.text:GetText())
+  end)
+
+  it("during the shuffle the line says who we are waiting for", function()
+    local w, v = santaseWithBot(); local s = w.ns.client.session
+    s.fair = { stage = "commit", p = { 1, 2 }, commits = { [1] = "x" }, dealer = BOT }
+    w.ns.TableFrame.render()
+    ok(v.fairLine:IsVisible(), "no fairness line")
+    eq(v.fairLine.text:GetText(), "Чакаме Бот Иванов за разбъркването…")
+    s.fair.stage = "seed"; w.ns.TableFrame.render()
+    eq(v.fairLine.text:GetText(), "Бот Иванов раздава…")
+    s.fair.dealer = nil; w.ns.TableFrame.render() -- the dealer's seat emptied: no name to show
+    eq(v.fairLine.text:GetText(), "Разбъркваме заедно…")
+  end)
+
+  it("after the match the host gets „Нова игра“", function()
+    local w, v = santaseWithBot(); local s = w.ns.client.session
+    eq(s.status, "live")
+    eq(v.startButton:IsShown(), false)
+    s.state.phase, s.state.winner = "match", 1
+    w.ns.TableFrame.render()
+    ok(v.startButton:IsVisible(), "no Нова игра"); eq(v.startButton:IsEnabled(), true)
+    eq(v.startButton.text:GetText(), "Нова игра")
+    w:click(v.startButton); w:advance(2)
+    eq(s.state.gp, { 0, 0 })
+    eq(v.startButton:IsShown(), false)
+  end)
+end)
+
 describe("ui: Морски шах view", function()
   local E
 

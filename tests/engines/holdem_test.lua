@@ -143,7 +143,11 @@ describe("holdem setup", function()
   it("system asks for a hand only with two playing seats", function()
     eq({ E.system(mk({ 1, 2 })) }, { { k = "hand" }, E.IDLE_DELAY }); eq(E.system(mk({ 4 })), nil)
     local s = mk({ 4 }); rejects(s, 0, { k = "hand" }, "players")
-    s = mk({ 1, 2 }); ok(E.apply(s, 0, { k = "hand" })); eq(E.system(s), nil); rejects(s, 0, { k = "hand" }, "phase")
+    s = mk({ 1, 2 }); ok(E.apply(s, 0, { k = "hand" })); eq({ E.system(s) }, { { k = "deal", need = "deck" }, 0 }); rejects(s, 0, { k = "hand" }, "phase")
+  end)
+  it("after the hand action the table asks for a deck", function()
+    local s = mk({ 1, 2 }); ok(E.apply(s, 0, { k = "hand" })); eq({ E.system(s) }, { { k = "deal", need = "deck" }, 0 })
+    eq({ E.apply(s, 0, { k = "deal", need = "deck" }) }, { nil, "need" })
   end)
 end)
 
@@ -634,7 +638,7 @@ local function fuzz(seed, hands, withViews, opt)
     end
     for sv = 0, 9 do leakCheck(sv, E.view(s, sv)) end   -- the window where a newcomer sits on a freed chair
     local a, delay = E.system(s); check(a and a.k == "hand" and delay > 0, "no hand due")
-    apply(0, a); check(E.system(s) == nil, "system acts during the shuffle")
+    apply(0, a); local need = E.system(s); check(need and need.k == "deal" and need.need == "deck", "no deck asked for during the shuffle")
     stats.players[#s.order] = true
     apply(0, { k = "deal", deck = shuffled(rnd) })
     while s.phase ~= "done" do

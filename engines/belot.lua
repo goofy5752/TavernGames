@@ -706,6 +706,7 @@ end
 
 function E.apply(s, seat, a)
   if type(a) ~= "table" then return nil, "action" end
+  if a.need ~= nil then return nil, "need" end
   local k = a.k
   if k == "deal" then return applyDeal(s, seat, a) end
   if k == "bid" then return applyBid(s, seat, a) end
@@ -769,9 +770,10 @@ function E.auto(s, seat, random)
   return { k = "play", i = s.hands[seat][n], c = hand[n], b = beloteAllowed(b, hand, trick, hand[n]) or nil }
 end
 
--- What the table does next: {k="deal"} (the host adds the shuffled deck) or {k="score"}.
+-- What the table does next: {k="deal", need="deck"} (randomness: the supplier applies it without need
+-- and with the shuffled deck; apply refuses an action carrying need with "need") or {k="score"}.
 function E.system(s)
-  if s.phase == "deal" then return { k = "deal" }, s.res and 5 or 0 end
+  if s.phase == "deal" then return { k = "deal", need = "deck" }, s.res and 5 or 0 end
   if s.phase == "score" then return { k = "score" }, 2 end
 end
 

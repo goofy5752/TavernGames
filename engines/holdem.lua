@@ -63,7 +63,8 @@ HAND HANDSHAKE (the deck comes from the fairness layer, so the engine cannot dea
  - phase "idle"/"done": E.system returns {k="hand"} once 2+ seats can play. The host applies it: the button
    moves, the blinds are posted, state.order (the hand's seats in dealing order) is fixed, phase "deal".
    state.order is who takes part in the commit-reveal shuffle.
- - phase "deal": E.system returns nil. The host runs the shuffle and applies {k="deal", deck = faces}, the
+ - phase "deal": E.system returns {k="deal", need="deck"}, 0 (randomness: apply refuses an action carrying
+   need with "need"). The host runs the shuffle and applies {k="deal", deck = faces}, the
    full deck (deck[i] = E.DECK[p[i]]). A member applies {k="deal"} without the deck (or with a partial
    one) to its view, then {k="show", cards = {[i] = face}} with its own two cards. Phase "bet".
    If leaves fold all but one player meanwhile, that hand is already settled (phase "done") and the deal
@@ -508,6 +509,7 @@ end
 
 function E.apply(s, seat, a)
   if type(a) ~= "table" then return nil, "action" end
+  if a.need ~= nil then return nil, "need" end
   local k = a.k
   if k == "hand" or k == "deal" or k == "street" or k == "showdown" or k == "show"
      or k == "join" or k == "leave" then
@@ -555,6 +557,8 @@ end
 function E.system(s)
   if s.phase == "idle" or s.phase == "done" then
     if countPlaying(s) >= 2 then return { k = "hand" }, s.phase == "done" and E.HAND_DELAY or E.IDLE_DELAY end
+  elseif s.phase == "deal" then
+    return { k = "deal", need = "deck" }, 0
   elseif s.phase == "street" then
     return { k = "street", cards = facesOf(s, streetIdx(s)) }, E.STREET_DELAY
   elseif s.phase == "showdown" then

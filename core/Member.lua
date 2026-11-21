@@ -31,7 +31,7 @@ end
 function Session:requestSync()
   local now = self.client.env.now()
   if self.lastSyn and now - self.lastSyn < C.SYN_MIN_GAP then return end
-  self.lastSyn = now
+  self.lastSyn, self.asked = now, true
   if self.stale and not self.mySeat then
     self.client:send("WHISPER", self.host, Session.message("WAT", { tid = self.tid }))
   else
@@ -44,8 +44,16 @@ end
 function Member.adopt(client, sender, m)
   local t, me = m.tbl, client.env.me
   local seat = seatOf(t.s, me)
+  local fresh = client.session == nil -- no memory of this table (a relog, or I just came)
   local s = client.session or setmetatable({ client = client }, Session)
   local prevState, prevHost = s.state, s.host
+  -- How this snapshot came, for the extensions: fresh, from a host new to me
+  -- (changed), answering a request of mine (asked: SYN, WAT or SIT), with a
+  -- seat I did not have (sat); q = my seq before it.
+  local how = {
+    fresh = fresh, changed = not fresh and (prevHost ~= sender or s.epoch ~= m.e or s.stale == true),
+    asked = s.asked == true, sat = seat ~= nil and s.mySeat == nil, q = s.seq,
+  }
   if s.role == "host" then Succession.demote(s) end
   s.tid, s.role, s.mySeat, s.host = m.tid, seat and "player" or "watcher", seat, sender
   s.epoch, s.seq, s.seats = m.e, m.q, copy(t.s)
@@ -57,14 +65,15 @@ function Member.adopt(client, sender, m)
   s.resultSeen = s.state ~= nil and engine.result ~= nil and engine.result(s.state) ~= nil
   s.status = t.st == "live" and "live" or (s.state and "aborted" or "open")
   s.deadline = type(m.left) == "number" and client.env.now() + m.left or nil
-  s.stale, s.sitAsked = nil, nil
+  s.stale, s.sitAsked, s.asked = nil, nil, nil
   s.invited = {}
   s:addInvited(m.inv)
   client.pending, client.gaveUp = nil, nil
   client.session = s
   -- The extensions hear of a new host and of the state this snapshot replaced.
   if prevHost and prevHost ~= sender then s:hook("hostChanged") end
-  s:hook("adopted", prevState)
+  s:hook("adopted", prevState, m, how)
+  s:armAuto()
   if not s.pingTimer then s:schedulePing() end
   Succession.watchHost(s)
   -- A table I hosted until now, or one adopted before any TBL: list it as the host's.
@@ -109,20 +118,50 @@ local function onSnapshot(client, sender, m)
   end
 end
 
+-- My action goes to the host (Session.act) and is remembered, the last
+-- SENT_KEPT of them, until the host's event for my seat shows it.
+local SENT_KEPT = 8
+function Member.sendAct(s, a)
+  local sent = s.sent or {}
+  s.sent = sent
+  sent[#sent + 1] = copy(a)
+  if #sent > SENT_KEPT then table.remove(sent, 1) end
+  s.client:send("WHISPER", s.host, Session.message("ACT", { tid = s.tid, a = a }))
+end
+
+-- Is `a` an action I sent and have not seen come back -> bool. It is taken
+-- off the list together with the ones sent before it (the host dropped them).
+function Member.mine(s, a)
+  local sent = s.sent or {}
+  for i = 1, #sent do
+    if ns.Util.same(sent[i], a) then
+      for _ = 1, i do table.remove(sent, 1) end
+      return true
+    end
+  end
+  return false
+end
+
 -- Events are taken only from my host, at exactly my epoch, in order. An epoch
 -- is never adopted from an EV, and a stale member waits for its snapshot.
+-- With hidden hands (engine.view) nobody but my client moves for my seat, my
+-- timeouts included (Session:armAuto): an event for it that I did not send is
+-- reported to the extensions (hook `forged`) and applied like any other.
 local function onEvent(client, sender, m)
   local s = client.session
   if not s or s.role == "host" or s.tid ~= m.tid or s.host ~= sender or s.stale then return end
   if m.e ~= s.epoch or type(m.q) ~= "number" or m.q <= s.seq then return end
   if m.q > s.seq + 1 then return s:requestSync() end
+  if m.seat == s.mySeat and s:engine().view and not Member.mine(s, m.a) then s:hook("forged", m.seat, m.a) end
   if not s:apply(m.seat, m.a) then
+    s:hook("refused", m.seat, m.a)
     client.events:emit("desync", s.tid)
     return s:requestSync()
   end
   s.seq = m.q
   s.deadline = type(m.left) == "number" and client.env.now() + m.left or nil
   s:hook("applied", m.seat, m.a)
+  s:armAuto()
   Session.emit(client)
 end
 

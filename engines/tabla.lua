@@ -12,9 +12,9 @@ ns.Engines = ns.Engines or {}
     and to = 0 is off. E.abs(var, seat, q) gives the absolute point (seat 1's numbering).
     Std/Тапа: the seats move in opposite directions, seat 2's q is seat 1's 25-q.
     Гюлбара: both move the same way round, seat 2's q is seat 1's (q+11)%24+1 (seat 2's 24 = seat 1's 12).
- 4. Dice: system action {k="dice", d={a,b}} at seat 0, values 1..6. E.system answers
-    {k="need", r="open"} / {k="need", r="roll", s=seat} when the table needs dice (a hint for the
-    host's dice source; "need" itself is never applied).
+ 4. Dice: system action {k="dice", d={a,b}} at seat 0, values 1..6. Randomness: E.system answers
+    {k="dice", need="dice", r="open"} / {k="dice", need="dice", r="roll", s=seat}; the supplier
+    applies it without need and with d (apply refuses an action carrying need with "need").
  5. Opening (game 1 only): one dice action is the opening roll, d[1] = seat 1's die, d[2] = seat
     2's die; a tie rolls again; the higher die starts and then rolls both dice anew (the opening
     dice are not played). opts.first is ignored (the opening roll decides).
@@ -313,6 +313,7 @@ local function die(x) return type(x) == "number" and x >= 1 and x <= 6 and x % 1
 
 function E.apply(s, seat, a)
   if type(a) ~= "table" then return nil, "action" end
+  if a.need ~= nil then return nil, "need" end
   local k = a.k
   if k == "move" then
     if seat ~= 1 and seat ~= 2 then return nil, "seat" end
@@ -377,8 +378,8 @@ function E.auto(s, seat)
 end
 
 function E.system(s)
-  if s.phase == "open" then return { k = "need", r = "open" }, 0 end
-  if s.phase == "roll" then return { k = "need", r = "roll", s = s.turn }, 0 end
+  if s.phase == "open" then return { k = "dice", need = "dice", r = "open" }, 0 end
+  if s.phase == "roll" then return { k = "dice", need = "dice", r = "roll", s = s.turn }, 0 end
   if s.phase == "game" then return { k = "next" }, 3 end
 end
 

@@ -10,7 +10,7 @@
 
 **Spec:** `docs/superpowers/specs/2026-11-20-tavern-games-design.md` (4, 5.3 Сантасе, 5.3а, 6.2, 6.3, 6.5, 8). Roadmap: `docs/superpowers/plans/2026-11-20-games-roadmap.md` (Stage B). Stage A plan (format, contracts, the end state this plan builds on): `docs/superpowers/plans/2026-11-20-stageA-core-deathroll.md`. Engine contract and rulings: `.superpowers/sdd/engines-parallel/contract.md`, `.superpowers/sdd/engines-parallel/progress.md` (X1, G1, S1–S3). Mockup: `docs/mockups/03-games.html` (`santase`, `.pc`).
 
-**Starts after stage A Tasks 6–12 are committed.** Stage A interfaces this plan consumes: `ns.Ext` with `Session:hook` / `Session:filterAct` / `Session:applyUnsent` and the hooks `act`, `applied`, `adopted`, `hostChanged`; `client:startGame()`, `client:playAuto()`, the `"result"` event; `env.random(lo, hi)` on every env including bots; `ns.Games` with the `PLAYABLE` gate; `Sim:add` options kept across `sim:relog`; `Bots` playing `bot:playAuto()` after 1.5 s, `bots:hostTable(game)`, `bots:inviteMe(game)` and the bot host's own start (Task 7); `/tavern bots host|invite <game>` (Task 8); `ns.Util.contains` and the registry-driven hall (Task 9); `TableFrame` with `HallLayout.plates`, `v.startButton`, the banner order and the board at `CENTER 0, -6` for one plate row (Task 10); `Help.topics` ids `hall, ttt, deathroll, soon`, `BLOCKS` in `ui/HelpBook.lua` and the quoted-label test (Task 11).
+**B1 (Tasks 1–6) starts on 5385b30 (stage A Tasks 1–8) and consumes from A only** `ns.Ext` with `Session:hook` / `Session:filterAct` / `Session:applyUnsent` and the hooks `act`, `applied`, `adopted`, `hostChanged`; `client:startGame()`, `client:playAuto()`, the `"result"` event; `env.random(lo, hi)` on every env including bots; `ns.Games` with the `PLAYABLE` gate; `Sim:add` options kept across `sim:relog` (A1–A8); and `Util.contains` (copied from feature/games 0583c29, see Task 2). **B2 (Tasks 7–13) starts after A9–A12 and B1 are merged** and consumes `HallLayout.plates`, `v.startButton`, the Help topic ids, `BLOCKS` and the quoted-label test. The remaining stage A interfaces (all consumed by B2 at the earliest): `ns.Ext` with `Session:hook` / `Session:filterAct` / `Session:applyUnsent` and the hooks `act`, `applied`, `adopted`, `hostChanged`; `client:startGame()`, `client:playAuto()`, the `"result"` event; `env.random(lo, hi)` on every env including bots; `ns.Games` with the `PLAYABLE` gate; `Sim:add` options kept across `sim:relog`; `Bots` playing `bot:playAuto()` after 1.5 s, `bots:hostTable(game)`, `bots:inviteMe(game)` and the bot host's own start (Task 7); `/tavern bots host|invite <game>` (Task 8); `ns.Util.contains` and the registry-driven hall (Task 9); `TableFrame` with `HallLayout.plates`, `v.startButton`, the banner order and the board at `CENTER 0, -6` for one plate row (Task 10); `Help.topics` ids `hall, ttt, deathroll, soon`, `BLOCKS` in `ui/HelpBook.lua` and the quoted-label test (Task 11).
 
 ## Global Constraints
 
@@ -99,7 +99,11 @@ TOC: `core/Fair.lua` after `core/Deck.lua`; `core/Deal.lua` after `core/Lifecycl
 | `ACT` (dealer) → `EV` seat 0 | `{k="fair", op="show", h, cards}` → `{k="show", cards}` | faces that became public outside a play |
 | `ACT` (dealer) → `EV` seat 0 | `{k="fair", op="reveal", h, s={seed,…}}` → the same as an event | the seeds in `p` order, after the hand |
 | `ACT` (dealer) → `EV` seat 0 | `{k="fair", op="void", h}` → `{k="void"}` | the dealer lost the deck |
-| `SNP` | `fr = {h, d, p, c, st, n}` | the round: commits `c` by seat, stage `st`, hands dealt `n`; absent when no round |
+| `EV` seat 0 (host) | `{k="fair", op="noreveal", h}` | the seeds of the last hand of a match never came out (`FAIR_WAIT` after it ended): the hand closes `"bad", "noreveal"` |
+| `ACT` → `EV` seat 0 | `{k="fair", op="protest", h, why}` → `{…, seat, why}` | a seat's own check of hand `h` failed where the others cannot see it (`why` = `mine`, `commit`, `round`, `play`, `forged`, `dealt`); once per seat and hand (final fix wave) |
+| `SNP` | `fr = {h, d, p, c, st, n}` | the round: commits `c` by seat, stage `st`, deals made `n`. Always present on a card table: with no round open it is `{n}` alone |
+
+**Corrected after the final review (final fix wave, see `docs/superpowers/notes/engine-contract.md`, Addendum 3):** `SNP.fr` is never absent on a card table (the earlier text said "absent when no round"); the `noreveal` event above was missing from this table; a void no longer gives the same dealer the next deal (`n` is not taken back, the next seat deals); reasons of `"bad"` added: `mine`, `round`, `forged`, `nodeal`; the op `protest`.
 
 **Client event added:** `"fair"({tid, game, h, verdict, why, dealer, at})`, once per closed hand on every client at the table.
 
@@ -152,10 +156,10 @@ it("asks for dice with a need marker", function()
 end)
 ```
 
-Existing expectations to change with them: `santase_test.lua` lines 84, 186, 599 (`{k="deal"}` → `{k="deal", need="deck"}`); `belot_test.lua` lines 130, 226, 497 and the two loops that feed `E.system` back (around 796 and 829: a returned action with `need` gets its deck and loses `need`); `holdem_test.lua` lines 139 and 363 (`E.system(s)` in phase `"deal"` is no longer nil) and the helper at line 52 if it meets the marked action; `tabla_test.lua` lines 59, 66 and the loop at 339 (`{k="need", …}` becomes `{k="dice", need="dice", …}`; line 84, an unknown `k`, stays `"action"`).
+Existing expectations to change with them: `santase_test.lua` lines 84, 186, 599 (`{k="deal"}` → `{k="deal", need="deck"}`); `belot_test.lua` lines 130, 226, 497 and the two loops that feed `E.system` back (around 796 and 829: a returned action with `need` gets its deck and loses `need`); `holdem_test.lua` lines 146 and 637 (`E.system(s)` in phase `"deal"` is no longer nil; the helper `sys` at line 51 is unaffected); `tabla_test.lua` lines 59, 66 and the loop at 339 (`{k="need", …}` becomes `{k="dice", need="dice", …}`; line 84, an unknown `k`, stays `"action"`).
 
 - [ ] **Step 2: Run `bash t.sh tests/engines`.** Expected: the four new tests FAIL (`need` missing from the system action; `"need"` not returned).
-- [ ] **Step 3: Implement** the four edits and the header lines. No rule and no other behaviour changes.
+- [ ] **Step 3: Implement** the four edits and the header lines. No rule changes; besides the need marker, only santase's deal without a deck on a view (`full == false`) is accepted as an empty deck.
 - [ ] **Step 4: Run `bash t.sh tests/engines`, then `bash t.sh`.** Expected: all pass.
 - [ ] **Step 5: Commit.** `git add engines/santase.lua engines/belot.lua engines/holdem.lua engines/tabla.lua tests/engines/santase_test.lua tests/engines/belot_test.lua tests/engines/holdem_test.lua tests/engines/tabla_test.lua` — `refactor(engines): one need marker for system actions that want randomness`
 
@@ -165,13 +169,22 @@ Existing expectations to change with them: `santase_test.lua` lines 84, 186, 599
 - Create: `tests/helpers/hicard_engine.lua`; Modify: `core/Session.lua`, `core/Member.lua`, `core/Lifecycle.lua`, `core/Util.lua`; Test: `tests/core/private_test.lua`
 
 **Interfaces:**
-- Consumes: stage A `Session:hook`, `Session.playAuto`, `ns.Util.contains` (stage A Task 9; if it lives elsewhere, define it in `core/Util.lua` and alias the other).
+- Consumes: stage A `Session:hook`, `Session.playAuto`, `ns.Util.contains`: add this block of feature/games 0583c29 verbatim after `Util.seatOf` in `core/Util.lua`, with nothing else and no alias:
+    ```lua
+    -- Is `value` one of the elements of the array `list`?
+    function Util.contains(list, value)
+      for i = 1, #list do
+        if list[i] == value then return true end
+      end
+      return false
+    end
+    ```
 - Produces:
   - `Session:newGame(first)` returns `engine.view(state, self.mySeat or 0)` when the engine has `view`. So `session.state` is a view on every client.
   - `Session:snapshotFor(name) -> table|nil` (`core/Lifecycle.lua`): nil without a state; with `engine.view`: `engine.snapshot(engine.view(self.state, seatOf(self.seats, name) or 0))`; else `engine.snapshot(self.state)`. `Session:snapshotTo` sends `st = self:snapshotFor(name)` and `fr = self:hook("snap")`.
   - `Session:armTimers`: a system action with `need` is handed to `self:hook("need", action)` when its delay ends, never to `play`. The turn timer plays `engine.auto` only when the engine has no `view` or the seat on turn is the host's own.
   - `Session:apply`: a seat-0 event for which `self:hook("table", a)` returns true is applied by the extension; the engine is not asked.
-  - `Session:armAuto()` (`core/Lifecycle.lua`), called by `Member` after every applied `EV` and after `Member.adopt`: cancels `self.autoTimer`; for a seated member of a live game whose engine has `view`, on its own turn with a `deadline`, arms `autoTimer` for `deadline - now`; on expiry, when it is still the same session at the same `seq`, calls `Session.playAuto(client)`.
+  - `Session:armAuto()` (`core/Lifecycle.lua`), called by `Member` after every applied `EV` and after `Member.adopt`: cancels `self.autoTimer`; for a seated member of a live game whose engine has `view`, on its own turn with a `deadline`, arms `autoTimer` for `deadline - now`; on expiry, when it is still the same session at the same `seq` and I am not the host, calls `Session.playAuto(client)`.
   - `Session:gameOver() -> bool` (`core/Lifecycle.lua`): the file-local `over(engine, state)` of stage A exported; false without a state.
   - `Member.adopt` calls `s:hook("adopted", prevState, m)`.
   - `core/Session.lua`: `TIMERS` gains `"fairTimer", "askTimer", "autoTimer"`; `WHISPERED` gains `SED`, `PRV`, `PRQ`; the file-local `contains` is deleted in favour of `ns.Util.contains`. The file must end below 540 lines.
@@ -184,7 +197,7 @@ Existing expectations to change with them: `santase_test.lua` lines 84, 186, 599
     - `E.leave(state, seat)` (specified for a trick boundary only; tests use it only there): the seat leaves `players` and its hand is dropped; fewer than two players → phase `"match"`, `winner` = the one left; if it was the dealer the next player is; if it was on turn the next player is.
     - `E.view(state, seat)`: a copy with `full = false` whose `deck` keeps the seat's own hand, the trick, `last` and `up`; everything in phase `"match"`. `E.hidden(state, seat)` = its hand. `E.legal`/`E.auto(state, seat)`: for the seat on turn, the known cards of its hand that rule H allows (rule H only when every face is known), `auto` = the first in hand order; nil/`{}` otherwise. `E.result`/`E.over` in phase `"match"`; `snapshot`/`restore` deep copies.
 
-- [ ] **Step 1: Write the failing tests** (`tests/core/private_test.lua`). `table2()` = a sim with `a` hosting `hicard` (`access="guild"`, `turn=45`), `b` on seat 2, `d` added but not at the table, `a:startGame()`, `sim:run(1)`; returns `sim, tid`. `H = require("hicard_engine")`. `ns.Ext.fair` does not exist yet, so nothing deals by itself; each test that sets `ns.Ext.fair` sets it back to nil at its end.
+- [ ] **Step 1: Write the failing tests** (`tests/core/private_test.lua`). `table2()` = a sim with `a` hosting `hicard` (`access="guild"`, `turn=45`), `b` on seat 2, `d` added but not at the table, `a:startGame()`, `sim:run(1)`; returns `sim, tid`. `H = require("hicard_engine")`. File scope: `local REAL = ns.Ext.fair` (nil until Task 4, the real extension from then on; `require("sim")` is cached, so every test file shares one `Sim.ns`). `table2(ext)` sets `ns.Ext.fair = ext` (nil = no extension, so nothing deals by itself); every test ends with `ns.Ext.fair = REAL`, so tests are order-independent and never delete the production extension.
 
 ```lua
 it("the test engine keeps the contract: view plus deck is the full state", function()
@@ -218,7 +231,7 @@ it("the host's clock cannot play a hand it does not see; the player's own client
   a.session.state.deck[1], a.session.state.deck[3] = "9C", "JC"; b.session.state.deck[2], b.session.state.deck[4] = "TC", "QC"
   ok(a:act{ k = "play", i = 1, c = "9C" }); sim:run(44); eq(#a.session.state.trick, 1)
   sim:run(2); eq(a.session.state.tricks, 1); eq(a.session.state.last, { 1, 2 })       -- b's client played {i=2, c="TC"} at its deadline
-  --[[ and the host's own turn still times out through its turn timer: sim:run(46) plays a's first known card ]]
+  --[[ sim:run(46): b's client leads QC (index 4); sim:run(46): the host's turn timer plays a's JC (index 3); a.session.state.last == {4, 3} ]]
 end)
 ```
 
@@ -297,20 +310,21 @@ end)
 
 **Interfaces:**
 - Consumes: Task 2 hooks and `Session:gameOver`, Task 3 `ns.Fair`, `ns.Member.handlers`, `ns.Session.message`, `client:after`, `env.random`.
-- Produces `ns.Deal` and `ns.Ext.fair = {need, table, act, applied, adopted, snap}`; `ns.Member.handlers.SED/PRV/PRQ` (each `fn(client, sender, m)`).
-  - Session fields (local; only `snap` leaves the client): `s.fair` = the round `{h, d, p, dealer (name), commits, stage ("commit"|"seed"|"dealt"|"done"), seed, seedSent, seeds, deck, dealing, sent, pub, priv, lied, base, log}`; `s.fairN` = hands dealt in this match.
+- Produces `ns.Deal` and `ns.Ext.fair = {need, table, act, applied, adopted, snap}` (`adopted` = rule 10b); `ns.Member.handlers.SED/PRV` (each `fn(client, sender, m)`; `PRQ`: Task 6).
+  - Session fields (local; only `snap` leaves the client): `s.fair` = the round `{h, d, p, dealer (name), commits, stage ("commit"|"seed"|"dealt"|"done"), seed, seedSent, seeds, deck, dealing, sent, pub, priv, lied, base, log, q}`; `s.fairEarly` = SEDs kept for later (rule 7); `s.fairN` = hands dealt in this match.
   - `Deal.open(s)` (host), `Deal.submit(s, a)` (a request to the host: handled at once when I host, else whispered as `ACT{tid, a}`), `Deal.react(s)` (whatever my role owes the round now; idempotent), `Deal.learn(s, cards)`, `Deal.sync(s)` (dealer), `Deal.missing(s) -> bool` (a deck index of `engine.hidden(state, mySeat)` whose face I do not know).
 - Rules:
-  1. **Need** (host, `need` hook, `action.need == "deck"`): calls `Deal.open(s)` unless a round in stage `"commit"`/`"seed"` is running with `s.fairTimer` armed (Task 5 adds one more case; the timer itself is Task 6's).
-  2. **Open** (host): `s:play(0, {k="fair", op="open", h = s.seq + 1, d = p[(n + 1) % #p + 1], p = <occupied seats ascending>})` with `n = s.fairN or 0`.
+  1. **Need** (host, `need` hook, `action.need == "deck"`): calls `Deal.open(s)` unless a round in stage `"commit"`/`"seed"` is running with `s.fairTimer` armed (Task 5 adds one more case; `Deal.open` arms the timer, Task 6 rule 18 gives its expiry the reopen).
+  2. **Open** (host): `s:play(0, {k="fair", op="open", h = s.seq + 1, d = p[(n + 1) % #p + 1], p = <occupied seats ascending>})` with `n = s.fairN or 0`. It also cancels any armed `s.fairTimer` and arms it for `FAIR_WAIT`; in Task 4 the expiry only clears the field (Task 6 rule 18 gives it the reopen). Without this timer from the first round, rule 1's guard never holds and the sim loops (`timers keep firing`).
   3. **`table` hook** (everyone; status `"live"`; it only changes `s.fair`, it never sends). `open`: valid when `h` is an integer, `#p >= 2`, every `p[k]` is an occupied seat and `d == p[(n + 1) % #p + 1]`; then `s.fair = {h, d, p, dealer = seats[d], commits = {}, stage = "commit", priv = {}, base = engine.snapshot(s.state), log = {}}`. `commit`: valid when `h == fair.h`, stage `"commit"`, `seat` is in `p` without a commit and `c` is a 64-character string; stored; when every participant has one the stage is `"seed"`. Anything else returns nil (the event is refused).
   4. **`act` hook** (host): an action with `k == "fair"` never reaches the engine (the hook returns nil). `commit` from a participant passing rule 3's checks → `s:play(0, {k="fair", op="commit", h, seat, c})`. `deal` from seat `d` with the right `h` in stage `"seed"` and a table `deck` → `s:play(0, {k="deal", deck = a.deck})`. `show` from seat `d` in stage `"dealt"` with a table `cards` → `s:play(0, {k="show", cards = a.cards})`. Everything else is dropped.
-  5. **`applied` hook** (everyone, after every event): seat-0 `start` or `abort` → `s.fair = nil`, `s.fairN = 0`. Otherwise, with a round: every event that is not `k == "fair"` is appended to `fair.log` as `{seat, copy(a)}` (when the round has a log); a seat-0 `deal` in stage `"seed"` → stage `"dealt"`, `s.fairN + 1`; then `Deal.react(s)`. All sending happens here or in `adopted`, never inside `table` (an event sent from inside `apply` would overtake the one being applied).
+  5. **`applied` hook** (everyone, after every event): seat-0 `start` or `abort` → `s.fair = nil`, `s.fairN = 0`. Otherwise, with a round: every event that is not `k == "fair"` is appended to `fair.log` as `{seat, copy(a)}` (when the round has a log); a seat-0 `deal` in stage `"seed"` → stage `"dealt"`, `s.fairN + 1`; with a round, `fair.q = s.seq` after every event (any kind); then `Deal.react(s)`. All sending happens here or in `adopted`, never inside `table` (an event sent from inside `apply` would overtake the one being applied).
   6. **`react`** by stage. `"commit"`: a participant with neither a seed nor a commit makes `seed = Fair.seed(env.random)` and submits `{k="fair", op="commit", h, c = Fair.commit(seed)}`. `"seed"`: a participant holding its seed — the dealer keeps `seeds[mySeat] = seed`; the others whisper `SED{tid, h, s = seed}` to `fair.dealer` once (`seedSent`). `"dealt"`: `Deal.learn(s, {})` (applies what I was already told); the dealer with a deck calls `Deal.sync(s)`.
-  7. **`SED`** (dealer): taken when I am seat `d` of round `m.h` in stage `"seed"`, the sender is a participant and `Fair.commit(m.s) == commits[seat]`. With every participant's seed and not yet `dealing`: `deck = Fair.deck(engine.DECK, <seeds in p order>, Fair.handId(tid, h))`; a trial `full = Fair.full(s.state, s.state.deck)` gets `{k="deal", deck=deck}`; `pub = engine.view(full, 0).deck`; `fair.deck, fair.pub, fair.sent, fair.dealing = deck, pub, {}, true`; submit `{k="fair", op="deal", h, deck = pub}`.
+  7. **`SED`** (dealer): taken when I am seat `d` of round `m.h` in stage `"seed"`, the sender is a participant and `Fair.commit(m.s) == commits[seat]`. A SED for a round I hold in stage `"commit"` (or for a later `h`) cannot be taken yet (messages of different senders have no order at the dealer): it is kept in `s.fairEarly[h][sender]` and taken by `react` when the stage becomes `"seed"`. The deal is attempted whenever a seed is stored, my own or another's. With every participant's seed and not yet `dealing`: `deck = Fair.deck(engine.DECK, <seeds in p order>, Fair.handId(tid, h))`; a trial `full = Fair.full(s.state, s.state.deck)` gets `{k="deal", deck=deck}`; `pub = engine.view(full, 0).deck`; `fair.deck, fair.pub, fair.sent, fair.dealing = deck, pub, {}, true`; submit `{k="fair", op="deal", h, deck = pub}`.
   8. **`sync`** (dealer, stage `"dealt"`): `full = Fair.full(s.state, fair.deck)`; `known = engine.view(s.state, 0).deck` (what the event stream already made public). First the faces of `engine.view(full, 0).deck` in neither `known` nor `fair.pub`: one submit `{k="fair", op="show", h, cards}`, marked in `fair.pub`. Then for every participant seat `q` still occupied: the faces of `engine.view(full, q).deck` that are in none of `known`, `fair.pub`, `sent[q]` — for my own seat `Deal.learn(s, them)`, for another seat one `PRV{tid, h, cards}` to its name; marked in `sent[q]`.
   9. **`PRV`**: taken from `fair.dealer` for round `m.h == fair.h` with a table `cards` → `Deal.learn(s, m.cards)`. `learn` merges into `fair.priv`; in stage `"dealt"` with a non-empty `priv` it tries `{k="show", cards = priv}` at seat 0 on a copy of `s.state`: accepted → that copy is the state and `"session"` is emitted; refused → `fair.lied = true`.
-  10. **`snap`** (host): `{h, d, p, c = commits, st = stage, n = s.fairN or 0}` or nil. (`adopted` and `PRQ` come in Task 6.)
+  10. **`snap`** (host): `{h, d, p, c = commits, st = stage, n = s.fairN or 0}`, or `{n = s.fairN or 0}` alone with no round open (never nil). (`PRQ` comes in Task 6.)
+  10b. **Adoption** (`adopted(s, prev, m)`): `m.fr` not a well-formed round → `s.fair = nil`. The same `h` as my round → I keep `seed`, `seedSent`, `seeds`, `deck`, `dealing`, `sent`, `pub`, `priv`, `revealed` and `lied`; `commits`, `stage` come from `fr`; `base` and `log` are kept when `m.q == fair.q` (nothing was missed, e.g. a host change) and dropped otherwise (I missed events: this hand will be `"unseen"` for me). Another `h` → a new round from `fr` with `priv = {}`, no `base`/`log`, `fresh = true`. `s.fairN = fr.n`. Then `Deal.react(s)`.
   11. Every timer and handler first checks that `client.session` is the same session and `s.fair` the same round.
 
 - [ ] **Step 1: Write the failing tests** (`tests/core/deal_test.lua`). Helpers: `table2()` = `a` hosts `hicard`, `b` on seat 2, `d` added, not started; `table3()` adds `c` on seat 3; `start()` = `a:startGame(); sim:run(1)`; `auto(n)` = `n` times: the client whose seat is on turn (looked up in `sim.clients` by the seat's name, so a relogged client is used) calls `playAuto()`, then `sim:run(1)`; `faces(v)` = every string anywhere in `v` matching `^[9TJQKA][CDHS]$`; `sentOf(t)` = the entries of `sim.sent` with `msg.t == t`. With two players the dealer of hand 1 is seat 2 (`b`, not the host), of hand 2 seat 1.
@@ -325,9 +339,9 @@ it("a hand is dealt from everyone's seeds and each client knows only its own car
   eq(a.session.state.turn, 1); eq(a.session.state.phase, "play")
 end)
 it("commits come before any seed, and a seed goes only to the dealer", function()
-  --[[ after start(): the EVs from A in order are open, commit, commit, deal (the open first); both commit events carry
+  --[[ after start(): the EVs from A after the start EV are open, commit, commit, deal; both commit events carry
   c == ns.Fair.commit(SEED) and seats 1 and 2; sentOf("SED") == exactly one entry: from A, channel "WHISPER", target B, msg.s == SEED,
-  and its index in sim.sent is greater than the index of the last commit EV; no message on GUILD has t SED/PRV or a field named s/c/deck ]]
+  and its index in sim.sent is greater than the index of the last commit EV; no GUILD message has `t` SED/PRV/PRQ, `faces(m.msg) == {}`, and no string in it is 32 or 64 lowercase hex characters ]]
 end)
 it("no message to the opponent or a watcher carries a face it may not see", function()
   --[[ table2(), d watches after start() (so its SNP is mid-hand). deck = b.session.fair.deck; held[1], held[2] = sets of deck indices.
@@ -359,11 +373,17 @@ it("a PRV from anyone but the dealer is ignored", function()
   --[[ after start(): a:receive("WHISPER", D, {v=1, t="PRV", tid=tid, h=r.h, cards={[2]="9C"}}): a.session.state.deck[2] == nil,
   a.session.fair.priv[2] == nil ]]
 end)
+it("a watcher who comes mid-hand adopts the round from the snapshot", function()
+  --[[ table2(); start(); r = a.session.fair; d:watch(tid); sim:run(1): d.session.fair.h == r.h, d.session.fair.base == nil, d.session.fair.stage == "dealt", d.session.fairN == 1 ]]
+end)
+it("a seed that overtakes the last commit event is kept, not lost", function()
+  --[[ table3(); the dealer is B. Hold back at B the commit EV of seat 3 (wrap b.receive: an EV whose a.op == "commit" and a.seat == 3 is queued). After a:startGame(); sim:run(1): C's SED has reached B while b.session.fair.stage == "commit" and b.session.fairEarly[h][C] == SEED; no deal yet. Release the queued EV: b.session.fair.stage == "dealt", fairEarly[h] is empty, and there was no reopen (a.session.fair.h unchanged, one open EV in sim.sent). A table2() run: the round deals as in the first test ]]
+end)
 ```
 
 - [ ] **Step 2: Run `bash t.sh tests/core/deal_test.lua`.** Expected: FAIL (`Deal` is nil; no round opens).
 - [ ] **Step 3: Implement** `core/Deal.lua` (rules 1–11) and its TOC line after `core/Lifecycle.lua`.
-- [ ] **Step 4: Run the file, then `bash t.sh`.** Expected: `7 passed, 0 failed`; all pass.
+- [ ] **Step 4: Run the file, then `bash t.sh`.** Expected: `9 passed, 0 failed`; all pass.
 - [ ] **Step 5: Commit.** `git add core/Deal.lua TavernGames.toc tests/core/deal_test.lua` — `feat(core): commit-reveal shuffle round and private deal`
 
 ### Task 5: Deal — reveal, audit and verdicts
@@ -380,8 +400,8 @@ end)
   12. **Reveal** (dealer, in `react`, stage `"dealt"`): when `Deal.handOver(s)` and not `revealed`: submit `{k="fair", op="reveal", h, s = <seeds in p order>}`.
   13. **Host** (`act` hook): `reveal` from seat `d` with the right `h`, in stage `"dealt"`, with `Deal.handOver(s)` and `s` an array of `#p` strings → `s:play(0, {k="fair", op="reveal", h, s})`.
   14. **`table` hook**, `reveal`: valid under the same conditions; stores `fair.out`. In `applied`: `Deal.close(s, …)` with `"bad", "dealt"` when `fair.lied`; else `"unseen"` when the round has no `base`; else `Fair.audit(engine, {tid, h, p, commits, seeds = out, base, log, priv})`. The host then opens the next round at once when `fair.wantOpen`.
-  15. **Need while a reveal is due** (host, extends rule 1): a round in stage `"dealt"` → `wantOpen = true` and `fairTimer = FAIR_WAIT` → `Deal.open(s)`.
-  16. **A round replaced while still `"dealt"`** (`table` hook, `open`): the old one is closed `"bad", "noreveal"` first. A seat-0 `deal` applied when no round is in stage `"seed"` (a host dealing without the commits): `Deal.close(s, "bad", "commit")` and `s.fair = nil`.
+  15. **Need while a reveal is due** (host, extends rule 1): a round in stage `"dealt"` → `wantOpen = true` and, unless a `fairTimer` is armed, `fairTimer = FAIR_WAIT`, whose expiry (rule 18) opens the next round.
+  16. **A round replaced while still `"dealt"`** (`table` hook, `open`): the `table` hook only stores `fair.replaced = old` (rule 5: nothing is sent or emitted inside `table`); `applied` closes it `"bad", "noreveal"` before anything else. A seat-0 `deal` applied when no round is in stage `"seed"` (a host dealing without the commits): `Deal.close(s, "bad", "commit")` and `s.fair = nil`.
   17. A seat-0 `start` also clears `s.fairLast` and `s.fairSeen`.
 
 - [ ] **Step 1: Write the failing tests.** Helpers as in Task 4, plus `events(client)` = the list of `"fair"` payloads that client received, and `rig(sim, tid, h, pred)`: for `k = 0..255` builds `seedA = string.format("%02x", k) .. ("ff"):rep(15)` and returns after setting `sim.nextRandom = {k, 255 ×15}` for the first `k` whose `ns.Fair.deck(H.DECK, {seedA, SEED}, tid .. "/" .. h)` satisfies `pred(deck)`; errors when none does. It is called before `a:startGame()` with `h = a.session.seq + 2` (the start event, then the open).
@@ -423,6 +443,9 @@ it("a move only the full deck can judge passes at the table and is flagged at th
   --[[ finish the hand with auto until Deal.handOver(a.session) (b resyncs by itself); sim:run(1):
   events(a)[1] and events(d)[1] are {verdict="bad", why="play"} ]]
 end)
+it("a late reveal is not followed by a stale reopen", function()
+  --[[ table2(); start(); auto(5); the dealer holds its reveal back; auto(1): a need arrives and fairTimer is armed once (wantOpen = true); b's reveal arrives at 10 s: the next round opens at once (rule 14) and its Deal.open replaces the timer; sim:run(15): no second open EV and no "noreveal" verdict, events(a) and events(b) hold only "ok" ]]
+end)
 it("a dealer that never reveals: the next round opens after 20 s and the hand is нередовна", function()
   --[[ table2(); start(); auto(5); b.session.fair.revealed = true (the dealer keeps its seeds to itself); auto(1): no EV with op "reveal";
   sim:run(22): a second open EV went out; events(a)[1] and events(b)[1] are {verdict="bad", why="noreveal"}; the new round is dealt (d == 1) ]]
@@ -431,7 +454,7 @@ end)
 
 - [ ] **Step 2: Run `bash t.sh tests/core/deal_audit_test.lua`.** Expected: FAIL (no `"fair"` event, `fairLast` nil).
 - [ ] **Step 3: Implement** rules 12–17.
-- [ ] **Step 4: Run the file, then `bash t.sh`.** Expected: `6 passed, 0 failed`; all pass.
+- [ ] **Step 4: Run the file, then `bash t.sh`.** Expected: `7 passed, 0 failed`; all pass.
 - [ ] **Step 5: Commit.** `git add core/Deal.lua tests/core/deal_audit_test.lua` — `feat(core): seeds revealed after the hand; every client audits and marks it`
 
 ### Task 6: Deal — silent players, reconnects, void and redeal, host change
@@ -442,18 +465,18 @@ end)
 **Interfaces:**
 - Produces: `Deal.status(s) -> key, arg | nil` (pure, for the table frame): nil for an engine without the extension `fair`; stage `"commit"` → `"fair.waiting", <name of the first participant other than me without a commit>`, or `"fair.shuffle"` when none; stage `"seed"` → `"fair.dealing", fair.dealer`; otherwise `s.fairLast` → `"fair.void"` for a void, else `"fair.last", verdict`; else nil. Round fields `fresh`, `voidAsked`.
 - Rules:
-  18. **Reopen** (host): `Deal.open` arms `fairTimer = FAIR_WAIT`; on expiry, when I still host, the round is the same and still in `"commit"`/`"seed"`, and `engine.system(s.state)` still wants a deck: `Deal.open(s)` again (a new `h`; everybody makes a fresh seed). `Deal.open` itself does nothing when the engine does not want a deck.
+  18. **Reopen** (host): on expiry of the timer armed by `Deal.open` (rule 2) or by rule 15 — one timer, one handler; `Deal.open` always replaces it — nothing happens unless `s.role == "host"` and it is the same session and round. Then: stage `"dealt"` with `wantOpen` → `Deal.open(s)`; stage `"commit"`/`"seed"` with `engine.system(s.state)` still wanting a deck → `Deal.open(s)` again (a new `h`; everybody makes a fresh seed); otherwise nothing. `Deal.open` itself does nothing when the engine does not want a deck. A demoted host therefore sends no events.
   19. **A stand during the shuffle** (host, `applied`, seat-0 `stand`, stage `"commit"`/`"seed"`): `Deal.open(s)` at once.
   20. **The dealer's seat stands mid-hand** (host, `applied`, `a.seat == fair.d`, stage `"dealt"`, not `Deal.handOver(s)`, not `s:gameOver()`, `s:seatedCount() >= engine.minSeats`): `s:play(0, {k="void"})`.
   21. **Void** (`applied`, seat-0 `void`, everyone): `Deal.close(s, "void")`, `s.fairN - 1`, `s.fair = nil`. The host's timers then ask for the deal again (rule 1).
-  22. **Adoption** (`adopted(s, prev, m)`): `m.fr` not a well-formed round → `s.fair = nil`. The same `h` as my round → I keep `seed`, `seedSent`, `seeds`, `deck`, `dealing`, `sent`, `pub`, `priv`, `revealed`; `commits`, `stage` come from `fr`; `base` and `log` are dropped (I missed events: this hand will be `"unseen"` for me). Another `h` → a new round from `fr` with `priv = {}`, no `base`/`log`, `fresh = true`. `s.fairN = fr.n`. Then `Deal.react(s)`.
-  23. **`react` additions.** Stage `"dealt"`, I am the dealer without a deck, the hand is not over and not `voidAsked`: submit `{k="fair", op="void", h}`. Stage `"dealt"`, I am a participant other than the dealer and `Deal.missing(s)`: when `fresh`, whisper `PRQ{tid, h}` to the dealer now and clear `fresh`; else arm `askTimer = FAIR_ASK_GAP` once, and on expiry whisper `PRQ` if I still miss a face.
+  22. (Adoption moved to Task 4, rule 10b.)
+  23. **`react` additions.** Stage `"dealt"`, I am the dealer without a deck, the hand is not over and not `voidAsked`: submit `{k="fair", op="void", h}`. Stage `"dealt"`, I am a participant other than the dealer and `Deal.missing(s)`: when `fresh` (set by adoption, rule 10b), whisper `PRQ{tid, h}` to the dealer now and clear `fresh`; else arm `askTimer = FAIR_ASK_GAP` once, and on expiry whisper `PRQ` if I still miss a face.
   24. **Host** (`act` hook): `void` from seat `d` with the right `h`, stage `"dealt"`, hand not over → `s:play(0, {k="void"})`.
   25. **`PRQ`** (dealer with a deck): from a participant of round `m.h` → `sent[seat] = {}`, `Deal.sync(s)`.
   26. A new host needs no rule of its own: `becomeHost` re-arms the timers, the engine still wants its deck when the round was not dealt, and rule 1 finds no `fairTimer` of mine, so a fresh round opens; a dealt hand simply goes on, because the deck is with the dealer and requests go to `s.host` as it is at the moment of sending.
-- Locale (bg; en = faithful translations): `fair.shuffle` = „Разбъркваме заедно…“; `fair.waiting` = „Чакаме %s за разбъркването…“; `fair.dealing` = „%s раздава…“; `fair.void` = „Ръката е анулирана. Раздава се отново.“; `fair.last` = „Последната ръка: %s“; `fair.v.ok` = „проверена“ (en `verified`); `fair.v.bad` = „нередовна“ (en `irregular`); `fair.v.unseen` = „не съм я гледал цялата“.
+- Locale (bg; en = faithful translations), inserted as a new section `-- Card fairness (table line)` directly before `-- First-run language choice …` in both files, nothing else moved: `fair.shuffle` = „Разбъркваме заедно…“; `fair.waiting` = „Чакаме %s за разбъркването…“; `fair.dealing` = „%s раздава…“; `fair.void` = „Ръката е анулирана. Раздава се отново.“; `fair.last` = „Последната ръка: %s“; `fair.v.ok` = „проверена“ (en `verified`); `fair.v.bad` = „нередовна“ (en `irregular`); `fair.v.unseen` = „не съм я гледал цялата“.
 
-- [ ] **Step 1: Write the failing tests.** Helpers as before; `table3()` has the dealer of hand 1 on seat 2 (`b`), the host on seat 1, `c` on seat 3 holding deck indices 3 and 6, the up card at 7. `drop(client, t)` replaces `client.receive` on the instance with a wrapper that ignores messages of type `t` and returns a function restoring it.
+- [ ] **Step 1: Write the failing tests.** Helpers as before; `table3()` has the dealer of hand 1 on seat 2 (`b`), the host on seat 1, `c` on seat 3 holding deck indices 3 and 6, the up card at 7. `relog(name)` = `sim:relog(name)` plus an `on("fair", …)` subscription on the new Client (so `events(c2)`, `events(b2)` see their events). `drop(client, t)` replaces `client.receive` on the instance with a wrapper that ignores messages of type `t` and returns a function restoring it.
 
 ```lua
 it("a player who never commits: the round is reopened every 20 s until he is back", function()
@@ -495,6 +518,9 @@ it("the host leaves mid-hand: the next host carries the same hand on", function(
   a:stand(); sim:run(2); eq(b.session.role, "host"); eq({ b.session.fair.h, b.session.fair.stage }, { h1, "dealt" })
   --[[ play on with auto until Deal.handOver(b.session); sim:run(1): events(b)[1].verdict == "ok" and events(c)[1].verdict == "ok" ]]
 end)
+it("a resync after the same hand keeps what it saw; a missed event drops it", function()
+  --[[ table3(); start(); auto(1); c receives a fresh SNP from a with m.q == c.session.fair.q: c.session.fair.base and .log are still set and .lied is unchanged; then drop one EV for c (drop(c, "EV") during one auto(1), restore) and resync: base == nil and log == nil, so its verdict at the end is "unseen" ]]
+end)
 it("a reveal before the hand is over, and a void or reveal from another seat, are refused", function()
   --[[ table3(); start(); q = a.session.seq; raw ACTs to the host: from B {k="fair", op="reveal", h, s={SEED,SEED,SEED}} (hand not over);
   from C {k="fair", op="void", h}; from C {k="fair", op="reveal", h, s={SEED,SEED,SEED}}; sim:run(1): a.session.seq == q ]]
@@ -507,7 +533,7 @@ end)
 
 - [ ] **Step 2: Run `bash t.sh tests/core/deal_fail_test.lua`.** Expected: FAIL (the round never reopens; no `PRQ`; no void).
 - [ ] **Step 3: Implement** rules 18–26, `Deal.status`, the locale keys.
-- [ ] **Step 4: Run the file, then `bash t.sh`.** Expected: `9 passed, 0 failed`; all pass.
+- [ ] **Step 4: Run the file, then `bash t.sh`.** Expected: `10 passed, 0 failed`; all pass.
 - [ ] **Step 5: Commit.** `git add core/Deal.lua locale/bg.lua locale/en.lua tests/core/deal_fail_test.lua` — `feat(core): shuffle timeouts, reconnect mid-hand, void and redeal`
 
 **— End of B1. Boundary check before B2: `bash t.sh` green, and the five Review Focus tests above exist and pass. B2 changes no rule of Tasks 2–6. —**
@@ -574,7 +600,8 @@ it("one human plays a whole Сантасе match against a bot; every hand is ch
   end
   sim:run(1); eq(ns.Engines.santase.over(a.session.state), true); eq(results, 1); ok(#fair >= 4)
   for _, v in ipairs(fair) do eq(v, "ok") end
-  eq(sim:count(function(m) return m.msg.t == "SED" or m.msg.t == "PRV" or m.msg.t == "PRQ" or m.from ~= A end), 0)
+  eq(sim:count(function(m) return m.msg.t == "SED" or m.msg.t == "PRV" or m.msg.t == "PRQ" end), 0)
+  --[[ and, instead of `m.from ~= A` (a bot's sends never reach sim.sent), the 0f34dd9 pattern: mark = #sim.sent right after the invite; afterwards no entry after mark satisfies mentions(m.msg, {tid, the bot names}), and real > 0 (real = A's own entries after mark) ]]
   local loser = 3 - a.session.state.winner; ok(a:startGame()); sim:run(2); eq(a.session.state.gp, { 0, 0 }); eq(a.session.state.turn, loser)
 end)
 it("a bot hosting Сантасе starts the next match by itself", function()
@@ -613,7 +640,7 @@ end)
 ```
 
 - [ ] **Step 2: Run `bash t.sh tests/ui/theme_test.lua`.** Expected: FAIL (`card` is nil).
-- [ ] **Step 3: Implement**, then run `py tools/gen_textures.py` (on this machine the interpreter is `py`; `python` elsewhere). Expected output ends with `media/card.tga 64x128`, `media/card_back.tga 64x128`, `media/suits.tga 128x32`, and `git status --short media` lists only those three files as new (the twelve existing files are byte-identical).
+- [ ] **Step 3: Implement**, then run `"C:\Users\daxx\AppData\Local\Python\bin\python.exe" tools/gen_textures.py` (`py` is absent on this machine). Expected output ends with `media/card.tga 64x128`, `media/card_back.tga 64x128`, `media/suits.tga 128x32`, and `git status --short media` lists only those three files as new (the twelve existing files are byte-identical).
 - [ ] **Step 4: Run the file, then `bash t.sh`.** Expected: `1 passed, 0 failed`; all pass.
 - [ ] **Step 5: Commit.** `git add tools/gen_textures.py ui/Theme.lua media/card.tga media/card_back.tga media/suits.tga tests/ui/theme_test.lua` — `feat(media): card face, card back and suit textures`
 
@@ -668,7 +695,7 @@ end)
 - Consumes: `ns.Deal.status`, `s.fairLast`, `s.fairSeen`, `Session.startable`, `engine.again`, stage A `v.startButton`, `W.tooltip`, `ns.HelpBook.open` (called through `ns.HelpBook` at click time).
 - Produces:
   - `v.fairLine` — a button with one text line (12 pt, centred) at the bottom edge of the felt (`BOTTOM` of `v.area`, 6 px up), shown when `Deal.status(s)` returns a key. Text: `L(key, arg)`, except `"fair.last"` → `L("fair.last", L("fair.v." .. verdict))`. Colour: `red` when the last verdict is `"bad"` or `s.fairSeen.bad > 0`; `good` for `"ok"`; `inkDim` otherwise. Click → `ns.HelpBook.open("fair")`. Tooltip: `L("fair.tip." .. verdict)`; for `"bad"` `L("fair.tip.bad", L("fair.why." .. why))`; plus `L("fair.badCount", n)` on a second line when `fairSeen.bad > 0`.
-  - `v.startButton` (stage A): also shown to the host of a game with `engine.again` once `s:gameOver()`, with the text `L("table.again")`; enabled when `Session.startable(client)`.
+  - `v.startButton` (stage A): also shown to the host of a game with `engine.again` once `s:gameOver()`, with the text `L("table.again")`; enabled when `Session.startable(client)`. Any local "is it over" check A10 added to `ui/TableFrame.lua` (e.g. for the banner) is replaced by `s:gameOver()` (no third copy next to `Lifecycle.over`).
 - Locale (bg): `fair.tip.ok` = „Всички на масата дадоха своята част от разбъркването. След ръката аддонът нареди тестето наново и провери всеки ход.“; `fair.tip.unseen` = „Дошъл си по средата на ръката, затова аддонът не може да я провери. Следващата ще бъде проверена.“; `fair.tip.void` = „Раздаващият излезе или презареди играта. Ръката не се брои.“; `fair.tip.bad` = „Проверката не излезе: %s Кажи на останалите.“; `fair.why.seeds` = „липсва част от разбъркването.“; `fair.why.commit` = „някой е сменил своята част от разбъркването.“; `fair.why.deal` = „обърнатата карта не е от това тесте.“; `fair.why.dealt` = „картите, които получих, не са от това тесте.“; `fair.why.play` = „изигран е ход, който правилата не позволяват, или карта, която играчът не е държал.“; `fair.why.noreveal` = „раздаващият не показа разбъркването.“; `fair.badCount` = „Нередовни ръце на тази маса: %d“.
 
 - [ ] **Step 1: Write the failing tests** (`santaseWithBot()` = `withBots()`, I open Сантасе „Само поканени“, the bot is invited through the picker, `w:advance(2)`: a hand is dealt).
@@ -866,7 +893,7 @@ end)
   4. Commits, the public deal and the reveal ride in the host's ordered `EV` stream (reliable, reaches watchers, healed by the existing resync); only `SED`, `PRV`, `PRQ` are new types.
   5. A silent player during the shuffle is **waited for** (round reopened every 20 s, then the 3-minute offline rule); nobody shuffles on his behalf.
   6. An **offline player's turn is not played** for him in a card game (nobody else may know his cards); an online but idle player's own client plays at the deadline.
-  7. A dealer who reloads loses the deck: the hand is void and dealt again. A dealer who vanishes exactly at the end of a hand makes it „нередовна“ (`noreveal`).
+  7. A dealer who reloads loses the deck: the hand is void and dealt again, by the next seat (changed in the final fix wave: at first the same dealer dealt it again, which let a dealer buy a new deck with a reload). A dealer who vanishes exactly at the end of a hand makes it „нередовна“ (`noreveal`).
   8. A client that did not see the whole hand says „не съм я гледал цялата“ instead of vouching.
   9. After a Santase match the **host** starts the next one („Нова игра“); the loser leads.
   10. The rules-book says plainly that the dealer's addon knows the deck of its own deals.

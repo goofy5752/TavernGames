@@ -127,7 +127,7 @@ describe("belot core", function()
   it("starts waiting for a deal", function()
     local s = E.new { first = 3 }
     eq(s.phase, "deal"); eq(s.first, 3); eq(s.turn, nil); eq(s.score, { 0, 0 })
-    eq({ E.system(s) }, { { k = "deal" }, 0 })
+    eq({ E.system(s) }, { { k = "deal", need = "deck" }, 0 })
     eq(E.new {}.first, 1); eq(E.over(s), false)
   end)
   it("deals five cards each, one at a time from seat 1", function()
@@ -161,6 +161,10 @@ describe("belot core", function()
     eq({ E.apply(s, 0, { k = "deal", deck = DECK1 }) }, { nil, "phase" })
     eq({ E.apply(s, 1, nil) }, { nil, "action" })
     eq({ E.apply(s, 1, { k = "bogus" }) }, { nil, "action" })
+  end)
+  it("asks for a deck with a need marker", function()
+    local s = E.new {}; eq({ E.system(s) }, { { k = "deal", need = "deck" }, 0 })
+    eq({ E.apply(s, 0, { k = "deal", need = "deck", deck = DECK1 }) }, { nil, "need" })
   end)
 end)
 
@@ -223,7 +227,7 @@ describe("belot auction", function()
     eq(s.phase, "bid"); bids(s, "P")
     eq(s.phase, "deal"); eq(s.round, 2); eq(s.first, 3); eq(s.turn, nil); eq(s.score, { 0, 0 })
     eq(s.res.pts, { 0, 0 }); eq(s.res.contract, nil)
-    eq({ E.system(s) }, { { k = "deal" }, 5 })
+    eq({ E.system(s) }, { { k = "deal", need = "deck" }, 5 })
     deal(s); eq(s.turn, 3); eq(#s.hands[1], 5); eq(s.bids, {})
   end)
 end)
@@ -494,7 +498,7 @@ describe("belot scoring", function()
     eq(s.res.raw, { 100, 62 }); eq(s.res.pts, { 10, 6 }); eq(s.score, { 10, 6 }); eq(s.hang, 0)
     eq(s.res.contract, { seat = 1, b = "C", x = 1 }); eq(s.res.valat, false); eq(s.res.round, 1)
     eq(s.phase, "deal"); eq(s.round, 2); eq(s.first, 2); eq(s.turn, nil)
-    eq({ E.system(s) }, { { k = "deal" }, 5 })
+    eq({ E.system(s) }, { { k = "deal", need = "deck" }, 5 })
     -- a remainder of 6 rounds down for the winner and up for the loser
     eq(scored { b = "D", pts = { 86, 66 }, lastWin = 1 }.res.pts, { 9, 7 })
     eq(scored { b = "D", pts = { 87, 65 }, lastWin = 1 }.res.pts, { 10, 6 })
@@ -795,8 +799,8 @@ describe("belot whole deals", function()
         assert(guard < 20000, "the match does not end")
         local sys = E.system(s)
         if sys then
-          if sys.k == "deal" then
-            sys.deck = shuffled(rnd)
+          if sys.need == "deck" then
+            sys.deck, sys.need = shuffled(rnd), nil
             deals = deals + 1
           end
           ok(E.apply(s, 0, sys))
@@ -828,7 +832,7 @@ describe("belot whole deals", function()
     while not E.over(s) do
       local sys = E.system(s)
       if sys then
-        if sys.k == "deal" then sys.deck = shuffled(rnd) end
+        if sys.need == "deck" then sys.deck, sys.need = shuffled(rnd), nil end
         t.act(0, sys)
       else
         local seat = s.turn

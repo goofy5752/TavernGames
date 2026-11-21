@@ -10,11 +10,14 @@ local _, ns = ...
 -- rows of plates, which end 68 px from the top of the felt).
 -- A banner across the felt: waiting for players (or for the host to start), an
 -- aborted match, a silent host, and for RESYNC_SECONDS after "desync" the
--- resync note. Title bar: the game, the access, turn time and table options,
--- the watcher count and ⓘ (topic = game id). Bottom: „Стани“ (watchers: „Към
--- залата“), „Покани“ for the host while a seat is free (a list of who is in
--- the tavern), „Започни“ / „Нова игра“ for the host of a host-started game
--- while none runs, and one line of news for SAY_SECONDS.
+-- resync note. On a card table (ns.Deal.status) one line at the bottom edge of
+-- the felt: the shuffle under way or the verdict on the last hand; it opens the
+-- rules book on "fair". Title bar: the game, the access, turn time and table
+-- options, the watcher count and ⓘ (topic = game id). Bottom: „Стани“
+-- (watchers: „Към залата“), „Покани“ for the host while a seat is free (a list
+-- of who is in the tavern), „Започни“ / „Нова игра“ for the host of a
+-- host-started game while none runs and of a game with `again` once it is
+-- over, and one line of news for SAY_SECONDS.
 --
 -- A view is { build(parent) -> frame, update(frame, session) } and may add
 -- seatNote(session, seat) -> text for the plates. Client events only schedule
@@ -271,12 +274,14 @@ local function bannerKey(s, engine)
 end
 
 -- „Започни“ / „Нова игра“: the host of a host-started table while no game
--- runs, enabled exactly when Session:canStart (the check of startGame) says
--- so; right of „Покани“, or of „Стани“ while „Покани“ is hidden. The news
--- line sits right of it while it is shown, else right of „Покани“.
-local function renderStart(v, s, engine)
-  local can, code = s:canStart()
-  local shown = s.role == "host" and engine.start == "host" and code ~= "live"
+-- runs, and of a game with `again` once Session:gameOver; enabled exactly when
+-- Session.startable (the check of startGame) says so; right of „Покани“, or
+-- of „Стани“ while „Покани“ is hidden. The news line sits right of it while it
+-- is shown, else right of „Покани“.
+local function renderStart(v, s, engine, client)
+  local can, code = ns.Session.startable(client)
+  local shown = s.role == "host" and code ~= "live"
+    and (engine.start == "host" or engine.again and s:gameOver())
   local b = v.startButton
   b:SetShown(shown)
   if shown then
@@ -289,6 +294,64 @@ local function renderStart(v, s, engine)
   v.line:ClearAllPoints()
   v.line:SetPoint("LEFT", shown and b or v.inviteButton, "RIGHT", 14, 0)
   v.line:SetPoint("RIGHT", TableFrame.frame, "BOTTOMRIGHT", -(EDGE + 8), EDGE + 20)
+end
+
+-- The text of `key`, or nil when the locale has none (never the raw key).
+local function known(key, ...)
+  local text = L(key, ...)
+  if text ~= key then return text end
+  return nil
+end
+
+-- The fairness line: Deal.status(s) -> key, arg, arg2; "fair.last" carries
+-- the verdict, spelled out. Another seat's complaint about that hand
+-- (Deal.claim) follows it as a claim by name. The colour is my own client's
+-- finding: red while Deal.alarm(s) (a bad hand or a dealer's second void in
+-- this match), else amber with a claim, green on a verified hand.
+local function renderFair(v, s)
+  local line = v.fairLine
+  local key, arg, arg2 = ns.Deal.status(s)
+  line:SetShown(key ~= nil)
+  if not key then return end
+  if key == "fair.last" then arg = known("fair.v." .. tostring(arg)) or "?" end
+  -- The dealer's seat emptied during the deal (the hand is void soon): no name to show.
+  if key == "fair.dealing" and arg == nil then key = "fair.shuffle" end
+  local text = arg ~= nil and L(key, arg, arg2) or L(key)
+  local claimer = (key == "fair.last" or key:sub(1, 9) == "fair.void") and ns.Deal.claim(s) or nil
+  if claimer then text = text .. " · " .. L("fair.claim", claimer) end
+  line.text:SetText(text)
+  local verdict = key == "fair.last" and s.fairLast.verdict
+  line.text:SetTextColor(Theme.rgb(ns.Deal.alarm(s) and "red" or claimer and "gold" or verdict == "ok" and "good" or "inkDim"))
+end
+
+-- The tooltip of the fairness line: what the line means (why a bad hand
+-- failed, a void), another player's claim about that hand, then in red the count of bad
+-- hands of this match and every dealer's voided or undealt hands. With no
+-- hand closed yet, or a verdict without a text: the line itself.
+local function fairTooltip(tip)
+  local s = ns.client and ns.client.session
+  if not s then return end
+  local last, seen = s.fairLast, s.fairSeen
+  local text
+  if last and last.verdict == "bad" then
+    text = L("fair.tip.bad", known("fair.why." .. tostring(last.why)) or L("fair.why.unknown"))
+  elseif last then
+    text = known("fair.tip." .. tostring(last.verdict))
+  end
+  local r, g, b = Theme.rgb("ink")
+  tip:SetText(text or TableFrame.view.fairLine.text:GetText(), r, g, b, 1, true)
+  local key = ns.Deal.status(s)
+  local claimer, claim = ns.Deal.claim(s)
+  if claimer and (key == "fair.last" or (key or ""):sub(1, 9) == "fair.void") then
+    r, g, b = Theme.rgb("gold")
+    tip:AddLine(L("fair.tip.claim", claimer, known("fair.cry." .. tostring(claim)) or L("fair.why.unknown")), r, g, b, true)
+  end
+  r, g, b = Theme.rgb("red")
+  if seen and seen.bad > 0 then tip:AddLine(L("fair.badCount", seen.bad), r, g, b, true) end
+  local names = {}
+  for name in pairs(s.fairVoids or {}) do names[#names + 1] = name end
+  table.sort(names, ns.Util.byteLess)
+  for _, name in ipairs(names) do tip:AddLine(L("fair.voidCount", name, s.fairVoids[name]), r, g, b, true) end
 end
 
 -- After the access and the turn time: " · <option> <value>" for every option.
@@ -341,7 +404,8 @@ function TableFrame.render()
   elseif v.picker:IsShown() then
     renderPicker(v, client, s)
   end
-  renderStart(v, s, engine)
+  renderFair(v, s)
+  renderStart(v, s, engine, client)
   TableFrame.tick()
 end
 
@@ -461,6 +525,22 @@ function TableFrame.build()
   banner:Hide()
   v.banner, v.bannerText = banner, bannerText
 
+  -- The fairness line at the bottom edge of the felt.
+  local fairLine = CreateFrame("Button", nil, area)
+  fairLine:SetSize(v.areaW - 40, 18)
+  fairLine:SetPoint("BOTTOM", area, "BOTTOM", 0, 6)
+  fairLine:SetFrameLevel(area:GetFrameLevel() + 8)
+  fairLine:RegisterForClicks("LeftButtonUp")
+  local fairText = W.Label(fairLine, "ui", "", 12)
+  fairText:SetJustifyH("CENTER")
+  fairText:SetWordWrap(false)
+  fairText:SetAllPoints(fairLine)
+  fairLine.text = fairText
+  fairLine:SetScript("OnClick", function() if ns.HelpBook then ns.HelpBook.open("fair") end end)
+  W.tooltip(fairLine, fairTooltip)
+  fairLine:Hide()
+  v.fairLine = fairLine
+
   -- Bottom: „Стани“, „Покани“ and the news line.
   local stand = W.Button(f, L("table.stand"), TableFrame.stand)
   stand:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", EDGE + 4, EDGE + 7)
@@ -492,5 +572,6 @@ ns.ready(function(client)
   client:on("session", TableFrame.refresh)
   client:on("peers", TableFrame.refresh)
   client:on("desync", TableFrame.resynced)
+  client:on("fair", TableFrame.refresh)
   TableFrame.refresh()
 end)

@@ -48,17 +48,26 @@ ns.Engines = ns.Engines or {}
 16. Match: first to 11 game points. A player who leaves a live match loses it.
 
  Actions: seats 1/2 {k="play", i, c}, {k="marry", i, c, j, d}, {k="swap9", i, c}, {k="close"};
- seat 0 {k="deal", deck}, {k="show", cards = {[i] = face}}. Hand result: s.res = {winner (0 = tie),
- gp, reason = "66" | "fail" | "tie" | "out" (played out below 66 with unequal totals; cannot occur)}.
+ seat 0 {k="deal", deck}, {k="show", cards = {[i] = face}}, {k="void"}. Hand result: s.res = {winner
+ (0 = tie), gp, reason = "66" | "fail" | "tie" | "out" (played out below 66 with unequal totals; cannot
+ occur)}.
+ {k="void"} (phase "play" only): the running hand is annulled, nothing scores and it is dealt again
+ (back to phase "deal") with the same s.dealer, so the same seat leads; the game points of the match
+ stay. Who holds the deck for the new deal is the extension's business (the next seat, core/Deal.lua).
 
  Views: a seat sees its own hand, the cards on the table, the last completed trick, the face-up trump
  card, cards shown in a hand (marriage partner, a trump card taken from under the stock), and
  everything once the match is over. Card points, trick counts, marriages and game points are
- public numbers. E.system returns {k="deal"} when a hand must be dealt; the fairness layer attaches
- the deck (on a full state the deal must be a permutation of E.DECK; on a view any known subset).
+ public numbers. Randomness: E.system returns {k="deal", need="deck"} when a hand must be dealt; the
+ supplier applies it without need and with the deck (apply refuses an action carrying need with "need"):
+ on a full state a permutation of E.DECK; on a view any known subset, no deck = an empty one. A view
+ that does not know the trump suit yet plays nothing (play and marry are refused with "phase").
+ At the table: extension "fair" (core/Deal.lua) shuffles and deals; its dealer (who holds the deck)
+ takes turns by seat, while s.dealer above only orders the deal and so decides who leads. E.again: once
+ a match is over the host may start a new one, led by its loser (E.nextFirst).
 ]]
 
-local E = { id = "santase", minSeats = 2, maxSeats = 2, GOAL = 11, TARGET = 66, options = {} }
+local E = { id = "santase", minSeats = 2, maxSeats = 2, GOAL = 11, TARGET = 66, options = {}, ext = { "fair" }, again = true }
 ns.Engines.santase = E
 
 local RANKS = { "9", "J", "Q", "K", "T", "A" }
@@ -237,6 +246,7 @@ end
 
 local function deal(s, a)
   local d = a.deck
+  if d == nil and not s.full then d = {} end
   if type(d) ~= "table" then return nil, "deck" end
   for k in pairs(d) do if not isIndex(k) then return nil, "deck" end end
   local seen = {}
@@ -288,6 +298,16 @@ local function show(s, a)
   return true
 end
 
+-- The running hand is annulled: back to the deal, the same s.dealer (the same leader), the match score kept.
+local function void(s)
+  if s.phase ~= "play" then return nil, "phase" end
+  s.phase, s.hand = "deal", s.hand - 1
+  s.turn, s.res, s.closed, s.closeOpp, s.trumpI, s.tsuit = nil, nil, nil, nil, nil, nil
+  s.deck, s.hands, s.stock, s.trick, s.last, s.won, s.shown = {}, { {}, {} }, {}, {}, {}, { {}, {} }, {}
+  s.ntr, s.pts, s.mar = { 0, 0 }, { 0, 0 }, { 0, 0 }
+  return true
+end
+
 function E.new(opts)
   local first = (opts and opts.first) == 2 and 2 or 1
   return {
@@ -299,15 +319,17 @@ end
 
 function E.apply(s, seat, a)
   if type(a) ~= "table" then return nil, "action" end
+  if a.need ~= nil then return nil, "need" end
   local k = a.k
-  if k == "deal" or k == "show" then
+  if k == "deal" or k == "show" or k == "void" then
     if seat ~= 0 then return nil, "seat" end
     if k == "show" then return show(s, a) end
+    if k == "void" then return void(s) end
     if s.phase ~= "deal" and s.phase ~= "hand" then return nil, "phase" end
     return deal(s, a)
   elseif k == "play" or k == "marry" or k == "swap9" or k == "close" then
     if seat ~= 1 and seat ~= 2 then return nil, "seat" end
-    if s.phase ~= "play" then return nil, "phase" end
+    if s.phase ~= "play" or (s.tsuit == nil and (k == "play" or k == "marry")) then return nil, "phase" end
     if s.turn ~= seat then return nil, "turn" end
     if k == "play" then return play(s, seat, a, false) end
     if k == "marry" then return play(s, seat, a, true) end
@@ -322,7 +344,7 @@ end
 
 function E.legal(s, seat)
   local out = {}
-  if s.phase ~= "play" or s.turn ~= seat then return out end
+  if s.phase ~= "play" or s.turn ~= seat or s.tsuit == nil then return out end
   local hand = s.hands[seat]
   local leading = #s.trick == 0
   local set
@@ -365,8 +387,8 @@ function E.auto(s, seat)
 end
 
 function E.system(s)
-  if s.phase == "deal" then return { k = "deal" }, 0 end
-  if s.phase == "hand" then return { k = "deal" }, 3 end
+  if s.phase == "deal" then return { k = "deal", need = "deck" }, 0 end
+  if s.phase == "hand" then return { k = "deal", need = "deck" }, 3 end
 end
 
 function E.view(s, seat)
@@ -403,6 +425,13 @@ function E.result(s)
 end
 
 function E.over(s) return s.phase == "match" end
+
+-- A new match after `prev`: its loser leads, when that seat is occupied.
+function E.nextFirst(prev, occupied)
+  local w = prev and prev.winner
+  if w and occupied[3 - w] then return 3 - w end
+  return nil
+end
 
 function E.snapshot(s) return copy(s) end
 function E.restore(t) return copy(t) end

@@ -21,6 +21,7 @@ core/Const.lua
 core/Util.lua
 core/Sha256.lua
 core/Deck.lua
+core/Fair.lua
 core/Names.lua
 core/Emitter.lua
 core/Bus.lua
@@ -34,6 +35,7 @@ core/Member.lua
 core/Rolls.lua
 core/Party.lua
 core/Lifecycle.lua
+core/Deal.lua
 core/Invites.lua
 core/Client.lua
 core/Bots.lua
@@ -63,6 +65,7 @@ wow/Slash.lua
 # UI
 ui/Theme.lua
 ui/Widgets.lua
+ui/Cards.lua
 ui/MainWindow.lua
 ui/NewTableDialog.lua
 ui/HallPeers.lua
@@ -71,6 +74,7 @@ ui/Minimap.lua
 ui/TableFrame.lua
 ui/games/TicTacToeView.lua
 ui/games/DeathRollView.lua
+ui/games/SantaseView.lua
 ui/InviteToast.lua
 ui/HelpBook.lua
 ui/Intro.lua

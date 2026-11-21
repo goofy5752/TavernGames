@@ -56,14 +56,14 @@ describe("tabla start and flow", function()
     eq(s.var, "std"); eq(s.game, 1); eq(s.phase, "open")
     eq(s.pts[1], arr{ [24] = 2, [13] = 5, [8] = 3, [6] = 5 }); eq(s.pts[2], s.pts[1])
     eq(s.bar, { 0, 0 }); eq(s.off, { 0, 0 }); eq(s.score, { 0, 0 })
-    eq({ E.system(s) }, { { k = "need", r = "open" }, 0 })
+    eq({ E.system(s) }, { { k = "dice", need = "dice", r = "open" }, 0 })
     eq(E.abs("std", 2, 24), 1); eq(E.abs("std", 2, 6), 19); eq(E.abs("std", 1, 6), 6)
   end)
   it("opening roll: tie rolls again, the higher die starts and rolls anew", function()
     local s = E.new{}
     ok(E.apply(s, 0, { k = "dice", d = { 4, 4 } })); eq(s.phase, "open"); eq(s.turn, nil)
     ok(E.apply(s, 0, { k = "dice", d = { 2, 5 } })); eq(s.phase, "roll"); eq(s.turn, 2)
-    eq({ E.system(s) }, { { k = "need", r = "roll", s = 2 }, 0 })
+    eq({ E.system(s) }, { { k = "dice", need = "dice", r = "roll", s = 2 }, 0 })
     ok(E.apply(s, 0, { k = "dice", d = { 3, 1 } })); eq(s.phase, "move"); eq(s.left, { 3, 1 })
     eq(s.dice, { 3, 1 }); eq(E.system(s), nil); eq(E.legal(s, 1), {}); eq(E.auto(s, 1), nil)
     mv(s, { { 8, 5 }, { 6, 5 } })
@@ -121,6 +121,12 @@ describe("tabla start and flow", function()
     local t = E.snapshot(s); t.pts[1][1] = 9
     eq(s.pts[1][1], 0); eq(E.snapshot(E.restore(E.snapshot(s))), E.snapshot(s)); eq(E.view(s, 2), E.snapshot(s))
     eq(E.legal(E.restore(E.snapshot(s)), 2), E.legal(s, 2))
+  end)
+  it("asks for dice with a need marker", function()
+    local s = E.new{}; eq({ E.system(s) }, { { k = "dice", need = "dice", r = "open" }, 0 })
+    eq({ E.apply(s, 0, { k = "dice", need = "dice", d = { 3, 5 } }) }, { nil, "need" })
+    ok(E.apply(s, 0, { k = "dice", d = { 3, 5 } }))
+    eq({ E.system(s) }, { { k = "dice", need = "dice", r = "roll", s = 2 }, 0 })
   end)
 end)
 
@@ -336,7 +342,7 @@ describe("tabla fuzz", function()
       while not E.over(s) and guard < 100000 do
         guard = guard + 1
         local a = E.system(s)
-        if a and a.k == "need" then
+        if a and a.need == "dice" then
           if not E.apply(s, 0, { k = "dice", d = { rnd(1, 6), rnd(1, 6) } }) then bad = bad + 1 end
           if s.cv then seen.cascade = seen.cascade + 1 end
         elseif a then
