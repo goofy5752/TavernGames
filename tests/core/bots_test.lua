@@ -361,6 +361,44 @@ describe("bots for any game", function()
     eq(a.session:seatedCount(), 4); eq(a.session.status, "live")
   end)
 
+  it("one human and a bot play a whole Табла match through all three variants; nothing leaves the machine", function()
+    local sim, a = setup(); local E = ns.Engines.tabla
+    local fair, res, vars = {}, {}, {}; a:on("fair", function(e) fair[#fair + 1] = e.verdict end); a:on("result", function(r) res[#res + 1] = r end)
+    local tid = a:openTable{ game = "tabla", access = "invite", turn = 45 }; ok(tid); ok(a:invite("Бот Иванов"))
+    local mark = #sim.sent; sim:run(5); eq(a.session:seatedCount(), 2); eq(a.session.status, "live")
+    for _ = 1, 40000 do
+      local st = a.session.state; if E.over(st) then break end
+      vars[st.var] = true; if st.turn == 1 and st.phase == "move" then a:playAuto() end; sim:run(1)
+    end
+    sim:run(1); local st = a.session.state; eq(E.over(st), true); eq(#res, 1); eq(res[1].left, nil); ok(st.score[st.winner] >= 5)
+    eq(vars, { std = true, tapa = true, gul = true }); ok(#fair >= 60); for _, v in ipairs(fair) do eq(v, "ok") end
+    eq(sim.groupInvites, {}); eq(sim.rolled, {})
+    -- Nothing of the bot table (its throws, events, a bot's name) reached the
+    -- real side after the bot was invited.
+    local words, real = { tid, STARTERS[1], STARTERS[2], STARTERS[3] }, 0
+    for i = mark + 1, #sim.sent do
+      local m = sim.sent[i]
+      ok(not mentions(m.msg, words), "leak in " .. tostring(m.msg.t) .. " on " .. m.channel)
+      real = real + 1
+    end
+    ok(real > 0, "A sent nothing for real") -- its HIs went out, without `at`
+    ok(a:startGame()); sim:run(4); eq({ a.session.state.score, a.session.state.game, a.session.state.var }, { { 0, 0 }, 1, "std" }); eq(a.session.diceSeen.bad, 0)
+  end)
+
+  it("a bot hosts Табла, throws with me and starts the next match", function()
+    local sim, a, _, bots = setup(); local E = ns.Engines.tabla
+    local fair, res = {}, {}; a:on("fair", function(e) fair[#fair + 1] = e.verdict end); a:on("result", function(r) res[#res + 1] = r end)
+    local tid = bots:hostTable("tabla"); ok(tid); sim:run(3); a:sit(tid, 2); sim:run(4)
+    local s = a.session; eq(s.status, "live"); ok(bots.isBot[s.seats[1]]); eq(s.host, s.seats[1])
+    eq({ s.diceLast.by, s.diceLast.verdict }, { s.seats[1], "ok" })
+    for _ = 1, 40000 do
+      local st = a.session.state; if E.over(st) then break end
+      if st.turn == 2 and st.phase == "move" then a:playAuto() end; sim:run(1)
+    end
+    eq(E.over(a.session.state), true); eq(#res, 1); for _, v in ipairs(fair) do eq(v, "ok") end
+    sim:run(6); eq(a.session.state.score, { 0, 0 }); eq(#res, 1)
+  end)
+
   it("hostTable and inviteMe refuse a game that is not built", function()
     local _, _, _, bots = setup()
     eq(bots:hostTable("holdem"), nil); eq(bots:inviteMe("holdem"), nil); ok(bots:hostTable()) -- default ttt

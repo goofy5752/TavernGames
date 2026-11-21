@@ -108,6 +108,47 @@ local function takeBack(set, tbl)
   return sa
 end
 
+-- Copied verbatim from tests/engines/tabla_test.lua.
+local function arr(m) local t = {} for i = 1, 24 do t[i] = (m and m[i]) or 0 end return t end
+local function sum(t) local n = 0 for i = 1, 24 do n = n + t[i] end return n end
+local GAME = { std = 1, tapa = 2, gul = 3 }
+
+-- A position with `turn` about to roll. m1/m2: own point -> count; off defaults to the rest of 15.
+local function pos(var, turn, m1, m2, o)
+  o = o or {}
+  local s = E.new{}
+  s.game, s.var = GAME[var], var
+  s.pts, s.pin = { arr(m1), arr(m2) }, { arr(o.pin1), arr(o.pin2) }
+  s.bar = o.bar or { 0, 0 }
+  s.off = {}
+  for seat = 1, 2 do
+    s.off[seat] = (o.off and o.off[seat]) or (15 - sum(s.pts[seat]) - s.bar[seat])
+  end
+  s.rolls = o.rolls or { 0, 0 }
+  s.turn, s.phase = turn, "roll"
+  return s
+end
+
+local REAL = ns.Ext.dice
+
+-- A seated table where nothing throws by itself, every client at a copy of `state`.
+local function rigged(state)
+  ns.Ext.dice = {}
+  table2(); seat()
+  a.session.state, b.session.state, w.session.state = ns.Util.copy(state), ns.Util.copy(state), ns.Util.copy(state)
+  return sim
+end
+
+-- The host sets the dice by hand (the extension is off in `rigged`).
+local function dice(x, y) a.session:play(0, { k = "dice", d = { x, y } }); sim:run(1) end
+
+-- The "result" payloads that client emits from now on.
+local function results(cl)
+  local list = {}
+  cl:on("result", function(r) list[#list + 1] = r end)
+  return list
+end
+
 -- Every client at the same Гюлбара turn (game 3): A's 4:4 of throw 6 is its roll number `rolls`,
 -- a cascade from the fourth on -> B's "fair" events from now on, A's state, A's session.
 local function gul(rolls)
@@ -574,5 +615,41 @@ describe("tabla at the table", function()
     sa.diceProof = { h = 6, c = { COMMIT, COMMIT }, s = { SEED, SEED }, r = 1, t = 1 }; sa.seq = sa.seq + 2
     a:send("GUILD", nil, ns.Session.message("END", { tid = tid, e = sa.epoch })); sim:run(2)
     eq({ b.session.diceProof.h, #atB, atB[1].h, atB[1].verdict, atB[1].why }, { 6, 1, 6, "bad", "dodge" })
+  end)
+  it("nobody moves: the host's clock plays the first legal move for either seat", function()
+    local sim, tid = table2(30); seat(); local mark = #sim.sent
+    eq({ a.session.state.turn, a.session:left(), E.auto(a.session.state, 1).steps }, { 1, 30, { { 24, 20 }, { 24, 20 }, { 20, 16 }, { 20, 16 } } })
+    sim:run(29); eq(a.session.seq, 8); sim:run(1)
+    eq({ a.session.state.turn, a.session.state.phase, a.session.state.dice, a.session.seq, a.session:left() }, { 2, "move", { 4, 3 }, 12, 30 })
+    sim:run(30); eq({ a.session.state.turn, a.session.seq }, { 1, 16 }); eq(b.session.state, a.session.state)
+    eq(sim:count(function(m) return m.target == B and m.msg.t == "EV" and m.msg.auto == true end), 2)
+    eq(sim:count(function(m) return m.msg.t == "ACT" and m.msg.a.k == "move" end), 0)
+  end)
+  it("a player offline for three minutes is stood up and loses; meanwhile the host throws alone", function()
+    local sim, tid = table2(30); seat(); local res = results(a); sim:offline(B); local t0 = sim.clock
+    for _ = 1, 200 do if #res > 0 then break end; sim:run(1) end
+    ok(sim.clock - t0 >= 180 and sim.clock - t0 <= 185); eq({ res[1].game, res[1].winners, res[1].losers, res[1].left, res[1].names }, { "tabla", { 1 }, { 2 }, 2, { A, B } })
+    eq(a.session.status, "aborted"); ok(a.session.diceSeen.alone >= 3); eq(a.session.diceSeen.bad, 0)
+  end)
+  it("a player who stands up loses the match and the result names it", function()
+    local sim, tid = table2(); seat(); local res = results(w); b:stand(); sim:run(2)
+    eq({ #res, res[1].winners, res[1].losers, res[1].left }, { 1, { 1 }, { 2 }, 2 }); eq({ w.session.state.phase, w.session.state.winner }, { "match", 1 })
+  end)
+  it("the cascade's remainder passes to the opponent with a full clock; idle, the host's clock plays it and then the opponent throws", function()
+    local sim = rigged(pos("gul", 1, { [24] = 1, [12] = 1 }, { [7] = 1, [20] = 14 }, { rolls = { 3, 0 } }))
+    dice(5, 5); eq({ b.session.state.left, b.session.state.cv }, { { 5, 5, 5, 5 }, 5 })
+    ok(a:act{ k = "move", steps = { { 12, 7 }, { 7, 2 } } }); sim:run(1); local st = b.session.state
+    eq({ st.turn, st.phase, st.left, st.cv, st.xfer, b.session:left() }, { 2, "move", { 5, 5 }, 5, true, 45 })
+    eq({ b:act{ k = "move", steps = { { 20, 15 } } } }, { nil, "move" })                 -- half of the remainder is not a move
+    sim:run(43); eq(a.session.state.left, { 5, 5 }); sim:run(1); st = a.session.state
+    eq({ st.turn, st.phase, st.left, st.cv, st.pts[2][15], st.pts[2][20] }, { 2, "move", { 6, 6, 6, 6 }, 6, 2, 12 })
+    sim:run(45); st = a.session.state; eq({ st.turn, st.phase, st.left, st.cv, st.xfer, st.rolls }, { 2, "roll", nil, nil, nil, { 4, 0 } })
+    eq(b.session.state, st); eq(w.session.state, st); ns.Ext.dice = REAL
+  end)
+  it("a mother pin ends the game at the table for 2 points and Гюлбара follows", function()
+    local sim = rigged(pos("tapa", 1, { [4] = 1, [10] = 14 }, { [24] = 1, [20] = 14 })); local res = results(a)
+    dice(3, 5); ok(a:act{ k = "move", steps = { { 4, 1 } } }); sim:run(1); local st = b.session.state
+    eq({ st.phase, st.gw, st.gp, st.score, st.pin[2][24], st.turn, #res }, { "game", 1, 2, { 2, 0 }, 1, nil, 0 })
+    sim:run(3); st = w.session.state; eq({ st.phase, st.var, st.game, st.turn, st.score }, { "roll", "gul", 3, 1, { 2, 0 } }); ns.Ext.dice = REAL
   end)
 end)
