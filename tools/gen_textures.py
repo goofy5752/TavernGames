@@ -469,6 +469,61 @@ def tex_dice(rng):
     return w, h, render(w, h, px)
 
 
+def tex_oval(rng):
+    """The Холдем table: a wood rim, a brass line, a radial felt; transparent outside."""
+    w, h = 512, 256
+    cx, cy, rx, ry = 256.0, 128.0, 256.0, 128.0
+    rim, line = 14.0, 3.0
+    oval_wood_a, oval_wood_b = hex_rgb("#4a2c1a"), hex_rgb("#2e190e")
+    felt_in, felt_out = hex_rgb("#8d2a30"), hex_rgb("#4d1216")
+
+    def sd_ellipse(x, y, ax, ay):
+        # First-order distance to an ellipse: (f - 1) / |grad f| with f = (x/a)^2 + (y/b)^2.
+        dx, dy = x - cx, y - cy
+        f = math.sqrt((dx / ax) ** 2 + (dy / ay) ** 2)
+        if f < 1e-9:
+            return -min(ax, ay)
+        gx, gy = dx / (ax * ax), dy / (ay * ay)
+        return (f - 1.0) * f / math.hypot(gx, gy)
+
+    def px(x, y):
+        outer = sd_ellipse(x, y, rx, ry)
+        a = cover(outer)
+        if a <= 0.0:
+            return (0.0, 0.0, 0.0, 0.0)
+        # Wood rim (top light to bottom dark), the felt inside the brass line, the line between.
+        wood = mix(oval_wood_a, oval_wood_b, clamp((y - (cy - ry)) / (2.0 * ry)))
+        inner = sd_ellipse(x, y, rx - rim - line, ry - rim - line)
+        brass_edge = sd_ellipse(x, y, rx - rim, ry - rim)
+        dx, dy = (x - cx) / (rx - rim - line), (y - cy) / (ry - rim - line)
+        felt = mix(felt_in, felt_out, smooth(clamp(math.hypot(dx, dy))))
+        col = mix(wood, BRASS, cover(brass_edge))
+        col = mix(col, felt, cover(inner))
+        return col + (a,)
+    return w, h, render(w, h, px)
+
+
+def tex_chip(rng):
+    """A gold chip: a 2 px dark rim and a dashed ring of eight dashes."""
+    w = h = 32
+    c, r, dashes = 16.0, 14.0, 8
+    gold, rim, ink = GOLD, hex_rgb("#8a5a10"), hex_rgb("#7a5210")
+
+    def px(x, y):
+        d = math.hypot(x - c, y - c)
+        a = cover(d - r)
+        if a <= 0.0:
+            return (0.0, 0.0, 0.0, 0.0)
+        col = mix(rim, gold, cover(d - (r - 2.0)))
+        ang = (math.atan2(y - c, x - c) / (2.0 * math.pi)) % 1.0
+        phase = (ang * dashes) % 1.0
+        arc = 2.0 * math.pi * 9.0 / dashes
+        ring = cover(abs(d - 9.0) - 1.0) * cover((abs(phase - 0.5) - 0.25) * arc)
+        col = mix(col, ink, ring)
+        return col + (a,)
+    return w, h, render(w, h, px)
+
+
 TEXTURES = [
     ("wood", tex_wood), ("felt", tex_felt), ("frame", tex_frame), ("ring", tex_ring),
     ("tabletop", tex_tabletop), ("chair", tex_chair), ("chair_empty", tex_chair_empty),
@@ -477,6 +532,7 @@ TEXTURES = [
     # Appended, so the shared rng stays where it was for every file above.
     ("card", tex_card), ("card_back", tex_card_back), ("suits", tex_suits),
     ("point", tex_point), ("checker", tex_checker), ("dice", tex_dice),
+    ("oval", tex_oval), ("chip", tex_chip),
 ]
 
 

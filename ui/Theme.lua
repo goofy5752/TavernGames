@@ -48,6 +48,7 @@ local Theme = {
     button = { 128, 32 }, button_hi = { 128, 32 }, glow = 128, info = 32, icon = 64,
     card = { 64, 128 }, card_back = { 64, 128 }, suits = { 128, 32 }, -- suits: club, diamond, heart, spade
     point = { 32, 128 }, checker = 64, dice = { 128, 64 }, -- Табла: dice = faces 1-4 on top, 5 and 6 below
+    oval = { 512, 256 }, chip = 32, -- Холдем: the oval table and a chip
   },
 }
 
