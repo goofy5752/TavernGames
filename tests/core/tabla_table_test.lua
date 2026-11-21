@@ -92,6 +92,34 @@ local function retake(tid, proof)
   return sa
 end
 
+-- B hosts after A's silence; A then takes the table back under a higher epoch with B's state and
+-- B's last proof, changed by set(state, A's session), by its snapshot or (tbl) by its TBL, which
+-- makes B ask for one; -> A's session.
+local function takeBack(set, tbl)
+  sim:offline(A)
+  for _ = 1, 200 do if b.session.role == "host" then break end; sim:run(1) end
+  local sa = a.session
+  sa.state, sa.diceProof = ns.Util.copy(b.session.state), ns.Util.copy(b.session.diceProof)
+  sa.epoch, sa.seq, sa.throw = b.session.epoch + 1, b.session.seq + 50, nil
+  set(sa.state, sa)
+  sim:online(A)
+  if tbl then sa.lastAnnounce = nil; sa:sendTBL() else sa:snapshotTo(B) end
+  sim:run(2)
+  return sa
+end
+
+-- Every client at the same Гюлбара turn (game 3): A's 4:4 of throw 6 is its roll number `rolls`,
+-- a cascade from the fourth on -> B's "fair" events from now on, A's state, A's session.
+local function gul(rolls)
+  local sim, tid = table2(); seat()
+  for _, cl in ipairs{ a, b, w } do
+    local st = cl.session.state; st.game, st.var, st.rolls[1] = 3, "gul", rolls
+    if rolls >= E.CASCADE_ROLL then st.cv, st.xfer = 4, false end
+    cl.session.diceProof.t = rolls
+  end
+  eq(E.thrown(b.session.state), 0); return fairs(b), a.session.state, a.session
+end
+
 describe("tabla at the table", function()
   it("two players throw together: three events a throw, the dice on no wire, the same board for everyone", function()
     local sim, tid = table2(); local mark = #sim.sent; seat(); eq(tid, "Иван Петров#1700000001")
@@ -125,7 +153,7 @@ describe("tabla at the table", function()
     eq(T(s, { k = "throw", op = "seeds", h = 6, s = { SEED, SEED } }), nil)             -- that throw is closed
     eq(T(s, { k = "move", steps = {} }), nil); eq(ns.Ext.dice.act(a.session, 2, { k = "move", steps = {} }), { k = "move", steps = {} })
     eq(ns.Ext.dice.act(a.session, 2, { k = "throw", op = "seed", h = 6, s = SEED }), nil); eq(a.session.seq, 8)
-    eq(ns.Ext.dice.snap(a.session), { p = { h = 6, c = { COMMIT, COMMIT }, s = { SEED, SEED } } }); eq(ns.Dice.status({ engine = function() return ns.Engines.ttt end }), nil)   -- not a dice game
+    eq(ns.Ext.dice.snap(a.session), { p = { h = 6, c = { COMMIT, COMMIT }, s = { SEED, SEED }, r = 1, t = 1 } }); eq(ns.Dice.status({ engine = function() return ns.Engines.ttt end }), nil)   -- not a dice game
   end)
   it("a guest that never reveals gets no second throw: after DICE_WAIT the host throws alone", function()
     local sim, tid = table2(); for i = 1, 16 do sim.nextRandom[i] = 1 end; local mark = #sim.sent      -- A's first seed is SA, B's is SEED
@@ -159,7 +187,7 @@ describe("tabla at the table", function()
   it("a guest that was away when the throw opened commits from the snapshot", function()
     local sim, tid = table2(); seat(); sim:offline(B); ok(a:act{ k = "move", steps = FIRST }); sim:run(2)
     eq({ a.session.state.phase, a.session.throw.h, a.session.throw.commits[2], a.session.seq }, { "roll", 10, nil, 10 })
-    eq(ns.Ext.dice.snap(a.session), { h = 10, d = 1, c = { COMMIT }, p = { h = 6, c = { COMMIT, COMMIT }, s = { SEED, SEED } } })
+    eq(ns.Ext.dice.snap(a.session), { h = 10, d = 1, c = { COMMIT }, p = { h = 6, c = { COMMIT, COMMIT }, s = { SEED, SEED }, r = 1, t = 1 } })
     local b2 = sim:relog(B); sim:run(2)
     eq({ a.session.state.phase, a.session.state.dice, a.session.seq }, { "move", { 4, 3 }, 12 }); eq(a.session.diceLast, { h = 10, verdict = "ok", by = A })
     eq(b2.session.diceLast.verdict, "ok"); eq(b2.session.state, a.session.state)
@@ -333,11 +361,15 @@ describe("tabla at the table", function()
     eq({ #atB, atB[1].h, atB[1].verdict, atB[1].why }, { 1, 6, "bad", "forged" })
     sim, tid = table2(); seat(); atB = fairs(b); st, sa = a.session.state, a.session            -- dice with a proof of the host's own making
     st.dice, st.left = { 6, 1 }, { 6, 1 }; eq({ ns.Fair.dice({ SEED, SEED }, tid .. "/3") }, { 6, 1 })
-    sa.diceProof = { h = 3, c = { COMMIT, COMMIT }, s = { SEED, SEED } }; sa.seq = sa.seq + 1; sa:snapshotTo(B); sim:run(1)   -- an older throw than my last
-    eq({ #atB, atB[1].h, atB[1].verdict, atB[1].why }, { 1, 6, "bad", "forged" })
+    sa.diceProof = { h = 3, c = { COMMIT, COMMIT }, s = { SEED, SEED }, r = 1, t = 1 }; sa.seq = sa.seq + 1; sa:snapshotTo(B); sim:run(1)   -- the opening throw, told to be a roll
+    eq({ #atB, atB[1].h, atB[1].verdict, atB[1].why }, { 1, 3, "bad", "forged" })
+    sim, tid = table2(); seat(); ok(a:act{ k = "move", steps = FIRST }); sim:run(1); atB = fairs(b); st, sa = a.session.state, a.session   -- throw 10 is closed
+    st.dice, st.left, st.turn = { 4, 4 }, { 4, 4, 4, 4 }, 1; eq(b.session.diceProof.h, 10)      -- an older throw than my last, whole and of its own turn
+    sa.diceProof = { h = 6, c = { COMMIT, COMMIT }, s = { SEED, SEED }, r = 1, t = 1 }; sa.seq = sa.seq + 2; sa:snapshotTo(B); sim:run(1)
+    eq({ #atB, atB[1].h, atB[1].verdict, atB[1].why }, { 1, 10, "bad", "forged" })
     sim, tid = table2(); seat(); atB = fairs(b); st, sa = a.session.state, a.session            -- a later throw with a seed in my name
     local x, y = ns.Fair.dice({ SEED, ZERO }, tid .. "/9"); st.dice, st.left = { x, y }, x == y and { x, x, x, x } or { x, y }
-    sa.diceProof = { h = 9, c = { COMMIT, ns.Fair.commit(ZERO) }, s = { SEED, ZERO } }; sa.seq = sa.seq + 1; sa:snapshotTo(B); sim:run(1)
+    sa.diceProof = { h = 9, c = { COMMIT, ns.Fair.commit(ZERO) }, s = { SEED, ZERO }, r = 1, t = 1 }; sa.seq = sa.seq + 1; sa:snapshotTo(B); sim:run(1)
     eq({ #atB, atB[1].h, atB[1].verdict, atB[1].why }, { 1, 9, "bad", "forged" })
     sim, tid = table2(); seat(); atB = fairs(b); st, sa = a.session.state, a.session            -- dice and no proof at all
     sa.diceProof = nil; sa.seq = sa.seq + 1; sa:snapshotTo(B); sim:run(1)
@@ -356,18 +388,18 @@ describe("tabla at the table", function()
   end)
   it("a host that takes the table back from me with dice of its own making is caught (round 3)", function()
     local sim, tid = table2(); seat(); local atB = fairs(b)
-    local sa = retake(tid, function(h) local x = grind(tid, h, { 6, 6 }); return { h = h, c = { ns.Fair.commit(x) }, s = { x } } end)
+    local sa = retake(tid, function(h) local x = grind(tid, h, { 6, 6 }); return { h = h, c = { ns.Fair.commit(x) }, s = { x }, r = 1, t = 1 } end)
     eq({ b.session.role, b.session.host, b.session.state.dice }, { "player", A, { 6, 6 } })   -- a throw made alone that I never saw, pushed on me
     eq({ #atB, atB[1].h, atB[1].verdict, atB[1].why, ns.Dice.alarm(b.session) }, { 1, sa.seq - 1, "bad", "dodge", true })
     ok(a:act(E.auto(sa.state, 1))); sim:run(1); eq({ ns.Dice.alarm(b.session), ns.Dice.tip(b.session)[2] }, { true, { "red", "dice.tip.bad", "dodge" } })
     sim, tid = table2(); seat(); atB = fairs(b)                                                -- two seeds of its own, one under my seat
-    sa = retake(tid, function(h) local x = grind(tid, h, { 6, 6 }, ZERO); return { h = h, c = { ns.Fair.commit(x), ns.Fair.commit(ZERO) }, s = { x, ZERO } } end)
+    sa = retake(tid, function(h) local x = grind(tid, h, { 6, 6 }, ZERO); return { h = h, c = { ns.Fair.commit(x), ns.Fair.commit(ZERO) }, s = { x, ZERO }, r = 1, t = 1 } end)
     eq({ #atB, atB[1].h, atB[1].verdict, atB[1].why, ns.Dice.alarm(b.session) }, { 1, sa.diceProof.h, "bad", "forged", true })
   end)
   it("my seed of an earlier throw proves no later one (round 3)", function()
     local sim, tid = table2(); seat(); local atB = fairs(b); local st, sa = a.session.state, a.session
     local x = grind(tid, 9, { 6, 6 }, SEED); st.dice, st.left = { 6, 6 }, { 6, 6, 6, 6 }       -- B's real seed and commit of throws 3 and 6, under number 9
-    sa.diceProof = { h = 9, c = { ns.Fair.commit(x), COMMIT }, s = { x, SEED } }; sa.seq = 10; b.session:requestSync(); sim:run(1)
+    sa.diceProof = { h = 9, c = { ns.Fair.commit(x), COMMIT }, s = { x, SEED }, r = 1, t = 1 }; sa.seq = 10; b.session:requestSync(); sim:run(1)
     eq({ #atB, atB[1].h, atB[1].verdict, atB[1].why, b.session.diceUnheard }, { 1, 9, "bad", "forged", nil })
   end)
   it("a host that was away and comes back under the new host blames nobody", function()
@@ -380,18 +412,10 @@ describe("tabla at the table", function()
     eq(a.session.state, b.session.state); eq(a.session.diceProof, b.session.diceProof)
   end)
   it("a cascade is what the events give: no number beyond the moves I missed, none outside its rules (round 3)", function()
-    -- Both clients at the same Гюлбара turn: A's 4:4 of throw 6 is its fourth roll, so the 4s cascade.
-    local function gul(rolls)
-      local sim, tid = table2(); seat()
-      for _, cl in ipairs{ a, b, w } do
-        local st = cl.session.state; st.var, st.rolls[1], st.cv, st.xfer = "gul", rolls, 4, false
-      end
-      eq(E.thrown(b.session.state), 0); return fairs(b), a.session.state, a.session
-    end
     local atB, st, sa = gul(4); sim:offline(B); ok(a:act(E.auto(st, 1))); sim:run(1)           -- an honest move while B hears nothing
-    st = sa.state; eq({ sa.seq, st.cv ~= nil, E.thrown(st) }, { 9, true, 1 })
+    st = sa.state; eq({ sa.seq, st.cv ~= nil, (E.thrown(st)) }, { 9, true, 1 })
     sim:online(B); b.session:requestSync(); sim:run(1)
-    eq({ #atB, b.session.diceUnheard, ns.Dice.alarm(b.session), b.session.seq }, { 0, nil, false, 9 }); eq(b.session.state, st)
+    eq({ #atB, b.session.diceUnheard, ns.Dice.alarm(b.session), b.session.seq }, { 0, 1, false, 9 }); eq(b.session.state, st)   -- a number I did not see played: counted, not blamed
     atB, st, sa = gul(4); st.cv, st.left = 6, { 6, 6, 6, 6 }; sa.seq = sa.seq + 1; sa:snapshotTo(B); sim:run(1)   -- two numbers on in one event
     eq({ #atB, atB[1].h, atB[1].verdict, atB[1].why }, { 1, 6, "bad", "forged" })
     atB, st, sa = gul(4); sim:offline(B); ok(a:act(E.auto(st, 1))); sim:run(1); sim:online(B)   -- one honest move, then one number too many
@@ -403,5 +427,137 @@ describe("tabla at the table", function()
     local sim, tid = table2(); seat(); atB = fairs(b); st, sa = a.session.state, a.session      -- the reviewer's probe: not even Гюлбара's roll count
     st.var = "gul"; st.cv, st.xfer, st.left = 6, false, { 6, 6, 6, 6 }; sa.seq = sa.seq + 1; sa:snapshotTo(B); sim:run(1)
     eq({ E.thrown(st), #atB, atB[1].h, atB[1].verdict, atB[1].why }, { false, 1, 6, "bad", "forged" })
+  end)
+  it("a cascade number I did not see played is never silent, whoever hosts and whatever number of events it names (round 4)", function()
+    for _, by in ipairs{ "snp", "tbl" } do                                                     -- the reviewer's probe: a standard table called Гюлбара
+      local sim, tid = table2(); seat(); local atB = fairs(b)
+      takeBack(function(st)
+        st.var, st.rolls[1], st.cv, st.xfer, st.left = "gul", E.CASCADE_ROLL, 6, false, { 6, 6, 6, 6 }
+      end, by == "tbl")
+      eq({ b.session.host, b.session.state.cv, atB[#atB].h, atB[#atB].verdict, atB[#atB].why, ns.Dice.alarm(b.session) }, { A, 6, 6, "bad", "forged", true })
+    end
+    local atB, st, sa = gul(4); st.cv, st.left = 6, { 6, 6, 6, 6 }; sa.seq = sa.seq + 2; sa:snapshotTo(B); sim:run(1)   -- a real Гюлбара cascade; my host says I missed two events
+    eq({ #atB, atB[1].h, atB[1].verdict, atB[1].why, b.session.diceUnheard }, { 1, 6, "bad", "dodge", nil })
+    atB, st, sa = gul(4); st.cv, st.left = 6, { 6, 6, 6, 6 }; sa.seq = sa.seq + 2; b.session:requestSync(); sim:run(1)   -- the same in a snapshot I asked for
+    eq({ #atB, b.session.diceUnheard, ns.Dice.alarm(b.session), b.session.state.cv }, { 0, 1, false, 6 })
+    atB = gul(4); takeBack(function(st) st.cv, st.left = 6, { 6, 6, 6, 6 } end)              -- by a host that takes the table back, pushed
+    eq({ b.session.host, #atB, atB[1].h, atB[1].verdict, atB[1].why }, { A, 1, 6, "bad", "dodge" })
+    atB = gul(4); takeBack(function(st) st.cv, st.left = 6, { 6, 6, 6, 6 } end, true)        -- and when I ask it
+    eq({ b.session.host, #atB, b.session.diceUnheard, b.session.state.cv }, { A, 0, 1, 6 })
+    atB, st, sa = gul(4); for _, cl in ipairs{ a, b, w } do local t = cl.session.state; t.cv, t.left = 5, { 5, 5, 5, 5 } end   -- as many moves as mine, but other steps
+    st.cv, st.xfer, st.turn, st.left = 4, true, 2, { 4, 4 }; sa.seq = sa.seq + 2; sa:snapshotTo(B); sim:run(1)
+    eq({ (E.thrown(st)), (E.thrown(b.session.state)), #atB, atB[1].h, atB[1].verdict, atB[1].why }, { 1, 1, 1, 6, "bad", "dodge" })
+    atB = gul(4); takeBack(function(st, sa) sa.diceProof.c[3] = "x" end)                        -- the throw I hold, told otherwise by a retaking host
+    eq({ #atB, atB[1].h, atB[1].verdict, atB[1].why }, { 1, 6, "bad", "forged" })
+    atB, st, sa = gul(2)                                                                       -- a plain double: the roll counts are mine, not the snapshot's
+    st.rolls[1], st.cv = E.CASCADE_ROLL, 4; sa.seq = sa.seq + 2; sa:snapshotTo(B); sim:run(1)
+    eq({ E.thrown(st), #atB, atB[1].h, atB[1].verdict, atB[1].why }, { 0, 1, 6, "bad", "forged" })
+    atB = gul(2)
+    takeBack(function(st) st.rolls[2] = E.CASCADE_ROLL - 1 end)                                -- nor a retaking host's, for the throws to come
+    eq({ #atB, atB[1].h, atB[1].verdict, atB[1].why }, { 1, 6, "bad", "forged" })
+  end)
+  it("a proof names the seat it was thrown for and that seat's roll: my throw is not the host's turn, and no turn is played twice (round 4)", function()
+    local function mine()                                                                      -- throw 10 is B's own: 4:3, B to move
+      local sim, tid = table2(); seat(); ok(a:act{ k = "move", steps = FIRST }); sim:run(1)
+      local p = b.session.diceProof; eq({ p.h, p.r, p.t, b.session.state.turn, b.session.state.dice }, { 10, 2, 1, 2, { 4, 3 } })
+      eq(a.session.diceProof, p); return fairs(b), a.session.state, a.session
+    end
+    local atB, st, sa = mine(); st.turn = 1; sa.seq = sa.seq + 2; sa:snapshotTo(B); sim:run(1)   -- my host gives my dice to its own seat
+    eq({ b.session.state.turn, #atB, atB[1].h, atB[1].verdict, atB[1].why }, { 1, 1, 10, "bad", "forged" })
+    atB, st, sa = mine(); st.turn, sa.diceProof.r = 1, 1; sa.seq = sa.seq + 2; b.session:requestSync(); sim:run(1)   -- and says the throw was its own
+    eq({ #atB, atB[1].h, atB[1].verdict, atB[1].why, b.session.diceUnheard }, { 1, 10, "bad", "forged", nil })
+    atB, st, sa = mine(); st.rolls[2], sa.diceProof.t = 3, 3; sa.seq = sa.seq + 2; sa:snapshotTo(B); sim:run(1)   -- or another roll of mine
+    eq({ #atB, atB[1].h, atB[1].verdict, atB[1].why }, { 1, 10, "bad", "forged" })
+    for _, r in ipairs{ 2, 1 } do                                                              -- the same from a host that takes the table back (the reviewer's probe)
+      atB = mine(); takeBack(function(st, sa) st.turn, sa.diceProof.r = 1, r end)
+      eq({ b.session.host, b.session.state.turn, atB[#atB].h, atB[#atB].verdict, atB[#atB].why }, { A, 1, 10, "bad", "forged" })
+    end
+    local sim, tid = table2(); seat(); ok(a:act{ k = "move", steps = FIRST }); sim:run(1); atB = fairs(b)   -- a two-seed proof of its own making for my turn:
+    local x = grind(tid, 13, { 6, 6 }, SEED); sa, st = a.session, a.session.state; st.dice, st.left = { 6, 6 }, { 6, 6, 6, 6 }   -- my seed of throw 10, told to be of 13
+    sa.diceProof = { h = 13, c = { ns.Fair.commit(x), COMMIT }, s = { x, SEED }, r = 2, t = 1 }; sa.seq = 14; sa:snapshotTo(B); sim:run(1)
+    eq({ #atB, atB[1].h, atB[1].verdict, atB[1].why }, { 1, 13, "bad", "forged" })
+  end)
+  it("a throw of mine that closed in events I lost gets its seat and roll from my own state; a throw I did not see is counted beside an old number too (round 4)", function()
+    local sim, tid = table2(); seat(); local lift = mute(B, "seed"); ok(a:act{ k = "move", steps = FIRST }); sim:run(1)
+    local atB, sa = fairs(b), a.session; eq({ b.session.throw.h, b.session.throw.r, b.session.throw.sent }, { 10, 2, true }); sim:offline(B)
+    sa:play(0, { k = "throw", op = "seeds", h = 10, s = { SEED, SEED } }); sim:run(1)           -- my seed got through; the seeds event did not
+    sa.state.rolls[2], sa.diceProof.t = 3, 3; lift(); sim:online(B); b.session:requestSync(); sim:run(1)   -- and it was "my third roll"
+    eq({ b.session.state.rolls[2], atB[#atB].h, atB[#atB].verdict, atB[#atB].why, b.session.diceProof.t }, { 3, 10, "bad", "forged", 1 })
+    sim, tid = table2(); seat(); lift = mute(B, "seed"); ok(a:act{ k = "move", steps = FIRST }); sim:run(1)   -- the same lost close, told as it was
+    atB, sa = fairs(b), a.session; sim:offline(B); sa:play(0, { k = "throw", op = "seeds", h = 10, s = { SEED, SEED } }); sim:run(1)
+    lift(); sim:online(B); b.session:requestSync(); sim:run(1)
+    eq({ #atB, atB[1].h, atB[1].verdict, b.session.diceUnheard, ns.Dice.alarm(b.session) }, { 1, 10, "ok", nil, false }); eq(b.session.state, a.session.state)
+    sim, tid = table2(); seat(); ok(a:act{ k = "move", steps = FIRST }); sim:run(1)             -- I log in again: the roll in the board is the proof's
+    sa = a.session; sa.state.rolls[2] = 3; local b2 = sim:crash(B); atB = fairs(b2); sim:run(1)
+    eq({ b2.session.state.rolls[2], #atB, atB[1].h, atB[1].verdict, atB[1].why }, { 3, 1, 10, "bad", "forged" })
+    sim, tid = table2(); seat(); atB, sa = fairs(b), a.session; local st = sa.state           -- "A threw alone and moved": B to roll, with a running throw of an old number
+    local x = grind(tid, 9, { 6, 6 }); st.dice, st.left, st.phase, st.turn, st.rolls[1] = { 6, 6 }, nil, "roll", 2, 2
+    sa.diceProof = { h = 9, c = { ns.Fair.commit(x) }, s = { x }, r = 1, t = 2 }; sa.throw = { h = 6, d = 1, commits = { COMMIT } }
+    sa.seq = 11; sa:snapshotTo(B); sim:run(1)
+    eq({ b.session.state.dice, #atB, atB[1].h, atB[1].verdict, atB[1].why }, { { 6, 6 }, 1, 9, "bad", "dodge" })
+  end)
+  it("a turn is not played twice with the dice of the throw I hold (round 4)", function()
+    local sim, tid = table2(); seat(); local lift = mute(B, "commit"); ok(a:act{ k = "move", steps = FIRST }); sim:run(1)
+    local atW, sa = fairs(w), a.session; local st = sa.state                                    -- A has moved its 4:4 (throw 6); throw 10 runs
+    eq({ w.session.diceProof.h, w.session.state.phase, w.session.state.left, st.dice }, { 6, "roll", nil, { 4, 4 } })
+    st.phase, st.turn, st.left = "move", 1, { 4, 4, 4, 4 }; sa.seq = sa.seq + 2; sa:snapshotTo(W); sim:run(1)   -- the 4:4 open again for A
+    eq({ w.session.state.left, #atW, atW[1].h, atW[1].verdict, atW[1].why }, { { 4, 4, 4, 4 }, 1, 6, "bad", "forged" })
+  end)
+  it("my dice records outlive a table the host ends under me: a red line stays red, and what comes back is held against what I knew (round 4)", function()
+    local function endIt(tid) a:send("GUILD", nil, ns.Session.message("END", { tid = tid, e = a.session.epoch })); sim:run(2) end
+    local sim, tid = table2(); seat(); local atB, sa = fairs(b), a.session; local st = sa.state
+    mute(B, "protest"); st.dice, st.left = { 6, 6 }, { 6, 6, 6, 6 }; sa:snapshotTo(B); sim:run(1)   -- red already (no event follows the snapshot)
+    eq({ #atB, ns.Dice.alarm(b.session), b.session.diceSeen.bad }, { 1, true, 1 }); local old = b.session
+    local h = sa.seq + 1; local x = grind(tid, h, { 6, 6 }, ZERO); sa.seq = h + 1              -- the table ends and comes back with two seeds of the host's
+    sa.diceProof = { h = h, c = { ns.Fair.commit(x), ns.Fair.commit(ZERO) }, s = { x, ZERO }, r = 1, t = 1 }; endIt(tid)
+    local s = b.session; ok(s ~= nil and s ~= old); eq({ s.mySeat, s.state.dice, ns.Dice.alarm(s), s.diceSeen.bad >= 1 }, { 2, { 6, 6 }, true, true })
+    eq({ atB[#atB].h, atB[#atB].verdict, atB[#atB].why, ns.Dice.status(s) }, { h, "bad", "forged", "dice.bad", "red" })
+    sim, tid = table2(); seat(); atB, sa = fairs(b), a.session; st = sa.state                  -- a green line: the table comes back with a throw made alone
+    h = sa.seq + 1; x = grind(tid, h, { 6, 6 }); st.dice, st.left = { 6, 6 }, { 6, 6, 6, 6 }; sa.seq = h + 1
+    sa.diceProof = { h = h, c = { ns.Fair.commit(x) }, s = { x }, r = 1, t = 1 }; endIt(tid)
+    eq({ b.session.state.dice, #atB, atB[1].h, atB[1].verdict, atB[1].why, ns.Dice.alarm(b.session) }, { { 6, 6 }, 1, h, "bad", "dodge", true })
+    sim, tid = table2(); seat(); atB, sa = fairs(b), a.session; st = sa.state                  -- or with other dice under the throw I saw
+    st.dice, st.left = { 6, 6 }, { 6, 6, 6, 6 }; endIt(tid)
+    eq({ b.session.state.dice, #atB, atB[1].h, atB[1].verdict, atB[1].why }, { { 6, 6 }, 1, 6, "bad", "forged" })
+    sim, tid = table2(); seat(); atB = fairs(b); endIt(tid)                                    -- the table as it was: nothing to say
+    eq({ b.session ~= nil, #atB, b.session.diceUnheard, ns.Dice.status(b.session) }, { true, 0, nil, "dice.ok", "good" }); eq(b.session.state, a.session.state)
+    eq(b.session.diceSeen, { ok = 2, alone = 0, bad = 0 }); ok(a:act{ k = "move", steps = FIRST }); sim:run(1)   -- and the game goes on
+    eq({ atB[1].h, atB[1].verdict, b.session.diceSeen.ok }, { 10, "ok", 3 }); eq(b.session.state, a.session.state)
+  end)
+  it("an abort or a start over a throw I gave my seed to is a second try; a host that stands up is not; a bad throw stays counted (round 4)", function()
+    local sim, tid = table2(); mute(B, "seed"); seat(); local atB = fairs(b)
+    a.session:play(0, { k = "abort" }); sim:run(1); eq({ #atB, atB[1].h, atB[1].verdict, atB[1].why, ns.Dice.alarm(b.session) }, { 1, 3, "bad", "dodge", true })
+    sim, tid = table2(); mute(B, "seed"); seat(); atB = fairs(b)
+    a.session:play(0, { k = "start" }); sim:run(1); eq({ atB[1].h, atB[1].verdict, atB[1].why, ns.Dice.alarm(b.session), b.session.diceBad }, { 3, "bad", "dodge", true, "dodge" })
+    sim, tid = table2(); mute(B, "seed"); seat(); atB = fairs(b); a:stand(); sim:run(3)          -- the host leaves mid-throw: the table is mine
+    eq({ b.session.role, ns.Dice.alarm(b.session) }, { "host", false }); for _, e in ipairs(atB) do ok(e.verdict ~= "bad") end
+    sim, tid = table2(); seat(); atB = fairs(b); local s = b.session
+    ns.Dice.int.close(s, 6, "bad", "forged"); eq({ s.diceSeen.ok, s.diceSeen.bad }, { 1, 1 })     -- throw 6 found bad afterwards: counted once
+    ns.Dice.int.close(s, 6, "ok", nil, { d = 1 }); eq({ s.diceSeen.ok, s.diceSeen.bad, ns.Dice.alarm(s) }, { 2, 1, true })   -- its number used again
+  end)
+  it("a start in the middle of a match wipes no count of mine; a real new match does (round 4)", function()
+    local sim, tid = table2(); seat(); local atB, sa = fairs(b), a.session; local st = sa.state
+    st.dice, st.left = { 6, 6 }, { 6, 6, 6, 6 }; sa:snapshotTo(B); sim:run(1); eq(ns.Dice.alarm(b.session), true)
+    sa:play(0, { k = "start" }); sim:run(1)                                                    -- the match "starts" again under me
+    eq({ b.session.seq, a.session.seq, ns.Dice.alarm(b.session), b.session.diceSeen.bad >= 1, b.session.diceBad }, { a.session.seq, b.session.seq, true, true, "forged" })
+    sim, tid = table2(); seat(); atB, sa = fairs(b), a.session; st = sa.state
+    st.dice, st.left = { 6, 6 }, { 6, 6, 6, 6 }; sa:snapshotTo(B); sim:run(1); eq(ns.Dice.alarm(b.session), true)
+    for _, cl in ipairs{ a, b, w } do E.leave(cl.session.state, 1) end; eq(E.over(b.session.state), true)   -- the match is over on every client
+    sa:play(0, { k = "start" }); sim:run(1); eq({ ns.Dice.alarm(b.session), b.session.diceSeen.bad, b.session.diceBad }, { false, 0, nil })
+  end)
+  it("I stand up and sit down again at the same table: nobody is blamed for the throws I chose not to see (round 4)", function()
+    local sim, tid = table2(); seat(); local atB = fairs(b); b:stand(); sim:run(1); eq(b.session, nil)
+    b:sit(tid, 2); sim:run(2); local s = b.session
+    eq({ s.mySeat, #atB > 0, ns.Dice.alarm(s), s.diceUnheard, s.diceLast.verdict }, { 2, true, false, nil, "ok" }); eq(s.state, a.session.state)
+    for _, e in ipairs(atB) do eq(e.verdict, "ok") end
+    sim, tid = table2(); seat(); atB = fairs(b); b:stand(); sim:run(1); w:sit(tid, 2); sim:run(12)   -- somebody else plays in my chair meanwhile
+    ok(a.session.diceProof.h > 6); w:stand(); sim:run(1); b:sit(tid, 2); sim:run(2); s = b.session
+    eq({ s.mySeat, ns.Dice.alarm(s), s.diceUnheard }, { 2, false, nil }); eq(s.state, a.session.state)
+    for _, e in ipairs(atB) do ok(e.verdict ~= "bad", tostring(e.why)) end
+    sim, tid = table2(); seat(); ok(a:act{ k = "move", steps = FIRST }); sim:run(1); atB = fairs(b)   -- records of another host: its numbers judge nothing
+    b.dice[tid].diceHost = W; local sa = a.session; local st = sa.state; st.dice, st.left, st.turn = { 4, 4 }, { 4, 4, 4, 4 }, 1
+    sa.diceProof = { h = 6, c = { COMMIT, COMMIT }, s = { SEED, SEED }, r = 1, t = 1 }; sa.seq = sa.seq + 2
+    a:send("GUILD", nil, ns.Session.message("END", { tid = tid, e = sa.epoch })); sim:run(2)
+    eq({ b.session.diceProof.h, #atB, atB[1].h, atB[1].verdict, atB[1].why }, { 6, 1, 6, "bad", "dodge" })
   end)
 end)

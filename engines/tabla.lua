@@ -408,34 +408,45 @@ function E.leave(s, seat)
   s.turn, s.left, s.cv, s.xfer = nil, nil, nil, nil
 end
 
--- Are the open steps (left, with the cascade number cv) what the dice thrown last give for the
--- turn in progress, and nothing open outside a turn -> false, or the number of move actions the
--- state says were made since that throw (0 but in a cascade: one for every number it went on,
--- one more when the remainder was handed over). A turn is one move action, so a state between
--- two actions always passes; the extension "dice" checks a snapshot with it.
-function E.thrown(s)
-  local d, left = s.dice, s.left
+-- Is the state one that throws give: the variant is the game's (rule 1), each seat's rolls are a
+-- count (none before the game's first dice), the open steps (left, with the cascade number cv) are
+-- what the dice thrown last give for the turn in progress, and nothing is open outside a turn
+-- -> false, or the number of move actions the state says were made since that throw (0 but in a
+-- cascade: one for every number it went on, one more when the remainder was handed over), then,
+-- in a turn, the seat that threw for it and that seat's roll number. `prev`, a state of mine with
+-- the same last throw: no dice came since, so in the same game the rolls are prev's and another
+-- game has none yet. A turn is one move action, so a state between two actions always passes;
+-- the extension "dice" checks a snapshot with it (the roller and number are the proof's).
+function E.thrown(s, prev)
+  local d, left, rolls, g = s.dice, s.left, s.rolls, s.game
+  if type(g) ~= "number" or s.var == nil or s.var ~= E.VARIANTS[(g - 1) % 3 + 1] or type(rolls) ~= "table" then return false end
+  local old = prev and prev.game == g and type(prev.rolls) == "table" and prev.rolls
+  for seat = 1, 2 do
+    local n = rolls[seat]
+    if type(n) ~= "number" or n < 0 or n % 1 ~= 0 or (d == nil and n ~= 0) or (old and n ~= old[seat]) then return false end
+  end
+  if prev and not old and d ~= nil then return false end
   if s.phase ~= "move" then return left == nil and 0 end
-  if type(d) ~= "table" or type(left) ~= "table" or not die(d[1]) or not die(d[2]) then return false end
+  if type(d) ~= "table" or type(left) ~= "table" or not die(d[1]) or not die(d[2]) or (s.turn ~= 1 and s.turn ~= 2) then return false end
   local x, y, n, v, moves = d[1], d[2], #left, s.cv or d[1], 0
+  local roller = s.cv and s.xfer and 3 - s.turn or s.turn -- a remainder is played by the other seat
   if s.cv then
     -- a cascade: Гюлбара, from the roller's fourth roll, four steps of a number from the double
-    -- thrown up; fewer only as a remainder (which the other seat plays)
-    local roller = s.xfer and 3 - s.turn or s.turn
+    -- thrown up; fewer only as a remainder
     if s.var ~= "gul" or x ~= y or not die(v) or v < x or n < 1 or n > 4 or (n < 4 and not s.xfer)
-        or type(s.rolls) ~= "table" or (tonumber(s.rolls[roller]) or 0) < E.CASCADE_ROLL then
+        or rolls[roller] < E.CASCADE_ROLL then
       return false
     end
     moves = v - x + (s.xfer and 1 or 0)
   elseif x ~= y then
-    return n == 2 and left[1] == x and left[2] == y and 0
+    return n == 2 and left[1] == x and left[2] == y and 0, roller, rolls[roller]
   elseif n ~= 4 then
     return false
   end
   for i = 1, n do
     if left[i] ~= v then return false end
   end
-  return moves
+  return moves, roller, rolls[roller]
 end
 
 -- The legal moves and the viability memo of the last staged turn (one entry, replaced by the next

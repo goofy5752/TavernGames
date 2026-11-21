@@ -456,12 +456,27 @@ describe("tabla thrown", function()
     s.left = nil; ok(not E.thrown(s)); s.left = { 3, 1 }; s.dice = nil; ok(not E.thrown(s)); s.dice = { 3, 3 }; ok(not E.thrown(s))
     s.left = { 3, 3, 3, 3 }; ok(E.thrown(s)); s.left = { 3, 3, 3 }; ok(not E.thrown(s))
     s.left, s.cv = { 5, 5, 5, 5 }, 5; ok(not E.thrown(s))                                      -- a cascade outside Гюлбара
-    s.var = "gul"; ok(not E.thrown(s)); s.rolls[s.turn] = E.CASCADE_ROLL; eq(E.thrown(s), 2)   -- only from the roller's fourth roll; two moves on
+    s.var = "gul"; ok(not E.thrown(s)); s.rolls[s.turn] = E.CASCADE_ROLL; ok(not E.thrown(s))   -- "gul" is not game 1's variant
+    s.game = 3; eq({ E.thrown(s) }, { 2, s.turn, E.CASCADE_ROLL })                             -- only from the roller's fourth roll; two moves on
     s.cv = 2; s.left = { 2, 2, 2, 2 }; ok(not E.thrown(s))                                     -- below the double thrown
     s.cv, s.left = 3, { 3, 3, 3, 3 }; eq(E.thrown(s), 0); s.left = { 3, 3 }; ok(not E.thrown(s))
     s.xfer = true; ok(not E.thrown(s))                                                         -- a remainder: the roller is the other seat
-    s.rolls[3 - s.turn] = E.CASCADE_ROLL; eq(E.thrown(s), 1); s.cv, s.left = 5, { 5, 5, 5, 5 }; eq(E.thrown(s), 3)
+    s.rolls[3 - s.turn] = E.CASCADE_ROLL; eq({ E.thrown(s) }, { 1, 3 - s.turn, E.CASCADE_ROLL }); s.cv, s.left = 5, { 5, 5, 5, 5 }; eq(E.thrown(s), 3)
     s.phase = "roll"; ok(not E.thrown(s)); s.left = nil; eq(E.thrown(s), 0)
+  end)
+  it("the variant is the game's and the rolls are counts; against my own state of the same throw nothing a throw gives has changed", function()
+    local s = E.new{}; ok(E.apply(s, 0, { k = "dice", d = { 5, 2 } })); ok(E.apply(s, 0, { k = "dice", d = { 3, 1 } }))
+    eq({ E.thrown(s) }, { 0, 1, 1 })                                                           -- seat 1 threw for this turn, its first roll
+    for _, bad in ipairs{ "tapa", "gul", false } do local c = E.restore(E.snapshot(s)); c.var = bad or nil; eq(E.thrown(c), false) end
+    for _, g in ipairs{ 2, 3, 0, 1.5, "1" } do local c = E.restore(E.snapshot(s)); c.game = g; eq(E.thrown(c), false) end
+    for _, r in ipairs{ -1, 0.5, "1" } do local c = E.restore(E.snapshot(s)); c.rolls[2] = r; eq(E.thrown(c), false) end
+    local c = E.restore(E.snapshot(s)); c.rolls = nil; eq(E.thrown(c), false); c = E.restore(E.snapshot(s)); c.turn = 3; eq(E.thrown(c), false)
+    c = E.new{}; c.rolls[1] = 3; eq(E.thrown(c), false)                                        -- rolls before the game's first dice
+    local prev = E.restore(E.snapshot(s)); eq(E.thrown(s, prev), 0)
+    c = E.restore(E.snapshot(s)); c.rolls[2] = 3; eq({ E.thrown(c), E.thrown(c, prev) }, { 0, false })   -- a roll count no throw of mine gave
+    c = E.restore(E.snapshot(s)); c.game, c.var = 4, "std"; eq({ E.thrown(c), E.thrown(c, prev) }, { 0, false })   -- another game with these dice
+    ok(E.apply(s, 1, E.auto(s, 1))); eq({ s.phase, E.thrown(s, prev) }, { "roll", 0 })           -- a move later: the same throw
+    c = E.restore(E.snapshot(s)); c.phase, c.gw = "game", 1; ok(E.apply(c, 0, { k = "next" })); eq({ c.game, c.var, E.thrown(c, prev) }, { 2, "tapa", 0 })   -- the next game: no dice yet
   end)
 end)
 

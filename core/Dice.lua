@@ -13,7 +13,9 @@ local _, ns = ...
 -- This file: the throw itself, the host's side and the dice line. The member's
 -- side (its part of a throw, its seed across a /reload, snapshots, a host
 -- change) is core/DiceMember.lua, which fills in Dice.part, Dice.notMine and
--- Dice.forget and reaches the helpers here through Dice.int.
+-- Dice.forget; what a snapshot is held against, and the records that outlive
+-- the session, is core/DiceCheck.lua. Both reach the helpers here through
+-- Dice.int.
 local Dice = {}
 ns.Dice = Dice
 
@@ -25,10 +27,11 @@ local function hex(x, n) return type(x) == "string" and #x == n and not x:find("
 local function isCommit(c) return hex(c, 64) end
 local function isSeed(x) return hex(x, 2 * C.SEED_BYTES) end
 
--- Does the engine ask for dice now?
+-- Does the engine ask for dice now -> its system action (s: the seat that
+-- throws for its turn; none in an opening throw), or nil.
 local function wantsDice(s)
   local action = s.state and s:engine().system(s.state)
-  return action ~= nil and action.need == "dice"
+  return action ~= nil and action.need == "dice" and action or nil
 end
 
 local function newSeed(s)
@@ -46,18 +49,19 @@ end
 
 local function foul(throw, why) throw.foul = throw.foul or why end
 local function unheard(s) s.diceUnheard = (s.diceUnheard or 0) + 1 end
--- c is the commit of my seed for throw h (s.diceOwn: every one I made at
--- this table, each good for its own throw only).
-local function own(s, h, c)
+-- c is the commit of my seed for `throw` (s.diceOwn: every one I made at this
+-- table, each good for its own throw only, with the seat it was thrown for).
+local function own(s, throw, c)
   s.diceOwn = s.diceOwn or {}
-  s.diceOwn[h .. ":" .. c] = true
+  s.diceOwn[throw.h .. ":" .. c] = throw.r
 end
 -- A throw is closed (`throw` nil: dice that no throw gave, or the last throw
--- found bad afterwards, which is then counted once, as what it is now):
+-- found bad afterwards, which is then counted once, as what it is now; never
+-- the other way: a bad throw stays counted whatever comes under its number):
 -- s.diceLast, the counts of the match, "fair".
 local function close(s, h, verdict, why, throw)
   local old = s.diceLast
-  local again = old ~= nil and old.h == h
+  local again = old ~= nil and old.h == h and verdict == "bad"
   local by = throw and s.seats[throw.d] or (again and old.by) or nil
   local last = { h = h, verdict = verdict, why = why, by = by }
   local seen = s.diceSeen or { ok = 0, alone = 0, bad = 0 }
@@ -101,12 +105,16 @@ function Dice.wait(s, h)
   end)
 end
 
--- The throw's dice are applied: its verdict (a throw whose commit under my
--- seat I could not check is never "ok"), and its proof for the snapshots.
-local function finish(s, throw, seeds)
+-- The throw's dice are applied (on `state`: mine, unless given): its verdict
+-- (a throw whose commit under my seat I could not check is never "ok"), and
+-- its proof for the snapshots, with the seat it was thrown for and that
+-- seat's roll number as my own state has them (engine.thrown).
+local function finish(s, throw, seeds, state)
   stopTimer(s)
   Dice.forget(s)
-  s.diceProof = { h = throw.h, c = copy(throw.commits), s = copy(seeds) }
+  local thrown, _, r, t = s:engine().thrown, nil, nil, nil
+  if thrown then _, r, t = thrown(state or s.state) end
+  s.diceProof = { h = throw.h, c = copy(throw.commits), s = copy(seeds), r = r, t = t }
   local verdict = throw.foul and "bad" or throw.alone and "alone" or throw.reload and "unseen" or "ok"
   close(s, throw.h, verdict, throw.foul, throw)
 end
@@ -150,9 +158,9 @@ ns.Ext.dice = {
     if a.k ~= "throw" then return nil end
     local throw = s.throw
     if a.op == "open" then
-      local d = seatOf(s.seats, s.host)
-      if a.h ~= s.seq + 1 or not isCommit(a.c) or not d or not wantsDice(s) then return nil end
-      s.throw = { h = a.h, d = d, commits = { [d] = a.c }, replaced = throw and not throw.done and throw or nil }
+      local d, want = seatOf(s.seats, s.host), wantsDice(s)
+      if a.h ~= s.seq + 1 or not isCommit(a.c) or not d or not want then return nil end
+      s.throw = { h = a.h, d = d, r = want.s or 0, commits = { [d] = a.c }, replaced = throw and not throw.done and throw or nil }
       return true
     elseif a.op == "protest" then
       return type(a.h) == "number" and s.seats[a.seat or 0] and WHY[a.why] and true or nil
@@ -216,7 +224,7 @@ ns.Ext.dice = {
       throw.replaced = nil
       if old and (old.sent or old.foul) then close(s, old.h, "bad", old.foul or "dodge", old) end
       if s.role == "host" then
-        if mine and mine.h == a.h then throw.seed, throw.own = mine.seed, a.c; own(s, a.h, a.c) end
+        if mine and mine.h == a.h then throw.seed, throw.own = mine.seed, a.c; own(s, throw, a.c) end
         s.diceMine = nil
       else
         stopTimer(s)
