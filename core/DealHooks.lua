@@ -165,6 +165,7 @@ ns.Ext.fair = {
       -- A new match while the last hand's seeds are still out: that hand is нередовна.
       if k == "start" and s.fair and s.fair.stage == "dealt" then Deal.close(s, "bad", "noreveal") end
       s.fair, s.fairN, s.fairEarly = nil, 0, nil
+      ns.DealKeep.clear(s)
       if k == "start" then
         s.fairLast, s.fairSeen, s.fairVoids, s.fairCry, s.fairCried, s.fairSaid = nil, nil, nil, nil, nil, nil
       end

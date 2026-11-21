@@ -25,13 +25,16 @@ local _, ns = ...
 -- although nobody left closes "bad", "nodeal" (the dealer saw the seeds).
 -- A player missing faces of its hand asks the dealer again (PRQ): at once
 -- after adopting a dealt hand, else after FAIR_ASK_GAP. A dealer without its
--- deck (a reload) or whose seat stands mid-hand: the hand is void (EV seat 0
+-- deck (it came back without its saved round, core/DealKeep.lua: a /reload
+-- alone keeps the deck and the hand goes on) or whose seat stands mid-hand:
+-- the hand is void (EV seat 0
 -- {k="void"}), nothing scores, and the deal is asked for again - from the
 -- next seat (the count of deals is kept; an engine naming the dealer moves it
 -- on itself), so a void never buys the same dealer another deck. A dealer
 -- that lost its deck while the hand ran gives the hand up even when it ended
 -- before the void came, if its seat played no card in it (Белот: passed
--- out): void, not "noreveal". Voids and
+-- out): void, not "noreveal". A void is refused once the engine's next step
+-- is its own (Белот: the score after the eighth trick). Voids and
 -- no-deals are counted per dealer name and match (s.fairVoids) and the status
 -- line names the dealer.
 -- A seat whose own check failed where the others cannot see it tells the table:
@@ -242,7 +245,10 @@ local function request(s, seat, a)
     -- the request came is given up all the same when the dealer played no
     -- card in it (lateVoid): the void then only closes the round (DealHooks
     -- `table`), the engine keeps its state.
-    if seat == fair.d and fair.stage == "dealt" and not s:gameOver()
+    -- Not while the engine's next step is its own (Белот: the eight tricks
+    -- are played, the score follows): that deal is complete.
+    local step = s:engine().system(s.state)
+    if seat == fair.d and fair.stage == "dealt" and not s:gameOver() and not (step and not step.need)
         and (not Deal.handOver(s) or lateVoid(s)) then
       s:play(0, { k = "void" })
     end
@@ -338,6 +344,7 @@ function Deal.close(s, verdict, why, round)
   if seen[verdict] then seen[verdict] = seen[verdict] + 1 end
   s.fairSeen = seen
   if fair then fair.stage = "done" end
+  ns.DealKeep.clear(s, fair)
   local client = s.client
   client.events:emit("fair", {
     tid = s.tid, game = s.game, h = h, verdict = verdict, why = why, dealer = dealer, who = s.fairLast.who,
@@ -441,6 +448,7 @@ local function tryDeal(s)
   if not engine.apply(full, 0, { k = "deal", deck = deck }) then return end
   local pub = engine.view(full, 0).deck
   fair.deck, fair.pub, fair.sent, fair.dealing = deck, pub, {}, true
+  ns.DealKeep.save(s)
   Deal.submit(s, { k = "fair", op = "deal", h = fair.h, deck = copy(pub) })
 end
 
@@ -528,6 +536,7 @@ function Deal.react(s)
   if not fair then return end
   local me = s.mySeat
   local part = me ~= nil and contains(fair.p, me)
+  if me == fair.d and not fair.seed then ns.DealKeep.restore(s) end -- the dealer after a /reload
   if fair.stage ~= "dealt" then fair.fresh = nil end -- I see this deal happen: nothing to ask for
   if fair.stage == "commit" then
     if part and not fair.seed and fair.commits[me] == nil then
@@ -554,12 +563,9 @@ function Deal.react(s)
         Deal.sync(s)
         if not fair.revealed and Deal.handOver(s) then reveal(s) end
       elseif not Deal.handOver(s) then
-        -- My deck is gone (a reload): nobody can be dealt the rest of this hand.
+        -- My deck is gone for good: nobody can be dealt the rest of this hand.
         fair.lost = true
-        if not fair.voidAsked then
-          fair.voidAsked = true
-          Deal.submit(s, { k = "fair", op = "void", h = fair.h })
-        end
+        ns.DealKeep.giveUp(s)
       elseif fair.lost and not fair.voidLate and not s:gameOver() then
         -- The hand ended before my void came (lost on the way; Белот: passed
         -- out): its seeds went with my deck, it can never be revealed. I give

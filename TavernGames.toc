@@ -37,6 +37,7 @@ core/Party.lua
 core/Lifecycle.lua
 core/Deal.lua
 core/DealHooks.lua
+core/DealKeep.lua
 core/Invites.lua
 core/Client.lua
 core/Bots.lua

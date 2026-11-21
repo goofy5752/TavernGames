@@ -32,6 +32,15 @@ describe("wow adapter: db", function()
     raises(function() db.wager = 5 end, "unknown db key")
   end)
 
+  it("keeps the dealer's saved round with the character: it survives a reload and can be dropped", function()
+    local w = Wow.new(); w:init()
+    local db, sv = w.ns.db, w.G.TavernGamesDB
+    eq(db.fairKeep, nil)
+    db.fairKeep = { tid = "t#1", h = 7 }
+    eq(sv.char[Wow.FIRST .. " - Forever"].fairKeep, { tid = "t#1", h = 7 }); eq(sv.global.fairKeep, nil)
+    db.fairKeep = nil; eq(sv.char[Wow.FIRST .. " - Forever"].fairKeep, nil)
+  end)
+
   it("values survive a reload and the saved language is applied", function()
     local w = Wow.new(); w:init()
     local db = w.ns.db

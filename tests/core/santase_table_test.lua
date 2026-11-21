@@ -198,12 +198,25 @@ describe("santase at the table: reloads and a new host", function()
     eq(count(log, "DESYNC"), 0); eq(count(log, "^a:ok$"), 3)
   end)
 
-  it("the dealer reloads mid-hand: the hand is void by name, the score stays and the other player deals it again", function()
+  it("the dealer reloads mid-hand: its saved round brings the deck back and the hand is played out, проверена", function()
+    local _, rnd, log, listen = seated(7)
+    toHand(rnd, 3, 2)
+    for _ = 1, 2 do step(rnd, a) end
+    local h, hand = a.session.fair.h, a.session.state.hand
+    b = sim:relog(B); listen(b, "b2"); sim:run(4)
+    eq({ a.session.fair.h, a.session.fair.stage, a.session.fairVoids }, { h, "dealt", nil }); ok(b.session.fair.deck ~= nil)
+    playUntil(rnd, a, function() return a.session.state.hand ~= hand or a.session:gameOver() end, "the end of the hand")
+    sim:run(3)
+    eq(lastOf(log, "a"), "a:ok"); eq(lastOf(log, "b2"), "b2:unseen"); eq(count(log, "void"), 0)
+    eq(count(log, "DESYNC"), 0); eq(count(log, "bad"), 0); eq(sim.envs[B].db.fairKeep, nil)
+  end)
+
+  it("the dealer comes back without its deck mid-hand: the hand is void by name, the score stays and the other player deals it again", function()
     local _, rnd, log, listen = seated(7)
     toHand(rnd, 3, 2)
     for _ = 1, 2 do step(rnd, a) end
     local gp, hand = ns.Util.copy(a.session.state.gp), a.session.state.hand
-    b = sim:relog(B); listen(b, "b2"); sim:run(4)
+    b = sim:crash(B); listen(b, "b2"); sim:run(4)
     eq(lastOf(log, "a"), "a:void"); eq(a.session.fairLast.dealer, B); eq(a.session.fairVoids, { [B] = 1 })
     eq({ a.session.fairN, a.session.fair.d, a.session.fair.stage }, { 4, 1, "dealt" })
     eq({ a.session.state.hand, a.session.state.gp }, { hand, gp })
@@ -228,12 +241,12 @@ describe("santase at the table: reloads and a new host", function()
     eq(lastOf(log, "b"), "b:ok"); eq(lastOf(log, "a2"), "a2:ok")
   end)
 
-  it("the host reloads while it deals: after the silence the new host voids the hand and deals it", function()
+  it("the host comes back without its deck while it deals: after the silence the new host voids the hand and deals it", function()
     local _, rnd, log, listen = seated(5)
     toHand(rnd, 2, 1)
     for _ = 1, 2 do step(rnd, a) end
     local gp = ns.Util.copy(a.session.state.gp)
-    a = sim:relog(A); listen(a, "a2")
+    a = sim:crash(A); listen(a, "a2")
     untilBHosts(); sim:run(8)
     eq(lastOf(log, "b"), "b:void"); eq(b.session.fairLast.dealer, A)
     eq({ b.session.fair.d, b.session.fair.stage, b.session.state.gp }, { 2, "dealt", gp })

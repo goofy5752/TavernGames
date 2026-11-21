@@ -15,7 +15,7 @@ local Adapter = {
 ns.Adapter = Adapter
 
 -- Which AceDB section holds each db key.
-local CHAR_KEYS = { snoozeUntil = true, busy = true, debug = true }
+local CHAR_KEYS = { snoozeUntil = true, busy = true, debug = true, fairKeep = true } -- fairKeep: core/DealKeep.lua
 local GLOBAL_KEYS = { lang = true, introDone = true, minimap = true }
 Adapter.DEFAULTS = {
   char = { snoozeUntil = 0, busy = false, debug = false },

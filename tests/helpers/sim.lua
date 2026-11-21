@@ -146,6 +146,13 @@ function Sim:relog(name)
   return self:join(name, env)
 end
 
+-- A relog after a crash, or on another computer: nothing of the saved
+-- variables that a /reload keeps of a running deal (db.fairKeep) is there.
+function Sim:crash(name)
+  self.envs[name].db.fairKeep = nil
+  return self:relog(name)
+end
+
 function Sim:offline(name) self.offlineSet[name] = true end
 function Sim:online(name) self.offlineSet[name] = nil end
 

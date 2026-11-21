@@ -332,9 +332,82 @@ describe("belot at the table", function()
     sim:run(30); eq(#ra, 1); eq({ ra[1].winners, ra[1].losers, ra[1].left, ra[1].names[2] }, { { 1, 3 }, { 2, 4 }, 2, B })
   end)
 
-  it("the dealer relogs mid-deal: void, the next seat deals, no point moved", function()
+  it("the dealer reloads mid-trick: its saved round brings the deck back, the same hand goes on and ends проверена", function()
+    local sim = table4(); local atA, atC, atW = verdicts(a), verdicts(c), verdicts(w); local h1 = a.session.fair.h
+    bid("S P P P"); autoPlay(6)                                                                  -- two cards into the second trick
+    local kept = sim.envs[D].db.fairKeep
+    eq({ kept.tid, kept.h, kept.seat, kept.me, #kept.deck }, { tid, h1, 4, D, 32 })
+    local mark = #sim.sent
+    local d2 = sim:relog(D); local atD = verdicts(d2); sim:run(3)
+    eq({ a.session.fair.h, a.session.fair.stage, d2.session.fair.h, d2.session.fair.lost }, { h1, "dealt", h1, nil })
+    eq(d2.session.fair.deck, kept.deck); eq(ns.Deal.missing(d2.session), false); eq(atA, {})
+    autoPlay(100); eq(a.session.state.turn, nil)
+    for k = mark + 1, #sim.sent do                                                               -- what was saved stays on the dealer's client
+      local m = sim.sent[k]
+      local x = type(m.msg.a) == "table" and m.msg.a or {}
+      ok(x.k ~= "void" and x.op ~= "void", "a void went out")
+      if m.from == D then eq(hexes(m.msg), {}); ok(#faces(m.msg) < 32, "the deck went out") end
+    end
+    sim:run(6)
+    eq(atA, { "ok" }); eq(atC, { "ok" }); eq(atW, { "ok" }); eq(atD, { "unseen" })               -- the dealer itself did not watch it whole
+    eq({ a.session.state.round, a.session.fairVoids }, { 2, nil }); ok(a.session.state.score[1] + a.session.state.score[2] > 0)
+    eq(sim.envs[D].db.fairKeep, nil)                                                             -- gone with the reveal
+  end)
+
+  it("a saved round is kept per table, hand, seat and player, and only while that hand runs", function()
+    local sim = table4(); local h1 = a.session.fair.h
+    local db = sim.envs[D].db
+    eq({ db.fairKeep.h, db.fairKeep.seed, db.fairKeep.seeds }, { h1, SEED, { SEED, SEED, SEED, SEED } })
+    eq(sim.envs[A].db.fairKeep, nil); eq(sim.envs[B].db.fairKeep, nil)                           -- only the dealer keeps one
+    bid("P P P P"); sim:run(1); eq(db.fairKeep, nil)                                             -- passed out and revealed
+    sim:run(8); local h2 = a.session.fair.h; eq({ a.session.fair.d, sim.envs[A].db.fairKeep.h }, { 1, h2 })
+    -- a record of another hand, another player or a changed seed is not taken: the deck is lost, the hand is void
+    sim:run(1); bid("S P P P")
+    local function back(spoil)
+      local rec = ns.Util.copy(sim.envs[A].db.fairKeep)
+      spoil(rec)
+      local trial = { fair = { h = h2, d = 1, p = { 1, 2, 3, 4 }, stage = "dealt", commits = ns.Util.copy(a.session.fair.commits) },
+        tid = tid, mySeat = 1, client = { env = { me = A, db = { fairKeep = rec } } } }
+      return ns.DealKeep.restore(trial), trial.fair.deck, trial.client.env.db.fairKeep ~= nil
+    end
+    eq({ back(function() end) }, { true, a.session.fair.deck, true })
+    for _, spoil in ipairs{ function(r) r.h = r.h + 1 end, function(r) r.me = B end, function(r) r.tid = "x" end,
+      function(r) r.seat = 2 end, function(r) r.seeds[2] = ("00"):rep(16) end, function(r) r.seed = ("00"):rep(16) end } do
+      eq({ back(spoil) }, { false, nil, false })
+    end
+  end)
+
+  it("a void asked for after the eighth trick is refused: the deal is scored", function()
+    local sim, tid = table4(); local seen = verdicts(a); local h = a.session.fair.h
+    bid("S P P P"); autoPlay(100); eq({ a.session.state.turn, a.session.state.phase }, { nil, "score" })
+    local mark = #sim.sent
+    a:receive("WHISPER", D, { v = 1, t = "ACT", tid = tid, a = { k = "fair", op = "void", h = h } }); sim:run(0)
+    eq(a.session.state.phase, "score")
+    sim:run(6)
+    for k = mark + 1, #sim.sent do
+      local x = sim.sent[k].msg.a
+      ok(not (type(x) == "table" and x.k == "void"), "a void went out")
+    end
+    eq(seen, { "ok" }); eq(a.session.fairVoids, nil); ok(a.session.state.score[1] + a.session.state.score[2] > 0)
+  end)
+
+  it("a dealer without its deck asks for the void again until it comes", function()
+    local sim = table4(); local seen = verdicts(a)
+    local restore = drop(a, "ACT", asks("void"))
+    local d2 = sim:crash(D); sim:run(1); restore()
+    eq({ d2.session.fair.voidAsked, d2.session.fair.deck }, { true, nil }); eq(seen, {})
+    bid("S P P P"); eq({ a.session.state.phase, seen }, { "play", {} })                          -- the first request was lost
+    sim:run(10); eq(seen, { "void" }); eq(a.session.fairVoids, { [D] = 1 })
+    local n = 0
+    for _, m in ipairs(sentOf("ACT")) do
+      if m.from == D and type(m.msg.a) == "table" and m.msg.a.op == "void" then n = n + 1 end
+    end
+    eq(n, 2)                                                                                     -- asked twice, not on every tick
+  end)
+
+  it("the dealer comes back without its saved round: void, the next seat deals, no point moved", function()
     local sim = table4(); local seen = verdicts(a); local h1 = a.session.fair.h
-    bid("S P P P"); autoPlay(1); local d2 = sim:relog(D); sim:run(8)
+    bid("S P P P"); autoPlay(1); local d2 = sim:crash(D); sim:run(8)
     eq(seen, { "void" }); ok(a.session.fair.h ~= h1); eq({ a.session.fair.d, a.session.fair.stage }, { 1, "dealt" })
     ok(a.session.fair.deck ~= nil); eq(d2.session.fair.deck, nil)                                  -- PB6b: the voiding dealer does not deal again
     eq({ a.session.state.phase, a.session.state.round, a.session.state.first, a.session.state.turn }, { "bid", 1, 2, 2 }); eq(a.session.state.score, { 0, 0 })
@@ -344,7 +417,7 @@ describe("belot at the table", function()
   it("the dealer relogs, its void request is lost and the deal is passed out: void, not нередовна; the next seat deals", function()
     local sim = table4(); local atA, atC, atW = verdicts(a), verdicts(c), verdicts(w); local h1 = a.session.fair.h
     local restore = drop(a, "ACT", asks("void"))
-    local d2 = sim:relog(D); sim:run(1); restore()
+    local d2 = sim:crash(D); sim:run(1); restore()
     eq({ d2.session.fair.h, d2.session.fair.voidAsked, d2.session.fair.deck }, { h1, true, nil }); eq(atA, {})
     bid("P P P P")                                                                               -- the dealer passes last
     eq(atA, { "void" }); eq(atC, { "void" }); eq(atW, { "void" }); eq(a.session.fairLast.dealer, D); eq(a.session.fairVoids, { [D] = 1 })

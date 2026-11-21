@@ -41,6 +41,12 @@ local function relog(name)
   return cl
 end
 
+-- The same after a crash: a dealer comes back without its saved round (core/DealKeep.lua).
+local function crash(name)
+  sim.envs[name].db.fairKeep = nil
+  return relog(name)
+end
+
 -- `cl` ignores every message of type t (only those for which pred(sender, msg)
 -- holds, when given) until the returned function is called.
 local function drop(cl, t, pred)
@@ -177,9 +183,9 @@ describe("deal failures", function()
     eq(#events(a), 1); eq(events(a)[1].verdict, "ok")
   end)
 
-  it("the dealer relogs mid-hand: void by name, and the next seat deals the hand again", function()
+  it("the dealer comes back without its deck mid-hand: void by name, and the next seat deals the hand again", function()
     local sim = table3(); start(); local h1 = a.session.fair.h; auto(1)
-    local b2 = relog(B); sim:run(3)
+    local b2 = crash(B); sim:run(3)
     eq({ events(a)[1].verdict, events(a)[1].dealer, events(a)[1].h }, { "void", B, h1 })
     ok(a.session.fair.h ~= h1); eq({ a.session.fair.d, a.session.fair.stage }, { 3, "dealt" })
     eq(a.session.state.hand, 1); eq(a.session.state.pts, { 0, 0, 0 }); eq(a.session.fairN, 2)
@@ -190,11 +196,11 @@ describe("deal failures", function()
 
   it("a second void by the same dealer in a match is counted and turns the line red", function()
     local sim = table2(); start(); auto(1)
-    relog(B); sim:run(3)                                                       -- hand 1 void; a deals it again
+    crash(B); sim:run(3)                                                       -- hand 1 void; a deals it again
     eq({ a.session.fair.d, a.session.fairN }, { 1, 2 })
     finish(); sim:run(2)                                                       -- b deals again
     eq({ a.session.fair.d, a.session.fair.stage }, { 2, "dealt" }); auto(1)
-    relog(B); sim:run(3)
+    crash(B); sim:run(3)
     local e = events(a)[#events(a)]; eq({ e.verdict, e.dealer }, { "void", B })
     eq(a.session.fairVoids, { [B] = 2 }); eq(a.session.fairLast.n, 2)
     eq({ ns.Deal.status(a.session) }, { "fair.voidMany", B, 2 }); eq(ns.Deal.alarm(a.session), true)
@@ -343,7 +349,7 @@ describe("deal failures", function()
   it("a dealer whose void request was lost asks again after its next snapshot", function()
     local sim = table3(); start(); local h1 = a.session.fair.h; auto(1)
     local restore = drop(a, "ACT", asks("void"))
-    local b2 = relog(B); sim:run(3)
+    local b2 = crash(B); sim:run(3)
     eq(#events(a), 0); eq({ b2.session.fair.h, b2.session.fair.voidAsked }, { h1, true })
     restore(); a.session:snapshotTo(B); sim:run(3)
     eq(#events(a), 1); eq(events(a)[1].verdict, "void")
