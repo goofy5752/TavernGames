@@ -215,6 +215,28 @@ An invited player who asks for a taken seat is seated at the lowest free seat.
 **Client event added:** `"fair"({tid, game, h, verdict, why, dealer, at})`, once per closed hand on every client at the table. Verdicts: `"ok"`, `"bad"`, `"unseen"` (I did not see the whole hand), `"void"` (annulled, dealt again). Reasons of `"bad"`, in check order: `seeds`, `commit`, `deal`, `dealt`, `play`, plus `noreveal`. Timing: `FAIR_WAIT = 20`, `FAIR_ASK_GAP = 5`. Seeds, decks and private faces live in memory only.
 
 
+#### Stage C additions
+
+**Engine, optional** (Belot is the first; an engine without them behaves as in stage B):
+
+| item | meaning |
+|---|---|
+| `E.dealer(state) -> seat` | who deals the next round, from public data only (Belot: `(first + 2) % 4 + 1`, the seat before the first bidder). Without it the stage B count formula applies. `dealerFor(s, p, n)` in `core/Deal.lua` takes it when it is one of `p`; `n` is optional and is used by `fits` (the check of a snapshot's round) |
+| `E.bot(state, seat, random) -> action or nil` | a bot's move for the seat on turn, from its view; `nil` = use `E.auto` (Belot: suit bids only, `BOT_BID = 34`, `BOT_LUCK = 6`) |
+| `E.announce(state, seat) -> {k="ann", a} or nil` | everything the seat on turn may still announce, as one action |
+| `E.nextFirst` | Belot: `prev.first % 4 + 1`: the deal keeps rotating across matches (PC1 amends PB8) |
+
+**Belot shapes inside `ACT`/`EV`** (no new message type, no new field; protocol `v=1`):
+
+| where | shape | meaning |
+|---|---|---|
+| `ACT` -> `EV` seat 1-4 | `{k="bid", b}` | `b` = `P C D H S N A X R` |
+| `ACT` -> `EV` seat 1-4 | `{k="ann", a={{t, i}, ...}}` | `t` = `s3`...`s8`, `c`, `c9`, `cJ`; `i` = deck index of the top card |
+| `ACT` -> `EV` seat 1-4 | `{k="play", i, c, b}` | `b = true`: with a belote |
+| `EV` seat 0 | `{k="score"}`, `{k="void"}` | the host after the eighth trick; a deal annulled |
+
+**Client event `"result"`** also carries `left` (the seat whose leaving ended the game, or nil) and `names` (seat -> name or `false`, as seated before the event that ended it). Belot: `winners = {w, w + 2}`, `losers = {3 - w, 5 - w}` (seats 1+3 against 2+4), `losers[k]` paired with `winners[k]`.
+
 ---
 
 ### Task 1: Tooling, test runner, TOC skeleton
