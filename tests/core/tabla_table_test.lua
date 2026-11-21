@@ -140,12 +140,12 @@ describe("tabla at the table", function()
     eq({ a.session.state.phase, a.session.state.dice, a.session.seq }, { "move", { 4, 3 }, 12 }); eq(a.session.diceLast, { h = 10, verdict = "ok", by = A })
     eq(b2.session.diceLast.verdict, "ok"); eq(b2.session.state, a.session.state)
   end)
-  it("a guest that relogs after its commit cannot open it: the host throws alone and nobody is blamed", function()
+  it("a guest that crashes after its commit cannot open it: the host throws alone and nobody is blamed", function()
     local sim, tid = table2(); mute(B, "seed"); seat(); local atA = fairs(a)
-    local b2 = sim:relog(B); local atB = fairs(b2); sim:run(3)
+    local b2 = sim:crash(B); local atB = fairs(b2); sim:run(3)
     eq({ b2.session.throw.h, b2.session.throw.reload, b2.session.throw.seed, b2.session.throw.foul }, { 3, true, nil, nil })
     sim:run(8); eq({ atA[1].verdict, atA[2].verdict, atB[1].verdict, atB[2].verdict }, { "alone", "ok", "alone", "ok" })
-    eq({ b2.session.diceUnheard, ns.Dice.alarm(b2.session), ns.Dice.alarm(a.session) }, { nil, false, false }); eq(b2.session.state, a.session.state)
+    eq({ b2.session.diceUnheard, ns.Dice.alarm(b2.session), ns.Dice.alarm(a.session) }, { 1, false, false }); eq(b2.session.state, a.session.state)   -- counted, not red
   end)
   it("the host vanishes mid-throw: the new host throws under a new number", function()
     local sim, tid = table2(); local lift = mute(B, "seed"); seat(); sim:offline(A); lift()
@@ -246,5 +246,52 @@ describe("tabla at the table", function()
     for _ = 1, 100 do if b.session.role == "host" then break end; sim:run(1) end                 -- the host is gone: B hosts
     eq({ b.session.role, #atB, b.session.diceUnheard, ns.Dice.alarm(b.session), b.session.throw.h }, { "host", 0, 1, false, 5 })
     eq({ ns.Dice.status(b.session) }, { "dice.rolling", "inkDim" }); eq(ns.Dice.tip(b.session), { { "ink", "dice.tip" }, { "red", "dice.unheard", 1 } })
+  end)
+  it("a snapshot that rewrites the dice of a throw I closed is caught, asked for or not, and I say so", function()
+    local sim, tid = table2(); seat(); local atB, atW = fairs(b), fairs(w)                    -- throws 3 and 6 closed ok, dice 4:4
+    eq({ ns.Dice.status(b.session) }, { "dice.ok", "good" })
+    local st = a.session.state; st.dice, st.left = { 6, 6 }, { 6, 6, 6, 6 }; a.session:snapshotTo(B); sim:run(1)
+    eq({ b.session.state.dice, #atB, atB[1].h, atB[1].verdict, atB[1].why }, { { 6, 6 }, 1, 6, "bad", "forged" })
+    eq({ ns.Dice.status(b.session) }, { "dice.bad", "red" }); eq(b.session.diceSeen, { ok = 1, alone = 0, bad = 1 })
+    eq(w.session.diceCry, { h = 6, seat = 2, name = B, why = "forged" }); eq({ #atW, ns.Dice.alarm(w.session), ns.Dice.alarm(a.session) }, { 0, false, false })
+    eq(ns.Dice.tip(w.session), { { "ink", "dice.tip" }, { "gold", "dice.cry", B, "forged" } })
+    st.dice, st.left = { 4, 4 }, { 4, 4, 4, 4 }; a.session:snapshotTo(B); sim:run(1)          -- no snapshot turns it back to ok
+    eq({ ns.Dice.status(b.session) }, { "dice.bad", "red" }); eq({ b.session.diceSeen.bad, b.session.diceSeen.ok, b.session.state }, { 1, 1, a.session.state })
+    sim, tid = table2(); seat(); atB = fairs(b)                                               -- the same in a snapshot I asked for
+    st = a.session.state; st.dice, st.left = { 6, 6 }, { 6, 6, 6, 6 }; b.session:requestSync(); sim:run(1)
+    eq({ #atB, atB[1].h, atB[1].verdict, atB[1].why, ns.Dice.alarm(b.session) }, { 1, 6, "bad", "forged", true })
+    sim, tid = table2(); seat(); atB = fairs(b)                                               -- a host that keeps dice of its own and moves by them
+    st = a.session.state; st.dice, st.left = { 6, 5 }, { 6, 5 }; ok(a:act(E.auto(st, 1))); sim:run(1)
+    eq({ atB[1].h, atB[1].verdict, atB[1].why }, { 6, "bad", "forged" }); eq(ns.Dice.tip(b.session)[2], { "red", "dice.tip.bad", "forged" })
+    eq({ ns.Dice.status(b.session) }, { "dice.ok", "red" })                                   -- the next throw was whole; the line stays red
+    eq(b.session.state, a.session.state)                                                      -- the table is the host's; my line says what it is
+  end)
+  it("dice of a throw whose events never reached me: unheard when I asked for the snapshot, a dodge when it is pushed on me", function()
+    local sim, tid = table2(); seat(); local atB = fairs(b); sim:offline(B); ok(a:act{ k = "move", steps = FIRST }); sim:run(11)
+    eq({ a.session.diceLast.h, a.session.diceLast.verdict, a.session.state.dice ~= nil, ns.Util.same(a.session.state.dice, b.session.state.dice) }, { 10, "alone", true, false })
+    sim:online(B); b.session:requestSync(); sim:run(1)
+    eq({ #atB, b.session.diceUnheard, ns.Dice.alarm(b.session), b.session.seq }, { 0, 1, false, a.session.seq }); eq(b.session.state, a.session.state)
+    sim, tid = table2(); seat(); atB = fairs(b); sim:offline(B); ok(a:act{ k = "move", steps = FIRST }); sim:run(11)
+    sim:online(B); a.session:snapshotTo(B); sim:run(1)
+    eq({ #atB, atB[1].h, atB[1].verdict, atB[1].why, b.session.diceUnheard }, { 1, a.session.seq, "bad", "dodge", nil })
+  end)
+  it("my seed outlives a /reload: a commit forged under my seat is still mine; after a crash such a throw is never ok", function()
+    local sim, tid = table2(); mute(B, "seed"); seat(); local db = sim.envs[B].db
+    eq(db.fairKeep, { dice = true, tid = tid, h = 3, me = B, seat = 2, c = COMMIT, seed = SEED })
+    local b2 = sim:relog(B); local atB = fairs(b2); sim:run(1)                                -- the seed is said again, the throw is whole
+    eq({ atB[1].h, atB[1].verdict, b2.session.diceUnheard, a.session.diceLast.verdict }, { 3, "ok", nil, "ok" }); eq(b2.session.state, a.session.state)
+    eq(db.fairKeep, nil)                                                                      -- gone with its throw
+    sim, tid = table2(); mute(B, "seed"); seat(); a.session.throw.commits[2] = ns.Fair.commit(ZERO)   -- the host puts a commit of its own under B's seat
+    b2 = sim:relog(B); atB = fairs(b2); sim:run(1); eq({ b2.session.throw.foul, b2.session.throw.reload, b2.session.throw.seed }, { "mine", nil, SEED })
+    a.session:play(0, { k = "throw", op = "seeds", h = 3, s = { SEED, ZERO } }); sim:run(1)
+    eq({ atB[1].h, atB[1].verdict, atB[1].why, ns.Dice.alarm(b2.session) }, { 3, "bad", "mine", true })
+    sim, tid = table2(); mute(B, "seed"); seat(); a.session.throw.commits[2] = ns.Fair.commit(ZERO)   -- the same after a crash: B cannot tell
+    b2 = sim:crash(B); atB = fairs(b2); sim:run(1); eq({ b2.session.throw.foul, b2.session.throw.reload, b2.session.throw.seed }, { nil, true, nil })
+    a.session:play(0, { k = "throw", op = "seeds", h = 3, s = { SEED, ZERO } }); sim:run(1)
+    eq({ atB[1].h, atB[1].verdict, atB[1].why, atB[2].verdict }, { 3, "unseen", nil, "ok" }); eq(b2.session.diceSeen, { ok = 1, alone = 0, bad = 0, unseen = 1 })
+    b2.session.throw = { h = 3, d = 1, done = true }; b2.session.diceLast = atB[1]; eq({ ns.Dice.status(b2.session) }, { "dice.unseen", "gold" })
+    sim, tid = table2(); mute(B, "seed"); seat(); db = sim.envs[B].db; ok(db.fairKeep ~= nil); b:stand(); sim:run(1); eq(db.fairKeep, nil)   -- gone when I leave
+    sim, tid = table2(); mute(B, "seed"); seat(); db = sim.envs[B].db; db.fairKeep.c = ns.Fair.commit(ZERO)   -- a record of another open is not taken
+    b2 = sim:relog(B); sim:run(1); eq({ b2.session.throw.reload, b2.session.throw.seed, db.fairKeep }, { true, nil, nil })
   end)
 end)

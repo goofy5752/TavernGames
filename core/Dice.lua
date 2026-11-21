@@ -10,13 +10,17 @@ local _, ns = ...
 -- Nothing is sent from the `table` hook (an event sent from inside
 -- Session:apply would overtake the one being applied). The act hook plays the
 -- host's seat-0 events itself and returns nil for every throw action.
+-- This file: the throw itself, the host's side and the dice line. The member's
+-- side (its part of a throw, its seed across a /reload, snapshots, a host
+-- change) is core/DiceMember.lua, which fills in Dice.part, Dice.notMine and
+-- Dice.forget and reaches the helpers here through Dice.int.
 local Dice = {}
 ns.Dice = Dice
 
 local C, Fair, Session = ns.Const, ns.Fair, ns.Session
 local copy, seatOf, contains = ns.Util.copy, ns.Util.seatOf, ns.Util.contains
 
-local AGAIN, REPEATS = 3, 2 -- g says its last throw action again after this long, this often
+local WHY = { forged = true } -- what a seat may complain of (op "protest")
 local function hex(x, n) return type(x) == "string" and #x == n and not x:find("[^0-9a-f]") end
 local function isCommit(c) return hex(c, 64) end
 local function isSeed(x) return hex(x, 2 * C.SEED_BYTES) end
@@ -42,53 +46,28 @@ end
 
 local function foul(throw, why) throw.foul = throw.foul or why end
 local function unheard(s) s.diceUnheard = (s.diceUnheard or 0) + 1 end
--- A commit under my seat that I did not send: of before my login, else forged.
-local function notMine(throw, relogged)
-  if relogged then throw.reload = true else foul(throw, "mine") end
-end
-
--- A throw is closed (`throw` nil: dice that no throw gave): s.diceLast, the
--- counts of the match, "fair".
+-- A throw is closed (`throw` nil: dice that no throw gave, or the last throw
+-- found bad afterwards, which is then counted once, as what it is now):
+-- s.diceLast, the counts of the match, "fair".
 local function close(s, h, verdict, why, throw)
-  local by = throw and s.seats[throw.d] or nil
+  local old = s.diceLast
+  local again = old ~= nil and old.h == h
+  local by = throw and s.seats[throw.d] or (again and old.by) or nil
   local last = { h = h, verdict = verdict, why = why, by = by }
   local seen = s.diceSeen or { ok = 0, alone = 0, bad = 0 }
-  seen[verdict], s.diceSeen, s.diceLast = seen[verdict] + 1, seen, last
+  if again then seen[old.verdict] = seen[old.verdict] - 1 end
+  seen[verdict], s.diceSeen, s.diceLast = (seen[verdict] or 0) + 1, seen, last
   if verdict == "bad" then s.diceBad = why end
   if verdict == "alone" then
     local count = s.diceAlone or {}
     count[by or ""], s.diceAlone = (count[by or ""] or 0) + 1, count
     last.silent, last.n = s.seats[throw.alone] or nil, count[by or ""]
-    -- My host threw without me although I had said my part.
-    if s.mySeat == throw.alone and (throw.asked or throw.sent) and not throw.reload then unheard(s) end
+    -- My host threw without me although I had said my part (or had, before
+    -- a crash took my seed).
+    if s.mySeat == throw.alone and (throw.asked or throw.sent or throw.reload) then unheard(s) end
   end
   local client = s.client
   client.events:emit("fair", { tid = s.tid, game = s.game, h = h, verdict = verdict, why = why, at = client.env.epoch() })
-end
-
--- g, not the host: my commit while my seat shows none, my seed once my own
--- commit stands there; said again every AGAIN seconds while the throw runs,
--- REPEATS times at most (the host ignores a second commit and a late seed).
-local function myPart(s, throw)
-  local g = 3 - throw.d
-  if s.role == "host" or s.mySeat ~= g or throw.done or throw.foul or throw.reload then return end
-  local c = throw.commits[g]
-  if c ~= nil and c ~= throw.own then return end
-  if c == nil then
-    if not throw.seed then throw.seed = newSeed(s); throw.own = Fair.commit(throw.seed) end
-    throw.asked = true
-    send(s, { k = "throw", op = "commit", h = throw.h, c = throw.own })
-  else
-    throw.sent = true
-    send(s, { k = "throw", op = "seed", h = throw.h, s = throw.seed })
-  end
-  if s.fairTimer or (throw.rep or 0) >= REPEATS then return end
-  s.fairTimer = s.client:after(AGAIN, function()
-    s.fairTimer = nil
-    if s.client.session ~= s or s.throw ~= throw then return end
-    throw.rep = (throw.rep or 0) + 1
-    myPart(s, throw)
-  end)
 end
 
 -- Host, seated, while the engine asks for dice: opens throw h = seq + 1 with
@@ -134,18 +113,10 @@ local function applySeeds(s, throw, list)
   return true
 end
 
--- Member: is SNP.fr of snapshot m a throw I take -> true, false (not well
--- formed, not opened by my host's seat, or the state asks for no dice) or
--- "old" (I did not just log in, and my host used that number before).
-local function fits(s, m, how, held)
-  local fr, last = m.fr, s.diceLast
-  if type(fr) ~= "table" or type(fr.c) ~= "table" or type(fr.h) ~= "number" or fr.h % 1 ~= 0 then return false end
-  local d = fr.d
-  if (d ~= 1 and d ~= 2) or d ~= seatOf(s.seats, s.host) or fr.h > m.q then return false end
-  if not isCommit(fr.c[d]) or (fr.c[3 - d] ~= nil and not isCommit(fr.c[3 - d])) or not wantsDice(s) then return false end
-  if how.fresh or (held and not held.done and held.h == fr.h) then return true end
-  return fr.h > math.max(held and held.h or 0, last and last.by == s.host and last.h or 0) or "old"
-end
+Dice.int = {
+  close = close, foul = foul, unheard = unheard, stopTimer = stopTimer, send = send,
+  wantsDice = wantsDice, newSeed = newSeed, isCommit = isCommit, isSeed = isSeed,
+}
 
 ns.Ext.dice = {
   -- Host: the engine wants dice. A running throw is never opened again (the
@@ -167,6 +138,8 @@ ns.Ext.dice = {
       if a.h ~= s.seq + 1 or not isCommit(a.c) or not d or not wantsDice(s) then return nil end
       s.throw = { h = a.h, d = d, commits = { [d] = a.c }, replaced = throw and not throw.done and throw or nil }
       return true
+    elseif a.op == "protest" then
+      return type(a.h) == "number" and s.seats[a.seat or 0] and WHY[a.why] and true or nil
     end
     if not throw or throw.done or a.h ~= throw.h then return nil end
     if a.op == "commit" then
@@ -182,7 +155,14 @@ ns.Ext.dice = {
   -- g's seed (checked against that commit) become my seat-0 events.
   act = function(s, seat, a)
     if a.k ~= "throw" then return a end
-    local throw = s.throw
+    local throw, cry = s.throw, s.diceCry
+    -- A complaint is passed on once per seat and throw.
+    if a.op == "protest" then
+      if not (cry and cry.h == a.h and cry.seat == seat) then
+        s:play(0, { k = "throw", op = "protest", h = a.h, seat = seat, why = a.why })
+      end
+      return nil
+    end
     if not throw or throw.done or a.h ~= throw.h or seat ~= 3 - throw.d then return nil end
     local g = seat
     if a.op == "commit" and throw.commits[g] == nil and isCommit(a.c) then
@@ -196,13 +176,21 @@ ns.Ext.dice = {
   -- Everyone, after every event.
   applied = function(s, seat, a)
     local k = seat == 0 and a.k
+    s.diceHost = s.host -- whose events I follow (see hostChanged)
     if k == "start" or k == "abort" then
       s.throw, s.diceMine = nil, nil
-      if k == "start" then s.diceLast, s.diceSeen, s.diceBad, s.diceAlone, s.diceUnheard = nil, nil, nil, nil, nil end
+      if k == "start" then
+        s.diceLast, s.diceSeen, s.diceBad, s.diceAlone, s.diceUnheard, s.diceCry = nil, nil, nil, nil, nil, nil
+      end
+      Dice.forget(s)
       return stopTimer(s)
     end
     -- Dice come only out of a throw (applySeeds, never an event of their own).
     if k == "dice" then return close(s, s.seq, "bad", "forged") end
+    if k == "throw" and a.op == "protest" then
+      s.diceCry = { h = a.h, seat = a.seat, name = s.seats[a.seat] or nil, why = a.why }
+      return
+    end
     local throw = s.throw
     if k ~= "throw" or not throw or a.h ~= throw.h then return end
     if a.op == "open" then
@@ -216,51 +204,18 @@ ns.Ext.dice = {
         s.diceMine = nil
       else
         stopTimer(s)
-        myPart(s, throw)
+        Dice.part(s, throw)
       end
     elseif a.op == "commit" and s.role ~= "host" and a.seat == s.mySeat then
-      if a.c ~= throw.own then notMine(throw, throw.fresh) end
-      myPart(s, throw)
+      if a.c ~= throw.own then Dice.notMine(throw, throw.fresh) end
+      Dice.part(s, throw)
     elseif a.op == "seeds" then
       stopTimer(s)
-      close(s, throw.h, throw.foul and "bad" or throw.alone and "alone" or "ok", throw.foul, throw)
+      Dice.forget(s)
+      -- A throw whose commit under my seat I could not check is never "ok".
+      local verdict = throw.foul and "bad" or throw.alone and "alone" or throw.reload and "unseen" or "ok"
+      close(s, throw.h, verdict, throw.foul, throw)
     end
-  end,
-
-  -- Member: the snapshot m replaced my state (how: see Member.adopt).
-  adopted = function(s, prev, m, how)
-    if s.role == "host" then return end
-    local held, fr = s.throw, m.fr
-    local good = fits(s, m, how, held)
-    if good == "old" then return end
-    local same = good and held ~= nil and not held.done and held.h == fr.h
-    -- A throw I had said my part to is gone or another one: unasked, or under
-    -- an epoch its opener (still my host) raised, a second try; else unheard.
-    if held and not held.done and not same and (held.asked or held.sent or held.foul) then
-      local why = held.foul or ((how.changed or not how.asked) and "dodge") or nil
-      if why then close(s, held.h, "bad", why, held) else unheard(s) end
-    end
-    if not good then
-      if held and not held.done then s.throw = nil; stopTimer(s) end
-      return
-    end
-    local d, g, throw = fr.d, 3 - fr.d, same and held or { h = fr.h, d = fr.d, fresh = how.fresh or nil }
-    if same and fr.c[d] ~= held.commits[d] then foul(held, "commit") end
-    s.throw, throw.sent = throw, nil -- my throw keeps my seed; what I sent is asked again
-    throw.commits = { [d] = fr.c[d], [g] = fr.c[g] }
-    if s.mySeat == g and fr.c[g] ~= nil and fr.c[g] ~= throw.own then notMine(throw, how.fresh) end
-    stopTimer(s)
-    myPart(s, throw)
-  end,
-
-  -- Everyone: the throw died with its host. A running one whose opener hosts
-  -- on (it raised its own epoch) was a second try; else, my part said, unheard.
-  hostChanged = function(s)
-    local t = s.throw
-    local why = t and not t.done and (t.foul or (s.seats[t.d] == s.host and "dodge"))
-    if why then close(s, t.h, "bad", why, t) elseif t and not t.done and (t.asked or t.sent) then unheard(s) end
-    s.throw, s.diceMine = nil, nil
-    stopTimer(s)
   end,
 
   -- Host: the throw still running as SNP.fr (public data only), else nil.
@@ -284,6 +239,7 @@ function Dice.status(s)
   if not last then return nil end
   if last.verdict == "ok" then return "dice.ok", red or "good" end
   if last.verdict == "bad" then return "dice.bad", "red" end
+  if last.verdict == "unseen" then return "dice.unseen", red or "gold" end
   if last.n >= 2 then return "dice.aloneMany", red or "gold", last.by, last.n end
   return "dice.alone", red or "gold", last.by, last.silent
 end
@@ -293,6 +249,8 @@ function Dice.tip(s)
   local out = { { "ink", "dice.tip" } }
   if s.diceBad then out[#out + 1] = { "red", "dice.tip.bad", s.diceBad } end
   if s.diceUnheard then out[#out + 1] = { "red", "dice.unheard", s.diceUnheard } end
+  local cry = s.diceCry -- another seat's claim: shown, it changes no colour of mine
+  if cry and cry.seat ~= s.mySeat then out[#out + 1] = { "gold", "dice.cry", cry.name, cry.why } end
   return out
 end
 
