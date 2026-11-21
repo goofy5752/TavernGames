@@ -1,3 +1,6 @@
+Loader.lib("Libs/LibStub/LibStub.lua")
+Loader.lib("Libs/AceSerializer-3.0/AceSerializer-3.0.lua")
+Loader.lib("Libs/LibDeflate/LibDeflate.lua")
 local Sim = require("sim")
 local ns = Sim.ns
 local E, Fair = ns.Engines.holdem, ns.Fair
@@ -790,5 +793,48 @@ describe("holdem: the book", function()
     ok(ns.Cash.close(cl[1])); finishHand(); sim:run(32)
     spentFirst(); eq(keyActs(N[3]), 2); eq(#log, 4)                                             -- seats 2 and 3 at the close, the host's own, seat 3 again
     ns.Book.spend = spend
+  end)
+end)
+
+describe("holdem: what a full table costs", function()
+  -- counts what the host whispered since `mark`, with the real wire format: whispers, bytes (packed + 40 of ChatThrottleLib), the biggest, the events W got,
+  -- the whispers by type. The bytes move by a few per message from run to run: AceSerializer writes a table's keys in `pairs` order, which LuaJIT varies.
+  local function cost(mark)
+    local wire = ns.Wire.new(LibStub("AceSerializer-3.0"), LibStub("LibDeflate"))
+    local n, bytes, biggest, events, byType = 0, 0, 0, 0, {}
+    for i = mark + 1, #sim.sent do
+      local m = sim.sent[i]
+      if m.from == N[1] and m.channel == "WHISPER" then
+        local size = #wire:pack(m.msg) + 40; n = n + 1; bytes = bytes + size; biggest = math.max(biggest, size); byType[m.msg.t] = (byType[m.msg.t] or 0) + 1
+        if m.msg.t == "EV" then ok(m.msg.left == nil or m.msg.left == math.floor(m.msg.left), "left is whole seconds") end
+        if m.msg.t == "EV" and m.target == W then events = events + 1 end
+      end
+    end
+    return n, bytes, biggest, events, byType
+  end
+  it("six players and one watcher: one hand played to the showdown stays inside the budget; a second watcher is refused", function()
+    tableN(6); local w2 = sim:add("Втори Гледач"); sim:run(1)
+    local refused = {}; w2:on("refused", function(t, why) refused[#refused + 1] = why end)
+    w2:watch(tid); sim:run(1); eq({ cl[1].session.watchers, refused }, { 1, { "full" } })
+    ok(cl[1]:startGame()); sim:run(1); local mark = #sim.sent; sim:run(2)                       -- the hand event comes 2 s after the start
+    for _ = 1, 200 do
+      local t = st().turn; if not t then if st().phase == "done" then break end; sim:run(1) else act(st().bet > st().p[t].bet and "call" or "check") end
+    end
+    eq({ st().phase, #st().last.shown, host().session.seq }, { "done", 6, 38 })                 -- 38 = the 6 events before the mark (five sits, the start) and the 32 after
+    local n, bytes, biggest, events, byType = cost(mark)
+    eq({ events, byType }, { 32, { EV = 192, PRV = 5, TCK = 6 } })                              -- 32 events to 6 members; the dealer's 5 private whispers; one TCK round falls inside the hand
+    eq(n, 203); ok(bytes <= 32500, "bytes " .. bytes)                                            -- measured 30 300-31 050 (the EVs alone about 29 000, as planned)
+    ok(biggest - 40 <= 2 * 255, "one event is more than two addon message parts: " .. biggest)
+    ok(biggest >= 400 and biggest <= 430, "the commits event: " .. biggest)                     -- six distinct commits: measured 409-413 (about 370 packed)
+    local s1 = cl[1].session; local d = s1.deadline; s1.deadline = s1.client.env.now() + 12.25; eq(s1:left(), 13); s1.deadline = d   -- the sim's clock is whole seconds: check the rounding itself
+  end)
+  it("an ordinary hand (three fold before the flop, three check it down) costs about half", function()
+    tableN(6); ok(cl[1]:startGame()); sim:run(1); local mark = #sim.sent; sim:run(2)
+    for _ = 1, 3 do act("fold") end
+    for _ = 1, 200 do
+      local t = st().turn; if not t then if st().phase == "done" then break end; sim:run(1) else act(st().bet > st().p[t].bet and "call" or "check") end
+    end
+    eq(st().phase, "done"); local n, bytes, _, _, byType = cost(mark)
+    eq(byType, { EV = 138, PRV = 5 }); eq(n, 143); ok(bytes <= 23500, "bytes " .. bytes)       -- 23 events to 6 members and the dealer's 5 private whispers; measured 22 000-22 500
   end)
 end)

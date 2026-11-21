@@ -400,6 +400,40 @@ describe("bots for any game", function()
     sim:run(6); eq(a.session.state.score, { 0, 0 }); eq(#res, 1)
   end)
 
+  it("a bot hosts Холдем and fills its table to six; I sit, play eight hands and nothing leaves the machine", function()
+    local sim, a, _, bots = setup(); local E = ns.Engines.holdem
+    local tid = bots:hostTable("holdem"); ok(tid); sim:run(3); a:sit(tid, 2); local mark = #sim.sent; sim:run(12)
+    local s = a.session; eq({ s:seatedCount(), s.status, s.mySeat, #s.seats }, { 6, "live", 2, 6 })
+    local hands, bad = {}, 0; a:on("hand", function(e) hands[#hands + 1] = e end); a:on("fair", function(e) if e.verdict == "bad" then bad = bad + 1 end end)
+    for _ = 1, 2000 do
+      if #hands >= 8 then break end
+      if s.state.turn == 2 then a:playAuto() end; sim:run(1)
+    end
+    eq(#hands, 8); eq(bad, 0); local sum = 0
+    for _, n in pairs(hands[8].chips) do sum = sum + n end
+    for _, n in pairs(hands[8].last.left) do sum = sum + n end
+    eq(sum, 6000)
+    local words = { tid }; for name in pairs(bots.isBot) do words[#words + 1] = name end
+    for i = mark + 1, #sim.sent do ok(not mentions(sim.sent[i].msg, words), "leak in " .. tostring(sim.sent[i].msg.t)) end
+    eq({ ns.Book.status(s) }, { "seal.sealed", "inkDim", 8, 0 })
+  end)
+
+  it("I host Холдем and fill my table with five bots; the close checks every hand", function()
+    local sim, a, _, bots = setup(); local E = ns.Engines.holdem
+    eq(bots:fill(), nil); local tid = a:openTable{ game = "holdem", access = "invite", turn = 30 }; ok(tid); eq(bots:fill(3), 3); sim:run(8)
+    eq(a.session:seatedCount(), 4); local mark = #sim.sent; eq(bots:fill(), 2); sim:run(14); eq({ a.session:seatedCount(), #bots.list }, { 6, 5 })
+    local book; a:on("book", function(e) book = e end); ok(a:startGame())
+    for _ = 1, 600 do
+      local st = a.session.state; if st.hand >= 4 and st.phase == "bet" then break end
+      if st.turn == 1 then a:playAuto() end; sim:run(1)
+    end
+    ok(ns.Cash.close(a))
+    for _ = 1, 200 do if book then break end; if a.session.state.turn == 1 then a:playAuto() end; sim:run(1) end
+    eq({ book.hands, book.ok, book.bad, book.open }, { 4, 4, 0, 0 })
+    local words = { tid }; for name in pairs(bots.isBot) do words[#words + 1] = name end
+    for i = mark + 1, #sim.sent do ok(not mentions(sim.sent[i].msg, words), "leak in " .. tostring(sim.sent[i].msg.t)) end
+  end)
+
   it("hostTable and inviteMe refuse a game that is not built", function()
     local _, _, _, bots = setup()
     eq(bots:hostTable("chess"), nil); eq(bots:inviteMe("chess"), nil); ok(bots:hostTable()) -- default ttt

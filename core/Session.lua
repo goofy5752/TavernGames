@@ -100,7 +100,7 @@ end
 -- Seconds left on the current turn, or nil.
 function Session:left()
   if not self.deadline then return nil end
-  return math.max(0, self.deadline - self.client.env.now())
+  return math.ceil(math.max(0, self.deadline - self.client.env.now()))
 end
 
 -- Ordered event (seat, a) on seats/state/status, host and members alike. Seat 0
@@ -309,7 +309,7 @@ function Session:check(sender, kind, seat)
   if not peer or peer.incompatible then return "version" end
   if peer.at ~= nil and peer.at ~= self.tid then return "busy" end
   if not self:allows(peer) then return "access" end
-  if kind ~= "SIT" then return self.watchers >= C.MAX_WATCHERS and "full" or nil end
+  if kind ~= "SIT" then return self.watchers >= (self:engine().watchers or C.MAX_WATCHERS) and "full" or nil end
   if type(seat) ~= "number" or self.seats[seat] ~= false then return "taken" end
   return nil
 end

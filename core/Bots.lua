@@ -34,7 +34,12 @@ local _, ns = ...
 -- its own pending invites one idle bot (Bots:idle) FILL_AFTER s after a change
 -- of its session, or after an invitation of its own was declined or ran out
 -- unanswered; each seat taken is such a change, so a table of four fills
--- one bot at a time. A table of a two-player game never fills this way.
+-- one bot at a time. A table of a two-player game never fills this way. An
+-- engine with `botFill` (Холдем) is filled also while live, up to botFill seats.
+-- Bots:fill(n) fills a table I host: of my free seats, min(n or free, free)
+-- are asked; one idle bot is invited every FILL_AFTER s while I host that table,
+-- no invitation of mine is pending and bots are left to ask (a bot is invited
+-- once my presence knows it).
 local Bots = {}
 Bots.__index = Bots
 ns.Bots = Bots
@@ -168,12 +173,14 @@ local function nextAction(bot)
 end
 
 -- Does `bot` host a table that waits for more players than have come (at least
--- one guest, fewer than minSeats, no game running, no invitation pending)?
+-- one guest, fewer than minSeats, no game running, no invitation pending; an
+-- engine with botFill: fewer than botFill, live or not)?
 local function wantsFill(bot)
   local s = bot.session
-  if not s or s.role ~= "host" or s.status == "live" then return false end
-  local n = s:seatedCount()
-  return n >= 2 and n < s:engine().minSeats and next(bot.invites.sent) == nil
+  if not s or s.role ~= "host" or next(bot.invites.sent) ~= nil then return false end
+  local n, engine = s:seatedCount(), s:engine()
+  if engine.botFill then return n >= 2 and n < math.min(engine.botFill, #s.seats) end
+  return s.status ~= "live" and n >= 2 and n < engine.minSeats
 end
 
 -- One idle bot is invited to `bot`'s table. A bot spawned just now is invited
@@ -290,6 +297,37 @@ function Bots:inviteMe(game)
     if not bot:invite(self.env.me) and bot.session and bot.session:seatedCount() == 1 then bot:stand() end
   end)
   return tid
+end
+
+-- One step of Bots:fill: the next idle bot is invited to my table, or the fill ends.
+local function fillMine(self)
+  self.fillTimer = self.client:after(FILL_AFTER, function()
+    self.fillTimer = nil
+    local want, s, client = self.wanted, self.client.session, self.client
+    if self.disabled or not want or want.left <= 0 or not s or s.role ~= "host" or s.tid ~= want.tid
+      or s:seatedCount() >= #s.seats then
+      self.wanted = nil
+      return
+    end
+    if next(client.invites.sent) == nil then
+      local bot = self:idle()
+      if not bot then self.wanted = nil; return end
+      if client.presence:get(bot.env.me) and client:invite(bot.env.me) then want.left = want.left - 1 end
+    end
+    fillMine(self)
+  end)
+end
+
+-- Fills a table I host with idle bots -> how many are asked | nil (bot mode
+-- off, or I host no table). See the header.
+function Bots:fill(n)
+  local s = self.client.session
+  if self.disabled or not s or s.role ~= "host" then return nil end
+  local free = #s.seats - s:seatedCount()
+  local asked = math.min(n or free, free)
+  self.wanted = { tid = s.tid, left = asked }
+  if not self.fillTimer then fillMine(self) end
+  return asked
 end
 
 -- My env.inGroup while bot mode is on: a bot's GUID is in my group.
