@@ -12,6 +12,9 @@ local _, ns = ...
 --   After the hand the dealer publishes every seed (EV op "reveal"); each
 --   client replays the hand on the full deck (Fair.audit) and closes the round
 --   with a verdict: "ok", "bad" (why), or "unseen" (I did not see it all).
+--   Seeds still out FAIR_WAIT after the hand ended: the hand is "bad",
+--   "noreveal" - closed by the next open, or after the last hand of a match by
+--   EV {k="fair", op="noreveal", h} (host only) or at the latest by the next start.
 -- Seeds, decks and private faces live in the session only; the round that
 -- leaves the client (SNP.fr) is public: h, d, p, the commits, the stage, n.
 --
@@ -133,13 +136,18 @@ end
 
 -- The one handler of s.fairTimer: it acts only on my own table, as its host,
 -- for the same round. A hand whose reveal never came is given up: the next
--- round opens (and its open closes this one "noreveal"). While the wait is
--- armed, `need` does not reopen a running shuffle.
+-- round opens (and its open closes this one "noreveal"); after the last hand
+-- of a match, which opens no round, EV {k="fair", op="noreveal", h} closes it.
+-- While the wait is armed, `need` does not reopen a running shuffle.
 local function fairWaitOver(s, h)
   s.fairTimer = nil
   local fair = s.fair
-  if s.client.session ~= s or s.role ~= "host" or not fair or fair.h ~= h then return end
-  if fair.stage == "dealt" and fair.wantOpen then Deal.open(s) end
+  if s.client.session ~= s or s.role ~= "host" or not fair or fair.h ~= h or fair.stage ~= "dealt" then return end
+  if fair.wantOpen then
+    Deal.open(s)
+  elseif Deal.handOver(s) then
+    s:play(0, { k = "fair", op = "noreveal", h = h })
+  end
 end
 
 -- Host: the round's wait (FAIR_WAIT) for round h.
@@ -157,11 +165,13 @@ function Deal.open(s)
   s:play(0, { k = "fair", op = "open", h = h, d = dealerOf(p, s.fairN or 0), p = p })
 end
 
--- Closes `round` (default s.fair) with a verdict "ok", "bad" (why), "unseen"
--- or "void"; emits "fair" and "session".
+-- Closes `round` (default s.fair; false = no round) with a verdict "ok",
+-- "bad" (why), "unseen" or "void"; emits "fair" and "session".
 function Deal.close(s, verdict, why, round)
-  local fair = round or s.fair
-  local h, dealer = fair and fair.h, fair and fair.dealer
+  local fair = round
+  if fair == nil then fair = s.fair end
+  local h, dealer
+  if fair then h, dealer = fair.h, fair.dealer end
   s.fairLast = { h = h, verdict = verdict, why = why, dealer = dealer }
   local seen = s.fairSeen or { ok = 0, bad = 0 }
   if seen[verdict] then seen[verdict] = seen[verdict] + 1 end
@@ -401,7 +411,8 @@ ns.Ext.fair = {
     if action.need ~= "deck" or s.role ~= "host" then return end
     local fair = s.fair
     if fair and (fair.stage == "commit" or fair.stage == "seed") and s.fairTimer then return end
-    -- The hand is over and its reveal is due: the next round waits for it.
+    -- The hand is over and its reveal is due: the next round waits for it
+    -- (the wait is normally armed already, when the hand ended).
     if fair and fair.stage == "dealt" then
       fair.wantOpen = true
       if not s.fairTimer then armWait(s, fair.h) end
@@ -429,6 +440,10 @@ ns.Ext.fair = {
       if not fair or a.h ~= fair.h or not revealFits(s, a.s) then return nil end
       fair.out = copy(a.s)
       return true
+    elseif a.op == "noreveal" then
+      local fair = s.fair
+      if not fair or a.h ~= fair.h or not Deal.handOver(s) then return nil end
+      return true
     elseif a.op == "commit" then
       local fair = s.fair
       if not fair or a.h ~= fair.h or not commitFits(fair, a.seat, a.c) then return nil end
@@ -453,6 +468,8 @@ ns.Ext.fair = {
   applied = function(s, seat, a)
     local k = seat == 0 and a.k
     if k == "start" or k == "abort" then
+      -- A new match while the last hand's seeds are still out: that hand is нередовна.
+      if k == "start" and s.fair and s.fair.stage == "dealt" then Deal.close(s, "bad", "noreveal") end
       s.fair, s.fairN, s.fairEarly = nil, 0, nil
       if k == "start" then s.fairLast, s.fairSeen = nil, nil end
       stopWait(s)
@@ -466,9 +483,10 @@ ns.Ext.fair = {
       fair.replaced = nil
       Deal.close(s, "bad", "noreveal", old)
     end
-    -- A deal without a shuffle round holding every commit.
+    -- A deal without a shuffle round holding every commit (a closed round is
+    -- not judged again: the verdict belongs to no round).
     if k == "deal" and not (fair and fair.stage == "seed") then
-      Deal.close(s, "bad", "commit")
+      Deal.close(s, "bad", "commit", fair and fair.stage ~= "done" and fair or false)
       s.fair = nil
       return
     end
@@ -477,15 +495,19 @@ ns.Ext.fair = {
     if k == "deal" then
       fair.stage = "dealt"
       s.fairN = (s.fairN or 0) + 1
-      stopWait(s) -- the shuffle's wait is over; the reveal's starts with the next ask for a deck
+      stopWait(s) -- the shuffle's wait is over; the reveal's starts when the hand ends
     end
     fair.q = s.seq
     if op == "reveal" then
       judge(s)
       if s.role == "host" and fair.wantOpen then Deal.open(s) end
       return
+    elseif op == "noreveal" then
+      return Deal.close(s, "bad", "noreveal")
     end
     Deal.react(s)
+    -- Host: the hand (or the match) is over and no reveal yet: its wait starts.
+    if s.role == "host" and not s.fairTimer and s.fair == fair and Deal.handOver(s) then armWait(s, fair.h) end
   end,
 
   -- Member: the round from the host's snapshot (rule 10b).

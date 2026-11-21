@@ -55,6 +55,34 @@ end
 
 local function events(cl) return got[cl] end
 
+-- The clock reaches t.
+local function runTo(t)
+  if t > sim.clock then sim:run(t - sim.clock) end
+end
+
+-- When the host ordered the last play.
+local function lastPlayAt()
+  local at
+  for _, m in ipairs(sim.sent) do
+    if m.msg.t == "EV" and m.from == A and type(m.msg.a) == "table" and m.msg.a.k == "play" then at = m.at end
+  end
+  return at
+end
+
+-- Plays the match to its end -> hands dealt, h of the last round. With
+-- `withhold`: the dealer of hand number `withhold` keeps its seeds to itself.
+local function playMatch(withhold)
+  for _ = 1, 80 do
+    local s = a.session
+    if s:gameOver() then return s.fairN, s.fair.h end
+    if withhold and s.fairN == withhold and s.fair.stage == "dealt" then
+      sim.clients[s.fair.dealer].session.fair.revealed = true
+    end
+    if s.state.turn then auto(1) else sim:run(1) end
+  end
+  error("the match does not end")
+end
+
 -- Every string anywhere in v that looks like a seed or a commit (32 or 64 lowercase hex).
 local function hexes(v, out)
   out = out or {}
@@ -216,13 +244,15 @@ describe("deal audit", function()
     end
   end)
 
-  it("a dealer that never reveals: the next round opens after 20 s and the hand is нередовна", function()
+
+  it("a dealer that never reveals: the next round opens 20 s after the hand and the hand is нередовна", function()
     local sim = honest(); start(); auto(5); local h = a.session.fair.h
     b.session.fair.revealed = true                                               -- the dealer keeps its seeds to itself
-    auto(1); sim:run(1); eq(a.session.fair.wantOpen, true)
+    auto(1); local t0 = lastPlayAt()
+    ok(a.session.fairTimer); sim:run(1); eq(a.session.fair.wantOpen, true)
     for _, m in ipairs(sim.sent) do ok(not isReveal(m)) end
-    sim:run(18); eq(opensTo(B), 1); eq(#events(a), 0)
-    sim:run(3); eq(opensTo(B), 2)
+    runTo(t0 + 19); eq(opensTo(B), 1); eq(#events(a), 0)
+    runTo(t0 + 21); eq(opensTo(B), 2)
     for _, cl in ipairs{ a, b } do
       eq(#events(cl), 1); eq({ events(cl)[1].verdict, events(cl)[1].why, events(cl)[1].h }, { "bad", "noreveal", h })
     end
@@ -233,25 +263,69 @@ describe("deal audit", function()
   it("a host dealing without the commits: нередовна, and no round is left", function()
     local sim, tid = honest(); d:watch(tid); sim:run(1); sim:offline(B); start()
     eq(a.session.fair.stage, "commit"); eq(d.session.fair.stage, "commit")
+    local h = a.session.fair.h
     a.session:play(0, { k = "deal" }); sim:run(1)
     for _, cl in ipairs{ a, d } do
-      eq(#events(cl), 1); eq({ events(cl)[1].verdict, events(cl)[1].why }, { "bad", "commit" })
+      eq(#events(cl), 1); eq({ events(cl)[1].verdict, events(cl)[1].why, events(cl)[1].h }, { "bad", "commit", h })
       eq(cl.session.fair, nil); eq(cl.session.fairSeen, { ok = 0, bad = 1 })
     end
   end)
 
-  it("a new match starts with no verdict", function()
+  it("a deal after a closed hand is нередовна without touching that hand's verdict", function()
+    local sim, tid = honest(); d:watch(tid); sim:run(1); sim:offline(B); start()
+    for _, cl in ipairs{ a, d } do cl.session.fair.stage = "done" end           -- as after a closed hand
+    a.session:play(0, { k = "deal" }); sim:run(1)
+    for _, cl in ipairs{ a, d } do
+      eq(#events(cl), 1); eq({ events(cl)[1].verdict, events(cl)[1].why, events(cl)[1].h }, { "bad", "commit", nil })
+      eq(cl.session.fairLast, { verdict = "bad", why = "commit" }); eq(cl.session.fair, nil)
+    end
+  end)
+
+  it("an honest last hand of the match is проверена, and a new match starts with no verdict", function()
     local sim, tid = honest(); d:watch(tid); sim:run(1); start()
-    for _ = 1, 60 do
-      if a.session:gameOver() then break end
-      if a.session.state.turn then auto(1) else sim:run(1) end
-    end
-    ok(a.session:gameOver()); sim:run(1)
+    local n, last = playMatch()
     for _, cl in ipairs{ a, b, d } do
-      ok(#events(cl) >= 2); eq(events(cl)[#events(cl)].verdict, "ok"); eq(cl.session.fairLast.verdict, "ok")
-      eq(cl.session.fairSeen, { ok = #events(cl), bad = 0 })
+      eq(#events(cl), n)                                                         -- every hand, the last one too
+      eq({ events(cl)[n].verdict, events(cl)[n].h }, { "ok", last })
+      eq(cl.session.fairLast.verdict, "ok"); eq(cl.session.fairSeen, { ok = n, bad = 0 })
     end
+    sim:run(25)
+    for _, cl in ipairs{ a, b, d } do eq(#events(cl), n) end                    -- nothing more after the wait
     ok(a:startGame()); sim:run(1)
-    for _, cl in ipairs{ a, b, d } do eq({ cl.session.fairLast, cl.session.fairSeen }, {}) end
+    for _, cl in ipairs{ a, b, d } do eq({ cl.session.fairLast, cl.session.fairSeen }, {}); eq(#events(cl), n) end
+  end)
+
+  it("a dealer that withholds the last hand of the match: нередовна after the wait, on everyone", function()
+    honest(); start(); local n = playMatch()                                     -- how many hands the match takes
+    local sim, tid = honest(); d:watch(tid); sim:run(1); start()
+    local _, last = playMatch(n)
+    eq(a.session.fairN, n); local t0 = lastPlayAt()
+    for _, m in ipairs(sim.sent) do
+      if isReveal(m) then ok(m.msg.a.h ~= last) end
+    end
+    runTo(t0 + 19)
+    for _, cl in ipairs{ a, b, d } do eq(#events(cl), n - 1); eq(cl.session.fair.stage, "dealt") end
+    runTo(t0 + 21)
+    for _, cl in ipairs{ a, b, d } do
+      eq(#events(cl), n); eq({ events(cl)[n].verdict, events(cl)[n].why, events(cl)[n].h }, { "bad", "noreveal", last })
+      eq(cl.session.fairSeen, { ok = n - 1, bad = 1 }); eq(cl.session.fairLast.why, "noreveal")
+    end
+    eq(opensTo(B), n)                                                            -- no round opened after the match
+  end)
+
+  it("„Нова игра“ before the wait is over: the withheld last hand is нередовна, then the match starts clean", function()
+    honest(); start(); local n = playMatch()
+    local sim, tid = honest(); d:watch(tid); sim:run(1); start()
+    local _, last = playMatch(n)
+    sim:run(5)
+    for _, cl in ipairs{ a, b, d } do eq(#events(cl), n - 1) end
+    ok(a:startGame()); sim:run(1)
+    for _, cl in ipairs{ a, b, d } do
+      eq(#events(cl), n); eq({ events(cl)[n].verdict, events(cl)[n].why, events(cl)[n].h }, { "bad", "noreveal", last })
+      eq({ cl.session.fairLast, cl.session.fairSeen }, {})
+      eq({ cl.session.fairN, cl.session.fair.stage }, { 1, "dealt" })
+    end
+    sim:run(25)
+    for _, cl in ipairs{ a, b, d } do eq(#events(cl), n) end
   end)
 end)
