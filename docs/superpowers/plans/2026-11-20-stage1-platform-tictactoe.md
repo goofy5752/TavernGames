@@ -237,6 +237,30 @@ An invited player who asks for a taken seat is seated at the lowest free seat.
 
 **Client event `"result"`** also carries `left` (the seat whose leaving ended the game, or nil) and `names` (seat -> name or `false`, as seated before the event that ended it). Belot: `winners = {w, w + 2}`, `losers = {3 - w, 5 - w}` (seats 1+3 against 2+4), `losers[k]` paired with `winners[k]`.
 
+
+#### Stage D additions
+
+**Engine, optional:** `E.stage(state, seat, steps) -> {pts, pin, bar, off, left, next, done} | nil` (Табла: the position after a partial move, the dice still open, every single step that may follow, and whether the steps are a whole legal move; `next` is computed even when `done`). An engine without `E.view` is an open game: whole snapshots, no forged-move check, the host's clock moves for either seat, no automatic-move retry. `E.again` without `E.nextFirst`: a new match starts again with the opening throw. Details: Addendum 6 of `docs/superpowers/notes/engine-contract.md`.
+
+**Extension `dice`** (`engine.ext = {"dice"}`): answers the engine's `{k="dice", need="dice"}` with a throw (`core/Dice.lua`, `core/DiceMember.lua`, `core/DiceCheck.lua`) and applies a seat-0 `{k="dice", d = {x, y}}` on every client itself; no message carries a dice value.
+
+**Protocol additions:** none (still `v=1`). The shapes inside `ACT`/`EV`/`SNP`:
+
+| where | shape | meaning |
+|---|---|---|
+| `EV` seat 0 | `{k="throw", op="open", h, c}` | the host opens throw `h` (= the event's `q`); `c` = the commit of its own seed |
+| `ACT` -> `EV` seat 0 | `{k="throw", op="commit", h, c}` -> `{..., seat, c}` | the other seat's commit |
+| `ACT` | `{k="throw", op="seed", h, s}` | the other seat's seed, to the host only |
+| `EV` seat 0 | `{k="throw", op="seeds", h, s = {[seat] = seed}}` | both seeds, or the opener's alone after `DICE_WAIT = 10` |
+| `ACT` -> `EV` seat 0 | `{k="throw", op="protest", h, why}` -> `{..., seat, why}` | a member found throw `h` forged; a claim only |
+| `SNP.fr` | `{h, d, c, p = {h, c, s, r, t}}` or absent | the running throw and the proof of the last closed one |
+| `ACT` -> `EV` seat 1-2 | `{k="move", steps = {{from, to}, ...}}` | a whole turn; `from = 25` the bar, `to = 0` off |
+| `EV` seat 0 | `{k="next"}` | the next game, 3 s after one ended |
+
+**Session fields (dice games):** `s.throw = {h, d, r, commits, seed, own, asked, sent, rep, done, alone, fresh, reload, foul, replaced}`; `s.diceMine`, `s.diceLast = {h, verdict, why, by, silent, n}`, `s.diceProof`, `s.diceOwn`, `s.diceHost`, `s.diceNew`; per match `s.diceSeen`, `s.diceCry`, `s.diceBad`, `s.diceAlone[name]`, `s.diceUnheard`. `client.dice[tid]` keeps them across `END` and re-adoption; `env.db.fairKeep = {dice = true, ...}` keeps the guest's seed across a `/reload`.
+
+**Client event:** `"fair"` is also emitted for every closed throw: `{tid, game, h, verdict = "ok" | "alone" | "bad" | "unseen", why, at}`.
+
 ---
 
 ### Task 1: Tooling, test runner, TOC skeleton
