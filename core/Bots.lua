@@ -32,7 +32,8 @@ local _, ns = ...
 -- Filling: a bot that hosts a table that is not "live" (open, or aborted after
 -- a stand) with at least 2 but fewer than minSeats seated and no invitation of
 -- its own pending invites one idle bot (Bots:idle) FILL_AFTER s after a change
--- of its session; each seat taken is such a change, so a table of four fills
+-- of its session, or after an invitation of its own was declined or ran out
+-- unanswered; each seat taken is such a change, so a table of four fills
 -- one bot at a time. A table of a two-player game never fills this way.
 local Bots = {}
 Bots.__index = Bots
@@ -196,13 +197,16 @@ local function behave(bot, bots)
   end)
   -- One pending step at a time; what to do is decided again when it fires.
   local step, filling
+  -- My table still waits for players: one more idle bot is invited in a moment.
+  local function armFill()
+    if filling or not wantsFill(bot) then return end
+    filling = bot:after(FILL_AFTER, function()
+      filling = nil
+      if wantsFill(bot) then fill(bots, bot) end
+    end)
+  end
   bot:on("session", function()
-    if not filling and wantsFill(bot) then
-      filling = bot:after(FILL_AFTER, function()
-        filling = nil
-        if wantsFill(bot) then fill(bots, bot) end
-      end)
-    end
+    armFill()
     if step then return end
     local act, delay = nextAction(bot)
     if not act then return end
@@ -212,12 +216,15 @@ local function behave(bot, bots)
       if now then now() end
     end)
   end)
-  -- Nobody came to my invite-only table: close it.
+  -- Nobody came to my invite-only table: close it. An invitation of a fill
+  -- that was declined or never answered changes nothing at the table (no
+  -- "session"): the fill is armed again here.
   bot:on("inviteAnswer", function(_, answer)
     local s = bot.session
     if answer ~= "yes" and s and s.role == "host" and s.access == "invite" and s:seatedCount() == 1 then
-      bot:stand()
+      return bot:stand()
     end
+    if answer ~= "yes" then armFill() end
   end)
 end
 

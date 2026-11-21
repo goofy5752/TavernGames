@@ -335,6 +335,32 @@ describe("bots for any game", function()
     for k = 1, #bots2.list do eq(next(bots2.list[k].invites.sent), nil) end
   end)
 
+  it("a bot table whose invitation was declined or never answered invites again", function()
+    local sim, a, _, bots = setup()
+    local tid = bots:hostTable("belot"); ok(tid); sim:run(3)
+    -- The first invitation of the fill is declined, the second never arrives, the rest are taken.
+    local invs = 0
+    bots.busSend = function(self, from, channel, target, msg)
+      if msg.t == "INV" then
+        invs = invs + 1
+        if invs == 2 then return end
+      end
+      return Bots.busSend(self, from, channel, target, msg)
+    end
+    local declined
+    for k = 1, #bots.list do
+      local bot = bots.list[k]
+      bot:on("invite", function(inv)
+        if not declined then declined = bot.env.me; bot:answerInvite(inv.tid, "no") end
+      end)
+    end
+    a:sit(tid, 2); sim:run(4)
+    ok(invs >= 2, "no second invitation after the first failed: " .. invs)
+    sim:run(ns.Const.INVITE_SECONDS + ns.Const.INVITE_GRACE + 6)                                -- the lost one times out
+    ok(invs >= 3, "no invitation after the timeout: " .. invs)
+    eq(a.session:seatedCount(), 4); eq(a.session.status, "live")
+  end)
+
   it("hostTable and inviteMe refuse a game that is not built", function()
     local _, _, _, bots = setup()
     eq(bots:hostTable("tabla"), nil); eq(bots:inviteMe("holdem"), nil); ok(bots:hostTable()) -- default ttt
