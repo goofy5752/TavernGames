@@ -188,6 +188,7 @@ function Adapter.createClient(name, send)
   local _, cls = UnitClass("player")
   local env = baseEnv(name, UnitGUID("player"), cls)
   env.send, env.status, env.inGroup, env.db, env.log = send, status, inGroup, ns.db, Adapter.log
+  env.loading, env.loadedAt = Adapter.loading, Adapter.loadedAt
   ns.RollChat.env(env, false)
   local client = ns.Client.new(env)
   ns.client, Adapter.env = client, env
@@ -307,7 +308,22 @@ local function addFilter(event, fn)
   end
 end
 
+-- My client shows a loading screen (timers stand still, messages wait or are
+-- lost) or it just ended: env.loading and env.loadedAt (GetTime()) of the env
+-- contract, kept here too for a client created later. core/Dice.lua blames
+-- nobody for a throw I missed that way.
+local function loadingScreen(on)
+  Adapter.loading = on and true or nil
+  if not on then Adapter.loadedAt = GetTime() end
+  local env = Adapter.env
+  if env then env.loading, env.loadedAt = Adapter.loading, Adapter.loadedAt end
+end
+
 local EVENTS = {
+  LOADING_SCREEN_ENABLED = function() loadingScreen(true) end,
+  LOADING_SCREEN_DISABLED = function() loadingScreen(false) end,
+  PLAYER_LEAVING_WORLD = function() loadingScreen(true) end,
+  PLAYER_ENTERING_WORLD = function() loadingScreen(false) end,
   PLAYER_GUILD_UPDATE = function() Adapter.lookUpName() end,
   GUILD_ROSTER_UPDATE = scanRoster,
   CHAT_MSG_SYSTEM = function(text)
@@ -332,7 +348,8 @@ function addon:OnEnable()
   offlinePattern = Adapter.pattern(ERR_FRIEND_OFFLINE_S)
   addFilter("CHAT_MSG_SYSTEM", hideNotFound)
   local frame = CreateFrame("Frame")
-  for event in pairs(EVENTS) do frame:RegisterEvent(event) end
+  -- A client that does not know an event refuses to register it: left out.
+  for event in pairs(EVENTS) do pcall(frame.RegisterEvent, frame, event) end
   frame:SetScript("OnEvent", function(_, event, ...) EVENTS[event](...) end)
   Adapter.lookUpName()
 end

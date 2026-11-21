@@ -165,6 +165,15 @@ function Sim:crash(name)
   return self:relog(name)
 end
 
+-- The client shows a loading screen (on) or it just ended: the env flags of
+-- the contract, env.loading and env.loadedAt. What becomes of the messages
+-- meanwhile is the test's business (sim:offline: lost).
+function Sim:loading(name, on)
+  local env = self.envs[name]
+  env.loading = on and true or nil
+  if not on then env.loadedAt = self.clock end
+end
+
 function Sim:offline(name) self.offlineSet[name] = true end
 function Sim:online(name) self.offlineSet[name] = nil end
 

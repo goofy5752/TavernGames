@@ -84,7 +84,7 @@ end
 
 local FIELDS = {
   "throw", "diceLast", "diceSeen", "diceBad", "diceAlone", "diceUnheard", "diceCry", "diceProof", "diceOwn",
-  "diceHost", "diceNew",
+  "diceHost", "diceNew", "diceAway", "diceHeard",
 }
 
 local function kept(s) return s.client.dice and s.client.dice[s.tid] end
@@ -105,9 +105,10 @@ ext.applied = function(s, seat, a)
   local k, t, rec = seat == 0 and a.k, s.throw, kept(s)
   local running = (k == "start" or k == "abort") and rec and rec.state ~= nil and not s:engine().over(rec.state)
   if running and t and not t.done and (t.sent or t.foul) then int.close(s, t.h, "bad", t.foul or "dodge", t) end
-  local was = running and k == "start" and { s.diceSeen, s.diceBad, s.diceAlone, s.diceUnheard }
+  local was = running and k == "start" and { s.diceSeen, s.diceBad, s.diceAlone, s.diceUnheard, s.diceAway }
   applied(s, seat, a)
-  if was then s.diceSeen, s.diceBad, s.diceAlone, s.diceUnheard = was[1], was[2], was[3], was[4] end
+  if was then s.diceSeen, s.diceBad, s.diceAlone, s.diceUnheard, s.diceAway = was[1], was[2], was[3], was[4], was[5] end
+  s.diceHeard = s.client.env.now() -- when I last heard the table (Dice.int.unheard)
   keep(s)
 end
 
@@ -133,6 +134,7 @@ ext.adopted = function(s, prev, m, how)
     if s.diceHost ~= s.host then hostChanged(s) end
   end
   adopted(s, prev, m, how)
+  s.diceHeard = s.client.env.now()
   keep(s)
 end
 

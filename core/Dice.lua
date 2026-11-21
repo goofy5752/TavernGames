@@ -10,17 +10,17 @@ local _, ns = ...
 -- Nothing is sent from the `table` hook (an event sent from inside
 -- Session:apply would overtake the one being applied). The act hook plays the
 -- host's seat-0 events itself and returns nil for every throw action.
--- This file: the throw itself, the host's side and the dice line. The member's
--- side (its part of a throw, its seed across a /reload, snapshots, a host
--- change) is core/DiceMember.lua, which fills in Dice.part, Dice.notMine and
+-- This file: the throw itself and the host's side. The member's side (its
+-- part of a throw, its seed across a /reload, snapshots, a host change) is
+-- core/DiceMember.lua, which fills in Dice.part, Dice.notMine and
 -- Dice.forget; what a snapshot is held against, and the records that outlive
 -- the session, is core/DiceCheck.lua. Both reach the helpers here through
--- Dice.int.
+-- Dice.int. The dice line of the table frame is core/DiceLine.lua.
 local Dice = {}
 ns.Dice = Dice
 
 local C, Fair, Session = ns.Const, ns.Fair, ns.Session
-local copy, seatOf, contains = ns.Util.copy, ns.Util.seatOf, ns.Util.contains
+local copy, seatOf = ns.Util.copy, ns.Util.seatOf
 
 local WHY = { forged = true } -- what a seat may complain of (op "protest")
 local CRIES = 5 -- complaints of one seat passed on in a match
@@ -49,7 +49,19 @@ local function stopTimer(s)
 end
 
 local function foul(throw, why) throw.foul = throw.foul or why end
-local function unheard(s) s.diceUnheard = (s.diceUnheard or 0) + 1 end
+-- A throw went on without my part although I had said it, or behind my back:
+-- counted against the host (s.diceUnheard), unless my own client was away:
+-- it shows a loading screen (env.loading), one ended less than DICE_WAIT ago
+-- or after the last event I heard (env.loadedAt against s.diceHeard). Then
+-- nobody is blamed (s.diceAway). The flags are my own client's; no message
+-- of a host sets them.
+local function unheard(s)
+  local env = s.client.env
+  local at, now = env.loadedAt, env.now()
+  local away = env.loading == true or (at ~= nil and (now - at < C.DICE_WAIT or at > (s.diceHeard or now)))
+  local key = away and "diceAway" or "diceUnheard"
+  s[key] = (s[key] or 0) + 1
+end
 -- c is the commit of my seed for `throw` (s.diceOwn: every one I made at this
 -- table, each good for its own throw only, with the seat it was thrown for).
 local function own(s, throw, c)
@@ -214,7 +226,7 @@ ns.Ext.dice = {
       s.throw, s.diceMine = nil, nil
       if k == "start" then
         s.diceLast, s.diceSeen, s.diceBad, s.diceAlone, s.diceUnheard, s.diceCry, s.diceProof = nil, nil, nil, nil, nil, nil, nil
-        s.diceCried = nil
+        s.diceCried, s.diceAway = nil, nil
       end
       Dice.forget(s)
       return stopTimer(s)
@@ -264,34 +276,5 @@ ns.Ext.dice = {
     return fr
   end,
 }
-
--- Is the dice line red: a bad throw in this match, or two went unheard.
-function Dice.alarm(s)
-  return (s.diceSeen ~= nil and s.diceSeen.bad > 0) or (s.diceUnheard or 0) >= 2
-end
-
--- The table frame's dice line -> locale key, colour token, arg, arg2 | nil:
--- nil for an engine without the extension "dice", and before the first throw.
-function Dice.status(s)
-  if not contains(s:engine().ext or {}, "dice") then return nil end
-  local throw, last, red = s.throw, s.diceLast, Dice.alarm(s) and "red" or nil
-  if throw and not throw.done then return "dice.rolling", red or "inkDim" end
-  if not last then return nil end
-  if last.verdict == "ok" then return "dice.ok", red or "good" end
-  if last.verdict == "bad" then return "dice.bad", "red" end
-  if last.verdict == "unseen" then return "dice.unseen", red or "gold" end
-  if last.n >= 2 then return "dice.aloneMany", red or "gold", last.by, last.n end
-  return "dice.alone", red or "gold", last.by, last.silent
-end
-
--- The dice line's tooltip -> {{colour token, locale key, arg}, ...}.
-function Dice.tip(s)
-  local out = { { "ink", "dice.tip" } }
-  if s.diceBad then out[#out + 1] = { "red", "dice.tip.bad", s.diceBad } end
-  if s.diceUnheard then out[#out + 1] = { "red", "dice.unheard", s.diceUnheard } end
-  local cry = s.diceCry -- another seat's claim: shown, it changes no colour of mine
-  if cry and cry.seat ~= s.mySeat then out[#out + 1] = { "gold", "dice.cry", cry.name, cry.why } end
-  return out
-end
 
 return Dice

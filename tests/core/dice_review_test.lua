@@ -206,3 +206,68 @@ describe("final review: seeds out of a secret pool (I4)", function()
     end
   end)
 end)
+
+describe("final review: my own loading screen (I2)", function()
+  -- The seat on move moves (the host plays for a guest that is away), which opens the next throw.
+  local function move()
+    for _ = 1, 100 do if a.session.state.phase == "move" and ns.Util.same(a.session.state, b.session.state) then break end; sim:run(1) end
+    local st = a.session.state
+    if st.turn == 1 then ok(a:act(E.auto(st, 1))) else a.session:play(2, E.auto(st, 2), true) end
+  end
+  local function tipKeys(s)
+    local out = {}
+    for _, t in ipairs(ns.Dice.tip(s)) do out[t[2]] = t[3] or true end
+    return out
+  end
+
+  it("throws the host made alone while my messages waited behind my loading screen are not held against it (fr1)", function()
+    table2(); local atB = fairs(b)
+    for _ = 1, 2 do
+      local held, recv = {}, b.receive
+      sim:loading(B, true); b.receive = function(_, ch, sender, msg) held[#held + 1] = { ch, sender, msg } end
+      move(); sim:run(12)
+      b.receive = recv; sim:loading(B, false)
+      for _, m in ipairs(held) do b:receive(m[1], m[2], m[3]) end
+      sim:run(5)
+    end
+    local s = b.session; local key, tone = ns.Dice.status(s)
+    eq({ s.diceUnheard, s.diceAway, ns.Dice.alarm(s), s.diceSeen.bad, s.diceSeen.alone }, { nil, 2, false, 0, 2 }); ok(tone ~= "red", tostring(key))
+    eq(s.state, a.session.state); for _, e in ipairs(atB) do ok(e.verdict ~= "bad") end
+    local tip = tipKeys(s); eq({ tip["dice.away"], tip["dice.unheard"] }, { 2, nil })
+  end)
+
+  it("throws whose messages my loading screen lost are not held against the host either (fr2)", function()
+    table2()
+    for _ = 1, 2 do
+      sim:loading(B, true); sim:offline(B); move(); sim:run(12)
+      sim:online(B); sim:loading(B, false); sim:run(40)
+    end
+    local s = b.session
+    eq({ s.diceUnheard, ns.Dice.alarm(s), s.diceSeen.bad }, { nil, false, 0 }); ok(s.diceAway >= 1); eq(s.state, a.session.state)
+    ok(select(2, ns.Dice.status(s)) ~= "red")
+  end)
+
+  it("a loading screen that was over before the throw excuses nothing: a host that throws without me is counted", function()
+    table2(); local s = b.session
+    sim:loading(B, true); sim:run(2); sim:loading(B, false)
+    for _ = 1, 2 do
+      local env = sim.envs[B]; local send = env.send
+      env.send = function(channel, target, msg)                        -- my commit never arrives; my client believes it sent it
+        if msg.t == "ACT" and msg.a.k == "throw" then return end
+        return send(channel, target, msg)
+      end
+      sim:run(12); move(); sim:run(12); env.send = send
+    end
+    eq({ s.diceUnheard, s.diceAway, ns.Dice.alarm(s) }, { 2, nil, true })
+    local tip = tipKeys(s); eq({ tip["dice.unheard"], tip["dice.away"] }, { 2, nil })
+  end)
+
+  it("the tooltip no longer says I was in time; both languages have the new line", function()
+    for _, lang in ipairs{ "bg", "en" } do
+      ns.Locale.set(lang)
+      local text = ns.L("dice.unheard", 2); ok(not text:find("in time") and not text:find("навреме"), text)
+      ok(ns.L("dice.away", 2):find("2", 1, true))
+    end
+    ns.Locale.set("bg")
+  end)
+end)

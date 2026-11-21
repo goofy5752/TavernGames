@@ -41,6 +41,7 @@ core/DealKeep.lua
 core/Dice.lua
 core/DiceMember.lua
 core/DiceCheck.lua
+core/DiceLine.lua
 core/Invites.lua
 core/Client.lua
 core/Bots.lua

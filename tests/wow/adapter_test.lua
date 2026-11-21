@@ -245,6 +245,35 @@ describe("wow adapter: game events", function()
     eq(#w.sent, n + 1); eq(w.sent[#w.sent].msg.t, "BYE")
   end)
 
+  it("a loading screen sets env.loading and, when it ends, env.loadedAt (the dice blame nobody for it)", function()
+    local w = guildWow(); local env = w.ns.client.env
+    eq({ env.loading, env.loadedAt }, { nil, nil })
+    w:advance(5); w:fire("LOADING_SCREEN_ENABLED"); eq({ env.loading, env.loadedAt }, { true, nil })
+    w:advance(12); w:fire("LOADING_SCREEN_DISABLED"); eq({ env.loading, env.loadedAt }, { nil, w.clock })
+    w:advance(3); w:fire("PLAYER_LEAVING_WORLD"); eq(env.loading, true)           -- the same, as every client names it
+    w:advance(4); w:fire("PLAYER_ENTERING_WORLD"); eq({ env.loading, env.loadedAt }, { nil, w.clock })
+  end)
+
+  it("a loading screen before my name is known reaches the env; a client without those events still starts", function()
+    local w = Wow.new()
+    w.inGuild, w.roster = true, rosterWith(true)
+    local create = w.G.CreateFrame
+    w.G.CreateFrame = function(...)
+      local f = create(...)
+      local register = f.RegisterEvent
+      f.RegisterEvent = function(self, e)
+        if e:find("^LOADING_SCREEN") then error("Attempt to register unknown event \"" .. e .. "\"") end
+        return register(self, e)
+      end
+      return f
+    end
+    w:boot(); w:advance(2); w:fire("PLAYER_LEAVING_WORLD"); w:advance(7); w:fire("PLAYER_ENTERING_WORLD")
+    local at = w.clock
+    w:fire("GUILD_ROSTER_UPDATE"); local env = w.ns.client.env
+    eq({ env.loading, env.loadedAt }, { nil, at })
+    w:fire("LOADING_SCREEN_ENABLED"); eq(env.loading, nil)                         -- not registered on this client
+  end)
+
   it("classColor uses the class table and falls back to ink", function()
     local w = guildWow()
     eq({ w.ns.classColor("MAGE") }, { 0.25, 0.78, 0.92 })
