@@ -252,12 +252,14 @@ An invited player who asks for a taken seat is seated at the lowest free seat.
 | `ACT` -> `EV` seat 0 | `{k="throw", op="commit", h, c}` -> `{..., seat, c}` | the other seat's commit |
 | `ACT` | `{k="throw", op="seed", h, s}` | the other seat's seed, to the host only |
 | `EV` seat 0 | `{k="throw", op="seeds", h, s = {[seat] = seed}}` | both seeds, or the opener's alone after `DICE_WAIT = 10` |
-| `ACT` -> `EV` seat 0 | `{k="throw", op="protest", h, why}` -> `{..., seat, why}` | a member found throw `h` forged; a claim only |
+| `ACT` -> `EV` seat 0 | `{k="throw", op="protest", h, why}` -> `{..., seat, why}` | a member found throw `h` forged; a claim only, passed on once per seat and throw, never restarting the turn clock |
 | `SNP.fr` | `{h, d, c, p = {h, c, s, r, t}}` or absent | the running throw and the proof of the last closed one |
 | `ACT` -> `EV` seat 1-2 | `{k="move", steps = {{from, to}, ...}}` | a whole turn; `from = 25` the bar, `to = 0` off |
 | `EV` seat 0 | `{k="next"}` | the next game, 3 s after one ended |
 
-**Session fields (dice games):** `s.throw = {h, d, r, commits, seed, own, asked, sent, rep, done, alone, fresh, reload, foul, replaced}`; `s.diceMine`, `s.diceLast = {h, verdict, why, by, silent, n}`, `s.diceProof`, `s.diceOwn`, `s.diceHost`, `s.diceNew`; per match `s.diceSeen`, `s.diceCry`, `s.diceBad`, `s.diceAlone[name]`, `s.diceUnheard`. `client.dice[tid]` keeps them across `END` and re-adoption; `env.db.fairKeep = {dice = true, ...}` keeps the guest's seed across a `/reload`.
+**Session fields (dice games):** `s.throw = {h, d, r, commits, seed, own, asked, sent, rep, done, alone, fresh, reload, late, foul, replaced}`; `s.diceMine`, `s.diceLast = {h, verdict, why, by, silent, n}`, `s.diceProof`, `s.diceOwn`, `s.diceHost`, `s.diceNew`; `s.diceHeard`; per match `s.diceSeen`, `s.diceCry`, `s.diceBad`, `s.diceAlone[name]`, `s.diceUnheard`, `s.diceAway`, `s.diceCried` (host). `client.dice[tid]` keeps them across `END` and re-adoption (dropped `DICE_KEEP = 600` s after the table is gone); `env.db.fairKeep = {dice = true, ...}` keeps the guest's seed across a `/reload`.
+
+**Env additions (final review of stage D, all optional for an env):** `env.loading` (true while the client shows a loading screen), `env.loadedAt` (`env.now()` when the last one ended), `env.entropy() -> string` (cheap entropy for the seed pool of `core/Fair.lua`), `env.db.lastAt` (the table I am at, kept per character; `core/Presence.lua`). `Fair.seed(env, purpose)` replaces `Fair.seed(random)`. New extension hook `still(s, seat, a) -> true` (host: the event leaves the running turn's clock alone).
 
 **Client event:** `"fair"` is also emitted for every closed throw: `{tid, game, h, verdict = "ok" | "alone" | "bad" | "unseen", why, at}`.
 
