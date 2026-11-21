@@ -2,7 +2,9 @@ local _, ns = ...
 
 -- The game lifecycle of a table session (core/Session.lua), installed on the
 -- Session metatable: the engine's extensions (ns.Ext, see Session:hook), a new
--- game from the occupied seats, the "result" event, and the entry points
+-- game from the occupied seats, the "result" event (with `left`, the seat whose
+-- leaving ended the game, and `names`, the table as it sat before the event
+-- that ended it), and the entry points
 -- startGame (games with engine.start == "host", which Session:startIfFull never
 -- starts, and the next match of an engine with `again` once one is over; its
 -- checks are Session.startable / Session:canStart and Session:gameOver, shared
@@ -113,16 +115,22 @@ function Session:armAuto()
   end)
 end
 
--- The engine's result turned from nil to a value: event "result" (once).
+-- The engine's result turned from nil to a value: event "result" (once), with
+-- left = the seat whose leaving ended the game (the engine's r.left, else nil)
+-- and names = seat -> name or false as the table sat before the event that
+-- ended it. While there is no result, s.seatedBefore keeps that copy of the
+-- seats (Member.adopt sets it too, for a member whose first event ends the game).
 function Session:noteResult()
   local engine = self:engine()
   local r = self.state and engine.result and engine.result(self.state)
   if r and not self.resultSeen then
     self.client.events:emit("result", {
       tid = self.tid, game = self.game, opt = copy(self.opt), seats = copy(self.seats),
-      winners = copy(r.winners), losers = copy(r.losers), at = self.client.env.epoch(),
+      winners = copy(r.winners), losers = copy(r.losers), left = r.left,
+      names = copy(self.seatedBefore or self.seats), at = self.client.env.epoch(),
     })
   end
+  if not r then self.seatedBefore = copy(self.seats) end
   self.resultSeen = r and true or false
 end
 

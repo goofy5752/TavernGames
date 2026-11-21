@@ -63,6 +63,8 @@ function Member.adopt(client, sender, m)
   s.state = type(m.st) == "table" and engine.restore(m.st) or nil
   -- A result already in the snapshot was announced before: noted, not emitted.
   s.resultSeen = s.state ~= nil and engine.result ~= nil and engine.result(s.state) ~= nil
+  -- No result yet: the table as it sits now is the one a "result" names (Session:noteResult).
+  if not s.resultSeen then s.seatedBefore = copy(s.seats) end
   s.status = t.st == "live" and "live" or (s.state and "aborted" or "open")
   s.deadline = type(m.left) == "number" and client.env.now() + m.left or nil
   s.stale, s.sitAsked, s.asked = nil, nil, nil

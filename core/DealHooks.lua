@@ -94,10 +94,14 @@ ns.Ext.fair = {
     Deal.open(s)
   end,
 
-  -- Everyone: open, commit and reveal change only s.fair; anything else of k
-  -- "fair" is refused. A round an open replaces while still "dealt" is closed
-  -- by `applied`, not here.
+  -- Everyone: open, commit and reveal change only s.fair, and so does a void
+  -- of a finished hand; anything else of k "fair" is refused. A round an
+  -- open replaces while still "dealt" is closed by `applied`, not here.
   table = function(s, a)
+    -- A void of a hand that is already over (its dealer lost the deck before
+    -- the end, Deal.react): the engine has nothing left to annul; `applied`
+    -- closes the round.
+    if a.k == "void" then return Deal.handOver(s) or nil end
     if a.k ~= "fair" then return nil end
     if a.op == "open" then
       -- Its number is its own place in the order of events (h = seq + 1).
@@ -283,7 +287,7 @@ ns.Ext.fair = {
       if m.q ~= fair.q then fair.base, fair.log = nil, nil end
       -- A reveal or void I asked for may have gone to a host that is gone:
       -- asked again (the host refuses a second one).
-      fair.voidAsked = nil
+      fair.voidAsked, fair.voidLate = nil, nil
       if fr.st == "dealt" then fair.revealed = nil end
     else
       fair = {

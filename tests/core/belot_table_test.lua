@@ -4,7 +4,39 @@ local E = ns.Engines.belot
 
 local A, B, C, D, W = "Иван Петров", "Мария Стоянова", "Kiro Barley", "Пешо Тодоров", "Гледач Гледачев"
 local SEED = ("ff"):rep(16)
+local REAL = ns.Ext.fair
 local sim, tid, a, b, c, d, w
+
+-- Four hands of eight faces each (the first five are dealt before the auction) -> the deck
+-- that deals them.
+local function deckOf(h1, h2, h3, h4)
+  local hands, deck = {}, {}
+  for seat, str in ipairs({ h1, h2, h3, h4 }) do
+    hands[seat] = {}
+    for face in str:gmatch("%S+") do hands[seat][#hands[seat] + 1] = face end
+    assert(#hands[seat] == 8, "a hand has 8 cards")
+  end
+  for j = 1, 20 do deck[j] = hands[(j - 1) % 4 + 1][math.floor((j - 1) / 4) + 1] end
+  for j = 21, 32 do deck[j] = hands[(j - 1) % 4 + 1][6 + math.floor((j - 21) / 4)] end
+  local seen = {}
+  for _, face in ipairs(deck) do
+    assert(not seen[face], "duplicate " .. face)
+    seen[face] = true
+  end
+  return deck
+end
+
+local DECK1 = deckOf(
+  "7C 8C 9C TC JC QC KC AC",
+  "7D 8D 9D TD JD QD KD AD",
+  "7H 8H 9H TH JH QH KH AH",
+  "7S 8S 9S TS JS QS KS AS")
+
+local DECK_A = deckOf(
+  "AH KH 7H 8C JS 9S 7D 8D",
+  "TH QH 9H 7C QS KS AD TD",
+  "JH 8H 9C TC 7S 8S JD QD",
+  "AC KC QC JC AS TS KD 9D")
 
 -- a hosts Белот, w watches, b, c and d sit at seats 2, 3, 4: the match starts
 -- and the first deal is dealt. Every client yields SEED.
@@ -88,6 +120,56 @@ local function hexes(v, out)
   end
   return out
 end
+
+-- The "result" payloads `cl` emits from now on.
+local function results(cl)
+  local list = {}
+  cl:on("result", function(r) list[#list + 1] = r end)
+  return list
+end
+
+-- No fair deal: nothing deals by itself (the test puts ns.Ext.fair = REAL back at its end).
+local function rigged() ns.Ext.fair = {} end
+
+-- The host deals `deck` whole (a test shortcut: every client knows every face).
+local function dealAll(deck)
+  a.session:play(0, { k = "deal", deck = deck }); sim:run(1)
+end
+
+-- The play of `face` (or of the first card of the hand) by the client on turn, from its own state.
+local function playOne(face)
+  local seat = a.session.state.turn
+  local st = at(seat).session.state
+  local i = st.hands[seat][1]
+  if face then
+    for k = 1, 32 do if st.deck[k] == face then i = k end end
+  end
+  ok(at(seat):act{ k = "play", i = i, c = st.deck[i] }, "play " .. tostring(st.deck[i]))
+  sim:run(1)
+end
+
+-- n times: the client on turn plays the first card of its hand.
+local function playFirst(n)
+  for _ = 1, n do playOne() end
+end
+
+-- Each face of `str` played by the client on turn, one second apart.
+local function playFaces(str)
+  for face in str:gmatch("%S+") do playOne(face) end
+end
+
+-- `cl` ignores every message of type t (only those for which pred(sender, msg)
+-- holds, when given) until the returned function is called.
+local function drop(cl, t, pred)
+  cl.receive = function(self, channel, sender, msg)
+    if msg.t == t and (not pred or pred(sender, msg)) then return end
+    return ns.Client.receive(self, channel, sender, msg)
+  end
+  return function() cl.receive = nil end
+end
+
+-- An ACT asking for the fair op `op` (for drop).
+local function asks(op) return function(_, msg) return type(msg.a) == "table" and msg.a.op == op end end
 
 local function set(list)
   local out = {}
@@ -230,5 +312,82 @@ describe("belot at the table", function()
     eq({ a.session.state.phase, a.session.state.turn, a.session.fair.d, a.session.fair.stage }, { "bid", 2, 1, "dealt" })
     eq({ d2.session.fair.h, d2.session.fair.stage, known(d2) }, { a.session.fair.h, "dealt", 5 })
     eq(atA, { "ok" }); eq(desync, 0); eq(a.session.fairVoids, nil)
+  end)
+
+  it("a player stands mid-deal: the match ends, his team loses, the result names the leaver", function()
+    local sim, tid = table4(); local ra, rw, seen = results(a), results(w), verdicts(a)
+    bid("S P P P"); autoPlay(2); c:stand(); sim:run(2)
+    eq(#ra, 1); local r = ra[1]; eq({ r.game, r.winners, r.losers, r.left }, { "belot", { 2, 4 }, { 1, 3 }, 3 })
+    eq(r.names, { A, B, C, D }); eq(r.seats[3], false); eq(#rw, 1); eq(rw[1].winners, { 2, 4 })
+    eq({ a.session.state.phase, a.session.state.winner, a.session.status }, { "match", 2, "aborted" })
+    eq({ ns.Session.startable(a) }, { nil, "short" }); eq(a.session.fair, nil); eq(seen, {})
+    c:sit(tid, 3); sim:run(3)
+    eq({ a.session.status, a.session.state.phase, a.session.state.score, a.session.fair.stage }, { "live", "bid", { 0, 0 }, "dealt" })
+  end)
+
+  it("a player offline for three minutes is stood up and his team loses", function()
+    local sim = table4(); local ra = results(a)
+    sim:offline(B); ok(a:act{ k = "bid", b = "P" }); sim:run(170)
+    eq({ a.session.state.phase, a.session.state.turn, #a.session.state.bids, #ra }, { "bid", 2, 1, 0 })    -- nobody passed for him
+    sim:run(30); eq(#ra, 1); eq({ ra[1].winners, ra[1].losers, ra[1].left, ra[1].names[2] }, { { 1, 3 }, { 2, 4 }, 2, B })
+  end)
+
+  it("the dealer relogs mid-deal: void, the next seat deals, no point moved", function()
+    local sim = table4(); local seen = verdicts(a); local h1 = a.session.fair.h
+    bid("S P P P"); autoPlay(1); local d2 = sim:relog(D); sim:run(8)
+    eq(seen, { "void" }); ok(a.session.fair.h ~= h1); eq({ a.session.fair.d, a.session.fair.stage }, { 1, "dealt" })
+    ok(a.session.fair.deck ~= nil); eq(d2.session.fair.deck, nil)                                  -- PB6b: the voiding dealer does not deal again
+    eq({ a.session.state.phase, a.session.state.round, a.session.state.first, a.session.state.turn }, { "bid", 1, 2, 2 }); eq(a.session.state.score, { 0, 0 })
+  end)
+
+  -- Carried from C Task 3: the dealer gives up a hand that ended before its void came.
+  it("the dealer relogs, its void request is lost and the deal is passed out: void, not нередовна; the next seat deals", function()
+    local sim = table4(); local atA, atC, atW = verdicts(a), verdicts(c), verdicts(w); local h1 = a.session.fair.h
+    local restore = drop(a, "ACT", asks("void"))
+    local d2 = sim:relog(D); sim:run(1); restore()
+    eq({ d2.session.fair.h, d2.session.fair.voidAsked, d2.session.fair.deck }, { h1, true, nil }); eq(atA, {})
+    bid("P P P P")                                                                               -- the dealer passes last
+    eq(atA, { "void" }); eq(atC, { "void" }); eq(atW, { "void" }); eq(a.session.fairLast.dealer, D)
+    sim:run(25)
+    eq(atA, { "void" }); eq(atC, { "void" }); eq({ a.session.fair.d, a.session.fair.stage }, { 1, "dealt" }); ok(a.session.fair.deck ~= nil)
+    eq({ a.session.state.phase, a.session.state.round, a.session.state.first, a.session.state.turn }, { "bid", 2, 2, 2 }); eq(a.session.state.score, { 0, 0 })
+    for _, cl in ipairs{ b, c, d2, w } do eq(cl.session.fair.h, a.session.fair.h) end
+  end)
+
+  it("a member that came by snapshot still names the leaver", function()
+    local sim, tid = table4(); local x = sim:add("Нов Гледач"); sim:run(1)
+    bid("S P P P"); autoPlay(2); x:watch(tid); sim:run(3)
+    eq(x.session.seatedBefore, { A, B, C, D }); local rx = results(x)
+    c:stand(); sim:run(2)
+    eq(#rx, 1); eq({ rx[1].left, rx[1].names }, { 3, { A, B, C, D } })
+  end)
+
+  it("a player who relogs after an announce still scores the deal", function()
+    rigged(); local sim = table4(); dealAll(DECK_A); bid("S P P P")
+    playFaces("AH 9H 8H"); ok(d:act{ k = "ann", a = { { t = "s4", i = 4 } } }); sim:run(1)
+    playFaces("TS AC 8C 7C 9C KC 9S"); autoPlay(6)
+    local c2 = sim:relog(C); local desync = 0
+    c2:on("desync", function() desync = desync + 1 end); sim:run(3)
+    eq(c2.session.state.deck[4], "AC")
+    autoPlay(100); eq(a.session.state.turn, nil); sim:run(4)
+    eq(desync, 0); eq(a.session.state.phase, "deal")
+    eq(c2.session.state.score, a.session.state.score)
+    eq(a.session.state.res.ann[1], { s = 4, t = "s4", i = 4, v = 50, on = true })
+    ns.Ext.fair = REAL
+  end)
+
+  it("вътре and контра score the same on every client", function()
+    rigged(); local sim = table4()
+    dealAll(DECK1); bid("P C P P P"); playFirst(32); sim:run(3)                       -- seat 2 called clubs; seat 1 holds every club
+    for _, cl in ipairs{ a, b, c, d, w } do
+      local st = cl.session.state
+      eq({ st.res.contract, st.res.raw, st.res.pts, st.res.valat }, { { seat = 2, b = "C", x = 1 }, { 252, 0 }, { 25, 0 }, true }); eq(st.score, { 25, 0 })
+    end
+    dealAll(DECK1); bid("D X P P P"); playFirst(32); sim:run(3)                       -- seat 2 calls its diamonds, seat 3 doubles
+    for _, cl in ipairs{ a, b, c, d, w } do
+      local st = cl.session.state
+      eq({ st.res.contract, st.res.raw, st.res.pts }, { { seat = 2, b = "D", x = 2 }, { 0, 252 }, { 0, 50 } }); eq(st.score, { 25, 50 }); eq(E.over(st), false)
+    end
+    ns.Ext.fair = REAL
   end)
 end)
