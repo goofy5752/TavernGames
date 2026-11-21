@@ -45,6 +45,11 @@
 --     except that when the best sequence is matched by an equal one of the other team no
 --     sequence scores at all. Order: more points, then longer (s8 > s7 > s6 > s5), then the
 --     top card (trump order for fours, 7..A for sequences; suits do not matter).
+--     Checked again when the deal is scored, when every card has been played face up and
+--     every client can check what it had to take on trust: an announce that the seat's own
+--     eight cards do not offer (rule 9), or that uses a card of another announce of the seat,
+--     and a belote without the other card among the seat's eight, scores nothing, takes no
+--     part in the comparison (it cancels nothing) and is marked `bad`; E.foul names the seat.
 -- 11. Белот 20 (flag b on the play): playing the K or Q while holding the other one of the
 --     same suit; suit contract: the trump suit only; A: when leading, or when the suit is
 --     the led one; never in N. Always scores.
@@ -90,7 +95,7 @@
 -- one; E.nextFirst keeps the deal going round (the previous loser does not lead).
 -- state.res is the last deal's result: raw (team totals), pts (game points), hang, valat,
 -- contract (nil when passed out), ann (every announce with its points v and whether it
--- scored, on). state.score, state.hang, state.winner (team) and state.left (the seat that
+-- scored, on; bad = true, v = 0 for one its seat's cards did not back). state.score, state.hang, state.winner (team) and state.left (the seat that
 -- left) describe the match.
 
 local _, ns = ...
@@ -355,8 +360,10 @@ local function cardValue(b, face)
 end
 
 -- Whether playing `face` may declare a belote. `hand` (faces, the played card included) may
--- be nil on a view: then holding the other card is not checked.
-local function beloteAllowed(b, hand, trick, face)
+-- be nil on a view: then the other card is only known not to be held when the view shows it
+-- (`elsewhere`: the faces the view knows; none of them is in that hand). The deal's score
+-- checks the rest (unbacked).
+local function beloteAllowed(b, hand, trick, face, elsewhere)
   local r, suit = rankOf(face), suitOf(face)
   if r ~= RANK.Q and r ~= RANK.K then return false end
   if b == "N" then return false end
@@ -365,8 +372,13 @@ local function beloteAllowed(b, hand, trick, face)
   elseif suit ~= b then
     return false
   end
-  if not hand then return true end
   local other = (r == RANK.Q and "K" or "Q") .. suit
+  if not hand then
+    for _, x in pairs(elsewhere or {}) do
+      if x == other then return false end
+    end
+    return true
+  end
   for _, x in ipairs(hand) do
     if x == other then return true end
   end
@@ -404,7 +416,7 @@ local function applyPlay(s, seat, a)
     end
     if not allowed then return nil, "rule" end
   end
-  if a.b and not beloteAllowed(b, hand, trick, face) then return nil, "belot" end
+  if a.b and not beloteAllowed(b, hand, trick, face, s.deck) then return nil, "belot" end
 
   s.deck[i] = face
   table.remove(cards, pos)
@@ -564,13 +576,62 @@ local function compareAnnounces(s, x, y)
   return rx - ry
 end
 
--- The announces with their points and whether they score (rule 10); nil when the card of
--- one is unknown.
+-- The eight deck indices dealt to a seat (rule 2).
+local function dealtTo(seat)
+  local out = {}
+  for j = seat, 32, 4 do out[#out + 1] = j end
+  return out
+end
+
+-- The announces of the deal that their seat's own cards do not back: position in s.ann ->
+-- true; nil when a face of such a seat is unknown. Asked when the deal is scored: every card
+-- has been played, so a view can check what it took on trust when it was made (applyAnn, the
+-- belote of applyPlay). An announce must be one the seat's eight cards offer, with no card in
+-- two announces of the seat; a belote needs the other of K and Q among the seat's eight. The
+-- full state never holds one that fails.
+local function unbacked(s)
+  local bad, offered, used = {}, {}, {}
+  for n, x in ipairs(s.ann) do
+    local seat, good = x.s, false
+    if not offered[seat] then
+      offered[seat] = availableAnnounces({ deck = s.deck, hands = { [seat] = dealtTo(seat) } }, seat)
+      if not offered[seat] then return nil end
+      used[seat] = {}
+    end
+    if x.t == "b" then
+      local face = s.deck[x.i]
+      local r = rankOf(face)
+      local other = (r == RANK.Q and "K" or "Q") .. suitOf(face)
+      for _, j in ipairs(dealtTo(seat)) do
+        if s.deck[j] == other and (r == RANK.Q or r == RANK.K) then good = true end
+      end
+    else
+      for _, y in ipairs(offered[seat]) do
+        if y.t == x.t and y.i == x.i then good = true break end
+      end
+      if good then
+        local cards = announceCards(x.t, s.deck[x.i])
+        for _, face in ipairs(cards) do
+          if used[seat][face] then good = false end
+        end
+        if good then
+          for _, face in ipairs(cards) do used[seat][face] = true end
+        end
+      end
+    end
+    if not good then bad[n] = true end
+  end
+  return bad
+end
+
+-- The announces with their points and whether they score (rule 10); nil when a card needed
+-- to settle them is unknown.
 local function settleAnnounces(s)
+  local bad = unbacked(s)
+  if not bad then return nil end
   local bestFour, bestSeq
-  for _, x in ipairs(s.ann) do
-    if x.t ~= "b" then
-      if not s.deck[x.i] then return nil end
+  for n, x in ipairs(s.ann) do
+    if x.t ~= "b" and not bad[n] then
       if x.t:sub(1, 1) == "c" then
         if compareAnnounces(s, x, bestFour) > 0 then bestFour = x end
       elseif compareAnnounces(s, x, bestSeq) > 0 then
@@ -579,22 +640,24 @@ local function settleAnnounces(s)
     end
   end
   local tied = false
-  for _, x in ipairs(s.ann) do
-    if x.t:sub(1, 1) == "s" and teamOf(x.s) ~= teamOf(bestSeq.s) and compareAnnounces(s, x, bestSeq) == 0 then
+  for n, x in ipairs(s.ann) do
+    if not bad[n] and x.t:sub(1, 1) == "s" and teamOf(x.s) ~= teamOf(bestSeq.s) and compareAnnounces(s, x, bestSeq) == 0 then
       tied = true
     end
   end
   local out = {}
   for n, x in ipairs(s.ann) do
     local on
-    if x.t == "b" then
+    if bad[n] then
+      on = false
+    elseif x.t == "b" then
       on = true
     elseif x.t:sub(1, 1) == "c" then
       on = teamOf(x.s) == teamOf(bestFour.s)
     else
       on = not tied and teamOf(x.s) == teamOf(bestSeq.s)
     end
-    out[n] = { s = x.s, t = x.t, i = x.i, v = ANN_VALUE[x.t], on = on }
+    out[n] = { s = x.s, t = x.t, i = x.i, v = bad[n] and 0 or ANN_VALUE[x.t], on = on, bad = bad[n] }
   end
   return out
 end
@@ -860,6 +923,18 @@ function E.system(s)
 end
 
 function E.over(s) return s.phase == "match" end
+
+-- The seat whose announce or belote in the deal just scored its own cards did not back
+-- (res.ann, `bad`), or nil: between that deal's score and the next deal. At the table the
+-- fair deal closes such a hand "bad", "announce" on every client and names the player.
+function E.foul(s)
+  local res = s.res
+  if not res or res.round ~= s.round - (s.phase == "deal" and 1 or s.phase == "match" and 0 or -1) then return nil end
+  for _, x in ipairs(res.ann) do
+    if x.bad then return x.s end
+  end
+  return nil
+end
 
 -- The dealer of the next round: the seat before the one that bids first.
 function E.dealer(s) return (s.first + 2) % 4 + 1 end

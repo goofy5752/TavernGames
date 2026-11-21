@@ -41,7 +41,9 @@ local _, ns = ...
 -- Fouls (fair.foul, see Deal.close): "mine" (my commit or seed was replaced),
 -- "commit" (a commit changed), "round" (a snapshot changed the round or
 -- skipped events unasked), "play" (an event my engine refused), "forged" (a
--- move or a void in my name that I did not make).
+-- move or a void in my name that I did not make), "announce" (the engine
+-- named a seat whose announce its cards did not back, E.foul: every client
+-- sees it when the hand is scored; fair.who and s.fairLast.who = that player).
 -- A member whose snapshot shows that a hand it held open was closed or
 -- replaced closes it "unseen" (it missed the end). A snapshot of the same
 -- dealt hand makes a reveal or void I asked for due again (it may have gone to
@@ -325,7 +327,7 @@ function Deal.close(s, verdict, why, round)
   local h, dealer
   if fair then h, dealer = fair.h, fair.dealer end
   if fair and fair.foul then verdict, why = "bad", fair.foul end
-  s.fairLast = { h = h, verdict = verdict, why = why, dealer = dealer }
+  s.fairLast = { h = h, verdict = verdict, why = why, dealer = dealer, who = why == "announce" and fair and fair.who or nil }
   -- A hand the dealer gave up, or did not deal: counted against its name.
   if dealer and (verdict == "void" or why == "nodeal") then
     local voids = s.fairVoids or {}
@@ -338,7 +340,8 @@ function Deal.close(s, verdict, why, round)
   if fair then fair.stage = "done" end
   local client = s.client
   client.events:emit("fair", {
-    tid = s.tid, game = s.game, h = h, verdict = verdict, why = why, dealer = dealer, at = client.env.epoch(),
+    tid = s.tid, game = s.game, h = h, verdict = verdict, why = why, dealer = dealer, who = s.fairLast.who,
+    at = client.env.epoch(),
   })
   Session.emit(client)
   if verdict == "bad" and fair and PRIVATE[why] and (fair.foul or why == "dealt") then say(s, h, why) end
@@ -687,6 +690,7 @@ function Deal.status(s)
     if (last.n or 1) > 1 then return "fair.voidMany", last.dealer, last.n end
     return "fair.voidBy", last.dealer
   end
+  if last.verdict == "bad" and last.why == "announce" and last.who then return "fair.announce", last.who end
   return "fair.last", last.verdict
 end
 

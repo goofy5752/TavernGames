@@ -393,6 +393,9 @@ describe("ui: table frame, card fairness", function()
     eq(#tip.lines, 2)
     ok(tip.lines[1]:find("Проверката не излезе: изигран е ход", 1, true), tip.lines[1])
     eq(tip.lines[2], "Нередовни ръце на тази маса: 1")
+    s.fairLast = { h = 11, verdict = "bad", why = "announce", who = BOT, dealer = ME }; w.ns.TableFrame.render()   -- a forged announce: by name
+    eq(v.fairLine.text:GetText(), "Последната ръка: нередовна. Бот Иванов обяви карти, които не държи."); eq(color(v.fairLine.text), rgb(w, "red"))
+    w:hover(v.fairLine); ok(tip.lines[1]:find("Обявата му не се брои", 1, true), tip.lines[1])
     s.fairLast = { verdict = "void" }; w.ns.TableFrame.render()
     eq(v.fairLine.text:GetText(), "Ръката е анулирана. Раздава се отново.")
     eq(color(v.fairLine.text), rgb(w, "red")) -- a bad hand of this match stays red
@@ -447,7 +450,7 @@ describe("ui: table frame, card fairness", function()
     local w, v = santaseWithBot(); local s = w.ns.client.session
     local tip = w.G.GameTooltip
     s.fair, s.fairSeen = nil, { ok = 0, bad = 1 }
-    for _, why in ipairs{ "seeds", "commit", "deal", "dealt", "play", "noreveal", "mine", "round", "forged", "nodeal" } do
+    for _, why in ipairs{ "seeds", "commit", "deal", "dealt", "play", "noreveal", "mine", "round", "forged", "nodeal", "announce" } do
       for _, lang in ipairs{ "bg", "en" } do
         ok(w.ns.Locale.tables[lang]["fair.why." .. why], lang .. ": no text for " .. why)
       end

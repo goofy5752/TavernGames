@@ -393,6 +393,27 @@ describe("belot at the table", function()
     ns.Ext.fair = REAL
   end)
 
+  it("a forged announce scores nothing and the deal is нередовна by the player's name on every client", function()
+    local sim, tid = table4()
+    bid("S P P P")
+    while a.session.state.turn == 1 do autoPlay(1) end                                          -- seat 1 announces what it has and leads
+    local i = a.session.state.hands[2][1]                                                       -- a four of jacks, a run of eight and a four of nines on one card
+    a:receive("WHISPER", B, { v = 1, t = "ACT", tid = tid, a = { k = "ann", a = { { t = "cJ", i = i }, { t = "s8", i = i }, { t = "c9", i = i } } } })
+    sim:run(2); eq(#a.session.state.ann >= 3, true)                                             -- the host cannot check it yet
+    autoPlay(100); eq(a.session.state.turn, nil); sim:run(6)
+    for _, cl in ipairs{ a, c, d, w } do
+      local st, bad, real = cl.session.state, 0, 0
+      for _, x in ipairs(st.res.ann) do
+        if x.bad then bad = bad + 1; eq({ x.s, x.v, x.on }, { 2, 0, false }) elseif x.on then real = real + x.v end
+      end
+      eq(bad, 3); eq(st.res.raw[1] + st.res.raw[2], 162 + real + (st.res.valat and 90 or 0)); eq(st.score, a.session.state.score)
+      local last = cl.session.fairLast
+      eq({ last.verdict, last.why, last.who }, { "bad", "announce", B })
+      eq({ ns.Deal.status(cl.session) }, { "fair.announce", B }); eq(ns.Deal.alarm(cl.session), true)
+    end
+    eq(b.session.fairLast.verdict, "bad")                                                       -- B's own client: somebody played in its name
+  end)
+
   it("вътре and контра score the same on every client", function()
     rigged(); local sim = table4()
     dealAll(DECK1); bid("P C P P P"); playFirst(32); sim:run(3)                       -- seat 2 called clubs; seat 1 holds every club

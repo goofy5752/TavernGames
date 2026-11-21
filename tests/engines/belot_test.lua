@@ -493,11 +493,66 @@ describe("belot announces", function()
   end)
 end)
 
--- A deal of DECK1 with the eight tricks already played as described by t, then scored.
+-- A deck in which every announce of str ("<seat> <kind>:<top face> ...", "b" = a belote) is
+-- held by its seat and is exactly what that hand offers: the other cards are spread so that
+-- no hand gets a longer run or another four.
+local RANKS = "789TJQKA"
+local function deckBacking(str)
+  local hands, owner = { {}, {}, {}, {} }, {}
+  local function give(seat, face)
+    assert(owner[face] == nil or owner[face] == seat, face .. " is needed twice")
+    if not owner[face] then
+      owner[face] = seat
+      hands[seat][#hands[seat] + 1] = face
+    end
+  end
+  for seat, kind, face in str:gmatch("(%d) (%w+):(%w+)") do
+    seat = tonumber(seat)
+    local r, suit = RANKS:find(face:sub(1, 1), 1, true), face:sub(2, 2)
+    if kind == "b" then
+      give(seat, "K" .. suit); give(seat, "Q" .. suit)
+    elseif kind:sub(1, 1) == "c" then
+      for su in ("CDHS"):gmatch(".") do give(seat, face:sub(1, 1) .. su) end
+    else
+      for k = r - tonumber(kind:sub(2)) + 1, r do give(seat, RANKS:sub(k, k) .. suit) end
+    end
+  end
+  local rest = {}
+  for _, face in ipairs(E.DECK) do
+    if not owner[face] then rest[#rest + 1] = face end
+  end
+  -- May `face` join the hand without making a run of three or completing a four?
+  local function fits(hand, face)
+    local r, suit, same = RANKS:find(face:sub(1, 1), 1, true), face:sub(2, 2), 0
+    local has = {}
+    for _, x in ipairs(hand) do
+      if x:sub(2, 2) == suit then has[RANKS:find(x:sub(1, 1), 1, true)] = true end
+      if x:sub(1, 1) == face:sub(1, 1) then same = same + 1 end
+    end
+    return same < 3 and not has[r - 1] and not has[r + 1]
+  end
+  local function place(n)
+    if n > #rest then return true end
+    for seat = 1, 4 do
+      local hand = hands[seat]
+      if #hand < 8 and fits(hand, rest[n]) then
+        hand[#hand + 1] = rest[n]
+        if place(n + 1) then return true end
+        hand[#hand] = nil
+      end
+    end
+    return false
+  end
+  assert(place(1), "no deck backs " .. str)
+  return deckOf(table.concat(hands[1], " "), table.concat(hands[2], " "), table.concat(hands[3], " "), table.concat(hands[4], " "))
+end
+
+-- A deal (of DECK1, or with t.ann of a deck that backs those announces) with the eight
+-- tricks already played as described by t, then scored.
 -- t.pts are the card points; the 10 for the last trick go to t.lastWin's team.
 local function scored(t)
   local s = E.new {}
-  deal(s)
+  deal(s, t.ann and deckBacking(t.ann) or nil)
   s.phase, s.turn, s.open = "score", nil, true
   s.hands = { {}, {}, {}, {} }
   s.contract = { seat = t.seat or 1, b = t.b, x = t.x or 1 }
@@ -607,7 +662,81 @@ describe("belot scoring", function()
     local s = with("1 c:TS 2 s3:9D 2 b:KD 1 s3:9C")
     eq(annResult(s), "1 c:TS=100 2 s3:9D=0 2 b:KD=20 1 s3:9C=0")
     eq(s.res.raw, { 200, 82 }); eq(s.res.pts, { 20, 8 })
-    eq(annResult(with("1 c:TS 2 s3:TD 2 b:KD 1 s3:9C")), "1 c:TS=100 2 s3:TD=20 2 b:KD=20 1 s3:9C=0")
+    eq(annResult(with("1 c:TS 2 s3:KD 2 b:KD 1 s3:9C")), "1 c:TS=100 2 s3:KD=20 2 b:KD=20 1 s3:9C=0")
+  end)
+  it("an announce its seat's cards do not back scores nothing, cancels nothing and names the seat", function()
+    -- the reviewer's probe: seat 2 announces a four of jacks, a run of eight and a four of nines on one card
+    local s = scored { b = "C", pts = { 90, 62 }, lastWin = 1, ann = "1 s3:9C", before = function(x)
+      for _, t in ipairs { "cJ", "s8", "c9" } do x.ann[#x.ann + 1] = { s = 2, t = t, i = 2 } end   -- deck index 2: seat 2's first card
+    end }
+    eq(s.res.ann[1], { s = 1, t = "s3", i = idx(s, "9C"), v = 20, on = true })
+    for n = 2, 4 do eq({ s.res.ann[n].s, s.res.ann[n].v, s.res.ann[n].on, s.res.ann[n].bad }, { 2, 0, false, true }) end
+    eq(s.res.raw, { 120, 62 }); eq(E.foul(s), 2)
+    -- a real announce split in two, a card used twice, a belote without the other card
+    local base = { b = "C", pts = { 90, 62 }, lastWin = 1 }
+    base.ann = "1 s5:JC"
+    base.before = function(x) x.ann = { { s = 1, t = "s3", i = idx(x, "9C") }, { s = 1, t = "s3", i = idx(x, "JC") } } end
+    local split = scored(base)
+    eq({ split.res.ann[1].bad, split.res.ann[2].bad, split.res.raw }, { true, true, { 100, 62 } }); eq(E.foul(split), 1)
+    base.ann = "1 s4:TC 2 s3:9D"
+    base.before = function(x) x.ann[#x.ann + 1] = { s = 1, t = "s4", i = idx(x, "TC") } end
+    local twice = scored(base)
+    eq({ twice.res.ann[1].on, twice.res.ann[2].on, twice.res.ann[3].bad, twice.res.raw }, { true, false, true, { 150, 62 } })
+    base.ann = "1 b:KC 2 s3:9D"
+    base.before = function(x)                                        -- seat 4 plays a king or queen it holds alone
+      local lone
+      for j = 4, 32, 4 do
+        local face = x.deck[j]
+        local other = (face:sub(1, 1) == "K" and "Q" or "K") .. face:sub(2, 2)
+        if face:match("^[KQ]") and (idx(x, other) - 1) % 4 + 1 ~= 4 then lone = j end
+      end
+      x.ann[#x.ann + 1] = { s = 4, t = "b", i = assert(lone, "seat 4 has no lone king or queen") }
+    end
+    local belote = scored(base)
+    eq({ belote.res.ann[1].on, belote.res.ann[2].on, belote.res.ann[3].bad, belote.res.ann[3].v, belote.res.raw }, { true, true, true, 0, { 120, 82 } })
+    eq(E.foul(belote), 4)
+    -- an honest deal names nobody, and the next deal forgets the last one's
+    base.before = nil
+    eq(E.foul(scored(base)), nil)
+    deal(belote); eq(E.foul(belote), nil)
+  end)
+  it("a forged announce taken on trust on a view scores nothing there, and the deal ends as on the full state", function()
+    local s = started(DECK_A, "S P P P")
+    local v = E.view(s, 1)
+    local function both(seat, a)
+      ok(E.apply(s, seat, a)); ok(E.apply(v, seat, a))
+    end
+    both(1, E.auto(s, 1))
+    local forged = { k = "ann", a = { { t = "cJ", i = s.hands[2][1] }, { t = "s8", i = s.hands[2][1] }, { t = "c9", i = s.hands[2][1] } } }
+    eq({ E.apply(s, 2, forged) }, { nil, "announce" }); ok(E.apply(v, 2, forged))
+    for _ = 1, 40 do
+      if s.phase ~= "play" then break end
+      both(s.turn, E.auto(s, s.turn))
+    end
+    eq({ s.phase, v.phase }, { "score", "score" })
+    both(0, { k = "score" })
+    eq(v.res.pts, s.res.pts); eq(v.res.raw, s.res.raw); eq(v.score, s.score)
+    local real = 0
+    for _, x in ipairs(v.res.ann) do
+      if x.bad then eq({ x.s, x.v, x.on }, { 2, 0, false }) else real = real + 1 end
+    end
+    eq(real, #s.res.ann); ok(real > 0, "the deal has a real announce"); eq({ E.foul(v), E.foul(s) }, { 2, nil })
+  end)
+  it("on a view a belote is refused once the other card is known to be elsewhere", function()
+    local s = started(DECK_A, "S P P P")
+    local v = E.view(s, 1)                                           -- seat 2 holds QS and KS; seat 1 sees neither
+    for face in ("AH 9H 8H TS AC 8C 7C 9C KC 9S"):gmatch("%S+") do
+      local a = { k = "play", i = idx(s, face), c = face }
+      ok(E.apply(v, s.turn, a)); ok(E.apply(s, s.turn, a))
+    end
+    ok(E.apply(v, 2, { k = "play", i = idx(s, "QS"), c = "QS" })); ok(play(s, "QS"))
+    for face in ("TC 7D AD JD KD"):gmatch("%S+") do
+      local a = { k = "play", i = idx(s, face), c = face }
+      ok(E.apply(v, s.turn, a)); ok(E.apply(s, s.turn, a))
+    end
+    eq(s.turn, 2)
+    eq({ E.apply(v, 2, { k = "play", i = idx(s, "KS"), c = "KS", b = true }) }, { nil, "belot" })   -- the queen was played
+    eq({ E.apply(E.view(s, 3), 4, { k = "play", i = idx(s, "AS"), c = "AS", b = true }) }, { nil, "turn" })
   end)
   it("cannot score on a view that has not been shown an announce's card", function()
     local s

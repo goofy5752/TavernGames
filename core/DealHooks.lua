@@ -77,6 +77,18 @@ local function agrees(fair, fr)
   return true
 end
 
+-- The engine names a seat that cheated in the hand of my round where every
+-- client can see it (E.foul; Белот: an announce or belote its cards did not
+-- back, known once the hand is scored): a foul "announce" against the round,
+-- with the player's name.
+local function caught(s, fair)
+  local engine = s:engine()
+  local seat = fair.stage == "dealt" and engine.foul and s.state and engine.foul(s.state)
+  if not seat then return end
+  foul(fair, "announce")
+  fair.who = fair.who or s.seats[seat] or nil
+end
+
 ns.Ext.fair = {
   -- Host: the engine wants a deck. A shuffle still running with its wait armed
   -- is not opened again (the session offers `need` after every event).
@@ -225,6 +237,7 @@ ns.Ext.fair = {
       stopWait(s) -- the shuffle's wait is over; the reveal's starts when the hand ends
     end
     fair.q = s.seq
+    caught(s, fair)
     if op == "reveal" then
       judge(s)
       if s.role == "host" and fair.wantOpen then Deal.open(s) end
@@ -301,6 +314,7 @@ ns.Ext.fair = {
     end
     fair.q = s.seq
     s.fairN = fr.n
+    caught(s, fair)
     Deal.react(s)
   end,
 
