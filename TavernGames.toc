@@ -77,6 +77,7 @@ ui/games/TicTacToeView.lua
 ui/games/DeathRollView.lua
 ui/games/SantaseView.lua
 ui/games/BelotModel.lua
+ui/games/BelotView.lua
 ui/InviteToast.lua
 ui/HelpBook.lua
 ui/Intro.lua
