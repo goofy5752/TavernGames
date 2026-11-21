@@ -142,6 +142,44 @@ function Book.seal(s, verdict)
   ns.Deal.close(s, verdict or "sealed")
 end
 
+-- The book actions (ACT {k="book"}, core/Cash.lua): the step's check and the host's handling.
+-- Does the street just dealt on `st` (the flop's three cards, else one) lack
+-- a face in `cards`? The engine takes a street with any subset of its faces
+-- on a view, so the table checks the step deals them all.
+function Book.faceless(st, cards)
+  local board = st.board or {}
+  local n = st.street == 1 and 3 or 1
+  for k = #board - n + 1, #board do
+    if type(cards) ~= "table" or cards[board[k]] == nil then return true end
+  end
+  return false
+end
+
+-- Host: a book action by `seat`; it never reaches the engine. op "step": the
+-- dealer of my round gives the faces of the step the engine waits for. op
+-- "missing": the dealer of a shuffle in stage seed names the participants
+-- whose seed it lacks (fair.missing; they sit out with it if the shuffle lapses).
+function Book.request(s, seat, a)
+  local fair, step = s.fair, a.a
+  if not fair or s.status ~= "live" or a.h ~= fair.h or seat ~= fair.d then return end
+  if a.op == "missing" and fair.stage == "seed" and type(a.seats) == "table" then
+    local out = {}
+    for _, q in ipairs(a.seats) do
+      if q ~= seat and ns.Util.contains(fair.p, q) and not ns.Util.contains(out, q) then out[#out + 1] = q end
+    end
+    fair.missing = out
+  end
+  if a.op ~= "step" or fair.stage ~= "dealt" then return end
+  local want = s:engine().system(s.state)
+  if not (want and want.need == "faces" and type(step) == "table" and step.k == want.k and type(step.cards) == "table") then
+    return
+  end
+  local ev = { k = step.k, cards = step.cards }
+  local trial = copy(s.state)
+  if not s:engine().apply(trial, 0, ev) or (ev.k == "street" and Book.faceless(trial, ev.cards)) then return end
+  if ns.Deal.int.allPublic(s, ev, ev.cards) then s:play(0, ev) end
+end
+
 -- The hand on my state ended and I have not told it yet: event "hand" (Cash).
 function Book.told(s)
   local st = s.state

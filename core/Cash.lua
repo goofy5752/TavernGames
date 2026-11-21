@@ -24,7 +24,8 @@ local _, ns = ...
 --   saw a hand end emits "hand" once (Book.told);
 -- - silence (host): a shuffle not dealt in FAIR_WAIT (hook `lapsed`) sits out
 --   the participants whose commit is missing, or in stage seed its dealer and
---   the seats it named as missing ({k="away", seat}); a step not come FAIR_WAIT
+--   the seats it named as missing, the hand void first ({k="away", seat});
+--   the step and the book actions: Book.request; a step not come FAIR_WAIT
 --   after it was due voids the hand and sits the dealer out. A seat that sees
 --   itself away asks {k="back"} once its hand is over (Member.comeBack); a
 --   member flags an away or a void no honest host plays now (Member.unasked).
@@ -41,53 +42,15 @@ local C = ns.Const
 local Session = ns.Session
 local copy, contains = ns.Util.copy, ns.Util.contains
 local int = ns.Deal.int
-local handDone, stopWait, allPublic, foul = int.handDone, int.stopWait, int.allPublic, int.foul
-
--- Does the street just dealt on `st` (the flop's three cards, else one) lack
--- a face in `cards`? The engine takes a street with any subset of its faces
--- on a view, so the table checks the step deals them all.
-local function faceless(st, cards)
-  local board = st.board or {}
-  local n = st.street == 1 and 3 or 1
-  for k = #board - n + 1, #board do
-    if type(cards) ~= "table" or cards[board[k]] == nil then return true end
-  end
-  return false
-end
+local handDone, stopWait, foul, revise = int.handDone, int.stopWait, int.foul, int.revise
 
 -- A book action to the host: handled at once when I host, else whispered as ACT.
-local request
 function Cash.submit(s, a)
   if s.role == "host" then
-    if s.mySeat then request(s, s.mySeat, a) end
+    if s.mySeat then ns.Book.request(s, s.mySeat, a) end
   else
     s.client:send("WHISPER", s.host, Session.message("ACT", { tid = s.tid, a = a }))
   end
-end
-
--- Host: a book action by `seat`; it never reaches the engine. op "step": the
--- dealer of my round gives the faces of the step the engine waits for. op
--- "missing": the dealer of a shuffle in stage seed names the participants
--- whose seed it lacks (fair.missing; they sit out with it if the shuffle lapses).
-function request(s, seat, a)
-  local fair, step = s.fair, a.a
-  if not fair or s.status ~= "live" or a.h ~= fair.h or seat ~= fair.d then return end
-  if a.op == "missing" and fair.stage == "seed" and type(a.seats) == "table" then
-    local out = {}
-    for _, q in ipairs(a.seats) do
-      if q ~= seat and contains(fair.p, q) and not contains(out, q) then out[#out + 1] = q end
-    end
-    fair.missing = out
-  end
-  if a.op ~= "step" or fair.stage ~= "dealt" then return end
-  local want = s:engine().system(s.state)
-  if not (want and want.need == "faces" and type(step) == "table" and step.k == want.k and type(step.cards) == "table") then
-    return
-  end
-  local ev = { k = step.k, cards = step.cards }
-  local trial = copy(s.state)
-  if not s:engine().apply(trial, 0, ev) or (ev.k == "street" and faceless(trial, ev.cards)) then return end
-  if allPublic(s, ev, ev.cards) then s:play(0, ev) end
 end
 
 -- The names of the participants p as the table sits now -> {[seat] = name}.
@@ -173,8 +136,9 @@ end
 
 -- Host: the shuffle was not dealt in FAIR_WAIT (hook `lapsed`, before it is
 -- opened again). In stage commit every participant whose commit is missing
--- sits out (its blind stays in the pot); in stage seed the dealer does with
--- every seat it named as missing (op "missing"): the deal passes on.
+-- sits out (its blind stays in the pot); in stage seed the dealer does, and
+-- when it named seats as missing (op "missing") the hand is void first and
+-- they sit out with it: naming seats takes nobody's blind.
 local function lapsed(s)
   local fair = s.fair
   if s.role ~= "host" or not fair then return end
@@ -185,8 +149,10 @@ local function lapsed(s)
       if not fair.pend[q] and q ~= s.mySeat then s:play(0, { k = "away", seat = q }) end
     end
   elseif fair.stage == "seed" then
+    local named = fair.missing or {}
+    if #named > 0 then s:play(0, { k = "void" }) end
     s:play(0, { k = "away", seat = fair.d })
-    for _, q in ipairs(fair.missing or {}) do
+    for _, q in ipairs(named) do
       if q ~= s.mySeat then s:play(0, { k = "away", seat = q }) end
     end
   end
@@ -208,6 +174,13 @@ local function react(s)
   end
   armStep(s)
   ns.Member.comeBack(s)
+  -- A forged event that ended the hand before any shuffle opened: my last hand carries it.
+  local last = s.fairLast
+  local open = s.fair and s.fair.stage ~= "done"
+  if s.forgedNext and not open and not s:engine().inHand(s.state) and last and last.verdict ~= "bad" then
+    s.forgedNext = nil
+    revise(s)
+  end
 end
 
 ns.Ext.cash = {
@@ -217,7 +190,7 @@ ns.Ext.cash = {
     local st = s.state
     if a.k == "back" and st and s:engine().inHand(st) and contains(st.order or {}, seat) then return nil end
     if a.k ~= "book" then return a end
-    request(s, seat, a)
+    ns.Book.request(s, seat, a)
     return nil
   end,
 
@@ -242,7 +215,7 @@ ns.Ext.cash = {
       -- Host: the commits of a round I opened are collected here (a round I take over has none).
       if s.role == "host" then s.fair.pend = s.fair.pend or {} end
       if s.forgedNext then foul(s.fair, "forged"); s.forgedNext = nil end
-    elseif k == "street" and s.fair and s.fair.stage == "dealt" and faceless(s.state, a.cards) then
+    elseif k == "street" and s.fair and s.fair.stage == "dealt" and ns.Book.faceless(s.state, a.cards) then
       foul(s.fair, "deal")
     end
     react(s)
@@ -252,7 +225,14 @@ ns.Ext.cash = {
   lapsed = lapsed,
 
   -- A new host waits for an overdue step itself; a demoted one stops.
-  hostChanged = function(s) if s.state then armStep(s) end end,
+  -- A member's state may come from the new host's snapshot: a step due only
+  -- there is undated (Member.unasked accepts its void).
+  hostChanged = function(s)
+    if not s.state then return end
+    local key = dueKey(s)
+    if key ~= s.dueKey then s.dueKey, s.dueAt = key, nil end
+    armStep(s)
+  end,
 
   -- Member: a forged event while no round runs (the hand is dealt in, its
   -- shuffle not open yet, Member.unasked): the round that opens next carries it.

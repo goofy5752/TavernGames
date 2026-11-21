@@ -171,32 +171,48 @@ local function waited(s, at)
   return at == nil or s.client.env.now() >= at + C.FAIR_WAIT - C.AUTO_GRACE
 end
 
+-- An honest host stands a seat "offline" once it has not heard it for
+-- OFFLINE_STAND_SECONDS; my clock may lag its own by a ping gap and the transport.
+local HEARD = C.OFFLINE_STAND_SECONDS - C.PING_EVERY - C.AUTO_GRACE
+
+-- A seat stood "offline" whose player I heard from lately -> bool (my Presence
+-- records; none: I cannot tell). The stood seat itself is no member any more
+-- and gets no event: the others at the table speak for it.
+local function standForged(s, a)
+  local name = type(a.seat) == "number" and s.seats[a.seat]
+  local at = name and a.why == "offline" and s.client.presence.heardAt[name]
+  return at and s.client.env.now() - at < HEARD or false
+end
+
 -- A seat-0 event of a sealed table (core/Cash.lua) that no honest host plays
--- now, while the hand runs -> bool:
--- - an away of my seat while I am in the hand (dealt in, not folded), from the
---   blinds on; except in stage commit once FAIR_WAIT has passed since the open
---   with my commit not in, in stage seed for its dealer, or for any seat once
---   FAIR_WAIT has passed (the dealer names who sent it no seed); after a void
---   the hand is over;
--- - a void earlier than FAIR_WAIT after the open (a shuffle) or after the step
---   became due (a dealt hand; fair.openedAt, s.dueAt), unless the dealer's
---   seat has left the hand's dealer (a stand mid-hand, a new host's takeover).
+-- now -> bool:
+-- - a stand of a seat whose player is here (standForged);
+-- - while the hand runs, an away of my seat while I am dealt in and not
+--   folded, from the blinds on, unless the shuffle is in stage commit or seed
+--   and FAIR_WAIT has passed since its open (a silent commit, the dealer and
+--   the seats it named; members see no commit before the `commits` event, so
+--   whether mine was in cannot be told); after a void the hand is over;
+-- - while the hand runs, a void with no shuffle open or in stage commit (an
+--   honest host never plays one), in stage seed earlier than FAIR_WAIT after
+--   the open (the lapse of a round with seats named as missing), in a dealt
+--   hand earlier than FAIR_WAIT after its step became due (fair.openedAt,
+--   s.dueAt), unless the dealer's seat has left the hand's dealer (a stand
+--   mid-hand, a new host's takeover).
 function Member.unasked(s, seat, a)
   local engine, st = s:engine(), s.state
-  if seat ~= 0 or type(a) ~= "table" or not (engine.sealed and st and engine.inHand(st)) then return false end
+  if seat ~= 0 or type(a) ~= "table" or not (engine.sealed and st) then return false end
+  if a.k == "stand" then return standForged(s, a) end
+  if not engine.inHand(st) then return false end
   local fair = s.fair
   local round = fair and fair.stage ~= "done" and fair or nil
   if a.k == "away" then
     local p = s.mySeat and a.seat == s.mySeat and st.p and st.p[s.mySeat]
     if not p or p.folded then return false end
-    if round and round.stage == "commit" then
-      return not (waited(s, round.openedAt) and round.commits[s.mySeat] == nil)
-    end
-    if round and round.stage == "seed" then return not (round.d == s.mySeat or waited(s, round.openedAt)) end
+    if round and (round.stage == "commit" or round.stage == "seed") then return not waited(s, round.openedAt) end
     return true
   elseif a.k == "void" then
-    if not round then return true end
-    if round.stage ~= "dealt" then return not waited(s, round.openedAt) end
+    if not round or round.stage == "commit" then return true end
+    if round.stage == "seed" then return not waited(s, round.openedAt) end
     return s.seats[round.d] == round.dealer and not (s.dueKey and waited(s, s.dueAt))
   end
   return false
