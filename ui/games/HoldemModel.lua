@@ -110,7 +110,7 @@ end
 -- minimum); it is clamped to what the engine allows.
 function M.build(s, want)
   local st = s.state
-  local seated = type(s.mySeat) == "number" and st.seats[s.mySeat] ~= nil
+  local seated = type(s.mySeat) == "number" and st.seats[s.mySeat] and true or false -- false: a chair the engine has not seated
   local me = seated and s.mySeat or 1
   local m = {
     me = me, seated = seated, host = s.role == "host", phase = st.phase, hand = st.hand,

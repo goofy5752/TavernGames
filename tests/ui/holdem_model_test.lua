@@ -66,6 +66,7 @@ describe("ui: the Холдем model", function()
     m = build(st, 2); eq({ m.mine, m.act, m.to, m.seats[2].cards, m.seats[1].cards, m.text }, { false, nil, nil, { "2C", "5C" }, { false, false }, { "holdem.waitFor", A } })
     m = build(st, nil); eq({ m.me, m.seated, m.mine, m.seats[1].cards, m.seats[3].cards }, { 1, false, false, { false, false }, { false, false } })
     eq({ m.host, m.closing, m.over, m.note, m.log }, { false, false, false, nil, nil })
+    m = build(st, 4); eq({ st.seats[4], m.seated, m.me, m.mine }, { false, false, 1, false })   -- a seat taken while the game closes has no chair in the engine
   end)
 
   it("Pot Limit: the biggest raise the buttons offer is the engine's cap; no „Ва банк“ above it", function()
