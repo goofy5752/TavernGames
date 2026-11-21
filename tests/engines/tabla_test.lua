@@ -450,15 +450,18 @@ end)
 
 describe("tabla thrown", function()
   it("the open steps of a turn are what its dice give", function()
-    local s = E.new{}; ok(E.thrown(s)); ok(E.apply(s, 0, { k = "dice", d = { 5, 2 } })); ok(E.thrown(s))   -- the opening throw: nothing open
+    local s = E.new{}; eq(E.thrown(s), 0); ok(E.apply(s, 0, { k = "dice", d = { 5, 2 } })); eq(E.thrown(s), 0)   -- the opening throw: nothing open
     ok(E.apply(s, 0, { k = "dice", d = { 3, 1 } })); eq({ s.phase, s.left }, { "move", { 3, 1 } }); ok(E.thrown(s))
     s.left = { 1, 3 }; ok(not E.thrown(s)); s.left = { 3, 1, 1 }; ok(not E.thrown(s)); s.left = { 6, 6, 6, 6 }; ok(not E.thrown(s))
     s.left = nil; ok(not E.thrown(s)); s.left = { 3, 1 }; s.dice = nil; ok(not E.thrown(s)); s.dice = { 3, 3 }; ok(not E.thrown(s))
     s.left = { 3, 3, 3, 3 }; ok(E.thrown(s)); s.left = { 3, 3, 3 }; ok(not E.thrown(s))
     s.left, s.cv = { 5, 5, 5, 5 }, 5; ok(not E.thrown(s))                                      -- a cascade outside Гюлбара
-    s.var = "gul"; ok(E.thrown(s)); s.cv = 2; s.left = { 2, 2, 2, 2 }; ok(not E.thrown(s))     -- below the double thrown
-    s.cv, s.left = 5, { 5, 5 }; ok(not E.thrown(s)); s.xfer = true; ok(E.thrown(s))            -- a remainder only when transferred
-    s.phase = "roll"; ok(not E.thrown(s)); s.left = nil; ok(E.thrown(s))
+    s.var = "gul"; ok(not E.thrown(s)); s.rolls[s.turn] = E.CASCADE_ROLL; eq(E.thrown(s), 2)   -- only from the roller's fourth roll; two moves on
+    s.cv = 2; s.left = { 2, 2, 2, 2 }; ok(not E.thrown(s))                                     -- below the double thrown
+    s.cv, s.left = 3, { 3, 3, 3, 3 }; eq(E.thrown(s), 0); s.left = { 3, 3 }; ok(not E.thrown(s))
+    s.xfer = true; ok(not E.thrown(s))                                                         -- a remainder: the roller is the other seat
+    s.rolls[3 - s.turn] = E.CASCADE_ROLL; eq(E.thrown(s), 1); s.cv, s.left = 5, { 5, 5, 5, 5 }; eq(E.thrown(s), 3)
+    s.phase = "roll"; ok(not E.thrown(s)); s.left = nil; eq(E.thrown(s), 0)
   end)
 end)
 

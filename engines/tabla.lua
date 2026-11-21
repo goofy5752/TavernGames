@@ -409,25 +409,33 @@ function E.leave(s, seat)
 end
 
 -- Are the open steps (left, with the cascade number cv) what the dice thrown last give for the
--- turn in progress, and nothing open outside a turn -> bool. A turn is one move action, so a
--- state between two actions always passes; the extension "dice" checks a snapshot with it.
+-- turn in progress, and nothing open outside a turn -> false, or the number of move actions the
+-- state says were made since that throw (0 but in a cascade: one for every number it went on,
+-- one more when the remainder was handed over). A turn is one move action, so a state between
+-- two actions always passes; the extension "dice" checks a snapshot with it.
 function E.thrown(s)
   local d, left = s.dice, s.left
-  if s.phase ~= "move" then return left == nil end
+  if s.phase ~= "move" then return left == nil and 0 end
   if type(d) ~= "table" or type(left) ~= "table" or not die(d[1]) or not die(d[2]) then return false end
-  local x, y, n, v = d[1], d[2], #left, s.cv or d[1]
+  local x, y, n, v, moves = d[1], d[2], #left, s.cv or d[1], 0
   if s.cv then
-    -- a cascade: four steps of a number from the double thrown up; fewer only as a remainder
-    if s.var ~= "gul" or x ~= y or not die(v) or v < x or n < 1 or n > 4 or (n < 4 and not s.xfer) then return false end
+    -- a cascade: Гюлбара, from the roller's fourth roll, four steps of a number from the double
+    -- thrown up; fewer only as a remainder (which the other seat plays)
+    local roller = s.xfer and 3 - s.turn or s.turn
+    if s.var ~= "gul" or x ~= y or not die(v) or v < x or n < 1 or n > 4 or (n < 4 and not s.xfer)
+        or type(s.rolls) ~= "table" or (tonumber(s.rolls[roller]) or 0) < E.CASCADE_ROLL then
+      return false
+    end
+    moves = v - x + (s.xfer and 1 or 0)
   elseif x ~= y then
-    return n == 2 and left[1] == x and left[2] == y
+    return n == 2 and left[1] == x and left[2] == y and 0
   elseif n ~= 4 then
     return false
   end
   for i = 1, n do
     if left[i] ~= v then return false end
   end
-  return true
+  return moves
 end
 
 -- The legal moves and the viability memo of the last staged turn (one entry, replaced by the next

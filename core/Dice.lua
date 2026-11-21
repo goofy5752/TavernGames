@@ -46,6 +46,12 @@ end
 
 local function foul(throw, why) throw.foul = throw.foul or why end
 local function unheard(s) s.diceUnheard = (s.diceUnheard or 0) + 1 end
+-- c is the commit of my seed for throw h (s.diceOwn: every one I made at
+-- this table, each good for its own throw only).
+local function own(s, h, c)
+  s.diceOwn = s.diceOwn or {}
+  s.diceOwn[h .. ":" .. c] = true
+end
 -- A throw is closed (`throw` nil: dice that no throw gave, or the last throw
 -- found bad afterwards, which is then counted once, as what it is now):
 -- s.diceLast, the counts of the match, "fair".
@@ -124,7 +130,7 @@ local function applySeeds(s, throw, list)
 end
 
 Dice.int = {
-  close = close, finish = finish, foul = foul, unheard = unheard, stopTimer = stopTimer, send = send,
+  close = close, finish = finish, foul = foul, unheard = unheard, own = own, stopTimer = stopTimer, send = send,
   wantsDice = wantsDice, newSeed = newSeed, isCommit = isCommit, isSeed = isSeed,
 }
 
@@ -210,7 +216,7 @@ ns.Ext.dice = {
       throw.replaced = nil
       if old and (old.sent or old.foul) then close(s, old.h, "bad", old.foul or "dodge", old) end
       if s.role == "host" then
-        if mine and mine.h == a.h then throw.seed, throw.own = mine.seed, a.c end
+        if mine and mine.h == a.h then throw.seed, throw.own = mine.seed, a.c; own(s, a.h, a.c) end
         s.diceMine = nil
       else
         stopTimer(s)
