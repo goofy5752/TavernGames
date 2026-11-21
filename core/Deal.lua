@@ -28,7 +28,8 @@ local _, ns = ...
 -- match (s.fairVoids) and the status line names the dealer.
 -- A seat whose own check failed where the others cannot see it tells the table:
 -- ACT {k="fair", op="protest", h, why} -> EV seat 0 {..., seat, why}, once per
--- seat and hand (s.fairCry, Deal.status "fair.protest").
+-- seat and hand. The others keep it as a claim about that hand (s.fairCry,
+-- Deal.claim): it changes no verdict and no colour of theirs.
 -- Fouls (fair.foul, see Deal.close): "mine" (my commit or seed was replaced),
 -- "commit" (a commit changed), "round" (a snapshot changed the round or
 -- skipped events unasked), "play" (an event my engine refused), "forged" (a
@@ -54,7 +55,8 @@ local _, ns = ...
 -- of voids and no-deals, on such a verdict)} of the last closed hand;
 -- s.fairSeen = {ok, bad} hands closed so far in this match; s.fairVoids =
 -- dealer name -> hands voided or not dealt; s.fairCry = {h, seat, name, why}
--- the last complaint of a seat (op "protest"), s.fairCries their count.
+-- the last complaint of a seat (op "protest"); s.fairSaid = h -> true, the
+-- hands my own seat complained of.
 -- Nothing is sent from the `table` hook: an event sent from inside
 -- Session:apply would overtake the one being applied. Sending happens in
 -- `applied`, `adopted`, the act hook and the message handlers.
@@ -256,6 +258,16 @@ function Deal.open(s)
   s:play(0, { k = "fair", op = "open", h = h, d = dealerOf(p, s.fairN or 0), p = p })
 end
 
+-- My seat tells the table that hand h was not fair to it (ACT/EV op
+-- "protest"); s.fairSaid remembers which hands I complained of, so a
+-- complaint in my name that I did not make is recognised.
+local function say(s, h, why)
+  if not s.mySeat or h == nil then return end
+  local said = s.fairSaid or {}
+  said[h], s.fairSaid = true, said
+  Deal.submit(s, { k = "fair", op = "protest", h = h, why = why })
+end
+
 -- Closes `round` (default s.fair; false = no round) with a verdict "ok",
 -- "bad" (why), "unseen" or "void"; emits "fair" and "session". A foul noted
 -- against the round decides: "bad" with that reason, whatever else happened.
@@ -284,9 +296,23 @@ function Deal.close(s, verdict, why, round)
     tid = s.tid, game = s.game, h = h, verdict = verdict, why = why, dealer = dealer, at = client.env.epoch(),
   })
   Session.emit(client)
-  if verdict == "bad" and fair and s.mySeat and PRIVATE[why] and (fair.foul or why == "dealt") then
-    Deal.submit(s, { k = "fair", op = "protest", h = h, why = why })
-  end
+  if verdict == "bad" and fair and PRIVATE[why] and (fair.foul or why == "dealt") then say(s, h, why) end
+end
+
+-- A complaint in my name about the hand I closed last, which I did not make:
+-- that hand's verdict becomes "bad", "forged" on my client (counted again,
+-- "fair" emitted again) and I tell the table.
+local function revise(s)
+  local last, seen = s.fairLast, s.fairSeen or { ok = 0, bad = 0 }
+  if (seen[last.verdict] or 0) > 0 then seen[last.verdict] = seen[last.verdict] - 1 end
+  seen.bad, s.fairSeen = seen.bad + 1, seen
+  last.verdict, last.why = "bad", "forged"
+  local client = s.client
+  client.events:emit("fair", {
+    tid = s.tid, game = s.game, h = last.h, verdict = "bad", why = "forged", dealer = last.dealer, at = client.env.epoch(),
+  })
+  Session.emit(client)
+  say(s, last.h, "forged")
 end
 
 -- Everyone, once the seeds are out: the hand judged on what I saw of it. The
@@ -698,7 +724,7 @@ ns.Ext.fair = {
       if k == "start" and s.fair and s.fair.stage == "dealt" then Deal.close(s, "bad", "noreveal") end
       s.fair, s.fairN, s.fairEarly = nil, 0, nil
       if k == "start" then
-        s.fairLast, s.fairSeen, s.fairVoids, s.fairCry, s.fairCries, s.fairCried = nil, nil, nil, nil, nil, nil
+        s.fairLast, s.fairSeen, s.fairVoids, s.fairCry, s.fairCried, s.fairSaid = nil, nil, nil, nil, nil, nil
       end
       stopWait(s)
       return
@@ -717,10 +743,21 @@ ns.Ext.fair = {
     end
     local op = k == "fair" and a.op
     if op == "protest" then
-      -- Somebody's own check of a hand failed where mine could not see it.
+      -- A seat claims its own check of hand h failed where mine cannot see
+      -- it. Nobody can verify that: it is kept as a claim about that hand
+      -- (Deal.claim) and changes no verdict of mine. Under my own seat it is
+      -- mine only if I sent it; otherwise somebody speaks in my name: the
+      -- running round is marked, or the hand I closed last turns "forged".
       if fair then fair.q = s.seq end
       s.fairCry = { h = a.h, seat = a.seat, name = s.seats[a.seat], why = a.why }
-      s.fairCries = (s.fairCries or 0) + 1
+      if a.seat == s.mySeat and not (s.fairSaid and s.fairSaid[a.h]) then
+        local last = s.fairLast
+        if fair and fair.stage ~= "done" and (fair.h == a.h or not (last and last.h == a.h)) then
+          foul(fair, "forged")
+        elseif last and last.h == a.h and last.verdict ~= "bad" then
+          revise(s)
+        end
+      end
       return
     end
     -- The round this open replaces, closed before anything else: a hand whose
@@ -890,11 +927,7 @@ function Deal.status(s)
   elseif fair and fair.stage == "seed" then
     return "fair.dealing", fair.dealer
   end
-  local last, cry = s.fairLast, s.fairCry
-  -- Another seat's complaint, unless my own last verdict is bad already.
-  if cry and cry.name and cry.seat ~= s.mySeat and not (last and last.verdict == "bad") then
-    return "fair.protest", cry.name
-  end
+  local last = s.fairLast
   if not last then return nil end
   if last.verdict == "void" then
     -- By name; with the count from the dealer's second one in this match.
@@ -905,14 +938,25 @@ function Deal.status(s)
   return "fair.last", last.verdict
 end
 
--- Does the fairness line warn (red)? A bad hand or a complaint in this match,
--- or a dealer who gave up or did not deal a second hand.
+-- Another seat's complaint about the hand my line speaks of (the last one I
+-- closed) -> name, why | nil. A claim, shown beside my own verdict; it ends
+-- when the next hand closes.
+function Deal.claim(s)
+  local last, cry = s.fairLast, s.fairCry
+  if cry and cry.name and cry.seat ~= s.mySeat and last and last.h ~= nil and last.h == cry.h then
+    return cry.name, cry.why
+  end
+  return nil
+end
+
+-- Does the fairness line warn (red)? Only what my own client found: a bad
+-- hand in this match, or a dealer who gave up or did not deal a second hand.
 function Deal.alarm(s)
   local last, seen = s.fairLast, s.fairSeen
   for _, n in pairs(s.fairVoids or {}) do
     if n > 1 then return true end
   end
-  return (last and last.verdict == "bad") or (seen and seen.bad > 0) or (s.fairCries or 0) > 0 or false
+  return (last and last.verdict == "bad") or (seen and seen.bad > 0) or false
 end
 
 return Deal

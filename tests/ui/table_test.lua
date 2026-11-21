@@ -413,15 +413,23 @@ describe("ui: table frame, card fairness", function()
     eq(v.fairLine.text:GetText(), "Последната ръка: проверена"); eq(color(v.fairLine.text), rgb(w, "red")) -- it stays red
   end)
 
-  it("another player's complaint is shown by name, in red, with what he saw", function()
+  it("another player's complaint is a claim beside my own verdict: by name, amber, only for its hand", function()
     local w, v = santaseWithBot(); local s = w.ns.client.session
     local tip = w.G.GameTooltip
     s.fair, s.fairSeen = nil, { ok = 1, bad = 0 }
     s.fairLast = { h = 5, verdict = "ok", dealer = ME }
-    s.fairCry, s.fairCries = { h = 5, seat = 2, name = BOT, why = "mine" }, 1; w.ns.TableFrame.render()
-    eq(v.fairLine.text:GetText(), "Бот Иванов: ръката е нередовна"); eq(color(v.fairLine.text), rgb(w, "red"))
+    s.fairCry = { h = 5, seat = 2, name = BOT, why = "mine" }; w.ns.TableFrame.render()
+    eq(v.fairLine.text:GetText(), "Последната ръка: проверена · Бот Иванов твърди, че е нередовна")
+    eq(color(v.fairLine.text), rgb(w, "gold"))
     w:hover(v.fairLine)
-    eq(tip.lines, { "Бот Иванов вижда нещо, което твоят аддон не може да види: неговата част от разбъркването е подменена." })
+    eq(tip.lines, { w.ns.L("fair.tip.ok"),
+      "Бот Иванов твърди: неговата част от разбъркването е подменена. Твоят аддон не може да провери това." })
+    s.fairLast, s.fairSeen = { h = 5, verdict = "bad", why = "play", dealer = ME }, { ok = 0, bad = 1 }; w.ns.TableFrame.render()
+    eq(v.fairLine.text:GetText(), "Последната ръка: нередовна · Бот Иванов твърди, че е нередовна")
+    eq(color(v.fairLine.text), rgb(w, "red"))                                    -- my own verdict is bad
+    s.fairLast, s.fairSeen = { h = 9, verdict = "ok", dealer = BOT }, { ok = 1, bad = 0 }; w.ns.TableFrame.render()
+    eq(v.fairLine.text:GetText(), "Последната ръка: проверена"); eq(color(v.fairLine.text), rgb(w, "good")) -- another hand
+    w:hover(v.fairLine); eq(tip.lines, { w.ns.L("fair.tip.ok") })
   end)
 
   it("every reason has a text, and an unknown or missing one never shows a raw key", function()

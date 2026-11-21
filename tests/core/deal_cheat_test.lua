@@ -154,8 +154,9 @@ describe("deal cheats: the shuffle", function()
     eq(#p, 1); eq({ p[1].seat, p[1].why, p[1].h }, { 3, "dealt", last(c).h })
     eq(a.session.fairCry, { h = last(c).h, seat = 3, name = C, why = "dealt" })
     sim:run(3)                                                       -- the next hand is dealt
-    eq({ ns.Deal.status(a.session) }, { "fair.protest", C })
-    eq(ns.Deal.alarm(a.session), true)
+    -- A claim beside my own verdict, which stays what it is and decides the colour.
+    eq({ ns.Deal.status(a.session) }, { "fair.last", "ok" }); eq(ns.Deal.alarm(a.session), false)
+    eq({ ns.Deal.claim(a.session) }, { C, "dealt" }); eq({ ns.Deal.claim(c.session) }, {})
     eq({ ns.Deal.status(c.session) }, { "fair.last", "bad" })
     -- Asked twice, or for a hand that is not the last one: nothing more.
     local q = a.session.seq
@@ -295,7 +296,49 @@ describe("deal cheats: the round a snapshot brings", function()
     b.session.fair.revealed = true                                   -- the dealer keeps the seeds to itself
     finish(); sim:run(22)
     for _, cl in ipairs{ a, b, c } do eq({ got[cl][1].verdict, got[cl][1].why }, { "bad", "noreveal" }) end
-    eq(a.session.fairCries, nil); eq(a.session.fairCry, nil)
+    eq(a.session.fairCry, nil)
+  end)
+
+  -- Re-review of the fix wave: a complaint is a claim, not a verdict.
+  it("a member who lies about an honest hand changes nobody's verdict or colour, and the claim ends with its hand", function()
+    setup(true)
+    a:startGame(); sim:run(1); finish(); sim:run(1)
+    eq(last(b).verdict, "ok"); eq(last(a).verdict, "ok")
+    local h = a.session.fairLast.h
+    a:receive("WHISPER", C, { v = 1, t = "ACT", tid = tid, a = { k = "fair", op = "protest", h = h, why = "mine" } })
+    sim:run(0)
+    for _, cl in ipairs{ a, b } do
+      eq({ ns.Deal.status(cl.session) }, { "fair.last", "ok" }); eq(ns.Deal.alarm(cl.session), false)
+      eq({ ns.Deal.claim(cl.session) }, { C, "mine" })
+      eq(cl.session.fairSeen, { ok = 1, bad = 0 })
+    end
+    sim:run(3); finish(); sim:run(1)                                  -- the next hand closes: the claim is gone
+    for _, cl in ipairs{ a, b } do
+      ok(cl.session.fairLast.h ~= h)
+      eq({ ns.Deal.status(cl.session) }, { "fair.last", "ok" }); eq(ns.Deal.alarm(cl.session), false)
+      eq({ ns.Deal.claim(cl.session) }, {})
+    end
+  end)
+
+  it("a complaint the host orders in my name: my verdict for that hand turns нередовна (forged) and I say so", function()
+    setup(true)
+    a:startGame(); sim:run(1); finish(); sim:run(1)
+    local h = a.session.fairLast.h
+    eq(last(b).verdict, "ok"); eq(b.session.fairSeen, { ok = 1, bad = 0 })
+    local n = #got[b]
+    a.session:play(0, { k = "fair", op = "protest", h = h, seat = 2, why = "mine" }); sim:run(1)
+    eq(#got[b], n + 1); eq({ last(b).h, last(b).verdict, last(b).why }, { h, "bad", "forged" })
+    eq(b.session.fairLast, { h = h, verdict = "bad", why = "forged", dealer = B })
+    eq(b.session.fairSeen, { ok = 0, bad = 1 }); eq(ns.Deal.alarm(b.session), true)
+    -- b tells the table what really happened; c sees that claim, its own verdict untouched.
+    eq({ ns.Deal.claim(c.session) }, { B, "forged" })
+    eq({ ns.Deal.status(c.session) }, { "fair.last", "ok" }); eq(ns.Deal.alarm(c.session), false)
+    -- b's own complaint coming back is its own: nothing more happens.
+    eq(#got[b], n + 1)
+    -- In a hand still running the round is marked instead.
+    sim:run(3); eq(b.session.fair.stage, "dealt")
+    a.session:play(0, { k = "fair", op = "protest", h = b.session.fair.h, seat = 2, why = "dealt" }); sim:run(1)
+    eq(b.session.fair.foul, "forged")
   end)
 
   it("with no replay left the shuffle and every face I saw are still checked against the revealed deck", function()
