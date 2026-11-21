@@ -39,9 +39,11 @@ local DECK_A = deckOf(
   "AC KC QC JC AS TS KD 9D")
 
 -- a hosts Белот, w watches, b, c and d sit at seats 2, 3, 4: the match starts
--- and the first deal is dealt. Every client yields SEED.
-local function table4()
+-- and the first deal is dealt. Every client yields SEED (prepare(sim), when
+-- given, runs first: e.g. to feed sim.nextRandom).
+local function table4(prepare)
   sim = Sim.new()
+  if prepare then prepare(sim) end
   a = sim:add(A, { cls = "MAGE" })
   b = sim:add(B, { cls = "PRIEST" })
   c = sim:add(C, { cls = "ROGUE" })
@@ -210,41 +212,80 @@ describe("belot at the table", function()
     eq({ a.session.state.round, a.session.state.first }, { 5, 1 })
   end)
 
-  it("no message to another seat or a watcher carries a face it may not see, through a whole deal", function()
-    table4()
-    local deck = d.session.fair.deck
-    local held, public = { {}, {}, {}, {} }, {}
+  it("no message to another seat or a watcher carries a face it may not see: four shuffled deals with announces, a relog and a late watcher", function()
+    -- Seeds from a fixed generator instead of the simulator's constant: every deal is another deck.
+    local x = 20261122
+    table4(function(sim)
+      for n = 1, 4000 do
+        x = (x * 1103515245 + 12345) % 2147483648
+        sim.nextRandom[n] = math.floor(x / 65536) % 256
+      end
+    end)
+    local X = "Нов Гледач"
+    local late = sim:add(X); sim:run(1)
+    local watching = { [W] = true, [X] = true }
     local seatOf = {}
     for q = 1, 4 do seatOf[a.session.seats[q]] = q end
-    local mark, plays, steps = 0, 0, 0
+    local held, public
+    local mark, plays, anns, prvs, decks = 0, 0, 0, 0, {}
+    -- Every message since the last check, against what its target may know by now: the cards
+    -- its seat holds or held in this deal, and the cards played in it.
     local function check()
-      local st = d.session.state
-      for q, hand in ipairs(ns.Fair.full(st, deck).hands) do
-        for _, i in ipairs(hand) do held[q][deck[i]] = true end
+      local dealer = at(a.session.fair.d).session
+      local deck = dealer.fair.deck
+      if deck and a.session.fair.stage == "dealt" then
+        local st = dealer.state
+        for q, hand in ipairs(ns.Fair.full(st, deck).hands) do
+          for _, i in ipairs(hand) do held[q][deck[i]] = true end
+        end
+        for _, i in ipairs(st.trick) do public[deck[i]] = true end
+        if st.last then for _, i in ipairs(st.last.cards) do public[deck[i]] = true end end
       end
-      for _, i in ipairs(st.trick) do public[deck[i]] = true end
-      if st.last then for _, i in ipairs(st.last.cards) do public[deck[i]] = true end end
       for k = mark + 1, #sim.sent do
         local m = sim.sent[k]
         local fs, q = faces(m.msg), seatOf[m.target]
         if m.channel == "GUILD" then
           eq(fs, {}); ok(m.msg.t ~= "SED" and m.msg.t ~= "PRV" and m.msg.t ~= "PRQ", m.msg.t); eq(hexes(m.msg), {})
-        elseif m.target == W then
-          for _, f in ipairs(fs) do ok(public[f], "to the watcher: " .. f) end
+        elseif watching[m.target] then
+          for _, f in ipairs(fs) do ok(public[f], m.msg.t .. " to a watcher: " .. f) end
         elseif q then
-          for _, f in ipairs(fs) do ok(public[f] or held[q][f], "to seat " .. q .. ": " .. f) end
+          for _, f in ipairs(fs) do ok(public[f] or held[q][f], m.msg.t .. " to seat " .. q .. ": " .. f) end
+        else
+          eq(fs, {})
         end
-        if m.target == B and m.msg.t == "EV" and type(m.msg.a) == "table" and m.msg.a.k == "play" then plays = plays + 1 end
+        local ev = m.target == B and m.msg.t == "EV" and type(m.msg.a) == "table" and m.msg.a.k
+        if ev == "play" then plays = plays + 1 elseif ev == "ann" then anns = anns + 1 end
+        if m.msg.t == "PRV" then prvs = prvs + 1 end
       end
       mark = #sim.sent
     end
-    check()
-    for token in ("H P P P"):gmatch("%S+") do bid(token); check() end
-    while a.session.state.phase == "play" do
-      steps = steps + 1; ok(steps < 100, "the deal does not end")
-      autoPlay(1); check()
+    for deal = 1, 4 do
+      eq({ a.session.state.phase, a.session.fair.stage }, { "bid", "dealt" })
+      held, public = { {}, {}, {}, {} }, {}
+      decks[deal] = table.concat(at(a.session.fair.d).session.fair.deck, " ")
+      check()
+      for token in ("A P P P"):gmatch("%S+") do bid(token); check() end                       -- Всичко коз: every run and four counts
+      local steps = 0
+      while a.session.state.phase == "play" do
+        steps = steps + 1; ok(steps < 100, "the deal does not end")
+        autoPlay(1); check()
+        if deal == 2 and steps == 9 then                                                         -- mid-deal: a player logs in again, a watcher comes
+          sim:relog(C); late:watch(tid); sim:run(3); check()
+          eq({ ns.Deal.missing(sim.clients[C].session), late.session ~= nil }, { false, true })
+        end
+        if deal == 3 and steps == 9 then                                                         -- and the dealer of this deal reloads
+          eq(a.session.fair.d, 2); sim:relog(B); sim:run(3); check()
+          ok(sim.clients[B].session.fair.deck ~= nil, "the dealer lost its deck")
+        end
+      end
+      sim:run(3); check()                                                                        -- the score and the reveal: every card was played
+      sim:run(6)
     end
-    eq(plays, 32)
+    eq(plays, 4 * 32)
+    ok(anns > 0, "no deal had an announce")
+    ok(prvs >= 4 * 6 + 2, "private deals: " .. prvs)
+    ok(decks[1] ~= decks[2] and decks[2] ~= decks[3] and decks[3] ~= decks[4], "the same deck twice")
+    eq(a.session.fairSeen, { ok = 4, bad = 0 }); eq(w.session.fairSeen, { ok = 4, bad = 0 })
   end)
 
   it("a snapshot mid-deal shows a newcomer the played cards and only its own hand", function()
@@ -276,8 +317,9 @@ describe("belot at the table", function()
   end)
 
   it("nobody bids: four automatic passes, the deal is passed out, the next seat deals", function()
-    local sim = table4(); local seen = verdicts(a); local mark = #sim.sent
+    local sim = table4(); local seen, atB, atC, atD, atW = verdicts(a), verdicts(b), verdicts(c), verdicts(d), verdicts(w); local mark = #sim.sent
     sim:run(182); eq({ a.session.state.round, a.session.state.first }, { 2, 2 }); eq(a.session.state.res.contract, nil); eq(seen, { "ok" })
+    eq(atB, { "ok" }); eq(atC, { "ok" }); eq(atD, { "ok" }); eq(atW, { "ok" })                  -- a pass the host made for a seat would be "forged" there
     local from, acts = {}, { [A] = 0, [B] = 0, [C] = 0, [D] = 0 }
     for k = mark + 1, #sim.sent do
       local m = sim.sent[k]
