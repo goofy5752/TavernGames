@@ -36,6 +36,7 @@ core/Rolls.lua
 core/Party.lua
 core/Lifecycle.lua
 core/Deal.lua
+core/DealHooks.lua
 core/Invites.lua
 core/Client.lua
 core/Bots.lua
