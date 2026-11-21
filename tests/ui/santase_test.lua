@@ -119,6 +119,35 @@ describe("ui: Сантасе view", function()
     eq(#w:texts("Последна взятка"), 1); eq({ V.lastCards[1].face, V.lastCards[2].face }, { "9S", "AS" })
   end)
 
+  it("„Обяви“ is the gold button of the mockup; „Смени деветката“ stays the dark one", function()
+    local w, V = boot(); show(w, E.view(full(), 1))
+    local T = w.ns.Theme
+    eq({ V.marryButton.text:GetTextColor() }, { T.color.woodDark[1], T.color.woodDark[2], T.color.woodDark[3], 1 })
+    eq(V.marryButton.fill.color, { 0xdc / 255, 0xb4 / 255, 0x67 / 255, 1 })
+    eq(V.marryButton.lip.color, { 0x8a / 255, 0x5a / 255, 0x2b / 255, 1 })
+    eq({ V.swapButton.text:GetTextColor() }, { T.color.brassLight[1], T.color.brassLight[2], T.color.brassLight[3], 1 })
+    w:click(V.marryButton); eq(V.marryButton.lit, true)                          -- armed: the rim lights up
+    eq(V.marryButton.edges[1].vertex, { T.color.gold[1], T.color.gold[2], T.color.gold[3], 1 })
+  end)
+
+  it("a table that is not live plays nothing from a click", function()
+    local w, V = boot(); local s = w.ns.client.session; show(w, E.view(full(), 1))
+    local sent; w.ns.client.act = function(_, a) sent = a; return true end
+    s.status = "aborted"; w.ns.TableFrame.render()
+    w:click(V.myFan.cards[1].frame); eq(sent, nil)
+    s.status = "live"; w.ns.TableFrame.render()
+    w:click(V.myFan.cards[1].frame); ok(sent)
+  end)
+
+  it("the end of the match is what the session says it is (Session:gameOver), not a phase name", function()
+    local w, _, View = boot(); local s = w.ns.client.session
+    local st = E.view(full(), 1); st.winner = 2; show(w, st)
+    eq(View.model(s, false).text, { "santase.yourTurn" })
+    s.gameOver = function() return true end
+    eq(View.model(s, false).text, { "santase.match", BOT })
+    w.ns.TableFrame.render(); eq(#plainTexts(w, "Бот Иванов печели партията!"), 1)
+  end)
+
   it("„Смени деветката“ shows only when the swap is legal", function()
     local st = full(); st.ntr[1] = 1; st.deck[9], st.deck[18] = st.deck[18], st.deck[9] -- index 9 is now 9H
     local w, V, View = boot(); local s = w.ns.client.session; show(w, E.view(st, 1))

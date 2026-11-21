@@ -26,6 +26,10 @@ describe("ui: cards", function()
   local w = guildWow()
   local C = w.ns.Cards
 
+  it("a face that is not known has no rank and no colour, and does not break", function()
+    eq(C.rank(nil), ""); eq(C.red(nil), false); eq(C.rank("TH"), "10"); eq(C.red("TH"), true); eq(C.red("9S"), false)
+  end)
+
   it("lays a fan out around the centre", function()
     eq(C.layout(6, 28, 40), { -90, -62, -34, -6, 22, 50 }); eq(C.layout(1, 28, 40), { -20 }); eq(C.layout(0, 28, 40), {})
   end)

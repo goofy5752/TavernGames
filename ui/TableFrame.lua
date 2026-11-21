@@ -296,48 +296,53 @@ local function renderStart(v, s, engine, client)
   v.line:SetPoint("RIGHT", TableFrame.frame, "BOTTOMRIGHT", -(EDGE + 8), EDGE + 20)
 end
 
--- A bad hand in this match keeps the fairness line red.
-local function fairBad(s)
-  local last, seen = s.fairLast, s.fairSeen
-  return (last and last.verdict == "bad") or (seen and seen.bad > 0) or false
+-- The text of `key`, or nil when the locale has none (never the raw key).
+local function known(key, ...)
+  local text = L(key, ...)
+  if text ~= key then return text end
+  return nil
 end
 
--- The fairness line: Deal.status(s) -> key, arg; "fair.last" carries the
--- verdict, spelled out. Red after a bad hand, green on a verified one.
+-- The fairness line: Deal.status(s) -> key, arg, arg2; "fair.last" carries
+-- the verdict, spelled out. Red while Deal.alarm(s) (a bad hand, a complaint
+-- or a dealer's second void in this match), green on a verified hand.
 local function renderFair(v, s)
   local line = v.fairLine
-  local key, arg = ns.Deal.status(s)
+  local key, arg, arg2 = ns.Deal.status(s)
   line:SetShown(key ~= nil)
   if not key then return end
-  if key == "fair.last" then arg = L("fair.v." .. arg) end
+  if key == "fair.last" then arg = known("fair.v." .. tostring(arg)) or "?" end
   -- The dealer's seat emptied during the deal (the hand is void soon): no name to show.
   if key == "fair.dealing" and arg == nil then key = "fair.shuffle" end
-  line.text:SetText(arg ~= nil and L(key, arg) or L(key))
+  line.text:SetText(arg ~= nil and L(key, arg, arg2) or L(key))
   local verdict = key == "fair.last" and s.fairLast.verdict
-  line.text:SetTextColor(Theme.rgb(fairBad(s) and "red" or verdict == "ok" and "good" or "inkDim"))
+  line.text:SetTextColor(Theme.rgb(ns.Deal.alarm(s) and "red" or verdict == "ok" and "good" or "inkDim"))
 end
 
--- The tooltip of the fairness line: what the last verdict means (why a bad
--- hand failed), the count of bad hands of this match on a second line. With
--- no hand closed yet: the line itself.
+-- The tooltip of the fairness line: what the line means (another player's
+-- complaint, why a bad hand failed, a void), then in red the count of bad
+-- hands of this match and every dealer's voided or undealt hands. With no
+-- hand closed yet, or a verdict without a text: the line itself.
 local function fairTooltip(tip)
   local s = ns.client and ns.client.session
   if not s then return end
-  local last, seen = s.fairLast, s.fairSeen
+  local last, seen, cry = s.fairLast, s.fairSeen, s.fairCry
   local text
-  if last and last.verdict == "bad" then
-    text = L("fair.tip.bad", L("fair.why." .. tostring(last.why)))
+  if cry and ns.Deal.status(s) == "fair.protest" then
+    text = L("fair.tip.protest", cry.name, known("fair.cry." .. tostring(cry.why)) or L("fair.why.unknown"))
+  elseif last and last.verdict == "bad" then
+    text = L("fair.tip.bad", known("fair.why." .. tostring(last.why)) or L("fair.why.unknown"))
   elseif last then
-    text = L("fair.tip." .. tostring(last.verdict))
-  else
-    text = TableFrame.view.fairLine.text:GetText()
+    text = known("fair.tip." .. tostring(last.verdict))
   end
   local r, g, b = Theme.rgb("ink")
-  tip:SetText(text, r, g, b, 1, true)
-  if seen and seen.bad > 0 then
-    r, g, b = Theme.rgb("red")
-    tip:AddLine(L("fair.badCount", seen.bad), r, g, b, true)
-  end
+  tip:SetText(text or TableFrame.view.fairLine.text:GetText(), r, g, b, 1, true)
+  r, g, b = Theme.rgb("red")
+  if seen and seen.bad > 0 then tip:AddLine(L("fair.badCount", seen.bad), r, g, b, true) end
+  local names = {}
+  for name in pairs(s.fairVoids or {}) do names[#names + 1] = name end
+  table.sort(names, ns.Util.byteLess)
+  for _, name in ipairs(names) do tip:AddLine(L("fair.voidCount", name, s.fairVoids[name]), r, g, b, true) end
 end
 
 -- After the access and the turn time: " · <option> <value>" for every option.

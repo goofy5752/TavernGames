@@ -62,7 +62,7 @@ end
 
 local function textOf(s, st, mine, declare, names)
   local phase = st.phase
-  if phase == "match" then
+  if s:gameOver() then
     local gone = st.left and nameOf(s, st.left, names)
     if gone then return { "santase.left", gone } end
     local winner = st.winner and nameOf(s, st.winner, names)
@@ -154,7 +154,7 @@ local function eventKey(s) return tostring(s.tid) .. "/" .. tostring(s.epoch) ..
 -- My legal action of kind `k` (on card `i` when given), or nil.
 local function legalAction(s, k, i)
   local st = s.state
-  if not st or not (s.mySeat == 1 or s.mySeat == 2) then return nil end
+  if not st or s.status ~= "live" or not (s.mySeat == 1 or s.mySeat == 2) then return nil end
   for _, a in ipairs(E.legal(st, s.mySeat)) do
     if a.k == k and (i == nil or a.i == i) then return a end
   end
@@ -214,6 +214,35 @@ local function ghostButton(parent, text, color, onClick)
   return b
 end
 
+-- The gold button of the mockup (plain `.btn`): a gold face with a darker lip
+-- at its lower edge and a dark label; `button.text`, `.fill`, `.lip`. Its
+-- rim (`.edges`) lights up while `button.lit` or under the mouse.
+local GOLD_FACE, GOLD_LIP = { 0xdc / 255, 0xb4 / 255, 0x67 / 255 }, { 0x8a / 255, 0x5a / 255, 0x2b / 255 }
+local function goldButton(parent, text, onClick)
+  local b = CreateFrame("Button", nil, parent)
+  b:SetSize(BUTTON_W, BUTTON_H)
+  b:RegisterForClicks("LeftButtonUp")
+  b.fill = b:CreateTexture(nil, "BACKGROUND")
+  b.fill:SetAllPoints(b)
+  b.fill:SetColorTexture(GOLD_FACE[1], GOLD_FACE[2], GOLD_FACE[3], 1)
+  b.lip = b:CreateTexture(nil, "BORDER")
+  b.lip:SetPoint("BOTTOMLEFT", b, "BOTTOMLEFT", 0, 0)
+  b.lip:SetPoint("BOTTOMRIGHT", b, "BOTTOMRIGHT", 0, 0)
+  b.lip:SetHeight(2)
+  b.lip:SetColorTexture(GOLD_LIP[1], GOLD_LIP[2], GOLD_LIP[3], 1)
+  b.edges = W.edges(b, 1, "ARTWORK") -- above the lip
+  b.edges.setColor(Theme.rgb("brass"))
+  local fs = W.Label(b, "heading", text, 13)
+  fs:SetTextColor(Theme.rgb("woodDark"))
+  fs:SetJustifyH("CENTER")
+  fs:SetPoint("CENTER", b, "CENTER", 0, 0)
+  b.text = fs
+  b:SetScript("OnEnter", function() b.edges.setColor(Theme.rgb("gold")) end)
+  b:SetScript("OnLeave", function() b.edges.setColor(Theme.rgb(b.lit and "gold" or "brass")) end)
+  b:SetScript("OnClick", function() onClick() end)
+  return b
+end
+
 local function caption(f, style, size)
   local fs = W.Label(f, style, "", size)
   fs:SetWordWrap(false)
@@ -262,7 +291,7 @@ function View.build(parent)
     f.lastCards[k] = card
   end
 
-  f.marryButton = ghostButton(f, L("santase.marry40"), "gold", function() toggleArmed(f) end)
+  f.marryButton = goldButton(f, L("santase.marry40"), function() toggleArmed(f) end)
   f.swapButton = ghostButton(f, L("santase.swap"), "brassLight", function()
     local _, s = session()
     if s then act(f, legalAction(s, "swap9")) end
@@ -291,7 +320,7 @@ end
 -- a player whose seat emptied when he left.
 local function remember(f, s)
   if f.namesTid ~= s.tid then f.namesTid, f.names = s.tid, {} end
-  if s.state.phase ~= "match" then
+  if not s:gameOver() then
     for seat = 1, 2 do f.names[seat] = s.seats[seat] or nil end
   end
 end
@@ -343,7 +372,7 @@ local function drawText(f, s, m)
   if type(args[1]) == "string" then args[1] = W.colored(ns.client, args[1]) end
   f.text:SetText(L(t[1], unpack(args)))
   local phase = s.state.phase
-  f.text:SetTextColor(Theme.rgb((phase == "hand" or phase == "match") and "gold" or "ink"))
+  f.text:SetTextColor(Theme.rgb((phase == "hand" or s:gameOver()) and "gold" or "ink"))
   f.text:Show()
 end
 

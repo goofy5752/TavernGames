@@ -17,14 +17,17 @@ Cards.COORD = { C = { 0, 0.25 }, D = { 0.25, 0.5 }, H = { 0.5, 0.75 }, S = { 0.7
 
 local NAMED = { T = true, J = true, Q = true, K = true, A = true }
 
--- The rank as printed on the card: „10“, „J“ … for the letters, else the digit.
+-- The rank as printed on the card: „10“, „J“ … for the letters, else the
+-- digit; "" for a face that is not known.
 function Cards.rank(face)
+  if type(face) ~= "string" then return "" end
   local r = face:sub(1, 1)
   if NAMED[r] then return L("card." .. r) end
   return r
 end
 
 function Cards.red(face)
+  if type(face) ~= "string" then return false end
   local s = face:sub(2, 2)
   return s == "D" or s == "H"
 end
