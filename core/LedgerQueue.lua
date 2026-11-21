@@ -7,7 +7,8 @@ local _, ns = ...
 -- A row keeps its content key (the entry without i and at): at net:settle a
 -- row is not made again when my store holds a body of mine above my saved seq
 -- with that content (made before a crash, it has come back while I waited);
--- such a body still asked about is mine. One body stands for one row.
+-- such a body still asked about is mine. One body stands for one row, and only
+-- a live, undisputed one (not denied, no queued X of mine against it, not an asked twin).
 local Ledger, Util = ns.Ledger, ns.Util
 local Net = ns.LedgerNet
 
@@ -48,7 +49,14 @@ function Net:settle()
     list[#list + 1] = q
   end
   L.store.pending = others
-  local back = L:above(L.me, self.saved)
+  -- Only a live, undisputed body of mine is "already made": not denied, no X of mine queued
+  -- against it, not an asked twin.
+  local disputed, back = {}, {}
+  for _, q in ipairs(mine) do if q.k == "X" then disputed[tostring(q.f.r) .. "|" .. tostring(q.f.h)] = true end end
+  for _, b in ipairs(L:above(L.me, self.saved)) do
+    local twins = select(2, L:get(b.i))
+    if not (L:denied(b) or disputed[b.i .. "|" .. b.h] or (b.un and twins and #twins > 0)) then back[#back + 1] = b end
+  end
   for _, q in ipairs(mine) do
     local found
     for _, b in ipairs(back) do

@@ -426,6 +426,11 @@ describe("ledger net: my name", function()
     local b = sim:add(B, { db = db })
     sim:run(1); sim:settle(); sim:run(2)
     eq(b.ledger:seen(B), 0); eq(m.ledger:seen(B), 0); eq(#db.ledger[GUILD].pending, 2)
+    b:stop(); b = sim:relog(B); sim:online(B); sim:run(1)
+    eq(b.ledgerNet:make("P", { f = M, c = 300, how = "hand" }), "queued") -- B's own row among A's
+    eq(#db.ledger[GUILD].pending, 3)
+    sim:settle(); sim:run(2)
+    eq(m.ledger:get(B .. ":1").c, 300); eq(#db.ledger[GUILD].pending, 2)
     b:stop(); sim:offline(B)
     a = sim:relog(A); sim:run(1); sim:settle(); sim:run(2)
     local x = xs(a)
@@ -452,6 +457,35 @@ describe("ledger net: my name", function()
     eq(#i.ledgerNet:asks(), 0); eq(shipped(sim, I, mark), 0); eq(#store(sim, I).pending, 0)
     eq(View.paid(View.of(m.ledger), M, I), 20000); eq(View.paid(View.of(i.ledger), M, I), 20000)
     eq(m.ledger:seen(I), 2)
+  end)
+
+  it("a forged body with my queued row's content, that I am denying, never stands for my row", function()
+    local sim, _, m = setup()
+    local i = veteran(sim, I, 9)
+    -- I made :8 earlier (at or below my saved seq): never compared, so an equal new row is still made.
+    i:stop(); i = sim:relog(I); sim:run(1)
+    local mark = #sim.sent
+    eq(i.ledgerNet:make("P", { f = M, c = 10000, how = "hand" }), "queued") -- „Уредено“
+    eq(i.ledgerNet:take(pay(I, 5000, M, 10000), P), "new") -- far: its X is queued
+    eq(i.ledgerNet:take(pay(I, 30, M, 10000), P), "new") -- asked (above my saved seq)
+    eq(i.ledgerNet:take(pay(I, 30, P, 1), M), "twin") -- an asked twin is no proof either
+    sim:settle(); sim:run(3)
+    local made = m.ledger:get(I .. ":31")
+    ok(made, "my P is made at a fresh id"); eq(made.k, "P"); eq(made.c, 10000)
+    local x = xs(i)
+    eq(#x, 2); eq(x[1].r, I .. ":5000"); eq(x[2].r, I .. ":30")
+    eq(i.ledger:denied(i.ledger:get(I .. ":5000")), true)
+    eq(View.paid(View.of(m.ledger), M, I), 10000)
+    eq(shipped(sim, I, mark), 3)
+  end)
+
+  it("a row is not matched by an equal body of mine at or below my saved seq", function()
+    local sim, i, m = setup()
+    i.ledgerNet:make("P", { f = M, c = 10000, how = "hand" }); sim:run(2) -- a real payment yesterday
+    i:stop(); i = sim:relog(I); sim:run(1)
+    eq(i.ledgerNet:make("P", { f = M, c = 10000, how = "hand" }), "queued") -- and an equal one today
+    sim:settle(); sim:run(2)
+    eq(View.paid(View.of(m.ledger), M, I), 20000)
   end)
 
   it("while logging in, my own entries wait", function()
