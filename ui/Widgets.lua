@@ -205,6 +205,62 @@ function W.Button(parent, text, onClick, small)
   return b
 end
 
+-- The dark translucent fill of the ghost button and of the card tables'
+-- bubbles, r, g, b, a.
+W.DARK_FILL = { 32 / 255, 16 / 255, 8 / 255, 0.85 }
+
+-- The rim of a mockup button: gold under the mouse and while `b.lit`, else brass.
+local function litRim(b)
+  b:SetScript("OnEnter", function() b.edges.setColor(Theme.rgb("gold")) end)
+  b:SetScript("OnLeave", function() b.edges.setColor(Theme.rgb(b.lit and "gold" or "brass")) end)
+end
+
+local function mockButton(parent, text, color, onClick)
+  local b = CreateFrame("Button", nil, parent)
+  b:SetSize(124, 24)
+  b:RegisterForClicks("LeftButtonUp")
+  b.fill = b:CreateTexture(nil, "BACKGROUND")
+  b.fill:SetAllPoints(b)
+  local fs = W.Label(b, "heading", text, 13)
+  fs:SetTextColor(Theme.rgb(color))
+  fs:SetJustifyH("CENTER")
+  fs:SetPoint("CENTER", b, "CENTER", 0, 0)
+  b.text = fs
+  b.lit = false
+  b:SetScript("OnClick", function() onClick() end)
+  return b
+end
+
+-- The gold button of the mockups (plain `.btn`), 124 x 24: a gold face with
+-- a darker lip at its lower edge and a dark label; `button.text`, `.fill`,
+-- `.lip`, `.edges`. Its rim lights up while `button.lit` or under the mouse.
+local GOLD_FACE, GOLD_LIP = { 0xdc / 255, 0xb4 / 255, 0x67 / 255 }, { 0x8a / 255, 0x5a / 255, 0x2b / 255 }
+function W.GoldButton(parent, text, onClick)
+  local b = mockButton(parent, text, "woodDark", onClick)
+  b.fill:SetColorTexture(GOLD_FACE[1], GOLD_FACE[2], GOLD_FACE[3], 1)
+  b.lip = b:CreateTexture(nil, "BORDER")
+  b.lip:SetPoint("BOTTOMLEFT", b, "BOTTOMLEFT", 0, 0)
+  b.lip:SetPoint("BOTTOMRIGHT", b, "BOTTOMRIGHT", 0, 0)
+  b.lip:SetHeight(2)
+  b.lip:SetColorTexture(GOLD_LIP[1], GOLD_LIP[2], GOLD_LIP[3], 1)
+  b.edges = W.edges(b, 1, "ARTWORK") -- above the lip
+  b.edges.setColor(Theme.rgb("brass"))
+  litRim(b)
+  return b
+end
+
+-- The brass-rimmed dark button of the mockups (`.btn.ghost`), 124 x 24, its
+-- label in the colour token `color`; `button.text`, `.fill`, `.edges`. Its
+-- rim lights up while `button.lit` or under the mouse.
+function W.GhostButton(parent, text, color, onClick)
+  local b = mockButton(parent, text, color, onClick)
+  b.fill:SetColorTexture(unpack(W.DARK_FILL))
+  b.edges = W.edges(b, 1)
+  b.edges.setColor(Theme.rgb("brass"))
+  litRim(b)
+  return b
+end
+
 -- The ⓘ button: opens the rules book on `topicId`.
 function W.Info(parent, topicId)
   local b = CreateFrame("Button", nil, parent)

@@ -7,7 +7,8 @@ local _, ns = ...
 -- to 151 and the hanging points; in the centre the trick as a cross by seat
 -- (my card at the bottom, my partner's on top) or, during the auction, the
 -- bids open to me; over each player the bubble of what he bid or announced;
--- after a deal its summary in the centre; „Последна взятка“ on the left
+-- after a played deal its summary in the centre (a deal everybody passed is
+-- told by the line of text alone); „Последна взятка“ on the left
 -- shows the last trick, dimmed, until any table event; „Обяви“ on the right
 -- while the engine offers an announce; my fan at the bottom, the cards I may
 -- not play dimmed, and above it whose turn it is or how the match ended.
@@ -26,7 +27,7 @@ local BID_SPOT = {
 }
 local TRICK_SPOT = { [0] = { 246, -122 }, [1] = { 292, -89 }, [2] = { 246, -56 }, [3] = { 200, -89 } }
 local BUBBLE_SPOT = { [0] = { 357, -280 }, [1] = { 364, -133 }, [2] = { 191, -38 }, [3] = { 17, -133 } }
-local BUTTON_H, SIDE_BUTTON_W, SUIT_ICON = 24, 124, 16
+local BUTTON_H, SUIT_ICON = 24, 16 -- the side buttons keep the widgets' 124 x 24
 local BUBBLE_W, BUBBLE_H = 150, 18
 local SUMMARY_W = 170
 local MY_FAN_Y = 60 -- the fan's bottom edge above the frame's
@@ -67,10 +68,10 @@ end
 -- The opening code of the inkDim colour, to resume it after a coloured name.
 local function dimCode() return W.paint("", Theme.rgb("inkDim")):sub(1, 10) end
 
--- The lines of the last deal's summary (see the brief of the view).
+-- The lines of the last played deal's summary. A deal everybody passed has
+-- none: the line of text says so.
 local function summaryText(f, s, m)
   local sum = m.summary
-  if sum.passed then return L("belot.passed") end
   local c = sum.contract
   local lines = {
     contractText(c) .. "  " .. L("belot.by", colouredName(f, s, c.seat)),
@@ -134,71 +135,22 @@ end
 -- Building
 ---------------------------------------------------------------------------
 
--- The gold button of the mockup (`.btn`): a gold face with a darker lip at
--- its lower edge and a dark label; `button.text`. Its rim lights up under
--- the mouse.
-local GOLD_FACE, GOLD_LIP = { 0xdc / 255, 0xb4 / 255, 0x67 / 255 }, { 0x8a / 255, 0x5a / 255, 0x2b / 255 }
-local function goldButton(parent, w, text, onClick)
-  local b = CreateFrame("Button", nil, parent)
-  b:SetSize(w, BUTTON_H)
-  b:RegisterForClicks("LeftButtonUp")
-  b.fill = b:CreateTexture(nil, "BACKGROUND")
-  b.fill:SetAllPoints(b)
-  b.fill:SetColorTexture(GOLD_FACE[1], GOLD_FACE[2], GOLD_FACE[3], 1)
-  b.lip = b:CreateTexture(nil, "BORDER")
-  b.lip:SetPoint("BOTTOMLEFT", b, "BOTTOMLEFT", 0, 0)
-  b.lip:SetPoint("BOTTOMRIGHT", b, "BOTTOMRIGHT", 0, 0)
-  b.lip:SetHeight(2)
-  b.lip:SetColorTexture(GOLD_LIP[1], GOLD_LIP[2], GOLD_LIP[3], 1)
-  b.edges = W.edges(b, 1, "ARTWORK") -- above the lip
-  b.edges.setColor(Theme.rgb("brass"))
-  local fs = W.Label(b, "heading", text, 13)
-  fs:SetTextColor(Theme.rgb("woodDark"))
-  fs:SetJustifyH("CENTER")
-  fs:SetPoint("CENTER", b, "CENTER", 0, 0)
-  b.text = fs
-  b:SetScript("OnEnter", function() b.edges.setColor(Theme.rgb("gold")) end)
-  b:SetScript("OnLeave", function() b.edges.setColor(Theme.rgb("brass")) end)
-  b:SetScript("OnClick", function() onClick() end)
-  return b
-end
-
--- The brass-rimmed dark button (`.btn.ghost`); its rim is gold while
--- `button.lit` or under the mouse.
-local function ghostButton(parent, text, onClick)
-  local b = CreateFrame("Button", nil, parent)
-  b:SetSize(SIDE_BUTTON_W, BUTTON_H)
-  b:RegisterForClicks("LeftButtonUp")
-  local fill = b:CreateTexture(nil, "BACKGROUND")
-  fill:SetAllPoints(b)
-  fill:SetColorTexture(32 / 255, 16 / 255, 8 / 255, 0.85)
-  b.edges = W.edges(b, 1)
-  b.edges.setColor(Theme.rgb("brass"))
-  local fs = W.Label(b, "heading", text, 13)
-  fs:SetTextColor(Theme.rgb("brassLight"))
-  fs:SetJustifyH("CENTER")
-  fs:SetPoint("CENTER", b, "CENTER", 0, 0)
-  b.text = fs
-  b.lit = false
-  b:SetScript("OnEnter", function() b.edges.setColor(Theme.rgb("gold")) end)
-  b:SetScript("OnLeave", function() b.edges.setColor(Theme.rgb(b.lit and "gold" or "brass")) end)
-  b:SetScript("OnClick", function() onClick() end)
-  return b
-end
-
--- A bid button: the suit from the `suits` texture for C D H S, else the bid's name.
+-- A bid button: the suit from the `suits` texture for C D H S (the red suits
+-- in red, the black ones in the dark label colour of the gold face), else
+-- the bid's name.
 local function bidButton(f, b)
   local spot = BID_SPOT[b]
-  local button = goldButton(f, spot[3], SUIT_BIDS[b] and "" or L("belot.bid." .. b), function()
+  local button = W.GoldButton(f, SUIT_BIDS[b] and "" or L("belot.bid." .. b), function()
     act(f, { k = "bid", b = b })
   end)
+  button:SetSize(spot[3], BUTTON_H)
   button:SetPoint("TOPLEFT", f, "TOPLEFT", spot[1], spot[2])
   if SUIT_BIDS[b] then
     local t = button:CreateTexture(nil, "OVERLAY")
     t:SetTexture(Theme.tex.suits)
     t:SetSize(SUIT_ICON, SUIT_ICON)
     t:SetTexCoord(Cards.COORD[b][1], Cards.COORD[b][2], 0, 1)
-    t:SetVertexColor(Theme.rgb((b == "H" or b == "D") and "red" or "ink"))
+    t:SetVertexColor(Theme.rgb((b == "H" or b == "D") and "red" or "woodDark"))
     t:SetPoint("CENTER", button, "CENTER", 0, 0)
     button.suit = t
   end
@@ -213,7 +165,7 @@ local function bubble(f, k)
   b:SetPoint("TOPLEFT", f, "TOPLEFT", BUBBLE_SPOT[k][1], BUBBLE_SPOT[k][2])
   local fill = b:CreateTexture(nil, "BACKGROUND")
   fill:SetAllPoints(b)
-  fill:SetColorTexture(32 / 255, 16 / 255, 8 / 255, 0.85)
+  fill:SetColorTexture(unpack(W.DARK_FILL))
   b.edges = W.edges(b, 1)
   b.edges.setColor(Theme.rgb("brass"))
   local fs = W.Label(b, "heading", "", 11)
@@ -258,12 +210,12 @@ function View.build(parent)
   f.summary:SetPoint("TOP", f, "TOPLEFT", 266, -64)
   f.summary:Hide()
 
-  f.announceButton = goldButton(f, SIDE_BUTTON_W, "", function()
+  f.announceButton = W.GoldButton(f, "", function()
     act(f, f.model and f.model.announce)
   end)
   f.announceButton:SetPoint("TOPLEFT", f, "TOPLEFT", 392, -172)
   f.announceButton:Hide()
-  f.peekButton = ghostButton(f, L("belot.peek"), function() togglePeek(f) end)
+  f.peekButton = W.GhostButton(f, L("belot.peek"), "brassLight", function() togglePeek(f) end)
   f.peekButton:SetPoint("TOPLEFT", f, "TOPLEFT", 16, -172)
   f.peekButton:Hide()
 
@@ -376,8 +328,9 @@ function View.update(f, s)
   drawTrick(f, m)
   drawBubbles(f, m)
   drawButtons(f, m)
-  if m.summary then f.summary:SetText(summaryText(f, s, m)) end
-  f.summary:SetShown(m.summary ~= nil)
+  local played = m.summary ~= nil and not m.summary.passed
+  if played then f.summary:SetText(summaryText(f, s, m)) end
+  f.summary:SetShown(played)
   f.myFan:set(m.hand, function(entry) onCard(f, entry) end)
   drawText(f, st, m)
 end

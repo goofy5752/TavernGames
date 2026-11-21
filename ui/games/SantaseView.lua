@@ -192,57 +192,6 @@ end
 -- Building
 ---------------------------------------------------------------------------
 
--- The brass-rimmed dark button of the mockup (`.btn.ghost`), its label in
--- the colour token `color`; `button.text`.
-local function ghostButton(parent, text, color, onClick)
-  local b = CreateFrame("Button", nil, parent)
-  b:SetSize(BUTTON_W, BUTTON_H)
-  b:RegisterForClicks("LeftButtonUp")
-  local fill = b:CreateTexture(nil, "BACKGROUND")
-  fill:SetAllPoints(b)
-  fill:SetColorTexture(32 / 255, 16 / 255, 8 / 255, 0.85)
-  b.edges = W.edges(b, 1)
-  b.edges.setColor(Theme.rgb("brass"))
-  local fs = W.Label(b, "heading", text, 13)
-  fs:SetTextColor(Theme.rgb(color))
-  fs:SetJustifyH("CENTER")
-  fs:SetPoint("CENTER", b, "CENTER", 0, 0)
-  b.text = fs
-  b:SetScript("OnEnter", function() b.edges.setColor(Theme.rgb("gold")) end)
-  b:SetScript("OnLeave", function() b.edges.setColor(Theme.rgb(b.lit and "gold" or "brass")) end)
-  b:SetScript("OnClick", function() onClick() end)
-  return b
-end
-
--- The gold button of the mockup (plain `.btn`): a gold face with a darker lip
--- at its lower edge and a dark label; `button.text`, `.fill`, `.lip`. Its
--- rim (`.edges`) lights up while `button.lit` or under the mouse.
-local GOLD_FACE, GOLD_LIP = { 0xdc / 255, 0xb4 / 255, 0x67 / 255 }, { 0x8a / 255, 0x5a / 255, 0x2b / 255 }
-local function goldButton(parent, text, onClick)
-  local b = CreateFrame("Button", nil, parent)
-  b:SetSize(BUTTON_W, BUTTON_H)
-  b:RegisterForClicks("LeftButtonUp")
-  b.fill = b:CreateTexture(nil, "BACKGROUND")
-  b.fill:SetAllPoints(b)
-  b.fill:SetColorTexture(GOLD_FACE[1], GOLD_FACE[2], GOLD_FACE[3], 1)
-  b.lip = b:CreateTexture(nil, "BORDER")
-  b.lip:SetPoint("BOTTOMLEFT", b, "BOTTOMLEFT", 0, 0)
-  b.lip:SetPoint("BOTTOMRIGHT", b, "BOTTOMRIGHT", 0, 0)
-  b.lip:SetHeight(2)
-  b.lip:SetColorTexture(GOLD_LIP[1], GOLD_LIP[2], GOLD_LIP[3], 1)
-  b.edges = W.edges(b, 1, "ARTWORK") -- above the lip
-  b.edges.setColor(Theme.rgb("brass"))
-  local fs = W.Label(b, "heading", text, 13)
-  fs:SetTextColor(Theme.rgb("woodDark"))
-  fs:SetJustifyH("CENTER")
-  fs:SetPoint("CENTER", b, "CENTER", 0, 0)
-  b.text = fs
-  b:SetScript("OnEnter", function() b.edges.setColor(Theme.rgb("gold")) end)
-  b:SetScript("OnLeave", function() b.edges.setColor(Theme.rgb(b.lit and "gold" or "brass")) end)
-  b:SetScript("OnClick", function() onClick() end)
-  return b
-end
-
 local function caption(f, style, size)
   local fs = W.Label(f, style, "", size)
   fs:SetWordWrap(false)
@@ -291,8 +240,8 @@ function View.build(parent)
     f.lastCards[k] = card
   end
 
-  f.marryButton = goldButton(f, L("santase.marry40"), function() toggleArmed(f) end)
-  f.swapButton = ghostButton(f, L("santase.swap"), "brassLight", function()
+  f.marryButton = W.GoldButton(f, L("santase.marry40"), function() toggleArmed(f) end)
+  f.swapButton = W.GhostButton(f, L("santase.swap"), "brassLight", function()
     local _, s = session()
     if s then act(f, legalAction(s, "swap9")) end
   end)

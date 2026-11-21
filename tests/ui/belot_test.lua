@@ -201,6 +201,24 @@ describe("ui: Белот view", function()
     eq(plain(f2.text:GetText()), "Kiro Barley стана от масата. Отборът му губи.")
   end)
 
+  it("a deal everybody passed says so once", function()
+    local w, View, f = boot(); local st = scored()
+    st.res = { round = 1, raw = { 0, 0 }, pts = { 0, 0 }, hang = 0, valat = false, ann = {} }; View.update(f, sess(st, 1))
+    eq(#plainTexts(w, "Всички казаха пас. Раздава се отново."), 1); eq(f.summary:IsVisible(), false)
+    eq(f.text:GetText(), "Всички казаха пас. Раздава се отново.")
+  end)
+
+  it("the suit bids are their suit on the gold face: red for hearts and diamonds, the dark label colour for clubs and spades", function()
+    local w, View, f = boot(); local T = w.ns.Theme
+    local function rgba(token) return { T.color[token][1], T.color[token][2], T.color[token][3], 1 } end
+    for b, token in pairs({ C = "woodDark", D = "red", H = "red", S = "woodDark" }) do
+      local icon = f.bidButtons[b].suit
+      eq(icon.vertex, rgba(token), b); eq(icon.texture, T.tex.suits, b); eq({ icon:GetSize() }, { 16, 16 }, b)
+      eq(icon.texCoord, { w.ns.Cards.COORD[b][1], w.ns.Cards.COORD[b][2], 0, 1 }, b)
+      eq({ f.bidButtons[b].text:GetTextColor() }, rgba("woodDark"), b)
+    end
+  end)
+
   it("a watcher sees backs, no button and the teams by place", function()
     local w, View, f = boot(); local st = E.view(started(DECK_A, "S P P P"), 0); View.update(f, sess(st, nil))
     eq(#f.myFan.cards, 8); for k = 1, 8 do eq(f.myFan.cards[k].face, nil) end
