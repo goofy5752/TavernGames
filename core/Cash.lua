@@ -20,17 +20,27 @@ local _, ns = ...
 --   lacks a face of its own cards is the foul "deal" on every client (only a
 --   modified host plays one);
 -- - a hand that is over is sealed into the book (Book.seal), a shuffle whose
---   hand was settled before the deal (leaves) is dropped.
+--   hand was settled before the deal (leaves) is dropped; every client that
+--   saw a hand end emits "hand" once (its state.last, the chips after it, the
+--   names when it began);
+-- - silence (host): a shuffle not dealt in FAIR_WAIT (hook `lapsed`) sits out
+--   the participants whose commit is missing, or in stage seed its dealer
+--   ({k="away", seat}); a step still not come FAIR_WAIT after it was due voids
+--   the hand (every chip back) and sits the dealer out. A client that sees its
+--   own seat away is here: it asks {k="back"} and is dealt in from the next
+--   hand. The turn clock: core/Session.lua (armTimers) and Member.timedOut.
 -- Nothing is sent from the `table` hook (core/DealHooks.lua says why).
--- Session fields: s.stepTimer; s.handSeen (the hand number of the last
--- state.last I saw), s.handNames (the seats when the last hand began); the
--- round's fair.who = {[seat] = name} of its participants at the open.
+-- Session fields: s.stepTimer (the dealer's step; on a host that does not
+-- deal, the step's wait); s.handSeen (the hand number of the last state.last
+-- I saw), s.handNames (the seats when the last hand began); s.backAsked (my
+-- back is asked while my seat stays away); the round's fair.who = {[seat] =
+-- name} of its participants at the open.
 local Cash = {}
 ns.Cash = Cash
 
 local C = ns.Const
 local Session = ns.Session
-local copy = ns.Util.copy
+local copy, contains = ns.Util.copy, ns.Util.contains
 local int = ns.Deal.int
 local handDone, stopWait, allPublic, foul = int.handDone, int.stopWait, int.allPublic, int.foul
 
@@ -92,21 +102,86 @@ local function ask(s, fair, seq)
   end
 end
 
--- The step: armed again on every react. Only the dealer that holds the deck
--- of a dealt round, in a live game whose engine needs faces, asks.
+-- Host that does not deal: the step is FAIR_WAIT overdue and the table still
+-- stands at the same event: the dealer is gone; the hand is void (every chip
+-- back) and the dealer sits out.
+local function overdue(s, fair, seq)
+  s.stepTimer = nil
+  if s.client.session ~= s or s.role ~= "host" or s.fair ~= fair or s.seq ~= seq or fair.stage ~= "dealt" then return end
+  local d = fair.d
+  s:play(0, { k = "void" })
+  s:play(0, { k = "away", seat = d })
+end
+
+-- The step: armed again on every react, in a live game whose engine needs the
+-- faces of a dealt round. The dealer that holds the deck asks; a host that
+-- does not deal waits FAIR_WAIT for it.
 local function armStep(s)
   if s.stepTimer then s.stepTimer.cancel(); s.stepTimer = nil end
   local fair, engine = s.fair, s:engine()
-  if not (fair and fair.stage == "dealt" and fair.deck and s.mySeat == fair.d and s.status == "live" and s.state) then return end
+  if not (fair and fair.stage == "dealt" and s.status == "live" and s.state) then return end
   local want = engine.system(s.state)
   if not (want and want.need == "faces") then return end
   local seq = s.seq
-  s.stepTimer = s.client:after(engine.STREET_DELAY or 0, function() ask(s, fair, seq) end)
+  if fair.deck and s.mySeat == fair.d then
+    s.stepTimer = s.client:after(engine.STREET_DELAY or 0, function() ask(s, fair, seq) end)
+  elseif s.role == "host" and s.mySeat ~= fair.d then
+    s.stepTimer = s.client:after(C.FAIR_WAIT, function() overdue(s, fair, seq) end)
+  end
+end
+
+-- Host: the shuffle was not dealt in FAIR_WAIT (hook `lapsed`, before it is
+-- opened again). In stage commit every participant whose commit is missing
+-- sits out (its blind stays in the pot); in stage seed the dealer does, so
+-- the deal passes to the next participant.
+local function lapsed(s)
+  local fair = s.fair
+  if s.role ~= "host" or not fair then return end
+  if fair.stage == "commit" then
+    -- A round I took over as the new host has no fair.pend (its commits went
+    -- to the old one): nobody is known to be silent. My own seat is here.
+    for _, q in ipairs(fair.pend and fair.p or {}) do
+      if not fair.pend[q] and q ~= s.mySeat then s:play(0, { k = "away", seat = q }) end
+    end
+  elseif fair.stage == "seed" then
+    s:play(0, { k = "away", seat = fair.d })
+  end
+end
+
+-- My seat sits out in a live game: I am here, so it is dealt in again from
+-- the next hand ({k="back"}), asked once while it stays away (s.backAsked; a
+-- snapshot asks again). A seat dealt into the running hand asks once that
+-- hand is over: back, it would count again among the hand's players (rule
+-- 18), and so in the shuffle reopened without it and in the dealer named.
+local function comeBack(s)
+  local st = s.state
+  local mine = s.mySeat and st and st.seats[s.mySeat]
+  if not (s.status == "live" and type(mine) == "table" and mine.away) then s.backAsked = nil; return end
+  if s.backAsked or s:gameOver() or (s:engine().inHand(st) and contains(st.order or {}, s.mySeat)) then return end
+  s.backAsked = true
+  Session.act(s.client, { k = "back" })
+end
+
+-- The hand on my state ended and I have not told it yet: event "hand".
+local function told(s)
+  local st = s.state
+  local last = st and st.last
+  if not last or last.hand == s.handSeen then return end
+  s.handSeen = last.hand
+  local chips = {}
+  for i, x in pairs(st.seats) do
+    if x then chips[i] = x.chips end
+  end
+  local client = s.client
+  client.events:emit("hand", {
+    tid = s.tid, game = s.game, opt = copy(s.opt), n = last.hand, last = copy(last), chips = chips,
+    names = copy(s.handNames or s.seats), at = client.env.epoch(),
+  })
 end
 
 -- Whatever the table owes my round now: a dealt hand that is over goes into
 -- the book; a shuffle whose hand is over (leaves settled it before the deal)
--- is dropped; then the step.
+-- is dropped; then the step, and my seat comes back if it sits out.
 local function react(s)
   local fair = s.fair
   if fair and handDone(s) then
@@ -119,6 +194,7 @@ local function react(s)
     end
   end
   armStep(s)
+  comeBack(s)
 end
 
 ns.Ext.cash = {
@@ -145,11 +221,16 @@ ns.Ext.cash = {
       s.handNames = copy(s.seats)
     elseif k == "fair" and a.op == "open" and s.fair then
       s.fair.who = namesOf(s, s.fair.p)
+      -- Host: the commits of a round I opened are collected here (a round I take over has none).
+      if s.role == "host" then s.fair.pend = s.fair.pend or {} end
     elseif k == "street" and s.fair and s.fair.stage == "dealt" and faceless(s.state, a.cards) then
       foul(s.fair, "deal")
     end
     react(s)
+    told(s)
   end,
+
+  lapsed = lapsed,
 
   -- Member: the state of a snapshot (a book of another game is replaced by Book.of).
   adopted = function(s)
@@ -159,6 +240,7 @@ ns.Ext.cash = {
     s.handSeen = st.last and st.last.hand
     s.handNames = s.handNames or copy(s.seats)
     if s.fair and not s.fair.who then s.fair.who = namesOf(s, s.fair.p) end
+    s.backAsked = nil
     react(s)
   end,
 }

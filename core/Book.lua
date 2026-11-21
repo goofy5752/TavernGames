@@ -17,8 +17,9 @@ local _, ns = ...
 --   its record {p, c, f, who} (the participants, the commits it holds, every
 --   face its state knows plus its private ones, the names at the open) into
 --   its book and closes the round "sealed" (Book.seal). No seed is revealed,
---   none is waited for. A round with a foul against it, or private faces the
---   engine refused, closes "bad" as in stage B.
+--   none is waited for. A voided hand writes its record too (the faces dealt
+--   before the void) and closes "void". A round with a foul against it, or
+--   private faces the engine refused, closes "bad" as in stage B.
 -- Rule 6, keys: a player who stands up publishes its key first (ACT
 --   {k="book", op="key"} -> EV {k="book", op="keys", m = {[seat] = key}}); at
 --   the close of the game every seated client sends its key, and the host
@@ -124,8 +125,10 @@ function Book.seedFor(s, h)
 end
 
 -- The hand of my round is over (rule 5): its record goes into the book and the
--- round closes "sealed"; with a foul or a lie against it, "bad" at once.
-function Book.seal(s)
+-- round closes `verdict` ("sealed"; "void" for a hand the host annulled, whose
+-- record holds the faces dealt before the void); with a foul or a lie against
+-- it, "bad" at once.
+function Book.seal(s, verdict)
   local fair, book = s.fair, Book.of(s)
   book.n = book.n + 1
   if fair.foul or fair.lied then
@@ -136,7 +139,7 @@ function Book.seal(s)
   for i, x in pairs(fair.priv or {}) do f[i] = x end
   book.rec[fair.h] = { p = copy(fair.p), c = copy(fair.held), f = f, who = copy(fair.who) }
   book.open[#book.open + 1] = fair.h
-  ns.Deal.close(s, "sealed")
+  ns.Deal.close(s, verdict or "sealed")
 end
 
 -- The book's line under the felt -> key, tone, arg, arg2 | nil (nil for an

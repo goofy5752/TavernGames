@@ -202,7 +202,8 @@ ns.Ext.fair = {
       local round = fair and fair.stage ~= "done" and fair or false
       -- I deal this hand, hold its deck and did not give it up: not my void.
       if round and round.d == s.mySeat and round.deck and not round.voidAsked then foul(round, "forged") end
-      Deal.close(s, "void", nil, round)
+      -- A sealed hand writes its record (the faces known so far) into the book first: it is checked at the close.
+      if round and round.stage == "dealt" and s:engine().sealed then ns.Book.seal(s, "void") else Deal.close(s, "void", nil, round) end
       s.fair = nil
       return
     end

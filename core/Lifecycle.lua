@@ -25,9 +25,11 @@ local copy, seatOf = ns.Util.copy, ns.Util.seatOf
 -- how) after the snapshot m replaced my state (how: see Member.adopt),
 -- hostChanged(s) when my table changed host; refused(s, seat, a) (member: an
 -- event of my host that does not apply), forged(s, seat, a) (member, engine
--- with `view`: an event for my seat that I did not send), stuck(s) (my
--- deadline passed and I have no automatic move to make: e.g. my cards are missing);
--- need(s, action) (host: a system action that needs randomness),
+-- with `view`: an event for my seat that I did not send and that is no public
+-- timeout due by my own clock, or an away that folds my hand; Member.timedOut),
+-- stuck(s) (my deadline passed and I have no automatic move to make: e.g. my cards are missing);
+-- need(s, action) (host: a system action that needs randomness), lapsed(s)
+-- (host: a shuffle was not dealt in FAIR_WAIT; called before it is opened again),
 -- table(s, a) -> true (a seat-0 event the extension applied itself), snap(s)
 -- -> the SNP field `fr`. A hook that raises counts as nil: the error goes to
 -- env.log ("error", "ext", "<ext>.<hook>", message), so it cannot cut short the

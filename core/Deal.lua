@@ -290,7 +290,8 @@ end
 
 -- The one handler of s.fairTimer: it acts only on my own table, as its host,
 -- for the same round. A shuffle not dealt yet is opened again (a participant
--- is silent; Deal.open checks the engine still wants a deck). A hand whose
+-- is silent; Deal.open checks the engine still wants a deck), after the hook
+-- `lapsed` (the cash table sits the silent out first). A hand whose
 -- reveal never came is given up: the next round opens (and its open closes
 -- this one "noreveal"); after the last hand of a match, which opens no round,
 -- EV {k="fair", op="noreveal", h} closes it. While the wait is armed, `need`
@@ -300,6 +301,7 @@ local function fairWaitOver(s, h)
   local fair = s.fair
   if s.client.session ~= s or s.role ~= "host" or not fair or fair.h ~= h then return end
   if fair.stage == "commit" or fair.stage == "seed" then
+    s:hook("lapsed")
     Deal.open(s)
   elseif fair.stage == "dealt" then
     if fair.wantOpen then

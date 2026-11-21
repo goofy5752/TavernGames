@@ -207,8 +207,8 @@ function Session:armTimers()
   local seat = self.state.turn
   if seat then
     self.deadline = client.env.now() + self.turn
-    if engine.view and seat ~= self.mySeat then return end
-    self.turnTimer = client:after(self.turn, function()
+    if engine.view and seat ~= self.mySeat and not engine.publicAuto then return end
+    self.turnTimer = client:after(self.turn + (seat ~= self.mySeat and engine.view and C.AUTO_GRACE or 0), function()
       self.turnTimer = nil
       local auto = engine.auto(self.state, seat, client.env.random)
       if auto then self:play(seat, auto, true) end

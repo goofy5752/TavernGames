@@ -48,4 +48,5 @@ ns.Const = {
   BOOK_WAIT = 30,    -- a closed sealed game's keys are published at the latest this long after the close
   BOOK_KEYS = 24,    -- published keys a snapshot carries (the newest)
   BOOK_BATCH = 2,    -- hands of the book checked a tick
+  AUTO_GRACE = 7,    -- the host plays a public timeout (E.publicAuto) for another seat this long after its deadline
 }

@@ -69,6 +69,8 @@ function Member.adopt(client, sender, m)
   if not s.resultSeen then s.seatedBefore = copy(s.seats) end
   s.status = t.st == "live" and "live" or (s.state and "aborted" or "open")
   s.deadline = type(m.left) == "number" and client.env.now() + m.left or nil
+  -- My turn in a snapshot: no clock of mine saw it begin, the host's word dates it.
+  s.turnAt = seat and s.state and s.state.turn == seat and s.deadline and type(s.turn) == "number" and s.deadline - s.turn or nil
   s.stale, s.sitAsked, s.asked = nil, nil, nil
   s.invited = {}
   s:addInvited(m.inv)
@@ -149,23 +151,58 @@ function Member.mine(s, a)
   return false
 end
 
+-- Is the event m the host's timeout for my seat, due by my own clock -> bool?
+-- Only for an engine whose automatic move needs no hidden card (publicAuto:
+-- the host plays it AUTO_GRACE after the deadline, Session:armTimers): flagged
+-- auto, the move engine.auto makes, and my own turn time has run out since my
+-- seat came on turn (s.turnAt, my env.now() then). The host's `left` is not
+-- taken: a host that sent left = 0 could fold me at once.
+function Member.timedOut(s, m)
+  local engine, at = s:engine(), s.turnAt
+  if m.auto ~= true or not engine.publicAuto or not at or type(s.turn) ~= "number" then return false end
+  if s.client.env.now() < at + s.turn then return false end
+  return s.state ~= nil and ns.Util.same(m.a, engine.auto(s.state, m.seat))
+end
+
+-- A seat-0 away of my seat that folds a hand nobody may fold for me: my round
+-- is dealt, or every commit is in and I am not its dealer. (The legitimate
+-- aways: a silent commit, the dealer after its void or in stage seed.)
+local function awayForged(s, seat, a)
+  local fair = s.fair
+  if seat ~= 0 or type(a) ~= "table" or a.k ~= "away" or a.seat ~= s.mySeat or not fair then return false end
+  return fair.stage == "dealt" or (fair.stage == "seed" and fair.d ~= s.mySeat)
+end
+
 -- Events are taken only from my host, at exactly my epoch, in order. An epoch
 -- is never adopted from an EV, and a stale member waits for its snapshot.
 -- With hidden hands (engine.view) nobody but my client moves for my seat, my
--- timeouts included (Session:armAuto): an event for it that I did not send is
--- reported to the extensions (hook `forged`) and applied like any other.
+-- timeouts included (Session:armAuto), but for the host's public timeout once
+-- my own clock ran out (Member.timedOut): an event for it that I did not send
+-- is reported to the extensions (hook `forged`) and applied like any other;
+-- so is an away that folds my hand (awayForged). s.turnAt: my env.now() when
+-- an event I applied put my seat on turn (nil while it is not on turn).
 local function onEvent(client, sender, m)
   local s = client.session
   if not s or s.role == "host" or s.tid ~= m.tid or s.host ~= sender or s.stale then return end
   if m.e ~= s.epoch or type(m.q) ~= "number" or m.q <= s.seq then return end
   if m.q > s.seq + 1 then return s:requestSync() end
-  if m.seat == s.mySeat and s:engine().view and not Member.mine(s, m.a) then s:hook("forged", m.seat, m.a) end
+  if m.seat == s.mySeat and s:engine().view and not Member.mine(s, m.a) and not Member.timedOut(s, m) then
+    s:hook("forged", m.seat, m.a)
+  elseif awayForged(s, m.seat, m.a) then
+    s:hook("forged", m.seat, m.a)
+  end
+  local turn = s.state and s.state.turn
   if not s:apply(m.seat, m.a) then
     s:hook("refused", m.seat, m.a)
     client.events:emit("desync", s.tid)
     return s:requestSync()
   end
   s.seq = m.q
+  if not (s.mySeat and s.state and s.state.turn == s.mySeat) then
+    s.turnAt = nil
+  elseif turn ~= s.mySeat or not s.turnAt then
+    s.turnAt = client.env.now()
+  end
   s.deadline = type(m.left) == "number" and client.env.now() + m.left or nil
   s:hook("applied", m.seat, m.a)
   s:armAuto()
