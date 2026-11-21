@@ -57,7 +57,7 @@ function Member.adopt(client, sender, m)
   s.resultSeen = s.state ~= nil and engine.result ~= nil and engine.result(s.state) ~= nil
   s.status = t.st == "live" and "live" or (s.state and "aborted" or "open")
   s.deadline = type(m.left) == "number" and client.env.now() + m.left or nil
-  s.stale = nil
+  s.stale, s.sitAsked = nil, nil
   s.invited = {}
   s:addInvited(m.inv)
   client.pending, client.gaveUp = nil, nil
@@ -147,6 +147,7 @@ local function onRefusal(client, sender, m)
   elseif s and s.role ~= "host" and s.tid == m.tid and s.host == sender then
     -- "gone": I am not at its table any more. Stale: the new host did not take me in.
     -- Anything else I can live with, e.g. a watcher asking for a taken chair.
+    s.sitAsked = nil
     if m.why == "gone" or s.stale then Session.leave(client) end
     Session.refuse(client, m.tid, m.why)
   end

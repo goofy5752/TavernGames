@@ -65,6 +65,48 @@ describe("party", function()
     eq(b.session.mySeat, 2); eq(b:groupInviteFrom("Иван"), false)
   end)
 
+  -- The host invites (env.groupInvite) before its SNP reaches the sitter, so the
+  -- invite is asked about while the sit request is still pending.
+  it("the invite that arrives before the snapshot is accepted from the host I asked to sit with", function()
+    local sim, a, b, c = clients()
+    local tid = a:openTable{game="deathroll", access="guild", turn=45}; sim:run(3)
+    local asked = {}
+    local invite = a.env.groupInvite
+    a.env.groupInvite = function(who)
+      local cl = sim.clients[who]
+      asked[#asked + 1] = { who = who, session = cl.session ~= nil, host = cl:groupInviteFrom("Иван"),
+        other = cl:groupInviteFrom("Kiro") }
+      invite(who)
+    end
+    b:sit(tid, 2); sim:run(1)
+    eq(asked, {{ who = B, session = false, host = true, other = false }})
+    eq(b.session.mySeat, 2); eq(b:groupInviteFrom("Иван"), true)
+  end)
+
+  it("a pending watch, or a pending sit at a table without a group, accepts nothing", function()
+    local sim, a, b, c = clients()
+    local tid = a:openTable{game="deathroll", access="guild", turn=45}; sim:run(3)
+    c:watch(tid); ok(c.pending ~= nil); eq(c:groupInviteFrom("Иван"), false)
+    sim, a, b = clients()
+    tid = a:openTable{game="ttt", access="guild", turn=45}; sim:run(3)
+    b:sit(tid, 2); ok(b.pending ~= nil); eq(b:groupInviteFrom("Иван"), false)
+  end)
+
+  it("a watcher who asks for a seat accepts the host's invite before the snapshot", function()
+    local sim, a, b, c = clients()
+    local tid = a:openTable{game="deathroll", access="guild", turn=45}; sim:run(3)
+    b:watch(tid); sim:run(1); eq(b.session.role, "watcher"); eq(b:groupInviteFrom("Иван"), false)
+    local asked
+    a.env.groupInvite = function(who) asked = sim.clients[who]:groupInviteFrom("Иван") end
+    b:sit(tid, 2); sim:run(1)
+    eq(asked, true); eq(b.session.mySeat, 2)
+    -- A watcher whose sit request was refused, or is old, accepts nothing.
+    c:watch(tid); sim:run(1); c:sit(tid, 2); eq(c:groupInviteFrom("Иван"), true); sim:run(1)
+    eq(c.session.role, "watcher"); eq(c:groupInviteFrom("Иван"), false)
+    c.env.send = function() end; c:sit(tid, 2); eq(c:groupInviteFrom("Иван"), true)
+    sim:run(10); eq(c:groupInviteFrom("Иван"), false)
+  end)
+
   it("missing lists who is outside my group, for any seated client", function()
     local sim, a, b, c = clients({ [B] = { group = { A } } })
     local tid = a:openTable{game="deathroll", access="guild", turn=45}; sim:run(3)
