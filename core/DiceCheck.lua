@@ -10,7 +10,9 @@ local _, ns = ...
 -- client.dice[tid] = the session's dice fields with my state and event
 -- number, written after every hook. A table that ends under me and
 -- takes me in again (END, then a snapshot) finds them: only a login without
--- such a record is new to the table.
+-- such a record is new to the table. A record of a table that is no longer
+-- listed is dropped DICE_KEEP seconds after I was last there (rec.at), when
+-- the first record of another dice table is written.
 local Dice = ns.Dice
 local Fair, int, ext = ns.Fair, ns.Dice.int, ns.Ext.dice
 local same = ns.Util.same
@@ -90,8 +92,14 @@ local FIELDS = {
 local function kept(s) return s.client.dice and s.client.dice[s.tid] end
 
 local function keep(s)
-  local all = s.client.dice or {}
-  local rec = { state = s.state, q = s.seq }
+  local client, now = s.client, s.client.env.now()
+  local all = client.dice or {}
+  if not all[s.tid] then
+    for tid, old in pairs(all) do
+      if not client.lobby:get(tid) and now - old.at > ns.Const.DICE_KEEP then all[tid] = nil end
+    end
+  end
+  local rec = { state = s.state, q = s.seq, at = now }
   for i = 1, #FIELDS do rec[FIELDS[i]] = s[FIELDS[i]] end
   all[s.tid], s.client.dice = rec, all
 end

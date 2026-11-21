@@ -44,4 +44,5 @@ ns.Const = {
   FAIR_ASK_GAP = 5,  -- missing private faces are asked for again this often
   SEED_BYTES = 16,   -- random bytes in one seed
   DICE_WAIT = 10,    -- a throw still without the other player's seed this long after its open is thrown alone
+  DICE_KEEP = 600,   -- my dice records of a table that is gone are dropped this long after I was last there
 }

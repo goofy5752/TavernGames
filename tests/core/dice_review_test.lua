@@ -316,3 +316,20 @@ describe("final review: a match I walk into (I1)", function()
     eq({ s ~= nil and s.mySeat, s.diceLast, ns.Dice.status(s) }, { 2, nil, nil })
   end)
 end)
+
+describe("final review: my dice records of tables that are gone (M6)", function()
+  it("a record is dropped once its table has been gone for DICE_KEEP seconds; a table still listed keeps its record", function()
+    local t1 = table2(); ok(b.dice[t1] ~= nil)
+    b:stand(); sim:run(1); a:stand(); sim:run(3); eq({ a.session, b.lobby:get(t1) }, { nil, nil }); ok(b.dice[t1] ~= nil)
+    local t2 = a:openTable{ game = "tabla", access = "guild", turn = 45 }; sim:run(3); b:sit(t2, 2); sim:run(2)
+    ok(b.dice[t1] ~= nil and b.dice[t2] ~= nil)                        -- gone, but not for long: it may still come back
+    b:stand(); sim:run(ns.Const.DICE_KEEP + 1)                         -- t2 lives on under A
+    local c = sim:add("Трети Играч", { cls = "ROGUE" }); sim:run(1)
+    local t3 = c:openTable{ game = "tabla", access = "guild", turn = 45 }; sim:run(3); b:sit(t3, 2); sim:run(2)
+    eq({ b.dice[t1], b.dice[t2] ~= nil, b.dice[t3] ~= nil, b.lobby:get(t2) ~= nil }, { nil, true, true, true })
+    -- A host's records go the same way, when it writes the first record of its next dice table.
+    a:stand(); sim:run(ns.Const.DICE_KEEP + 1); ok(a.dice[t1] ~= nil and a.dice[t2] ~= nil)
+    local t4 = a:openTable{ game = "tabla", access = "guild", turn = 45 }; sim:run(3)
+    b:stand(); sim:run(1); b:sit(t4, 2); sim:run(2); eq({ a.dice[t1], a.dice[t2], a.dice[t4] ~= nil }, { nil, nil, true })
+  end)
+end)
