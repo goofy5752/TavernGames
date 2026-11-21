@@ -319,8 +319,7 @@ local function drawSide(f, st, m)
   for k = 1, 2 do
     local d = f.dice[k]
     if shown then
-      local c, r = (dice[k] - 1) % 4, math.floor((dice[k] - 1) / 4)
-      d:SetTexCoord(c / 4, (c + 1) / 4, r / 2, (r + 1) / 2)
+      d:SetTexCoord(Theme.dieCoord(dice[k]))
       d:SetAlpha(contains(m.left, dice[k]) and 1 or DIE_DIM)
     end
     d:SetShown(shown)

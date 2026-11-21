@@ -60,3 +60,10 @@ function Theme.rgb(token)
   local c = Theme.color[token]
   return c[1], c[2], c[3]
 end
+
+-- The texture coordinates of die face n (1..6) on the `dice` texture
+-- -> left, right, top, bottom, as SetTexCoord takes them.
+function Theme.dieCoord(n)
+  local c, r = (n - 1) % 4, math.floor((n - 1) / 4)
+  return c / 4, (c + 1) / 4, r / 2, (r + 1) / 2
+end

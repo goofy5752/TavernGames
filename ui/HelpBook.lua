@@ -140,8 +140,7 @@ function BLOCKS.dice(content, b, y)
     local d = content:CreateTexture(nil, "ARTWORK")
     d:SetTexture(Theme.tex.dice)
     d:SetSize(DIE, DIE)
-    local c, r = (n - 1) % 4, math.floor((n - 1) / 4)
-    d:SetTexCoord(c / 4, (c + 1) / 4, r / 2, (r + 1) / 2)
+    d:SetTexCoord(Theme.dieCoord(n))
     d:SetPoint("TOPLEFT", content, "TOPLEFT", x, -y)
     dice[i] = d
     x = x + DIE + DIE_GAP
