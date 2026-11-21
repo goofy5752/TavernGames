@@ -179,6 +179,42 @@ An invited player who asks for a taken seat is seated at the lowest free seat.
 
 **Test commands:** `bash t.sh` runs everything; `bash t.sh <file-or-dir>` runs a subset. Success ends with `N passed, 0 failed` and exit code 0. Test names below written with a `--[[ ... ]]` body state their assertions in words; the implementer writes them out as real assertions with exactly those values before implementing. The runner fails any test that makes zero assertions (Task 1), so no test body may be left empty.
 
+#### Stage B additions
+
+**Randomness (ruling X1), all engines.** `E.system(state)` returns an action carrying `need` when the table must supply randomness: `need = "deck"` (payload `deck`, always on the action `{k="deal"}`) or `need = "dice"` (payload `d = {a, b}`, on `{k="dice"}`). The session never applies such an action: after its delay it calls the extensions' `need(s, action)`. Whoever supplies the payload applies the same action without `need`. `E.apply` refuses an action that still has `need` with `"need"`.
+
+**Engines that list the extension `fair`** (card games; Сантасе is the first, `Games.PLAYABLE = {ttt, deathroll, santase}`) also provide:
+
+| item | meaning |
+|---|---|
+| `E.DECK`, `E.view`, `E.hidden`, `{k="show"}` | as in `.superpowers/sdd/engines-parallel/contract.md` |
+| view ⊕ deck | `E.view` changes nothing but `deck` and sets `full = false`; a copy of any view with the whole deck and `full = true` behaves as the full state (`Fair.full`) |
+| `{k="deal"}` on a view | accepts no deck or any subset; on a state with `full == true` only a complete permutation of `E.DECK` |
+| `{k="void"}` at seat 0 | while a hand runs: annul it, nothing scores, back to the phase in which `E.system` asks for the deal; otherwise `"phase"` |
+| `E.auto`/`E.legal` | return nothing for a hand whose faces are unknown |
+| `E.again` | `true`: once the match is over the host may start a new one with `client:startGame()` |
+
+**`ns.Ext` hooks added:** `need(s, action)` (host), `table(s, a) -> true|nil` (everyone: a seat-0 event the extension owns; `true` = applied, the engine is not asked), `snap(s) -> table|nil` (host: goes out as `SNP.fr`). `adopted` gets the snapshot message as a third argument. Every hook, `act` included, runs under `pcall`: an error goes to `env.log("error", "ext", "<ext>.<hook>", message)` and counts as `nil` (an `act` that raises drops the action); with `env.strictHooks` set (tests only, never by the WoW adapter) the error is re-raised.
+
+**Protocol additions** (`v=1`; new types `SED`, `PRV`, `PRQ`, all WHISPER-only and point-to-point):
+
+| where | shape | meaning |
+|---|---|---|
+| `EV` seat 0 | `{k="fair", op="open", h, d, p}` | the host opens shuffle round `h` (its `seq + 1`), dealer seat `d`, participants `p`: exactly the occupied seats in strictly ascending order (an `open` that differs is refused; `Fair.audit` refuses a non-ascending `p`) |
+| `ACT` → `EV` seat 0 | `{k="fair", op="commit", h, c}` → `{…, seat, c}` | a participant's commit |
+| `SED` (player → dealer) | `{tid, h, s}` | my seed, once every commit is in |
+| `ACT` (dealer) → `EV` seat 0 | `{k="fair", op="deal", h, deck={[i]=face}}` → `{k="deal", deck={[i]=face}}` | dealt; `deck` holds only the faces a watcher sees |
+| `PRV` (dealer → player) | `{tid, h, cards={[i]=face}}` | faces only that seat sees: its deal, its draws, the answer to `PRQ` |
+| `PRQ` (player → dealer) | `{tid, h}` | send me all my faces again |
+| `ACT` (dealer) → `EV` seat 0 | `{k="fair", op="show", h, cards}` → `{k="show", cards}` | faces that became public outside a play |
+| `ACT` (dealer) → `EV` seat 0 | `{k="fair", op="reveal", h, s={seed,…}}` → the same as an event | the seeds in `p` order, after the hand |
+| `ACT` (dealer) → `EV` seat 0 | `{k="fair", op="void", h}` → `{k="void"}` | the dealer lost the deck |
+| `EV` seat 0 (host only) | `{k="fair", op="noreveal", h}` | accepted only for my own round `h`, stage `"dealt"`, hand over: closes it `bad`/`noreveal` (after the last hand of a match, which opens no next round) |
+| `SNP` | `fr = {h, d, p, c, st, n}` | always sent for a card game: the round (commits `c` by seat, stage `st`, hands dealt `n`), or just `{n}` when no round is open |
+
+**Client event added:** `"fair"({tid, game, h, verdict, why, dealer, at})`, once per closed hand on every client at the table. Verdicts: `"ok"`, `"bad"`, `"unseen"` (I did not see the whole hand), `"void"` (annulled, dealt again). Reasons of `"bad"`, in check order: `seeds`, `commit`, `deal`, `dealt`, `play`, plus `noreveal`. Timing: `FAIR_WAIT = 20`, `FAIR_ASK_GAP = 5`. Seeds, decks and private faces live in memory only.
+
+
 ---
 
 ### Task 1: Tooling, test runner, TOC skeleton
