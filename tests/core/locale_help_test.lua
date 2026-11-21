@@ -22,11 +22,11 @@ describe("locale and help", function()
     end
   end)
 
-  it("every help block and intro key exists in both languages; topics are hall, ttt, deathroll, santase, fair, soon", function()
+  it("every help block and intro key exists in both languages; topics are hall, ttt, deathroll, santase, belot, fair, soon", function()
     local H = ns.Help
     local ids = {}
     for i, t in ipairs(H.topics) do ids[i] = t.id end
-    eq(ids, { "hall", "ttt", "deathroll", "santase", "fair", "soon" })
+    eq(ids, { "hall", "ttt", "deathroll", "santase", "belot", "fair", "soon" })
     eq(#H.intro, 4)
     for _, t in ipairs(H.topics) do
       both(t.title, "topic title")
@@ -65,21 +65,38 @@ describe("locale and help", function()
       end
     end
     eq(hands, { { "AS", "TS", "KS", "QS", "JS", "9S" }, { "KH", "QH" } })
+    local be = H.get("belot")
+    eq(be.title, "game.belot")
+    local kinds = {}
+    for i, bb in ipairs(be.blocks) do kinds[i] = bb.key end
+    eq(kinds, { "help.belot.p1", "help.belot.example", "help.belot.bids", "help.belot.contra", "help.belot.cards", "help.belot.trick",
+      "help.belot.announce", "help.belot.belote", "help.belot.score", "help.belot.valat", "help.belot.time", "help.belot.fair" })
+    local bhands, bdeck = {}, {}
+    for _, f in ipairs(ns.Engines.belot.DECK) do bdeck[f] = true end
+    for _, cb in ipairs(be.blocks) do
+      if cb.kind == "cards" then
+        bhands[#bhands + 1] = cb.cards
+        for _, f in ipairs(cb.cards) do ok(bdeck[f], "not a Белот card: " .. tostring(f)) end
+      end
+    end
+    eq(bhands, { { "JH", "9H", "AH", "TH", "KH", "QH" }, { "9H", "TH", "JH" }, { "KS", "QS" } })
+    eq(be.blocks[5].kind, "cards"); eq(be.blocks[7].kind, "cards"); eq(be.blocks[8].kind, "cards")
     eq(H.get("fair").title, "help.fair.title")
     eq(H.get("nope"), nil)
   end)
 
-  it("every quoted label in the hall, ttt, deathroll, santase, fair and soon help is a UI label, and no help title copies one", function()
+  it("every quoted label in the hall, ttt, deathroll, santase, belot, fair and soon help is a UI label, and no help title copies one", function()
     local QUOTES = { bg = { "„", "“" }, en = { "“", "”" } }
     for lang, q in pairs(QUOTES) do
       local ui = {}
       for k, v in pairs(T[lang]) do
         if not k:match("^help%.") and not k:match("^intro%.") then ui[v] = true end
       end
-      local checked, cards = 0, 0
+      local checked, cards, belot = 0, 0, 0
       for k, text in pairs(T[lang]) do
         local card = k:match("^help%.santase%.") or k:match("^help%.fair%.")
-        if card or k:match("^help%.hall%.") or k:match("^help%.ttt%.") or k:match("^help%.deathroll%.") or k == "help.soon.example" then
+        local isBelot = k:match("^help%.belot%.")
+        if card or isBelot or k:match("^help%.hall%.") or k:match("^help%.ttt%.") or k:match("^help%.deathroll%.") or k == "help.soon.example" then
           local pos = 1
           while true do
             local a, b = text:find(q[1], pos, true)
@@ -91,12 +108,14 @@ describe("locale and help", function()
             ok(ui[label], lang .. " " .. k .. ": „" .. label .. "“ is not a UI label")
             checked = checked + 1
             if card then cards = cards + 1 end
+            if isBelot then belot = belot + 1 end
             pos = d + 1
           end
         end
       end
       ok(checked >= 26, lang .. ": only " .. checked .. " quoted labels found")
       ok(cards >= 8, lang .. ": only " .. cards .. " quoted labels in the santase and fair help")
+      ok(belot >= 12, lang .. ": only " .. belot .. " quoted labels in the belot help")
       for k, v in pairs(T[lang]) do
         if k:match("^help%.") and k:match("%.title$") then ok(not ui[v], lang .. " " .. k .. " copies a UI label") end
       end
@@ -106,8 +125,12 @@ describe("locale and help", function()
   it("pinned texts are used verbatim", function()
     eq(T.bg["help.ttt.example"], "Иван е Х, Мария е О. Редуват се. Иван нарежда три Х в редица и печели играта. Който пръв спечели 3 игри, печели мача.")
     eq(T.bg["help.hall.example"], "Виждаш маса с празен стол с пунктир. Кликаш на стола и вече седиш. Ако масата е пълна, кликни на нея, за да гледаш.")
-    eq(T.bg["help.soon.p"], "Скоро идват Белот, Табла и Тексас Холдем, и игра на залог с тефтер на дълговете.")
-    eq(T.bg["help.soon.example"], "Засега в кръчмата се играят Морски шах, Death Roll и Сантасе. Другите игри стоят бледи в списъка, с надпис „Скоро“. Щом станат готови, правилата им ще се появят тук, в книжката.")
+    eq(T.bg["help.soon.p"], "Скоро идват Табла и Тексас Холдем, и игра на залог с тефтер на дълговете.")
+    eq(T.bg["help.soon.example"], "Засега в кръчмата се играят Морски шах, Death Roll, Сантасе и Белот. Другите игри стоят бледи в списъка, с надпис „Скоро“. Щом станат готови, правилата им ще се появят тук, в книжката.")
+    eq(T.bg["help.belot.contra"], "Противникът е казал игра, а ти мислиш, че ще го биеш? Натисни „Контра“ и точките се броят двойно. Неговият отбор може да отвърне с „Реконтра“ и тогава са четворни. При контра всичките точки от раздаването взима отборът, който е събрал повече.")
+    eq(T.bg["help.belot.time"], "Ако времето ти изтече при наддаването, аддонът казва „Пас“. Ако изтече при игра, той обявява каквото държиш и играе най-слабата ти позволена карта. Ако някой стане от масата или го няма повече от три минути, партията свършва и неговият отбор губи. Щом някой седне на свободния стол, започва нова партия. След нормален край домакинът натиска „Нова игра“.")
+    eq(T.en["belot.bid.X"], "Double")
+    eq(T.en["belot.peek"], "Last trick")
     eq(T.bg["help.fair.dealer"], "Едно нещо да знаеш: аддонът на раздаващия знае цялото тесте в ръката, която раздава. Иначе няма как да ти прати твоите карти. Обикновен играч това не го вижда. Само подправен аддон може да наднича, и то само когато раздава. Затова раздаването минава при следващия играч всяка ръка, а накрая всяка ръка се проверява.")
     eq(T.bg["help.santase.close"], "Мислиш, че ще стигнеш 66 и без да теглиш? Натисни „Затвори“, когато си на ход и в тестето има повече от две карти. Никой не тегли повече. Не стигнеш ли 66, другият взима 2 игри, а ако дотогава е бил без взятка, взима 3.")
     eq(T.en["help.santase.close"]:match("or 3 if .*$"), "or 3 if they had no trick by then.")

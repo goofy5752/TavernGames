@@ -43,6 +43,20 @@ T["help.santase.score"] = "The hand ends by itself as soon as someone collects 6
 T["help.santase.time"] = "If your time runs out, the addon plays your weakest allowed card. You do not lose by forfeit. After the match the host presses “New game”."
 T["help.santase.fair"] = "Below the table it says whether the last hand is “verified”. To see what that means, read the topic about the fair deal."
 
+-- Rules book: Belot
+T["help.belot.p1"] = "Belot is played by four, two against two. Your partner sits across from you. It is played with 32 cards, from the seven to the ace. The team that first goes past 151 points wins."
+T["help.belot.example"] = "Ivan, Maria, Kiro and Pesho sit down at a table. Ivan and Kiro are one team, Maria and Pesho are the other. Each gets five cards. Ivan holds the jack and the nine of hearts and says “Hearts”. Maria says “Pass”, and so do Kiro and Pesho. The game is hearts. Each gets three more cards and Ivan plays first."
+T["help.belot.bids"] = "The games by strength are clubs, diamonds, hearts, spades, then “No trumps” and the strongest, “All trumps”. You may only call a stronger game than the one already called, or “Pass”. The bidding ends when, after a game is called, three in a row say “Pass”. If all four say “Pass”, the cards are dealt again."
+T["help.belot.contra"] = "The other side called a game and you think you will beat them? Press “Double” and the points count twice. Their team can answer with “Redouble” and then they count four times. With a double, all the points of the deal go to the team that collected more."
+T["help.belot.cards"] = "Trumps by strength: jack 20 points, nine 14, ace 11, ten 10, king 4, queen 3. In the other suits the ace is the strongest: ace 11, ten 10, king 4, queen 3, jack 2. In “All trumps” every suit is trump. In “No trumps” there are no trumps and the points count double."
+T["help.belot.trick"] = "You follow suit if you have it. In trumps you must also play higher if you can. Have none of the suit? You play a trump, unless the trick is your partner's right now. If someone has already trumped, you trump higher when you can. The cards you may not play are darkened. With the “Last trick” button you see the last four cards."
+T["help.belot.announce"] = "Three cards in a row of one suit are a tierce: 20 points. Four are a quarte: 50. Five or more are a quint: 100. Four cards of the same rank are four of a kind: 100 points, four nines 150, four jacks 200 (sevens and eights do not count). You announce on your first card: a button appears, you press it and then you play. The announce shows as a bubble next to your name. If both teams have cards in a row, only the team with the stronger ones scores them, and if they are equal, nobody does. The same goes for fours of a kind. In “No trumps” there are no announces."
+T["help.belot.belote"] = "A king and a queen of trumps in one hand are a belote: 20 points. You press nothing. As soon as you play one of the two, the addon says it by itself."
+T["help.belot.score"] = "At the end each team counts the cards in its tricks, its announces and 10 points for the last trick. The total is divided by ten and written down. If the team that called the game has less than the other, it is inside: everything goes to the other side. On equal points the game is hanging: the caller's points wait, and the team that wins the next deal takes them."
+T["help.belot.valat"] = "A team that takes all eight tricks makes a capot and gets 90 points on top. But a capot does not close the match: you have to go past 151 in a deal without a capot."
+T["help.belot.time"] = "If your time runs out in the bidding, the addon says “Pass”. If it runs out in the play, it announces whatever you hold and plays your weakest allowed card. If someone stands up from the table or is away for more than three minutes, the match ends and their team loses. As soon as someone sits in the empty seat, a new match begins. After a normal end the host presses “New game”."
+T["help.belot.fair"] = "Below the table it says whether the last deal is a “verified” game. Every time the next player in turn deals, as at a real table."
+
 -- Rules book: why the deal is fair
 T["help.fair.title"] = "Why the deal is fair"
 T["help.fair.p1"] = "In the card games nobody shuffles the deck alone. Everyone at the table gives one secret number, and the order of the cards comes from all the numbers together. As long as at least one player at the table is honest, nobody can fix the cards."
@@ -53,8 +67,8 @@ T["help.fair.dealer"] = "One thing you should know: the dealer's addon knows the
 T["help.fair.bad"] = "See “irregular”? Tell the others. Point at the text with the mouse and you will see what exactly does not add up. A hand can also be irregular because the dealer left right at the end without showing the numbers. If the dealer leaves or reloads in the middle of a hand, it is annulled and the next player deals. Below the table it says who annulled it."
 
 -- Rules book: coming soon
-T["help.soon.p"] = "Coming soon: Belot, Backgammon and Texas Hold'em, and playing for a stake with a ledger of debts."
-T["help.soon.example"] = "For now the tavern plays Tic-tac-toe, Death Roll and Santase. The other games sit dimmed in the list, marked “Soon”. As soon as they are ready, their rules will appear here, in the book."
+T["help.soon.p"] = "Coming soon: Backgammon and Texas Hold'em, and playing for a stake with a ledger of debts."
+T["help.soon.example"] = "For now the tavern plays Tic-tac-toe, Death Roll, Santase and Belot. The other games sit dimmed in the list, marked “Soon”. As soon as they are ready, their rules will appear here, in the book."
 
 -- First-run intro
 T["intro.hall.text"] = "This is the guild's tavern. Every round table is a game. On the right you see who is here now."

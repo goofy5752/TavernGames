@@ -52,6 +52,20 @@ Help.topics = {
     { kind = "p", key = "help.santase.time" },
     { kind = "p", key = "help.santase.fair" },
   } },
+  { id = "belot", title = "game.belot", blocks = {
+    { kind = "p", key = "help.belot.p1" },
+    { kind = "example", key = "help.belot.example" },
+    { kind = "p", key = "help.belot.bids" },
+    { kind = "p", key = "help.belot.contra" },
+    { kind = "cards", key = "help.belot.cards", cards = { "JH", "9H", "AH", "TH", "KH", "QH" } },
+    { kind = "p", key = "help.belot.trick" },
+    { kind = "cards", key = "help.belot.announce", cards = { "9H", "TH", "JH" } },
+    { kind = "cards", key = "help.belot.belote", cards = { "KS", "QS" } },
+    { kind = "p", key = "help.belot.score" },
+    { kind = "p", key = "help.belot.valat" },
+    { kind = "p", key = "help.belot.time" },
+    { kind = "p", key = "help.belot.fair" },
+  } },
   -- Why the card deal is fair; the table's fairness line opens it.
   { id = "fair", title = "help.fair.title", blocks = {
     { kind = "p", key = "help.fair.p1" },
