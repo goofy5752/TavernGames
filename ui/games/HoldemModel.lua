@@ -2,7 +2,8 @@ local _, ns = ...
 
 -- What the Холдем table shows, as plain data: each chair's name, stack, bet,
 -- state, two cards (a face my view lacks is false, face down), dealer and
--- blind marks and the seat on turn; the board, the pot, the buttons open to
+-- blind marks, the seat on turn and whether my own hand is folded (also after
+-- the hand ended); the board, the pot, the buttons open to
 -- me with their amounts, the line of text, the note of a close and the log of
 -- the last hand (locale keys). No frames. It reads only s.state (a view),
 -- s.mySeat, s.status, s.role, s.seats, s.handNames (the seats when the last
@@ -97,6 +98,7 @@ local function seatOf(s, st, i, m, lastOfHand)
     name = nameOf(s, i), chips = chair.chips, st = state, cards = cards, mark = mark,
     bet = inIt and p.bet > 0 and p.bet or nil,
     turn = s.status == "live" and st.turn == i,
+    folded = here and m.seated and i == m.me and p.folded == true or nil, -- my own hand, also after it ended
   }
   if lastOfHand and not m.inHand and not st.last.void then
     seat.won, seat.cat = st.last.won[i], st.last.cat[i]

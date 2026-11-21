@@ -83,6 +83,16 @@ describe("ui: the Холдем view", function()
     -- the big cards are 40 x 58, the others 0.6 of that; the board 46 apart from (254, -176)
     eq({ { f.seat[1].cards[1]:GetSize() }, { f.seat[2].cards[1]:GetSize() } }, { { 40, 58 }, { 24, 34.8 } })
     eq({ f.board[1].points[1], f.board[5].points[1], { f.board[5]:GetSize() } }, { { "TOPLEFT", f, "TOPLEFT", 254, -176 }, { "TOPLEFT", f, "TOPLEFT", 438, -176 }, { 40, 58 } })
+    -- the anchors: the pot, the text, the note and the log, the marks, the buttons
+    eq({ f.pot.points[1], f.text.points[1], f.note.points[1], f.log.points[1] },
+       { { "CENTER", f, "TOPLEFT", 366, -156 }, { "CENTER", f, "TOPLEFT", 366, -250 }, { "TOPLEFT", f, "TOPLEFT", 12, -366 }, { "TOPLEFT", f, "TOPLEFT", 12, -396 } })
+    eq({ f.note:GetWidth(), f.log:GetWidth() }, { 270, 270 })
+    eq({ f.seat[1].mark.points[1], f.seat[2].mark.points[1], f.seat[4].mark.points[1] },
+       { { "CENTER", f, "TOPLEFT", 429, -388 }, { "CENTER", f, "TOPLEFT", 148, -300 }, { "CENTER", f, "TOPLEFT", 429, -10 } })
+    local function at(b) local p = b.points[1]; return { p[4], p[5], b:GetWidth(), b:GetHeight() } end
+    eq({ at(f.halfButton), at(f.potButton), at(f.allinButton), at(f.minusButton), at(f.plusButton), at(f.foldButton), at(f.callButton), at(f.raiseButton), at(f.closeButton) },
+       { { 476, -336, 64, 22 }, { 546, -336, 64, 22 }, { 616, -336, 96, 22 }, { 476, -362, 24, 24 }, { 596, -362, 24, 24 },
+         { 476, -388, 56, 26 }, { 536, -388, 86, 26 }, { 626, -388, 100, 26 }, { 12, -366, 96, 22 } })
     -- the shuffle: nobody holds a card yet, so none is drawn
     local sh = E.new{ seats = { true, true, true } }; ok(E.apply(sh, 0, { k = "hand" })); draw(f, sh, 2)
     eq({ faces(f.seat[1]), faces(f.seat[2]), faces(f.seat[3]), f.text:GetText() }, { { "-", "-" }, { "-", "-" }, { "-", "-" }, "Разбъркваме заедно…" })
@@ -96,6 +106,15 @@ describe("ui: the Холдем view", function()
     w:click(f.raiseButton); eq(acts, { { k = "raise", to = 35 } }); ok(E.apply(st, 1, acts[1])); eq({ f.raiseButton:IsEnabled(), f.foldButton:IsEnabled() }, { false, false })
     local s = sess(st, 2); s.seq = 2; View.update(f, s); eq({ f.want, f.callButton.text:GetText(), f.raiseButton.text:GetText() }, { nil, "Плащам 30", "Вдигам до 60" })
     w:click(f.callButton); eq({ acts[2], #acts, f.foldButton:IsEnabled() }, { { k = "call" }, 2, false })   -- sent: the buttons are dead until the event is back
+    -- six digits at the 200 bb option: the label shrinks until it fits its button, and grows back
+    drawAt(f, hand3({ blinds = 200, stack = 200 }, { [1] = 240000, [2] = 240000, [3] = 240000 }), 1, 9)
+    local function size(b) return select(2, b.text:GetFont()) end
+    eq({ f.raiseButton.text:GetText(), size(f.raiseButton), f.allinButton.text:GetText() }, { "Вдигам до 400", 13, "Ва банк 240000" })
+    f.want = 123456; View.update(f, f.session)
+    eq({ f.raiseButton.text:GetText(), f.callButton.text:GetText() }, { "Вдигам до 123456", "Плащам 200" })
+    ok(size(f.raiseButton) < 13 and size(f.raiseButton) >= 10, "the label kept its size")
+    for _, b in ipairs({ f.raiseButton, f.allinButton, f.callButton }) do ok(b.text:GetStringWidth() <= b:GetWidth() - 6, b.text:GetText() .. " is wider than its button") end
+    f.want = nil; View.update(f, f.session); eq(size(f.raiseButton), 13)
     -- a refused action leaves the buttons alive
     drawAt(f, st, 2, 3); w.ns.client.act = function() return nil, "refused" end
     w:click(f.foldButton); eq({ f.sent, f.foldButton:IsEnabled(), f.callButton:IsEnabled() }, { nil, true, true })
@@ -121,10 +140,14 @@ describe("ui: the Холдем view", function()
 
   it("after the showdown: the shown hands, what was won, the words and the log; a folded hand stays down for a watcher", function()
     local w, View, f = setup()
-    local st = hand3(); E.apply(st, 1, { k = "call" }); E.apply(st, 2, { k = "call" }); E.apply(st, 3, { k = "check" }); E.apply(st, 0, E.system(st))
-    E.apply(st, 2, { k = "bet", to = 20 }); E.apply(st, 3, { k = "fold" }); E.apply(st, 1, { k = "call" })
+    local st = hand3(); ok(E.apply(st, 1, { k = "call" })); ok(E.apply(st, 2, { k = "call" })); ok(E.apply(st, 3, { k = "check" })); ok(E.apply(st, 0, E.system(st)))
+    ok(E.apply(st, 2, { k = "bet", to = 20 })); ok(E.apply(st, 3, { k = "fold" })); ok(E.apply(st, 1, { k = "call" }))
     drawAt(f, st, 3, 2); eq({ faces(f.seat[3]), f.seat[3].cards[1]:GetAlpha(), f.seat[1].cards[1]:GetAlpha() }, { { "3C", "6C" }, 0.5, 1 })   -- folded: my cards dimmed
-    while st.phase ~= "done" do if st.phase == "bet" then E.apply(st, st.turn, { k = "check" }) else E.apply(st, 0, E.system(st)) end end
+    local guard = 0
+    while st.phase ~= "done" do
+      guard = guard + 1; assert(guard < 20, "the hand did not end")
+      if st.phase == "bet" then ok(E.apply(st, st.turn, { k = "check" })) else ok(E.apply(st, 0, E.system(st))) end
+    end
     draw(f, st, 3)
     eq({ faces(f.seat[1]), faces(f.seat[2]), faces(f.seat[3]), f.seat[3].cards[1]:GetAlpha(), f.seat[3].cards[2]:GetAlpha() }, { { "4C", "7C" }, { "2C", "5C" }, { "3C", "6C" }, 0.5, 0.5 })
     local board = {}
@@ -145,7 +168,7 @@ describe("ui: the Холдем view", function()
     eq({ f.closeButton:IsVisible(), f.closeButton.text:GetText() }, { true, "Приключи" }); w:click(f.closeButton); eq({ #called, called[1] == w.ns.client }, { 1, true })
     draw(f, st, 2); eq(f.closeButton:IsVisible(), false)
     ok(E.apply(st, 0, { k = "close" })); drawAt(f, st, 1, 2)
-    eq({ f.closeButton:IsVisible(), f.note:IsVisible(), f.note:GetText() }, { false, true, "Последна ръка: след нея играта приключва." })
+    eq({ f.closeButton:IsVisible(), f.note:IsVisible(), f.note:GetText(), f.note.points[1] }, { false, true, "Последна ръка: след нея играта приключва.", { "TOPLEFT", f, "TOPLEFT", 12, -366 } })
 
     w = withBots(); local client, T = w.ns.client, w.ns.TableFrame
     client:openTable{ game = "holdem", access = "invite", turn = 45 }; w:advance(0)
@@ -166,7 +189,9 @@ describe("ui: the Холдем view", function()
     guard = 0
     while s.state.hand < 9 do
       guard = guard + 1; assert(guard < 600, "eight hands were not played: " .. tostring(s.state.hand))
-      if V.callButton:IsVisible() and V.callButton:IsEnabled() then w:click(V.callButton) end
+      if V.callButton:IsVisible() and V.callButton:IsEnabled() then          -- check, else fold: my stack outlasts the eight hands whatever the bots do
+        w:click(V.callButton.text:GetText() == "Чек" and V.callButton or V.foldButton)
+      end
       w:advance(1)
     end
     local line = T.view.fairLine

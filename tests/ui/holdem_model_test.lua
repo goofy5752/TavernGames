@@ -139,6 +139,7 @@ describe("ui: the Холдем model", function()
     while st.phase ~= "done" do if st.phase == "bet" then E.apply(st, st.turn, { k = "check" }) else E.apply(st, 0, E.system(st)) end end
     m = build(st, 3); eq({ m.board, m.pot, m.inHand, m.seats[1].cards, m.seats[2].cards, m.seats[3].cards }, { { "9C", "TC", "JC", "KC", "2D" }, 0, false, { "4C", "7C" }, { "2C", "5C" }, { "3C", "6C" } })
     eq({ m.seats[1].won, m.seats[1].cat, m.seats[2].won, m.text, m.log }, { 70, 6, nil, { "holdem.won", A, 70, 6 }, { "holdem.log", 1, A, 70, 6 } })
+    eq({ m.seats[3].folded, m.seats[1].folded, build(st, 1).seats[3].folded, build(st, nil).seats[3].folded }, { true, nil, nil, nil })    -- my folded hand, mine only
     eq(build(st, nil).seats[3].cards, nil)                                                                                     -- a watcher never saw the folded hand
     eq({ m.seats[1].st, m.seats[1].bet, m.seats[1].turn, m.mine, m.act }, { "ready", nil, false, false, nil })
   end)

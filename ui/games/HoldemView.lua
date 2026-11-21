@@ -28,8 +28,9 @@ local BET = { [0] = { 366, -300 }, [1] = { 250, -272 }, [2] = { 250, -134 }, [3]
 local MARK_X, MARK = 138, 18      -- the dealer disc: centred on (plate.x + 138, plate.y)
 local CHIP, CHIP_GAP = 16, 3
 local BOARD_X, BOARD_Y, BOARD_STEP = 254, -176, 46
-local CENTRE_X, POT_Y, TEXT_Y, NOTE_Y, NOTE_W = 366, -156, -250, -232, 200
-local LOG_X, LOG_Y, LOG_W = 12, -396, 270
+local CENTRE_X, POT_Y, TEXT_Y = 366, -156, -250
+local LEFT_X, NOTE_Y, LOG_Y, LEFT_W = 12, -366, -396, 270 -- the note in the close button's place (never both)
+local LABEL, LABEL_MIN, LABEL_PAD = 13, 10, 6 -- a button label shrinks to fit its button
 local FOLDED_ALPHA, OFF_ALPHA = 0.5, 0.5
 -- The finished hand's words with a hand category: the index of the category in the model's text.
 local CAT_AT = { ["holdem.won"] = 4, ["holdem.split"] = 3, ["holdem.log"] = 5, ["holdem.logSplit"] = 4 }
@@ -49,10 +50,11 @@ local function redraw(f)
   if f.session then View.update(f, f.session) end
 end
 
--- An action to the client; accepted, the buttons are dead until the next event.
+-- An action to the client; accepted, the buttons are dead until the next event (not
+-- the event it may already have drawn: the host plays it at once).
 local function send(f, a)
-  local client = ns.client
-  if a and client and not f.sent and client:act(a) then f.sent = true end
+  local client, key = ns.client, f.key
+  if a and client and not f.sent and client:act(a) and f.key == key then f.sent = true end
   redraw(f)
 end
 
@@ -188,16 +190,15 @@ function View.build(parent)
   f.text:Hide()
 
   f.note = W.Label(f, "dim", "", 11)
-  f.note:SetWidth(NOTE_W)
+  f.note:SetWidth(LEFT_W)
   f.note:SetWordWrap(true)
-  f.note:SetJustifyH("CENTER")
-  f.note:SetPoint("TOP", f, "TOPLEFT", CENTRE_X, NOTE_Y)
+  f.note:SetPoint("TOPLEFT", f, "TOPLEFT", LEFT_X, NOTE_Y)
   f.note:Hide()
 
   f.log = W.Label(f, "dim", "", 11)
-  f.log:SetWidth(LOG_W)
+  f.log:SetWidth(LEFT_W)
   f.log:SetWordWrap(false)
-  f.log:SetPoint("TOPLEFT", f, "TOPLEFT", LOG_X, LOG_Y)
+  f.log:SetPoint("TOPLEFT", f, "TOPLEFT", LEFT_X, LOG_Y)
   f.log:Hide()
 
   local plates = ns.HallLayout.ring(SEATS, FELT_W, FELT_H, 1) -- seat k + 1 sits at place k
@@ -214,9 +215,9 @@ function View.build(parent)
   f.plusButton = ghost(f, L("holdem.plus"), 24, 24, 596, -362, function()
     if f.model and f.model.to then setWant(f, f.model.to + f.model.step) end
   end)
-  f.foldButton = ghost(f, L("holdem.fold"), 70, 26, 476, -388, function() send(f, { k = "fold" }) end)
-  f.callButton = gold(f, 86, 26, 550, -388, function() onCall(f) end)
-  f.raiseButton = gold(f, 86, 26, 640, -388, function() onRaise(f) end)
+  f.foldButton = ghost(f, L("holdem.fold"), 56, 26, 476, -388, function() send(f, { k = "fold" }) end)
+  f.callButton = gold(f, 86, 26, 536, -388, function() onCall(f) end)
+  f.raiseButton = gold(f, 100, 26, 626, -388, function() onRaise(f) end)
   f.closeButton = ghost(f, L("holdem.close"), 96, 22, 12, -366, function() onClose(f) end)
   return f
 end
@@ -292,14 +293,11 @@ local function drawMark(p, ms)
   m:SetShown(kind ~= nil)
 end
 
-local function drawSeats(f, s, m)
+local function drawSeats(f, m)
   mapSeats(f, m.me)
-  local st = s.state
   for seat = 1, SEATS do
     local p, ms = f.seat[seat], m.seats[seat]
-    local own = st.p and st.p[seat]
-    local folded = m.seated and seat == m.me and own ~= nil and own.folded == true
-    drawCards(p, ms, m, folded)
+    drawCards(p, ms, m, ms ~= nil and ms.folded == true)
     drawBet(f, p, (seat - m.me) % SEATS, ms)
     drawMark(p, ms)
   end
@@ -315,8 +313,19 @@ local function drawTable(f, m)
   f.pot:SetShown(m.pot > 0)
 end
 
+-- `text` on button b in the largest size from LABEL down to LABEL_MIN that leaves LABEL_PAD of its width.
+local function fitLabel(b, text)
+  local fs, size = b.text, LABEL
+  fs:SetFont(Theme.font.heading, size, "")
+  fs:SetText(text)
+  while size > LABEL_MIN and fs:GetStringWidth() > b:GetWidth() - LABEL_PAD do
+    size = size - 1
+    fs:SetFont(Theme.font.heading, size, "")
+  end
+end
+
 local function setButton(f, b, shown, text)
-  if shown and text then b.text:SetText(text) end
+  if shown and text then fitLabel(b, text) end
   local on = shown and not f.sent
   b:SetShown(shown)
   b:SetEnabled(on)
@@ -354,7 +363,7 @@ function View.update(f, s)
   if f.key ~= key then f.key, f.want, f.sent = key, nil, nil end
   local m = M.build(s, f.want)
   f.model = m
-  drawSeats(f, s, m)
+  drawSeats(f, m)
   drawTable(f, m)
   drawButtons(f, s, m)
   drawWords(f, m)
