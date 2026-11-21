@@ -25,8 +25,18 @@ local LIBS = {
   "Libs/AceDB-3.0/AceDB-3.0.lua",
 }
 
--- Called by the probe test: any call to these fails the test.
-local function forbidden(name) return function() error("called " .. name, 2) end end
+-- The Global "never" set: the addon must never call these (it never moves gold).
+local FORBIDDEN = { "AcceptTrade", "SendMail", "TakeInboxMoney", "AutoLootMailItem", "SetSendMailCOD" }
+
+-- A logged payment API: every call goes to self.calls as {name = ..., args = {...}};
+-- a name in self.forbidden fails the test. `fn(...)` gives the result, if any.
+local function api(self, name, fn)
+  return function(...)
+    self.calls[#self.calls + 1] = { name = name, args = { ... } }
+    if self.forbidden[name] then error("called " .. name, 2) end
+    if fn then return fn(...) end
+  end
+end
 
 local function run(path, G, ...)
   local chunk, err = loadfile(path)
@@ -55,7 +65,12 @@ function Wow.new(opts)
     dnd = false, group = {}, money = 0, icons = {}, sounds = {}, reloads = 0,
     rolls = {}, groupInvites = {}, accepted = 0, popupsHidden = {},
     party = { grouped = false, leader = false, raid = false, size = 0 },
+    -- Trade and mail: the open trade's money, the "NPC" unit (the trade partner),
+    -- the inbox rows {sender, subject, money}, whether the mailbox is open.
+    tradeMoney = { player = 0, target = 0 }, npc = {}, inbox = {}, mailOpen = false, mailPrice = 30,
+    calls = {}, forbidden = {},
   }, Wow)
+  for _, name in ipairs(FORBIDDEN) do self.forbidden[name] = true end
   local G = {}
   for _, name in ipairs(BUILTINS) do G[name] = _G[name] end
   G._G = G
@@ -79,8 +94,14 @@ function Wow.new(opts)
   G.GameTooltip = Frames.tooltip(G.CreateFrame)
   G.GameTooltip:Hide()
   G.GetMoney = function() return self.money end
-  G.UnitName = function(unit) if unit == "player" then return Wow.FIRST end end
-  G.UnitGUID = function(unit) if unit == "player" then return Wow.GUID end end
+  G.UnitName = function(unit)
+    if unit == "player" then return Wow.FIRST end
+    if unit == "NPC" then return self.npc.name, self.npc.realm end
+  end
+  G.UnitGUID = function(unit)
+    if unit == "player" then return Wow.GUID end
+    if unit == "NPC" then return self.npc.guid end
+  end
   G.UnitClass = function() return "Маг", "MAGE", 8 end
   G.UnitRace = function() return "Човек", "Human", 1 end
   G.UnitFactionGroup = function() return "Alliance", "Alliance" end
@@ -124,10 +145,38 @@ function Wow.new(opts)
   G.PlaySound = function(id, channel) self.sounds[#self.sounds + 1] = { id, channel } end
   G.SlashCmdList = {}
   G.ReloadUI = function() self.reloads = self.reloads + 1 end
-  G.InitiateTrade = forbidden("InitiateTrade")
-  G.C_TradeInfo = { SetTradeMoney = forbidden("C_TradeInfo.SetTradeMoney") }
-  G.SetSendMailMoney = forbidden("SetSendMailMoney")
-  G.SendMail = forbidden("SendMail")
+  G.InitiateTrade = api(self, "InitiateTrade")
+  G.AcceptTrade = api(self, "AcceptTrade")
+  G.SetTradeMoney = api(self, "SetTradeMoney")
+  G.C_TradeInfo = { SetTradeMoney = api(self, "C_TradeInfo.SetTradeMoney") }
+  G.GetPlayerTradeMoney = function() return self.tradeMoney.player end
+  G.GetTargetTradeMoney = function() return self.tradeMoney.target end
+  G.ERR_TRADE_COMPLETE = "Trade complete."
+  G.ERR_TRADE_CANCELLED = "Trade cancelled."
+  G.SetSendMailMoney = api(self, "SetSendMailMoney")
+  G.SetSendMailCOD = api(self, "SetSendMailCOD")
+  G.SendMail = api(self, "SendMail")
+  G.GetSendMailPrice = function() return self.mailPrice end
+  G.MailFrame = { IsShown = function() return self.mailOpen end }
+  G.GetInboxNumItems = function() return #self.inbox, #self.inbox end
+  -- packageIcon, stationeryIcon, sender, subject, money, CODAmount, daysLeft, hasItem, wasRead
+  G.GetInboxHeaderInfo = function(i)
+    local m = self.inbox[i]
+    if m then return nil, nil, m.sender, m.subject, m.money, 0, 30, nil, false end
+  end
+  G.TakeInboxMoney = api(self, "TakeInboxMoney")
+  G.AutoLootMailItem = api(self, "AutoLootMailItem")
+  -- hooksecurefunc([tbl,] name, fn): fn runs after the original, with its arguments.
+  G.hooksecurefunc = function(a, b, c)
+    local tbl, name, fn = a, b, c
+    if type(a) == "string" then tbl, name, fn = G, a, b end
+    local orig = tbl[name]
+    tbl[name] = function(...)
+      local r = { orig(...) }
+      fn(...)
+      return unpack(r)
+    end
+  end
   if opts.saved then G.TavernGamesDB = opts.saved end
 
   for _, path in ipairs(LIBS) do run(path, G, "TavernGames") end
@@ -268,6 +317,15 @@ function Wow:member(name)
 end
 
 function Wow:slash(text) self.G.SlashCmdList.TAVERNGAMES(text) end
+
+-- How many times the logged payment API `name` was called.
+function Wow:called(name)
+  local n = 0
+  for _, c in ipairs(self.calls) do
+    if c.name == name then n = n + 1 end
+  end
+  return n
+end
 
 -- Sent records whose message type is t.
 function Wow:sentOf(t)

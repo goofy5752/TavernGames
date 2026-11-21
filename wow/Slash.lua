@@ -1,7 +1,8 @@
 local _, ns = ...
 
 -- /tavern and its subcommands; /tavern probe checks the early risks of spec
--- section 10 and prints only to the local chat frame.
+-- section 10 and prints only to the local chat frame. /tavern probe trade and
+-- /tavern probe mail only read and print: they never press Trade or Send.
 local C, L, Adapter = ns.Const, ns.L, ns.Adapter
 
 local Slash = {}
@@ -17,18 +18,50 @@ local PROBE_APIS = {
   "InitiateTrade", "C_TradeInfo.SetTradeMoney", "SetSendMailMoney", "SendMail", "issecretvalue", "IsGUIDInGroup",
   "RandomRoll", "C_PartyInfo.InviteUnit", "InviteUnit", "AcceptGroup", "UnitIsGroupLeader", "StaticPopup_Hide",
   "IsInGroup", "IsInRaid", "GetNumGroupMembers",
+  -- trade and mail (stage F1)
+  "SetTradeMoney", "GetPlayerTradeMoney", "GetTargetTradeMoney", "C_TradeInfo.GetTradeMoney",
+  "MoneyInputFrame_SetCopper", "TradePlayerInputMoneyFrame", "CheckInteractDistance", "GetSendMailPrice",
+  "SendMailNameEditBox", "SendMailSubjectEditBox", "SendMailBodyEditBox", "MailEditBox", "SendMailMoney",
+  "MailFrameTab_OnClick", "GetInboxNumItems", "GetInboxHeaderInfo", "C_Mail.GetInboxHeaderInfo", "TakeInboxMoney",
+  "AutoLootMailItem", "hooksecurefunc", "GetGuildInfo",
+}
+Slash.PROBE_APIS = PROBE_APIS
+-- What /tavern probe trade listens to until the first TRADE_CLOSED after a TRADE_SHOW.
+local TRADE_EVENTS = {
+  "TRADE_SHOW", "TRADE_MONEY_CHANGED", "TRADE_PLAYER_ITEM_CHANGED", "TRADE_TARGET_ITEM_CHANGED",
+  "TRADE_ACCEPT_UPDATE", "TRADE_REQUEST_CANCEL", "TRADE_CLOSED", "UI_INFO_MESSAGE", "UI_ERROR_MESSAGE",
 }
 -- /tavern bots host|invite <game>: short names for engine ids.
 local GAME_ALIAS = { dr = "deathroll" }
 local ALPHABET = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 
+-- rawget: an absent API reads as nil, never through a metatable of _G.
 local function lookup(path)
   local v = _G
   for part in path:gmatch("[^%.]+") do
     if type(v) ~= "table" then return nil end
-    v = v[part]
+    v = rawget(v, part)
   end
   return v
+end
+
+-- The values as text, joined by spaces.
+local function joined(...)
+  local out = {}
+  for i = 1, select("#", ...) do out[i] = tostring((select(i, ...))) end
+  return table.concat(out, " ")
+end
+
+-- What the API at `path` returns for the arguments, as text; "-" when it is
+-- absent or raises. Only for read-only APIs.
+local function show(path, ...)
+  local fn = lookup(path)
+  if type(fn) ~= "function" then return "-" end
+  local function result(okCall, ...)
+    if not okCall then return "-" end
+    return joined(...)
+  end
+  return result(pcall(fn, ...))
 end
 
 -- Random letters, so deflate cannot shrink the probe below PROBE_BYTES.
@@ -102,8 +135,52 @@ function Slash.probeRoll()
   end)
 end
 
+-- /tavern probe trade: every trade event of the next trade, with both money
+-- values and the partner's name and GUID at that moment; it stops listening at
+-- the first TRADE_CLOSED after a TRADE_SHOW. It never sets money or accepts.
+local tradeFrame, tradeShown
+
+local function tradeEvents(on)
+  local method = on and "RegisterEvent" or "UnregisterEvent"
+  -- An event the client does not know raises; the others still register.
+  for _, event in ipairs(TRADE_EVENTS) do pcall(tradeFrame[method], tradeFrame, event) end
+end
+
+function Slash.probeTrade()
+  if not tradeFrame then
+    tradeFrame = CreateFrame("Frame")
+    tradeFrame:SetScript("OnEvent", function(_, event, ...)
+      say(L("probe.trade.event", event, joined(...), show("GetPlayerTradeMoney"), show("GetTargetTradeMoney"),
+        show("UnitName", "NPC"), show("UnitGUID", "NPC")))
+      if event == "TRADE_SHOW" then
+        tradeShown = true
+      elseif event == "TRADE_CLOSED" and tradeShown then
+        tradeEvents(false)
+      end
+    end)
+  end
+  tradeShown = false
+  tradeEvents(true)
+  say(L("probe.trade.armed"))
+end
+
+-- /tavern probe mail: at an open mailbox, every inbox row (sender, subject,
+-- money and the money's type) and the postage. It never takes or sends.
+function Slash.probeMail()
+  local mail = lookup("MailFrame")
+  if not (mail and mail:IsShown()) then return say(L("probe.mail.closed")) end
+  local count = tonumber((show("GetInboxNumItems"):match("^%d+"))) or 0
+  for i = 1, count do
+    local okRow, _, _, sender, subject, money = pcall(lookup("GetInboxHeaderInfo"), i)
+    if okRow then say(L("probe.mail.row", tostring(i), tostring(sender), tostring(subject), tostring(money), type(money))) end
+  end
+  say(L("probe.mail.price", show("GetSendMailPrice")))
+end
+
 local function probe(arg)
   if arg == "roll" then return Slash.probeRoll() end
+  if arg == "trade" then return Slash.probeTrade() end
+  if arg == "mail" then return Slash.probeMail() end
   if arg ~= "" then return say(L("slash.help")) end
   Slash.probe()
 end

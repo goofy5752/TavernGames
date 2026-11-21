@@ -300,6 +300,17 @@ describe("wow adapter: db keys", function()
     eq(char.bookKeep, { 1 }); eq(char.bookSpent, 5)
   end)
 
+  it("the ledger is account-wide and the notes are per character", function()
+    local w = Wow.new(); w:init()
+    local db, sv = w.ns.db, w.G.TavernGamesDB
+    db.ledger = { x = 1 }
+    db.stakeSeen, db.stakeLeft, db.stakeSat = {}, {}, {}
+    local char = sv.char[Wow.FIRST .. " - Forever"]
+    eq(sv.global.ledger, { x = 1 }); eq(char.ledger, nil)
+    eq(char.stakeSeen, {}); eq(char.stakeLeft, {}); eq(char.stakeSat, {})
+    eq(sv.global.stakeSeen, nil); eq(sv.global.stakeLeft, nil); eq(sv.global.stakeSat, nil)
+  end)
+
   it("lists every db key the code uses", function()
     local w = Wow.new(); w:init()
     local A = w.ns.Adapter

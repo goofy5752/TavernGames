@@ -223,4 +223,85 @@ describe("/tavern probe", function()
     w:deliverRaw("TAVG", p.text, "WHISPER", ME); w:advance(5)
     eq(#w:chatWith("echo", n + 1), 1)
   end)
+
+  it("probe lists the trade and mail API by presence only", function()
+    local w = guildWow()
+    local paths = w.ns.Slash.PROBE_APIS
+    eq(paths, {
+      "InitiateTrade", "C_TradeInfo.SetTradeMoney", "SetSendMailMoney", "SendMail", "issecretvalue", "IsGUIDInGroup",
+      "RandomRoll", "C_PartyInfo.InviteUnit", "InviteUnit", "AcceptGroup", "UnitIsGroupLeader", "StaticPopup_Hide",
+      "IsInGroup", "IsInRaid", "GetNumGroupMembers",
+      "SetTradeMoney", "GetPlayerTradeMoney", "GetTargetTradeMoney", "C_TradeInfo.GetTradeMoney",
+      "MoneyInputFrame_SetCopper", "TradePlayerInputMoneyFrame", "CheckInteractDistance", "GetSendMailPrice",
+      "SendMailNameEditBox", "SendMailSubjectEditBox", "SendMailBodyEditBox", "MailEditBox", "SendMailMoney",
+      "MailFrameTab_OnClick", "GetInboxNumItems", "GetInboxHeaderInfo", "C_Mail.GetInboxHeaderInfo", "TakeInboxMoney",
+      "AutoLootMailItem", "hooksecurefunc", "GetGuildInfo",
+    })
+    local n = #w.chat
+    w:slash("probe")
+    local said = "|cffb0813f" .. w.ns.L("addon.title") .. "|r: "
+    for _, path in ipairs(paths) do
+      local lines = 0
+      for i = n + 1, #w.chat do
+        local line = w.chat[i]:sub(#said + 1)
+        if line:sub(1, #path + 2) == path .. ": " and line:sub(#path + 3):match("^%a+$") then lines = lines + 1 end
+      end
+      eq(lines, 1, path)
+    end
+    eq(#w:chatWith("GetPlayerTradeMoney: function", n + 1), 1); eq(#w:chatWith("hooksecurefunc: function", n + 1), 1)
+    eq(#w:chatWith("TakeInboxMoney: function", n + 1), 1); eq(#w:chatWith("C_Mail.GetInboxHeaderInfo: nil", n + 1), 1)
+    for _, name in ipairs({ "AcceptTrade", "SendMail", "TakeInboxMoney", "AutoLootMailItem", "InitiateTrade",
+                            "SetTradeMoney", "SetSendMailMoney" }) do
+      eq(w:called(name), 0, name)
+    end
+    for _, name in ipairs({ "AcceptTrade", "SendMail", "TakeInboxMoney", "AutoLootMailItem", "SetSendMailCOD" }) do
+      ok(w.forbidden[name], name .. " is not forbidden")
+    end
+    for _, name in ipairs({ "InitiateTrade", "SetTradeMoney", "SetSendMailMoney" }) do
+      ok(not w.forbidden[name], name .. " is forbidden")
+    end
+    raises(function() w.G.AcceptTrade() end, "called AcceptTrade"); eq(w:called("AcceptTrade"), 1)
+  end)
+
+  it("probe trade prints every trade event of the next trade", function()
+    local w = guildWow()
+    w.tradeMoney = { player = 0, target = 50000 }
+    w.npc = { name = "Мария", guid = "Player-1-00000002" }
+    w:slash("probe trade")
+    eq(#w:chatWith(w.ns.L("probe.trade.armed")), 1)
+    local n = #w.chat
+    w:fire("TRADE_SHOW"); w:fire("TRADE_MONEY_CHANGED"); w:fire("TRADE_ACCEPT_UPDATE", 1, 1)
+    w:fire("UI_INFO_MESSAGE", 0, w.G.ERR_TRADE_COMPLETE); w:fire("TRADE_CLOSED")
+    local events = { "TRADE_SHOW", "TRADE_MONEY_CHANGED", "TRADE_ACCEPT_UPDATE", "UI_INFO_MESSAGE", "TRADE_CLOSED" }
+    eq(#w.chat, n + 5)
+    for i, event in ipairs(events) do ok(w.chat[n + i]:find(event, 1, true), w.chat[n + i]) end
+    local accept = w.chat[n + 3]
+    for _, needle in ipairs({ "50000", "Мария", "Player-1-00000002" }) do ok(accept:find(needle, 1, true), accept) end
+    ok(w.chat[n + 4]:find(w.G.ERR_TRADE_COMPLETE, 1, true), w.chat[n + 4])
+    w:fire("TRADE_SHOW"); eq(#w.chat, n + 5)
+    eq(w:called("AcceptTrade"), 0)
+  end)
+
+  it("probe mail prints the inbox rows and the price", function()
+    local w = guildWow()
+    local L = w.ns.L
+    w.mailOpen, w.mailPrice = true, 30
+    w.inbox = {
+      { sender = "Мария", subject = "Tavern Games: 5g", money = 50000 },
+      { sender = "Auction House", subject = "x", money = 0 },
+    }
+    local n = #w.chat
+    w:slash("probe mail")
+    eq(#w.chat, n + 3)
+    for _, needle in ipairs({ "Мария", "Tavern Games: 5g", "50000" }) do ok(w.chat[n + 1]:find(needle, 1, true), w.chat[n + 1]) end
+    local said = "|cffb0813f" .. L("addon.title") .. "|r: "
+    eq(w.chat[n + 1], said .. L("probe.mail.row", "1", "Мария", "Tavern Games: 5g", "50000", "number"))
+    eq(w.chat[n + 2], said .. L("probe.mail.row", "2", "Auction House", "x", "0", "number"))
+    eq(w.chat[n + 3], said .. L("probe.mail.price", "30")); ok(w.chat[n + 3]:find("30", 1, true), w.chat[n + 3])
+    eq(w:called("TakeInboxMoney"), 0); eq(w:called("AutoLootMailItem"), 0)
+    w.mailOpen = false
+    n = #w.chat
+    w:slash("probe mail")
+    eq(#w.chat, n + 1); eq(w.chat[n + 1], said .. L("probe.mail.closed"))
+  end)
 end)

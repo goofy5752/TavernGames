@@ -109,7 +109,7 @@ T["intro.book.text"] = "See an ⓘ? Click it. The rules book opens, with simple 
 -- WoW adapter and /tavern
 T["addon.title"] = "Tavern Games"
 T["hall.noguild"] = "You are not in a guild. The tavern is for guild members, but you can try it with bots: /tavern bots"
-T["slash.help"] = "Commands: /tavern (the hall), /tavern bots [host | invite] [game], /tavern bots fill [count], /tavern debug, /tavern intro, /tavern reset, /tavern probe [roll]"
+T["slash.help"] = "Commands: /tavern (the hall), /tavern bots [host | invite] [game], /tavern bots fill [count], /tavern debug, /tavern intro, /tavern reset, /tavern probe [roll | trade | mail]"
 T["bots.on"] = "The bots came into the tavern."
 T["bots.off"] = "The bots left."
 T["bots.wait"] = "Still finding out your name. Try again in a few seconds."
@@ -132,6 +132,11 @@ T["probe.echo.lost"] = "echo LOST: %d bytes, IsInInstance at send: %s"
 T["probe.rollfmt"] = "/roll format: %s (pattern: %s)"
 T["probe.roll.ok"] = "/roll is visible: \"%s\", name \"%s\", this is me: %s"
 T["probe.roll.lost"] = "/roll did not show up in chat within 3 s."
+T["probe.trade.armed"] = "Probe: make one trade with another player. I log every event."
+T["probe.trade.event"] = "Trade: %s (%s); money: mine %s, theirs %s; partner: %s; GUID: %s"
+T["probe.mail.row"] = "Letter %s: from \"%s\", subject \"%s\", money %s (%s)"
+T["probe.mail.price"] = "Postage (GetSendMailPrice): %s"
+T["probe.mail.closed"] = "Probe: open a mailbox and try again."
 
 -- Main window and hall
 T["tab.hall"] = "Hall"

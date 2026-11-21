@@ -109,7 +109,7 @@ T["intro.book.text"] = "Видиш ли ⓘ, кликни на него. Отв�
 -- WoW adapter and /tavern
 T["addon.title"] = "Tavern Games"
 T["hall.noguild"] = "Не си в гилдия. Кръчмата е за хората от гилдията, но можеш да я пробваш с ботове: /tavern bots"
-T["slash.help"] = "Команди: /tavern (залата), /tavern bots [host | invite] [игра], /tavern bots fill [брой], /tavern debug, /tavern intro, /tavern reset, /tavern probe [roll]"
+T["slash.help"] = "Команди: /tavern (залата), /tavern bots [host | invite] [игра], /tavern bots fill [брой], /tavern debug, /tavern intro, /tavern reset, /tavern probe [roll | trade | mail]"
 T["bots.on"] = "Ботовете влязоха в кръчмата."
 T["bots.off"] = "Ботовете си тръгнаха."
 T["bots.wait"] = "Още разпознавам името ти. Опитай пак след няколко секунди."
@@ -132,6 +132,11 @@ T["probe.echo.lost"] = "echo LOST: %d байта, IsInInstance при праща
 T["probe.rollfmt"] = "Формат на /roll: %s (шаблон: %s)"
 T["probe.roll.ok"] = "/roll се вижда: „%s“, име „%s“, това съм аз: %s"
 T["probe.roll.lost"] = "/roll не се видя в чата до 3 сек."
+T["probe.trade.armed"] = "Проба: направи един трейд с друг играч. Записвам всяко събитие."
+T["probe.trade.event"] = "Трейд: %s (%s); пари: мои %s, негови %s; другият: %s; GUID: %s"
+T["probe.mail.row"] = "Писмо %s: от „%s“, тема „%s“, пари %s (%s)"
+T["probe.mail.price"] = "Цена за пращане (GetSendMailPrice): %s"
+T["probe.mail.closed"] = "Проба: отвори пощенска кутия и опитай пак."
 
 -- Main window and hall
 T["tab.hall"] = "Зала"
