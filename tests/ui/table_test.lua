@@ -230,6 +230,124 @@ describe("ui: table frame", function()
   end)
 end)
 
+describe("ui: table frame, host-started games", function()
+  -- I host an invite-only Death Roll table with the start number 100.
+  local function drTable()
+    local w = withBots()
+    w.ns.client:openTable{ game = "deathroll", access = "invite", turn = 45, opt = { start = 100 } }
+    w:advance(0)
+    return w, w.ns.TableFrame.view
+  end
+
+  local function visiblePlates(v)
+    local shown = 0
+    for _, p in ipairs(v.plates) do if p.frame:IsVisible() then shown = shown + 1 end end
+    return shown
+  end
+
+  it("five plates in two rows; alone: „Чакаме още играчи…“ and a disabled „Започни“", function()
+    local w, v = drTable()
+    eq(#w:texts("Чакаме още играчи…"), 1)
+    eq(visiblePlates(v), 5)
+    eq(v.plates[4].frame:GetWidth(), 165)
+    eq(v.plates[4].frame.points[1], { "TOPLEFT", v.area, "TOPLEFT", 10, -42 })
+    ok(v.startButton:IsVisible(), "no Започни"); eq(v.startButton:IsEnabled(), false)
+    eq(v.startButton.text:GetText(), "Започни")
+    eq(#w:texts("Начално число 100"), 1)
+  end)
+
+  -- „Бот Иванов“ takes my invitation through the „Покани“ picker.
+  local function inviteBot(w, v)
+    w:click(v.inviteButton)
+    local row
+    for _, r in ipairs(v.picker.rows) do
+      if r.frame:IsVisible() and r.name:GetText() == BOT then row = r end
+    end
+    assert(row, "no row for the bot in the picker")
+    w:click(row.frame)
+    w:advance(2)
+  end
+
+  it("with a second player „Започни“ starts the game and goes away; after the game it reads „Нова игра“", function()
+    local w, v = drTable()
+    local L, client = w.ns.L, w.ns.client
+    inviteBot(w, v)
+    eq(client.session.seats[2], BOT)
+    ok(v.banner:IsVisible(), "no banner"); eq(v.bannerText:GetText(), L("table.pressStart"))
+    eq(L("table.pressStart"), "Всички ли са тук? Натисни „Започни“.")
+    ok(v.startButton:IsVisible(), "no Започни"); eq(v.startButton:IsEnabled(), true)
+    eq(v.startButton.text:GetText(), "Започни")
+    eq(v.line.points[1][2], v.startButton) -- the news line sits right of „Започни“
+    w:click(v.startButton); w:advance(0)
+    eq(client.session.status, "live")
+    eq(v.startButton:IsVisible(), false); eq(v.banner:IsVisible(), false)
+    eq(v.line.points[1][2], v.inviteButton)
+    client.session:play(1, { k = "roll", n = 1, max = 100, src = "ask" }); w:advance(0)
+    ok(v.startButton:IsVisible(), "no Нова игра"); eq(v.startButton.text:GetText(), "Нова игра")
+    eq(v.startButton:IsEnabled(), true)
+    eq(v.banner:IsVisible(), false) -- the view says who lost
+  end)
+
+  it("„Започни“ is enabled exactly when startGame would start, also for a truthy non-boolean engine.over", function()
+    local w, v = drTable()
+    local client, E = w.ns.client, w.ns.Engines.deathroll
+    local s = client.session
+    local function agrees(label)
+      local can, code = s:canStart()
+      eq(v.startButton:IsShown(), code ~= "live", label .. ": shown")
+      if v.startButton:IsShown() then eq(v.startButton:IsEnabled(), can == true, label .. ": enabled") end
+    end
+    E.over = function(st) return st.phase == "over" and "yes" or nil end
+    local okRun, err = pcall(function()
+      agrees("alone")
+      inviteBot(w, v); agrees("two seated")
+      w:click(v.startButton); w:advance(0); agrees("live")
+      eq(v.startButton:IsShown(), false)
+      s:play(1, { k = "roll", n = 1, max = 100, src = "ask" }); w:advance(0); agrees("over")
+      eq(v.startButton:IsEnabled(), true); eq(v.startButton.text:GetText(), "Нова игра")
+      w:click(v.startButton); w:advance(0)
+      eq(s.state.phase, "play"); eq(v.startButton:IsShown(), false)
+    end)
+    E.over = nil
+    assert(okRun, err)
+  end)
+
+  it("a refused start says why on the news line", function()
+    local w, v = drTable()
+    eq(v.startButton:IsEnabled(), false)
+    w.ns.TableFrame.startGame() -- a click that lost a race: still alone
+    ok(v.line:IsVisible(), "no news line"); eq(v.line:GetText(), "Още няма достатъчно играчи.")
+    eq(w.ns.client.session.status, "open")
+  end)
+
+  it("with every seat taken „Започни“ moves next to „Стани“", function()
+    local w, v = drTable()
+    local s = w.ns.client.session
+    for i = 2, #s.seats do s.seats[i] = "Играч " .. i end
+    w.ns.client.events:emit("session", s); w:advance(0)
+    eq(v.inviteButton:IsShown(), false)
+    local p = v.startButton.points[1]
+    ok(p[2] == v.standButton, "not next to Стани"); eq({ p[1], p[3], p[4], p[5] }, { "LEFT", "RIGHT", 8, 0 })
+    s.seats[5] = false
+    w.ns.client.events:emit("session", s); w:advance(0)
+    ok(v.startButton.points[1][2] == v.inviteButton, "not next to Покани")
+  end)
+
+  it("a guest at a host-started table sees „Чакаме домакина да започне…“ and no start button", function()
+    local w = withBots()
+    w:slash("bots host dr"); w:advance(0); w:advance(0)
+    local rec = w.ns.client.lobby:tables()[1]
+    eq(rec.game, "deathroll")
+    w.ns.client:sit(rec.tid, 2)
+    w:advance(1)
+    local s, v, L = w.ns.client.session, w.ns.TableFrame.view, w.ns.L
+    eq(s.role, "player"); eq(s.status, "open")
+    eq(L("table.waitingHost"), "Чакаме домакина да започне…")
+    eq(#w:texts(L("table.waitingHost")), 1)
+    eq(v.startButton:IsVisible(), false)
+  end)
+end)
+
 describe("ui: Морски шах view", function()
   local E
 

@@ -4,10 +4,10 @@ local _, ns = ...
 -- Roll). The trust model: a roll counts as "seen" only when the host itself saw
 -- it in chat; a member's own sighting reaches the host as a claim (ACT{k="roll",
 -- n, max}), which the host takes after ROLL_CLAIM_WAIT unless it sees the roll
--- first; a client without RandomRoll asks the table (src "ask", the host rolls
--- with env.random), and the turn timer rolls for a player who does not
--- (src "timeout"). Every client logs its sightings and cross-checks each "seen"
--- or "claim" entry of the game against them.
+-- first; a client without RandomRoll, or its automatic move (playAuto), asks the
+-- table (src "ask", the host rolls with env.random), and the turn timer rolls
+-- for a player who does not (src "timeout"). Every client logs its sightings
+-- and cross-checks each "seen" or "claim" entry of the game against them.
 --
 -- Session fields (local, never sent):
 --   rollLog    sightings {seat, n, max, at}, newest last, at most ROLL_LOG
@@ -131,8 +131,9 @@ end
 
 -- My roll -> true | nil, code: "none", "seat", "live", "turn" (not my turn),
 -- "wait" (my roll is already under way). With env.roll a server roll, which
--- comes back through Rolls.seen; without, the table rolls for me (src "ask").
-function Rolls.roll(client)
+-- comes back through Rolls.seen; without, or with `byTable` (the automatic
+-- path: a server roll comes only from a click), the table rolls for me (src "ask").
+function Rolls.roll(client, byTable)
   local s = client.session
   if not s then return nil, "none" end
   if not s.mySeat then return nil, "seat" end
@@ -140,7 +141,7 @@ function Rolls.roll(client)
   if s.state.turn ~= s.mySeat then return nil, "turn" end
   if s.rolling then return nil, "wait" end
   local env, max = client.env, s.state.max
-  if env.roll then
+  if env.roll and not byTable then
     local mine = { seen = false }
     s.rolling = mine
     env.roll(1, max)
@@ -232,7 +233,7 @@ ns.Ext.rolls = {
     s.rolling, s.claim = nil, nil
   end,
   auto = function(s)
-    Rolls.roll(s.client)
+    Rolls.roll(s.client, true)
     return true
   end,
 }

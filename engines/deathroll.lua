@@ -86,9 +86,20 @@ function E.leave(s, seat)
   end
 end
 
--- The loser and everyone else still playing, once someone rolled 1.
+-- Seat is still in this game -> bool: it was seated at the start and has not
+-- left. A chair someone else took after its player left is not, so its rolls
+-- and the loss belong to nobody seated now.
+function E.playing(s, seat)
+  for i = 1, #s.players do
+    if s.players[i] == seat then return true end
+  end
+  return false
+end
+
+-- The loser and everyone else still playing, once someone rolled 1; nil once
+-- the loser has left the table.
 function E.result(s)
-  if s.phase ~= "over" or not s.loser then return nil end
+  if s.phase ~= "over" or not s.loser or not E.playing(s, s.loser) then return nil end
   local winners = {}
   for i = 1, #s.players do
     if s.players[i] ~= s.loser then winners[#winners + 1] = s.players[i] end
@@ -99,9 +110,9 @@ end
 -- Over with or without a loser (everyone else left): a new game may start.
 function E.over(s) return s.phase == "over" end
 
--- The loser rolls first in the next game while still seated.
+-- The loser rolls first in the next game while still seated (never left).
 function E.nextFirst(prev, occupied)
-  if prev and prev.loser and occupied[prev.loser] then return prev.loser end
+  if prev and prev.loser and occupied[prev.loser] and E.playing(prev, prev.loser) then return prev.loser end
   return nil
 end
 

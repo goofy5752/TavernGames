@@ -99,6 +99,16 @@ describe("wow: roll line", function()
     eq(bot.roll, nil); eq(bot.groupInvite, nil); eq(bot.group, nil); eq(type(bot.random(1, 6)), "number")
   end)
 
+  it("env.group is absent unless all four group functions exist", function()
+    for _, fn in ipairs({ "IsInGroup", "UnitIsGroupLeader", "IsInRaid", "GetNumGroupMembers" }) do
+      local w = Wow.new()
+      w.G[fn] = nil
+      guildWow(w)
+      ok(w.ns.client, "no client"); eq(w.ns.client.env.group, nil)
+      ok(w.ns.client.env.groupInvite, "groupInvite lost with " .. fn)
+    end
+  end)
+
   it("env.roll is absent when the client has no RandomRoll", function()
     local w = Wow.new()
     w.G.RandomRoll = nil

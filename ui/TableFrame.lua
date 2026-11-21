@@ -2,15 +2,19 @@ local _, ns = ...
 
 -- The table frame (mockup 03), shown whenever client.session is non-nil and
 -- hidden when it is nil. Felt stretched once inside a wood frame with the brass
--- edge. One nameplate per seat: the name in class color, the game's mark for
--- that seat, and on the player on turn a brass ring, a gold edge and the turn
--- clock. The game's board in the middle, drawn by the view registered for the
--- game id. A banner across the felt: waiting for a player, an aborted match, a
--- silent host, and for RESYNC_SECONDS after "desync" the resync note. Title
--- bar: the game, the access and turn time, the watcher count and ⓘ (topic =
--- game id). Bottom: „Стани“ (watchers: „Към залата“), „Покани“ for the host
--- while a seat is free (a list of who is in the tavern) and one line of news
--- for SAY_SECONDS.
+-- edge. One nameplate per seat, up to three rows (ns.HallLayout.plates): the
+-- name in class color, the game's mark for that seat, and on the player on
+-- turn a brass ring, a gold edge and the turn clock. The game's board in the
+-- middle, drawn by the view registered for the game id, 16 px lower for every
+-- plate row after the first (a view frame at most 236 high starts below two
+-- rows of plates, which end 68 px from the top of the felt).
+-- A banner across the felt: waiting for players (or for the host to start), an
+-- aborted match, a silent host, and for RESYNC_SECONDS after "desync" the
+-- resync note. Title bar: the game, the access, turn time and table options,
+-- the watcher count and ⓘ (topic = game id). Bottom: „Стани“ (watchers: „Към
+-- залата“), „Покани“ for the host while a seat is free (a list of who is in
+-- the tavern), „Започни“ / „Нова игра“ for the host of a host-started game
+-- while none runs, and one line of news for SAY_SECONDS.
 --
 -- A view is { build(parent) -> frame, update(frame, session) } and may add
 -- seatNote(session, seat) -> text for the plates. Client events only schedule
@@ -28,7 +32,8 @@ local TableFrame = {
 ns.TableFrame = TableFrame
 
 local EDGE, TITLE_H, BOTTOM_H = 12, 28, 40
-local PLATE_W, PLATE_H, PLATE_X, PLATE_Y = 190, 26, 10, -10
+local PLATE_W, PLATE_H = 190, 26     -- plate size before ns.HallLayout.plates sets the width
+local PLATE_NAME_INSET = 28 + 64      -- the plate width the disc and the clock/note keep from the name
 local SAY_SECONDS, RESYNC_SECONDS = 5, 3
 local PICK_W, PICK_ROWS, PICK_ROW_H = 230, 8, 20
 
@@ -74,6 +79,17 @@ function TableFrame.stand()
   if not client then return end
   client:stand()
   ns.MainWindow.show("hall")
+end
+
+-- „Започни“ / „Нова игра“: the host starts the next game; a refusal (a click
+-- that lost a race with a player standing up, say) is said on the news line.
+function TableFrame.startGame()
+  local client = ns.client
+  if not client then return end
+  local started, code = client:startGame()
+  if not started then
+    TableFrame.say(L(code == "short" and "start.short" or code == "live" and "start.live" or "start.failed"))
+  end
 end
 
 function TableFrame.invite(name)
@@ -162,7 +178,7 @@ local function plateWidget(v, i)
   local name = W.Label(f, "ui", "", 12)
   name:SetFont(Theme.font.uiBold, 12, "")
   name:SetWordWrap(false)
-  name:SetWidth(PLATE_W - 28 - 64)
+  name:SetWidth(PLATE_W - PLATE_NAME_INSET)
   name:SetPoint("LEFT", f, "LEFT", 28, 0)
   local clock = W.Label(f, "ui", "", 12)
   clock:SetTextColor(Theme.rgb("gold"))
@@ -190,18 +206,17 @@ function TableFrame.tick()
   end
 end
 
+-- Places the plates on the grid of ns.HallLayout.plates -> the number of rows.
 local function renderPlates(v, s, client)
   local n, view = #s.seats, TableFrame.views[s.game]
-  local step = n > 1 and (v.areaW - 2 * PLATE_X - PLATE_W) / (n - 1) or 0
+  local spots, rows = ns.HallLayout.plates(n, v.areaW)
   local turn = s.status == "live" and s.state and s.state.turn
   for i = 1, n do
-    local p, name = plateWidget(v, i), s.seats[i]
+    local p, name, spot = plateWidget(v, i), s.seats[i], spots[i]
     p.frame:ClearAllPoints()
-    if n == 1 then
-      p.frame:SetPoint("TOP", v.area, "TOP", 0, PLATE_Y)
-    else
-      p.frame:SetPoint("TOPLEFT", v.area, "TOPLEFT", PLATE_X + (i - 1) * step, PLATE_Y)
-    end
+    p.frame:SetPoint("TOPLEFT", v.area, "TOPLEFT", spot[1], spot[2])
+    p.frame:SetWidth(spot[3])
+    p.name:SetWidth(spot[3] - PLATE_NAME_INSET)
     if name then
       p.name:SetText(name)
       p.name:SetTextColor(W.nameColor(client, name))
@@ -221,9 +236,11 @@ local function renderPlates(v, s, client)
     p.frame:Show()
   end
   for i = n + 1, #v.plates do v.plates[i].frame:Hide() end
+  return rows
 end
 
-local function renderBoard(v, s)
+-- The board in the middle, 16 px lower for every plate row after the first.
+local function renderBoard(v, s, rows)
   for id, frame in pairs(TableFrame.built) do
     if id ~= s.game then frame:Hide() end
   end
@@ -232,19 +249,59 @@ local function renderBoard(v, s)
   local board = TableFrame.built[s.game]
   if not board then
     board = view.build(v.area)
-    board:SetPoint("CENTER", v.area, "CENTER", 0, -6)
     TableFrame.built[s.game] = board
   end
+  board:ClearAllPoints()
+  board:SetPoint("CENTER", v.area, "CENTER", 0, -6 - 16 * (rows - 1))
   board:SetShown(s.state ~= nil)
   if s.state then view.update(board, s) end
 end
 
-local function bannerKey(s)
+-- Precedence: hostSilent > resynced > aborted > the open table's waiting line.
+-- A host-started table waits for players, then for its host; a game that is
+-- over shows none (the view says who lost).
+local function bannerKey(s, engine)
   if s.hostSilent then return "table.hostSilent" end
   if TableFrame.resyncTid == s.tid then return "table.resynced" end
   if s.status == "aborted" then return "table.aborted" end
-  if s.status == "open" then return "table.waiting" end
-  return nil
+  if s.status ~= "open" then return nil end
+  if engine.start ~= "host" then return "table.waiting" end
+  if s:seatedCount() < engine.minSeats then return "table.waitingMore" end
+  return s.role == "host" and "table.pressStart" or "table.waitingHost"
+end
+
+-- „Започни“ / „Нова игра“: the host of a host-started table while no game
+-- runs, enabled exactly when Session:canStart (the check of startGame) says
+-- so; right of „Покани“, or of „Стани“ while „Покани“ is hidden. The news
+-- line sits right of it while it is shown, else right of „Покани“.
+local function renderStart(v, s, engine)
+  local can, code = s:canStart()
+  local shown = s.role == "host" and engine.start == "host" and code ~= "live"
+  local b = v.startButton
+  b:SetShown(shown)
+  if shown then
+    b.text:SetText(L(s.state and "table.again" or "table.start"))
+    b:SetEnabled(can == true)
+    b:SetAlpha(can and 1 or 0.5)
+    b:ClearAllPoints()
+    b:SetPoint("LEFT", v.inviteButton:IsShown() and v.inviteButton or v.standButton, "RIGHT", 8, 0)
+  end
+  v.line:ClearAllPoints()
+  v.line:SetPoint("LEFT", shown and b or v.inviteButton, "RIGHT", 14, 0)
+  v.line:SetPoint("RIGHT", TableFrame.frame, "BOTTOMRIGHT", -(EDGE + 8), EDGE + 20)
+end
+
+-- After the access and the turn time: " · <option> <value>" for every option.
+local function metaText(s, engine)
+  local text = L("access." .. tostring(s.access)) .. " · " .. L("hall.turn", s.turn or 0)
+  local options, opt = engine.options or {}, s.opt or {}
+  for i = 1, #options do
+    local id = options[i].id
+    if opt[id] ~= nil then
+      text = text .. " · " .. L("opt." .. s.game .. "." .. id) .. " " .. tostring(opt[id])
+    end
+  end
+  return text
 end
 
 -- Redraws the table frame now; shows it while I am at a table, hides it otherwise.
@@ -265,15 +322,15 @@ function TableFrame.render()
     f:Show()
     f:Raise()
   end
+  local engine = s:engine()
   v.title:SetText(W.gameName(s.game))
-  v.meta:SetText(L("access." .. tostring(s.access)) .. " · " .. L("hall.turn", s.turn or 0))
+  v.meta:SetText(metaText(s, engine))
   v.info.topic = s.game
   local watchers = s.watchers or 0
   v.watchers:SetText(L("table.watchers", watchers))
   v.watchers:SetShown(watchers > 0)
-  renderPlates(v, s, client)
-  renderBoard(v, s)
-  local key = bannerKey(s)
+  renderBoard(v, s, renderPlates(v, s, client))
+  local key = bannerKey(s, engine)
   if key then v.bannerText:SetText(L(key)) end
   v.banner:SetShown(key ~= nil)
   v.standButton.text:SetText(L(s.role == "watcher" and "table.toHall" or "table.stand"))
@@ -284,6 +341,7 @@ function TableFrame.render()
   elseif v.picker:IsShown() then
     renderPicker(v, client, s)
   end
+  renderStart(v, s, engine)
   TableFrame.tick()
 end
 
@@ -411,6 +469,11 @@ function TableFrame.build()
   invite:SetSize(100, 26)
   invite:SetPoint("LEFT", stand, "RIGHT", 8, 0)
   v.inviteButton = invite
+  local start = W.Button(f, L("table.start"), TableFrame.startGame)
+  start:SetSize(110, 26)
+  start:SetPoint("LEFT", invite, "RIGHT", 8, 0)
+  start:Hide()
+  v.startButton = start
   local line = W.Label(f, "ui", "", 12)
   line:SetTextColor(Theme.rgb("gold"))
   line:SetJustifyH("RIGHT")

@@ -85,7 +85,7 @@ function Session:record()
   return {
     tid = self.tid, g = self.game, h = self.host, e = self.epoch, ac = self.access,
     tn = self.turn, st = self.status == "live" and "live" or "open", s = copy(self.seats),
-    w = self.watchers, o = next(self.opt) ~= nil and copy(self.opt) or nil,
+    w = self.watchers, o = self.opt and next(self.opt) ~= nil and copy(self.opt) or nil,
   }
 end
 
@@ -427,13 +427,14 @@ function Session.request(client, kind, tid, seat)
   if s and (s.tid ~= tid or s.role == "host") then return refuse(client, tid, "busy") end
   local host = s and s.host
   client.gaveUp = nil
+  if s then s.sitAsked = kind == "SIT" and client.env.now() or nil end -- see Party.inviteFrom
   if not host then
     local rec = client.lobby:get(tid)
     if not rec then return refuse(client, tid, "gone") end
     -- A game I do not have: nothing to ask for.
     if not ns.Games.engine(rec.game) then return refuse(client, tid, "version") end
     host = rec.host
-    local p = { tid = tid, host = host }
+    local p = { tid = tid, host = host, kind = kind }
     client.pending = p
     client:after(C.PENDING_SECONDS, function()
       if client.pending ~= p then return end

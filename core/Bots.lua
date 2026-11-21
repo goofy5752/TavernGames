@@ -25,7 +25,7 @@ local _, ns = ...
 -- automatic move (client:playAuto) after MOVE_AFTER s, in phase "match" asks
 -- for a rematch after REMATCH_AFTER s, and as host of a game the host starts
 -- (engine.start == "host") starts it START_AFTER s after a change that leaves
--- it startable (at least minSeats seated, no game running).
+-- it startable (Session:canStart: at least minSeats seated, no game running).
 local Bots = {}
 Bots.__index = Bots
 ns.Bots = Bots
@@ -136,22 +136,12 @@ local function humanSend(self)
   end
 end
 
--- Host of a game the host starts, which client:startGame would start now: at
--- least minSeats seated and no game running (none yet, or the last one over:
--- engine.over, else a known result, as in core/Lifecycle.lua).
-local function startable(s)
-  local engine = s:engine()
-  if s.role ~= "host" or engine.start ~= "host" or s:seatedCount() < engine.minSeats then return false end
-  if s.status ~= "live" or not s.state then return true end
-  if engine.over then return engine.over(s.state) == true end
-  return engine.result ~= nil and engine.result(s.state) ~= nil
-end
-
--- The next thing `bot` wants to do at its table -> do(), delay | nil.
+-- The next thing `bot` wants to do at its table -> do(), delay | nil. As host
+-- of a game the host starts: start it whenever client:startGame would.
 local function nextAction(bot)
   local s = bot.session
   if not s or not s.mySeat then return nil end
-  if startable(s) then return function() bot:startGame() end, START_AFTER end
+  if s:canStart() then return function() bot:startGame() end, START_AFTER end
   if s.status ~= "live" or not s.state then return nil end
   local st = s.state
   if st.phase == "match" then

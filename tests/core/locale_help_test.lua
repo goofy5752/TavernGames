@@ -22,11 +22,11 @@ describe("locale and help", function()
     end
   end)
 
-  it("every help block and intro key exists in both languages; topics are hall, ttt, soon", function()
+  it("every help block and intro key exists in both languages; topics are hall, ttt, deathroll, soon", function()
     local H = ns.Help
     local ids = {}
     for i, t in ipairs(H.topics) do ids[i] = t.id end
-    eq(ids, { "hall", "ttt", "soon" })
+    eq(ids, { "hall", "ttt", "deathroll", "soon" })
     eq(#H.intro, 4)
     for _, t in ipairs(H.topics) do
       both(t.title, "topic title")
@@ -34,7 +34,7 @@ describe("locale and help", function()
       for _, b in ipairs(t.blocks) do
         both(b.key, "block key")
         if b.kind == "example" then examples = examples + 1 end
-        ok(b.kind == "p" or b.kind == "example" or b.kind == "board", "bad kind " .. tostring(b.kind))
+        ok(b.kind == "p" or b.kind == "example" or b.kind == "board" or b.kind == "ladder", "bad kind " .. tostring(b.kind))
       end
       ok(examples >= 1, "no example in " .. t.id)
       eq(H.get(t.id), t)
@@ -47,10 +47,17 @@ describe("locale and help", function()
     eq(#boards, 1); eq(#boards[1].board, 9); eq(#boards[1].line, 3)
     local b = boards[1]
     for _, c in ipairs(b.line) do eq(b.board[c], b.board[b.line[1]]); ok(b.board[c] ~= 0) end
+    local dr = H.get("deathroll")
+    eq(dr.title, "game.deathroll")
+    local ladders = {}
+    for _, lb in ipairs(dr.blocks) do
+      if lb.kind == "ladder" then ladders[#ladders + 1] = lb end
+    end
+    eq(#ladders, 1); eq(ladders[1].key, "help.deathroll.ladder"); eq(ladders[1].rolls, { 1000, 642, 87, 12, 3, 1 })
     eq(H.get("nope"), nil)
   end)
 
-  it("every quoted label in the hall, ttt and soon help is a UI label, and no help title copies one", function()
+  it("every quoted label in the hall, ttt, deathroll and soon help is a UI label, and no help title copies one", function()
     local QUOTES = { bg = { "„", "“" }, en = { "“", "”" } }
     for lang, q in pairs(QUOTES) do
       local ui = {}
@@ -59,7 +66,7 @@ describe("locale and help", function()
       end
       local checked = 0
       for k, text in pairs(T[lang]) do
-        if k:match("^help%.hall%.") or k:match("^help%.ttt%.") or k == "help.soon.example" then
+        if k:match("^help%.hall%.") or k:match("^help%.ttt%.") or k:match("^help%.deathroll%.") or k == "help.soon.example" then
           local pos = 1
           while true do
             local a, b = text:find(q[1], pos, true)
@@ -74,7 +81,7 @@ describe("locale and help", function()
           end
         end
       end
-      ok(checked >= 14, lang .. ": only " .. checked .. " quoted labels found")
+      ok(checked >= 18, lang .. ": only " .. checked .. " quoted labels found")
       for k, v in pairs(T[lang]) do
         if k:match("^help%.") and k:match("%.title$") then ok(not ui[v], lang .. " " .. k .. " copies a UI label") end
       end
@@ -84,7 +91,14 @@ describe("locale and help", function()
   it("pinned texts are used verbatim", function()
     eq(T.bg["help.ttt.example"], "Иван е Х, Мария е О. Редуват се. Иван нарежда три Х в редица и печели играта. Който пръв спечели 3 игри, печели мача.")
     eq(T.bg["help.hall.example"], "Виждаш маса с празен стол с пунктир. Кликаш на стола и вече седиш. Ако масата е пълна, кликни на нея, за да гледаш.")
-    eq(T.bg["help.soon.p"], "Скоро идват Death Roll, Белот, Сантасе, Табла и Тексас Холдем, и игра на залог с тефтер на дълговете.")
+    eq(T.bg["help.soon.p"], "Скоро идват Сантасе, Белот, Табла и Тексас Холдем, и игра на залог с тефтер на дълговете.")
+    eq(T.bg["help.deathroll.example"], "Иван и Мария играят от 1000. Иван хвърля 642. Мария хвърля от 1 до 642 и вади 87. Иван вади 12, Мария вади 3. Иван хвърля от 1 до 3 и вади 1. Иван губи и черпи.")
+    eq(T.en["deathroll.roll"], "Roll")
+    -- The Death Roll topic explains both marks after the name and when „Нова игра“ comes.
+    ok(T.bg["help.deathroll.tags"]:find("Въпросителна след името", 1, true), "no „?“ in tags")
+    ok(T.bg["help.deathroll.tags"]:find("на думата на играча", 1, true), "„?“ is not the player's word")
+    ok(T.bg["help.deathroll.tags"]:find("Червена удивителна", 1, true), "no red „!“ in tags")
+    ok(T.bg["help.deathroll.roll"]:find("Щом играта свърши, домакинът натиска „Нова игра“", 1, true), "„Нова игра“ unclear")
   end)
 
   it("L formats and falls back to the key", function()

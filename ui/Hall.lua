@@ -1,9 +1,10 @@
 local _, ns = ...
 
--- The hall tab (mockup 02 option A). Left: „Отвори маса“ with the six games
--- (Морски шах playable, the other five dimmed with „Скоро“). Centre: the floor
--- plan of the guild's tables (HallLayout), a scroll list above 8 tables, or a
--- message (no guild, name lookup, empty hall). Right: „В кръчмата сега“, where
+-- The hall tab (mockup 02 option A). Left: „Отвори маса“ with the games of the
+-- registry (ns.Games.list: a game with an engine opens the new-table dialog,
+-- the others are dimmed with „Скоро“). Centre: the floor plan of the guild's
+-- tables (HallLayout), a scroll list above 8 tables, or a message (no guild,
+-- name lookup, empty hall). Right: „В кръчмата сега“ (ui/HallPeers.lua), where
 -- a click on a name offers „Покани“ while I host a table with a free seat.
 -- Footer: a refusal for 5 s; the "newer version" note once it is known.
 --
@@ -21,23 +22,18 @@ local Hall = {
 ns.Hall = Hall
 
 local FOOTER_SECONDS = 5
-local LEFT_W, RIGHT_W, GAP = 190, 250, 10
+local LEFT_W, GAP = 190, 10
+Hall.RIGHT_W = 250 -- the peers column (ui/HallPeers.lua)
 local FOOTER_H, HEADER_H = 22, 28
 local TABLE_SIZE, TOP_SIZE, CHAIR_R, LABEL_R = 150, 94, 60, 80
-local GAME_H, ROW_H, PEER_H = 40, 40, 20
-
-local GAMES = {
-  { id = "ttt", players = "2" },
-  { id = "belot", players = "4", soon = true },
-  { id = "santase", players = "2", soon = true },
-  { id = "tabla", players = "2", soon = true },
-  { id = "holdem", players = "2–9", soon = true },
-  { id = "deathroll", players = "2+", soon = true },
-}
+local GAME_H, ROW_H = 40, 40
+-- Chair name labels fit around a table of at most this many seats; at a larger
+-- one only the tooltips name the players.
+local LABELLED_SEATS = 4
 
 local MESSAGES = { noguild = "hall.noguild", wait = "hall.wait", empty = "hall.empty" }
 
-local function firstWord(name) return name:match("^(%S+)") or name end
+local firstWord = W.firstWord
 
 -- The first UTF-8 character of `text`.
 local function initial(text) return text:match("^[%z\1-\127\194-\244][\128-\191]*") or "" end
@@ -59,13 +55,6 @@ local function seatedCount(seats)
   return n
 end
 
-local function contains(list, value)
-  for i = 1, #list do
-    if list[i] == value then return true end
-  end
-  return false
-end
-
 local nameColor, colored = W.nameColor, W.colored
 
 -- Am I at this table (host, player or watcher)?
@@ -75,7 +64,7 @@ local function here(client, rec)
 end
 
 -- My session as host with a free seat, or nil.
-local function hostingWithFreeSeat(client)
+function Hall.hostingWithFreeSeat(client)
   local s = client and client.session
   if s and s.role == "host" and firstFree(s.seats) then return s end
   return nil
@@ -125,16 +114,9 @@ function Hall.clickRow(r)
   end
 end
 
-local function canInviteName(client, name)
-  local s = hostingWithFreeSeat(client)
-  if not s or contains(s.seats, name) then return false end
-  local p = client.presence:get(name)
-  return p ~= nil and not p.incompatible
-end
-
 function Hall.clickPeer(r)
   local client = ns.client
-  if client and r.peerName and canInviteName(client, r.peerName) and Hall.selected ~= r.peerName then
+  if client and r.peerName and ns.HallPeers.canInviteName(client, r.peerName) and Hall.selected ~= r.peerName then
     Hall.selected = r.peerName
   else
     Hall.selected = nil
@@ -266,6 +248,7 @@ local function fillTable(t, rec, client)
   t.state:SetText(L("hall.live"))
   t.state:SetShown(rec.state == "live")
   local n = #rec.seats
+  local labelled = n <= LABELLED_SEATS
   local spots = HallLayout.chairs(n, CHAIR_R)
   local k = LABEL_R / CHAIR_R
   for i = 1, n do
@@ -283,7 +266,7 @@ local function fillTable(t, rec, client)
       c.disc:SetVertexColor(nameColor(client, name))
       c.label:SetText(firstWord(name))
       c.label:SetTextColor(nameColor(client, name))
-      c.label:Show()
+      c.label:SetShown(labelled)
       c.button:SetEnabled(false)
     else
       c.rim:Hide()
@@ -361,46 +344,6 @@ local function fillRow(r, rec, client)
   r.action:SetShown(r.act ~= nil)
 end
 
-local function peerWidget(v, i)
-  local r = v.peers[i]
-  if r then return r end
-  local content = v.peerScroll.content
-  local b = CreateFrame("Button", nil, content)
-  b:SetSize(v.peerW, PEER_H)
-  b:SetPoint("TOPLEFT", content, "TOPLEFT", 0, -(i - 1) * PEER_H)
-  b:RegisterForClicks("LeftButtonUp")
-  local hl = b:CreateTexture(nil, "BACKGROUND")
-  hl:SetAllPoints(b)
-  hl:SetColorTexture(Theme.color.brassLight[1], Theme.color.brassLight[2], Theme.color.brassLight[3], 0.08)
-  hl:Hide()
-  b:SetScript("OnEnter", function() hl:Show() end)
-  b:SetScript("OnLeave", function() hl:Hide() end)
-  local name = W.Label(b, "ui", "", 12)
-  name:SetWidth(v.peerW - 100)
-  name:SetWordWrap(false)
-  name:SetPoint("LEFT", b, "LEFT", 2, 0)
-  local status = W.Label(b, "dim", "")
-  status:SetJustifyH("RIGHT")
-  status:SetPoint("RIGHT", b, "RIGHT", -2, 0)
-  r = { frame = b, name = name, status = status }
-  local invite = W.Button(b, L("hall.invite"), function() Hall.invite(r.peerName) end, true)
-  invite:SetSize(64, 18)
-  invite:SetPoint("RIGHT", b, "RIGHT", 0, 0)
-  invite:Hide()
-  r.invite = invite
-  b:SetScript("OnClick", function() Hall.clickPeer(r) end)
-  v.peers[i] = r
-  return r
-end
-
-local function whereIs(client, p, byTid)
-  if p.incompatible then return L("peers.incompatible") end
-  local rec = p.at and byTid[p.at]
-  if not rec then return L("peers.hall") end
-  if contains(rec.seats, p.name) then return L("peers.at", colored(client, rec.host, firstWord(rec.host))) end
-  return L("peers.watching")
-end
-
 ---------------------------------------------------------------------------
 -- Drawing
 ---------------------------------------------------------------------------
@@ -430,32 +373,6 @@ local function renderList(v, recs, client)
   v.list:setContentHeight(#recs * ROW_H)
 end
 
-local function renderPeers(v, client)
-  local peers, byTid = {}, {}
-  if client then
-    peers = client.presence:list()
-    local recs = client.lobby:tables()
-    for i = 1, #recs do byTid[recs[i].tid] = recs[i] end
-  end
-  local selectedListed = false
-  for i, p in ipairs(peers) do
-    local r = peerWidget(v, i)
-    r.peerName = p.name
-    r.name:SetText(p.name)
-    r.name:SetTextColor(ns.classColor(p.cls))
-    r.status:SetText(whereIs(client, p, byTid))
-    local offer = Hall.selected == p.name and canInviteName(client, p.name)
-    if offer then selectedListed = true end
-    r.invite:SetShown(offer)
-    r.status:SetShown(not offer)
-    r.frame:Show()
-  end
-  for i = #peers + 1, #v.peers do v.peers[i].frame:Hide() end
-  if not selectedListed then Hall.selected = nil end
-  v.peerScroll:setContentHeight(#peers * PEER_H)
-  v.peerEmpty:SetShown(#peers == 0)
-end
-
 -- Redraws the hall now (only while it is on screen; OnShow redraws it).
 function Hall.render()
   local v = Hall.view
@@ -480,7 +397,7 @@ function Hall.render()
   elseif mode == "list" then
     renderList(v, recs, client)
   end
-  renderPeers(v, client)
+  ns.HallPeers.render(v, client)
   v.note:SetShown(Hall.updateAvailable)
 end
 
@@ -503,7 +420,8 @@ local function buildLeft(v, page, colH)
   left:SetPoint("TOPLEFT", page, "TOPLEFT", 0, 0)
   left:SetSize(LEFT_W, colH)
   W.Label(left, "heading", L("hall.open")):SetPoint("TOPLEFT", left, "TOPLEFT", 10, -10)
-  for i, g in ipairs(GAMES) do
+  local firstActive
+  for i, g in ipairs(ns.Games.list()) do
     local row = CreateFrame("Button", nil, left)
     row:SetSize(LEFT_W - 20, GAME_H - 2)
     row:SetPoint("TOPLEFT", left, "TOPLEFT", 10, -32 - (i - 1) * GAME_H)
@@ -535,16 +453,17 @@ local function buildLeft(v, page, colH)
     local soon = W.Label(row, "dim", L("games.soon"))
     color(soon, "gold")
     soon:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", -4, 5)
-    if g.soon then
-      row:SetAlpha(0.45)
-      row:SetScript("OnClick", function() if ns.HelpBook then ns.HelpBook.open("soon") end end)
-    else
+    if g.engine then
+      firstActive = firstActive or g.id
       soon:Hide()
       row:SetScript("OnClick", function() ns.NewTableDialog.open(g.id) end)
+    else
+      row:SetAlpha(0.45)
+      row:SetScript("OnClick", function() if ns.HelpBook then ns.HelpBook.open("soon") end end)
     end
     v.games[i] = { id = g.id, frame = row, name = name, soon = soon }
   end
-  local open = W.Button(left, L("hall.open"), function() ns.NewTableDialog.open("ttt") end)
+  local open = W.Button(left, L("hall.open"), function() ns.NewTableDialog.open(firstActive) end)
   open:SetSize(LEFT_W - 20, 28)
   open:SetPoint("BOTTOM", left, "BOTTOM", 0, 12)
   v.openButton = open
@@ -596,30 +515,15 @@ local function buildCentre(v, page, x, w, colH)
   v.list = list
 end
 
-local function buildRight(v, page, x, colH)
-  local right = W.Panel(page)
-  right:SetPoint("TOPLEFT", page, "TOPLEFT", x, 0)
-  right:SetSize(RIGHT_W, colH)
-  W.Label(right, "heading", L("peers.title")):SetPoint("TOPLEFT", right, "TOPLEFT", 10, -10)
-  local scroll = W.Scroll(right)
-  scroll:SetPoint("TOPLEFT", right, "TOPLEFT", 8, -32)
-  scroll:SetPoint("BOTTOMRIGHT", right, "BOTTOMRIGHT", -8, 8)
-  v.peerW = RIGHT_W - 16 - 6
-  scroll.content:SetWidth(v.peerW)
-  v.peerScroll = scroll
-  v.peerEmpty = W.Label(right, "dim", L("peers.empty"), 12)
-  v.peerEmpty:SetPoint("TOPLEFT", right, "TOPLEFT", 10, -34)
-end
-
 function Hall.build(page)
   local v = { page = page, games = {}, tables = {}, rows = {}, peers = {} }
   Hall.view = v
   local bodyW, bodyH = ns.MainWindow.BODY_W, ns.MainWindow.BODY_H
   local colH = bodyH - FOOTER_H
-  local centreW = bodyW - LEFT_W - RIGHT_W - 2 * GAP
+  local centreW = bodyW - LEFT_W - Hall.RIGHT_W - 2 * GAP
   buildLeft(v, page, colH)
   buildCentre(v, page, LEFT_W + GAP, centreW, colH)
-  buildRight(v, page, LEFT_W + GAP + centreW + GAP, colH)
+  ns.HallPeers.build(v, page, LEFT_W + GAP + centreW + GAP, colH)
 
   local footer = W.Label(page, "ui", "", 13)
   color(footer, "gold")

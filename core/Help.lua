@@ -5,7 +5,8 @@ local _, ns = ...
 -- label's own key, so the book and the UI can never disagree. Block kinds: "p"
 -- (text), "example" (a short story in tavern talk), "board" (a 3x3 mini board:
 -- `board` holds 9 cells, 0 empty, 1 X, 2 O, and `line` the three cells that
--- glow, next to the text `key`).
+-- glow, next to the text `key`), "ladder" (the text `key` over a row of Death
+-- Roll numbers `rolls`, the last one the losing 1).
 local Help = {}
 ns.Help = Help
 
@@ -26,6 +27,16 @@ Help.topics = {
     { kind = "p", key = "help.ttt.time" },
     { kind = "p", key = "help.ttt.draw" },
     { kind = "p", key = "help.ttt.rematch" },
+  } },
+  { id = "deathroll", title = "game.deathroll", blocks = {
+    { kind = "p", key = "help.deathroll.p1" },
+    { kind = "example", key = "help.deathroll.example" },
+    { kind = "ladder", key = "help.deathroll.ladder", rolls = { 1000, 642, 87, 12, 3, 1 } },
+    { kind = "p", key = "help.deathroll.roll" },
+    { kind = "p", key = "help.deathroll.group" },
+    { kind = "p", key = "help.deathroll.time" },
+    { kind = "p", key = "help.deathroll.tags" },
+    { kind = "p", key = "help.deathroll.leave" },
   } },
   { id = "soon", title = "games.soon", blocks = {
     { kind = "p", key = "help.soon.p" },

@@ -51,13 +51,13 @@ function Member.adopt(client, sender, m)
   s.epoch, s.seq, s.seats = m.e, m.q, copy(t.s)
   s.game, s.access, s.turn, s.watchers = t.g, t.ac, t.tn, t.w or 0
   s.opt = ns.Games.resolve(t.g, t.o)
-  local engine = ns.Engines[t.g]
+  local engine = ns.Games.engine(t.g)
   s.state = type(m.st) == "table" and engine.restore(m.st) or nil
   -- A result already in the snapshot was announced before: noted, not emitted.
   s.resultSeen = s.state ~= nil and engine.result ~= nil and engine.result(s.state) ~= nil
   s.status = t.st == "live" and "live" or (s.state and "aborted" or "open")
   s.deadline = type(m.left) == "number" and client.env.now() + m.left or nil
-  s.stale = nil
+  s.stale, s.sitAsked = nil, nil
   s.invited = {}
   s:addInvited(m.inv)
   client.pending, client.gaveUp = nil, nil
@@ -79,7 +79,7 @@ end
 local function unusable(m, sender)
   local t = m.tbl
   return type(m.e) ~= "number" or type(m.q) ~= "number" or not ns.Lobby.valid(t)
-    or t.tid ~= m.tid or t.h ~= sender or not ns.Engines[t.g]
+    or t.tid ~= m.tid or t.h ~= sender or not ns.Games.engine(t.g)
     or (t.st == "live" and type(m.st) ~= "table")
 end
 
@@ -149,6 +149,7 @@ local function onRefusal(client, sender, m)
   elseif s and s.role ~= "host" and s.tid == m.tid and s.host == sender then
     -- "gone": I am not at its table any more. Stale: the new host did not take me in.
     -- Anything else I can live with, e.g. a watcher asking for a taken chair.
+    s.sitAsked = nil
     if m.why == "gone" or s.stale then Session.leave(client) end
     Session.refuse(client, m.tid, m.why)
   end

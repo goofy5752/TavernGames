@@ -31,7 +31,7 @@ local function framed(w, border)
 end
 
 describe("ui: rules book", function()
-  it("opens 640x480 on „Залата“ for nil or an unknown topic, framed at 12/12, with three topics", function()
+  it("opens 640x480 on „Залата“ for nil or an unknown topic, framed at 12/12, with four topics", function()
     local w = guildWow()
     local B, L = w.ns.HelpBook, w.ns.L
     B.open()
@@ -43,7 +43,7 @@ describe("ui: rules book", function()
     eq(B.paper.color, rgba(w, "cream"))
     local names = {}
     for i, t in ipairs(B.topics) do names[i] = t.id .. "=" .. t.button.text:GetText() end
-    eq(names, { "hall=Залата", "ttt=Морски шах", "soon=Скоро" })
+    eq(names, { "hall=Залата", "ttt=Морски шах", "deathroll=Death Roll", "soon=Скоро" })
     B.open("nope"); eq(B.current, "hall")
     eq(B.introLink.text:GetText(), "Покажи въведението пак")
     eq(w:newGlobals(), { "SLASH_TAVERNGAMES1", "TavernGamesDB" })
@@ -85,10 +85,10 @@ describe("ui: rules book", function()
     local B, L = w.ns.HelpBook, w.ns.L
     B.open("hall")
     local hallPage = B.page
-    w:click(B.topics[3].button)
+    w:click(B.topics[4].button)
     eq(B.current, "soon"); eq(hallPage:IsShown(), false); ok(B.page:IsVisible(), "soon page hidden")
     eq(B.page.blocks[1].text:GetText(), L("help.soon.p"))
-    eq({ B.topics[3].button.text:GetTextColor() }, rgba(w, "red"))
+    eq({ B.topics[4].button.text:GetTextColor() }, rgba(w, "red"))
     w:click(B.topics[1].button); ok(hallPage:IsVisible(), "hall page not back")
     w:click(B.close); eq(B.frame:IsShown(), false)
   end)
@@ -102,6 +102,38 @@ describe("ui: rules book", function()
     w:advance(0)
     w:click(w.ns.TableFrame.view.info)
     eq(w.ns.HelpBook.current, "ttt")
+  end)
+
+  it("the Death Roll topic shows the ladder 1000 › 642 › 87 › 12 › 3 › 1 with the last number red", function()
+    local w = guildWow()
+    local B, Theme = w.ns.HelpBook, w.ns.Theme
+    B.open("deathroll")
+    eq(B.current, "deathroll")
+    local topic = w.ns.Help.get("deathroll")
+    local ladder
+    for i, b in ipairs(topic.blocks) do
+      eq(B.page.blocks[i].kind, b.kind)
+      if b.kind == "ladder" then ladder = B.page.blocks[i] end
+    end
+    ok(ladder, "no ladder block")
+    eq(ladder.text:GetText(), w.ns.L("help.deathroll.ladder"))
+    local numbers = {}
+    for i, fs in ipairs(ladder.numbers) do
+      numbers[i] = fs:GetText()
+      ok(fs:IsVisible(), "number " .. i .. " hidden")
+      eq(fs:GetFont(), Theme.font.heading)
+    end
+    eq(numbers, { "1000", "642", "87", "12", "3", "1" })
+    eq({ ladder.numbers[6]:GetTextColor() }, rgba(w, "red"))
+    for i = 1, 5 do eq({ ladder.numbers[i]:GetTextColor() }, rgba(w, "woodDark"), "number " .. i) end
+    eq(#ladder.arrows, 5)
+    for _, a in ipairs(ladder.arrows) do eq(a:GetText(), "›") end
+    -- ⓘ on a Death Roll table opens this topic.
+    B.frame:Hide()
+    w.ns.client:openTable{ game = "deathroll", access = "guild", turn = 45, opt = { start = 100 } }
+    w:advance(0)
+    w:click(w.ns.TableFrame.view.info)
+    eq(B.current, "deathroll"); ok(B.frame:IsShown(), "book not open")
   end)
 
   it("„Покажи въведението пак“ reopens the intro at 1/4", function()

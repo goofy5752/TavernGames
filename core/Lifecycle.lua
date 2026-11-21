@@ -4,7 +4,8 @@ local _, ns = ...
 -- Session metatable: the engine's extensions (ns.Ext, see Session:hook), a new
 -- game from the occupied seats, the "result" event, and the entry points
 -- startGame (games with engine.start == "host"; Session:startIfFull never
--- starts those) and playAuto. Session:apply calls newGame and noteResult;
+-- starts those; its checks are Session:canStart and Session:gameOver, shared
+-- with the bots and the table frame) and playAuto. Session:apply calls newGame and noteResult;
 -- Session:onAct passes a member's action through filterAct before playing it;
 -- a new host (core/Succession.lua) applies its catch-up events with applyUnsent.
 -- A game whose engine has `view` is held as my seat's view on every client:
@@ -20,12 +21,24 @@ local copy, seatOf = ns.Util.copy, ns.Util.seatOf
 -- after the snapshot m replaced my state, hostChanged(s) when my table changed
 -- host; need(s, action) (host: a system action that needs randomness),
 -- table(s, a) -> true (a seat-0 event the extension applied itself), snap(s)
--- -> the SNP field `fr`.
+-- -> the SNP field `fr`. A hook that raises counts as nil: the error goes to
+-- env.log ("error", "ext", "<ext>.<hook>", message), so it cannot cut short the
+-- request, event or snapshot handling around it (e.g. the sitter's SNP after a sit).
 function Session:hook(name, ...)
   local ext, out = self:engine().ext or {}, nil
   for i = 1, #ext do
     local x = ns.Ext[ext[i]]
-    local r = x and x[name] and x[name](self, ...)
+    local r = nil
+    if x and x[name] then
+      local ok, got = pcall(x[name], self, ...)
+      if ok then
+        r = got
+      else
+        local env = self.client.env
+        if env.log then env.log("error", "ext", ext[i] .. "." .. name, tostring(got)) end
+        if env.strictHooks then error(got, 0) end -- tests only: the WoW adapter never sets it
+      end
+    end
     if out == nil then out = r end
   end
   return out
@@ -117,17 +130,26 @@ function Session:gameOver()
   return engine.result ~= nil and engine.result(state) ~= nil
 end
 
+-- Would startGame start the next game now -> true | nil, code: "nothost",
+-- "mode" (the game starts by itself), "short" (fewer than minSeats seated),
+-- "live" (a game is running and not over). The checks of startGame, no effect.
+function Session:canStart()
+  if self.role ~= "host" then return nil, "nothost" end
+  local engine = self:engine()
+  if engine.start ~= "host" then return nil, "mode" end
+  if self:seatedCount() < engine.minSeats then return nil, "short" end
+  if self.status == "live" and not self:gameOver() then return nil, "live" end
+  return true
+end
+
 -- Host of a game the host starts: the next game begins -> true | nil, code:
--- "none", "nothost", "mode" (the game starts by itself), "short" (fewer than
--- minSeats seated), "live" (a game is running and not over).
+-- "none" (no table), else a code of Session:canStart.
 function Session.startGame(client)
   local s = client.session
   if not s then return nil, "none" end
-  if s.role ~= "host" then return nil, "nothost" end
+  local can, code = s:canStart()
+  if not can then return nil, code end
   local engine = s:engine()
-  if engine.start ~= "host" then return nil, "mode" end
-  if s:seatedCount() < engine.minSeats then return nil, "short" end
-  if s.status == "live" and not s:gameOver() then return nil, "live" end
   local seats, first = occupied(s.seats)
   if engine.nextFirst and s.state then first = engine.nextFirst(s.state, seats) or first end
   s:event(0, { k = "start", first = first })

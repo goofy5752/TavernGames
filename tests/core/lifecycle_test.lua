@@ -66,6 +66,27 @@ describe("game lifecycle", function()
     eq({a:startGame()}, {nil, "live"})
   end)
 
+  it("gameOver: false without a state, any truthy engine.over counts, else a known result", function()
+    local E = Sim.ns.Engines.pick
+    local sim, a, b = clients()
+    local tid = a:openTable{game="pick", access="guild", turn=45}; sim:run(3)
+    local s = a.session
+    eq(s:gameOver(), false); eq({s:canStart()}, {nil, "short"})
+    b:sit(tid, 2); sim:run(1)
+    eq({s:canStart()}, {true}); ok(a:startGame()); sim:run(1)
+    eq(s:gameOver(), false); eq({s:canStart()}, {nil, "live"})
+    E.over = function(st) return st.n[1] > 0 and "yes" or nil end -- truthy, not true
+    local okRun, err = pcall(function()
+      eq(s:gameOver(), false)
+      ok(a:act{k="inc", by=1}); sim:run(1)
+      eq(s:gameOver(), true); eq({s:canStart()}, {true})
+      ok(a:startGame()); sim:run(1); eq(s.state.n, {0, 0, 0, 0})
+    end)
+    E.over = nil
+    assert(okRun, err)
+    eq({b.session:canStart()}, {nil, "nothost"})
+  end)
+
   it("a newcomer waits for the next game; the result is announced once; the winner starts", function()
     local sim, a, b, c, d, tid = running()
     d:sit(tid, 4); sim:run(1)
@@ -121,6 +142,25 @@ describe("game lifecycle", function()
     sim:run(due - 1 - sim.clock); eq(a.session.state.n[1], 1); eq(#sim.nextRandom, 1)
     sim:run(1)
     eq(#sim.nextRandom, 0); eq(a.session.state.n[1], 2)   -- auto played for seat 1 after a fresh full turn
+  end)
+
+  it("strictHooks: a throwing applied hook raises in tests, and is contained and logged in game", function()
+    local sim, a = running()
+    local E = Sim.ns.Ext.picktest
+    local old = E.applied
+    E.applied = function() error("boom hook") end
+    local lines = {}
+    a.env.log = function(dir, channel, peer, msg) lines[#lines + 1] = { dir, channel, peer, msg } end
+    local okRun, err = pcall(function()
+      eq(a.env.strictHooks, true)
+      raises(function() a.session:hook("applied", 1, { k = "x" }) end, "boom hook")
+      eq(#lines, 1); eq({ lines[1][1], lines[1][2], lines[1][3] }, { "error", "ext", "picktest.applied" })
+      a.env.strictHooks = false
+      eq(a.session:hook("applied", 1, { k = "x" }), nil)
+      eq(#lines, 2)
+    end)
+    E.applied = old
+    assert(okRun, err)
   end)
 
   it("the act hook rewrites and drops a member's ACT", function()

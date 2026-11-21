@@ -5,7 +5,9 @@ local _, ns = ...
 -- the left; the right side shows the chosen topic's blocks: "p" as text,
 -- "example" as an indented italic block with a brass rule on its left, "board"
 -- as a 3x3 mini board (26 px cells) whose `line` cells are gold, with its text
--- beside it. The footer link „Покажи въведението пак“ starts the intro again.
+-- beside it, "ladder" as its text over a row of numbers in the paper heading
+-- face with „›“ in brass between them and the last one in red. The footer
+-- link „Покажи въведението пак“ starts the intro again.
 local Theme, W, L = ns.Theme, ns.W, ns.L
 
 local HelpBook = {
@@ -28,6 +30,7 @@ local TEXT_W = BODY_W - 10 -- room for the scroll thumb
 local GAP = 12             -- between blocks
 local INDENT = 16          -- an example's text, right of its rule
 local CELL, CELL_GAP = 26, 2
+local LADDER_SIZE, LADDER_ARROW, LADDER_GAP = 22, 16, 8
 
 local function setColor(fs, token) fs:SetTextColor(Theme.rgb(token)) end
 
@@ -84,6 +87,28 @@ function BLOCKS.board(content, b, y)
   local tx = 4 + side + 14
   local fs, h = text(content, "paper", b.key, tx, y, TEXT_W - tx)
   return { kind = "board", text = fs, cells = cells }, math.max(side, h)
+end
+
+-- The text, then the numbers left to right with „›“ between them.
+function BLOCKS.ladder(content, b, y)
+  local fs, h = text(content, "paper", b.key, 0, y, TEXT_W)
+  local rowY = y + h + LADDER_GAP
+  local numbers, arrows, x = {}, {}, 4
+  for i, n in ipairs(b.rolls) do
+    if i > 1 then
+      local arrow = W.Label(content, "paperHeading", "›", LADDER_ARROW)
+      setColor(arrow, "brass")
+      arrow:SetPoint("TOPLEFT", content, "TOPLEFT", x, -(rowY + (LADDER_SIZE - LADDER_ARROW) / 2))
+      arrows[#arrows + 1] = arrow
+      x = x + arrow:GetStringWidth() + LADDER_GAP
+    end
+    local num = W.Label(content, "paperHeading", tostring(n), LADDER_SIZE)
+    setColor(num, i == #b.rolls and "red" or "woodDark")
+    num:SetPoint("TOPLEFT", content, "TOPLEFT", x, -rowY)
+    numbers[i] = num
+    x = x + num:GetStringWidth() + LADDER_GAP
+  end
+  return { kind = "ladder", text = fs, numbers = numbers, arrows = arrows }, h + LADDER_GAP + LADDER_SIZE * 1.25
 end
 
 local function buildPage(topic)

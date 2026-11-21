@@ -46,6 +46,14 @@ describe("hall layout", function()
     ok(near(q[2][1], 10) and near(q[2][2], 0), "seat 2 of 4 not on the right")
   end)
 
+  it("plates: one row for two, a grid of three columns from three seats on", function()
+    local p, rows = H.plates(2, 532); eq(p, { { 10, -10, 190 }, { 332, -10, 190 } }); eq(rows, 1)
+    p, rows = H.plates(3, 532); eq(p, { { 10, -10, 165 }, { 183.5, -10, 165 }, { 357, -10, 165 } }); eq(rows, 1)
+    p, rows = H.plates(4, 532); eq(p, { { 10, -10, 190 }, { 332, -10, 190 }, { 10, -42, 190 }, { 332, -42, 190 } }); eq(rows, 2)
+    p, rows = H.plates(6, 532); eq(rows, 2); eq(p[4], { 10, -42, 165 }); eq(p[6], { 357, -42, 165 })
+    p, rows = H.plates(9, 532); eq(rows, 3); eq(p[9], { 357, -74, 165 }); eq(H.plates(1, 532), { { 171, -10, 190 } })
+  end)
+
   it("my table comes first, then open, then live", function()
     local r = function(tid, st, s) return { tid = tid, state = st, seats = s } end
     local input = { r("b#2", "live", { A, false }), r("c#3", "open", { "X", false }), r("a#1", "live", { "X", "Y" }), r("d#4", "open", { "Z", false }) }

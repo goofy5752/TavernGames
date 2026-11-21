@@ -5,9 +5,9 @@ local _, ns = ...
 -- invites, only the players seated at its table, at most once per name per
 -- GROUP_INVITE_GAP s: after every sit and at every start. It never leaves,
 -- disbands or converts a group; when it cannot invite (in a group it does not
--- lead, or a party with no room) it says why in `partyWhy`. A seated player
--- accepts a group invite automatically only from the host of his table
--- (Party.inviteFrom, for wow/).
+-- lead, or a party with no room) it says why in `partyWhy`. A player seated at
+-- such a table, or sitting down at it, accepts a group invite automatically
+-- only from the host of that table (Party.inviteFrom, for wow/).
 --
 -- Session fields (local, never sent):
 --   partyAsked  name -> env.now() of my last invite (host only)
@@ -60,12 +60,23 @@ function Party.ensure(s)
   end
 end
 
--- A group invite from `shown` (normalized) is to be accepted: I hold a seat at a
--- table that needs a group and `shown` is its host (not me).
+-- A group invite from `shown` (normalized) is to be accepted: it comes from the
+-- host (not me) of a table that needs a group, where I hold a seat or asked for
+-- one. The host invites before its snapshot reaches me, so my pending SIT counts
+-- (client.pending), and so does a watcher's sit request of the last
+-- PENDING_SECONDS (session.sitAsked = env.now() of it, set by Session.request).
 function Party.inviteFrom(client, shown)
-  local s = client.session
-  if not s or not s.mySeat or s.role == "host" or not s:engine().needsGroup then return false end
-  return Names.matches(s.host, shown)
+  local s, p = client.session, client.pending
+  if s then
+    if s.role == "host" or not s:engine().needsGroup then return false end
+    local asked = s.sitAsked and client.env.now() - s.sitAsked < C.PENDING_SECONDS
+    if not s.mySeat and not asked then return false end
+    return Names.matches(s.host, shown)
+  end
+  if not p or p.kind ~= "SIT" then return false end
+  local rec = client.lobby:get(p.tid)
+  local engine = rec and ns.Games.engine(rec.game)
+  return engine ~= nil and engine.needsGroup == true and Names.matches(p.host, shown)
 end
 
 ns.Ext.party = {
