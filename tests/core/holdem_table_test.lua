@@ -155,3 +155,45 @@ describe("holdem at the table", function()
     eq({ st().hand, E.players(st()), cl[1].session.fair.p, #E.hidden(s.state, 3), ns.Deal.alarm(s) }, { 2, { 1, 2, 3 }, { 1, 2, 3 }, 2, false })
   end)
 end)
+
+describe("holdem: the step and the key", function()
+  -- heads-up, hand 1 (seat 1 hosts and deals): the preflop betting is over, the flop is due; the dealer's own step is held back
+  local function flopDue()
+    tableN(2); ok(cl[1]:startGame()); sim:run(3); act("call"); act("check")
+    local s = cl[1].session; eq(st().phase, "street"); ok(s.stepTimer, "the dealer's step is armed")
+    s.stepTimer.cancel(); s.stepTimer = nil
+    local d = deckOf(4, 2)
+    return s, d, { [6] = d[6], [7] = d[7], [8] = d[8] }
+  end
+  it("the host plays a step only with every face it deals; a forged step of any kind is refused", function()
+    local s, d, flop = flopDue(); local A, q = ns.Ext.cash.act, s.seq
+    local function step(seat, a, h) return A(s, seat, { k = "book", op = "step", h = h or s.fair.h, a = a }) end
+    eq(step(1, { k = "street", cards = {} }), nil); eq(step(1, { k = "street" }), nil)                    -- no faces
+    eq(step(1, { k = "street", cards = { [6] = d[6], [7] = d[7] } }), nil)                              -- two of the flop's three
+    eq(step(2, { k = "street", cards = flop }), nil)                                                    -- not the dealer
+    eq(step(1, { k = "showdown", cards = flop }), nil); eq(step(1, { k = "street", cards = flop }, s.fair.h + 1), nil)
+    local hole = ns.Util.copy(flop); hole[1] = d[1]; eq(step(1, { k = "street", cards = hole }), nil)    -- seat 2's hole card
+    sim:run(1); eq({ s.seq, st().phase, #st().board }, { q, "street", 0 })
+    step(1, { k = "street", cards = flop }); sim:run(1)
+    eq({ s.seq, st().phase, #st().board, cl[2].session.state.deck[6], w.session.state.deck[8] }, { q + 1, "bet", 3, d[6], d[8] })
+    eq(cl[2].session.fair.foul, nil)
+  end)
+  it("a street event without its faces is the foul deal on every client; the hand closes bad", function()
+    local s = flopDue(); s:play(0, { k = "street", cards = {} }); sim:run(1)
+    eq({ cl[1].session.fair.foul, cl[2].session.fair.foul, w.session.fair.foul }, { "deal", "deal", "deal" })
+    act("fold")
+    for _, c in ipairs{ cl[1], cl[2], w } do
+      eq({ c.session.fairLast.verdict, c.session.fairLast.why }, { "bad", "deal" }); eq({ ns.Book.status(c.session) }, { "seal.bad", "red", 1 })
+    end
+  end)
+  it("a key I have spent never deals again, whatever the book or the kept key says", function()
+    tableN(2); ok(cl[1]:startGame()); sim:run(3); local s, env = cl[2].session, sim.envs[N[2]]
+    eq(ns.Book.key(s), KEY(2)); ns.Book.spend(s); env.random = rnd(7)
+    eq({ ns.Book.key(s), env.db.bookKeep.key, env.db.bookSpent }, { KEY(7), KEY(7), { { tid = tid, me = N[2], key = KEY(2) } } })
+    env.db.bookKeep = { tid = tid, me = N[2], key = KEY(2), g = s.book.g }                         -- a kept key that is spent
+    local c2 = sim:relog(N[2]); sim.envs[N[2]].random = rnd(8); sim:run(2)
+    eq({ c2.session.book.g, ns.Book.key(c2.session), sim.envs[N[2]].db.bookKeep.key }, { 2, KEY(8), KEY(8) })
+    c2.session.book.key = KEY(2); eq(ns.Book.key(c2.session), KEY(8))                             -- in memory, too
+    for _ = 1, 40 do ns.Book.spend(c2.session) end; eq(#env.db.bookSpent, 32)
+  end)
+end)

@@ -7,7 +7,10 @@ local _, ns = ...
 --   g} so that it survives a /reload and a relog; g is the seq of the running
 --   game's `start` event, so a kept key is taken only for that game, and never
 --   one that is already among the book's published keys. Before it is
---   published the key is in no message and never in the trace. The seed of
+--   published the key is in no message and never in the trace. A key I have
+--   sent is spent (Book.spend: env.db.bookSpent, my own saved variables, the
+--   newest SPENT_KEPT of them): Book.key never gives it again, whatever a
+--   snapshot (state.g, the published keys) says. The seed of
 --   hand h is Fair.handSeed(key, handId) (Book.seedFor); its commit is the
 --   round's commit, as in stage B.
 -- Rule 5, no reveal: when the hand ends (not E.inHand) every client writes
@@ -66,33 +69,58 @@ function Book.isKey(m)
   return type(m) == "string" and #m == 2 * C.SEED_BYTES and m:find("^[0-9a-f]+$") ~= nil
 end
 
-local function published(book, key)
+local SPENT_KEPT = 32
+
+-- May `key` still deal for me: neither published in the book nor spent by
+-- me at this table (the spent list is mine alone; the host has no say in it)?
+local function usable(s, book, key)
   for _, k in ipairs(book.keys) do
-    if k.m == key then return true end
+    if k.m == key then return false end
   end
-  return false
+  local env = s.client.env
+  for _, x in ipairs(env.db and env.db.bookSpent or {}) do
+    if x.tid == s.tid and x.me == env.me and x.key == key then return false end
+  end
+  return true
 end
 
--- My table key for this game: the book's; else the kept one, when it is mine,
--- of this table and this game, and not published; else a new one, kept.
+-- My key leaves my client: it is spent for good at this table, in my own
+-- saved variables (bounded), before it is sent.
+function Book.spend(s)
+  local book, env = Book.of(s), s.client.env
+  if not (book.key and env.db) then return end
+  local spent = env.db.bookSpent or {}
+  env.db.bookSpent = spent
+  spent[#spent + 1] = { tid = s.tid, me = env.me, key = book.key }
+  while #spent > SPENT_KEPT do table.remove(spent, 1) end
+end
+
+-- My table key for this game: the book's while it may still deal; else the
+-- kept one, when it is mine, of this table and this game, and usable; else a
+-- new one, kept (nil if no fresh draw is usable: a generator that repeats).
 function Book.key(s)
   local book, env = Book.of(s), s.client.env
-  if book.key then return book.key end
+  if book.key and usable(s, book, book.key) then return book.key end
   local kept = env.db and env.db.bookKeep
   if type(kept) == "table" and kept.tid == s.tid and kept.me == env.me and kept.g == book.g
-      and Book.isKey(kept.key) and not published(book, kept.key) then
+      and Book.isKey(kept.key) and usable(s, book, kept.key) then
     book.key = kept.key
   else
-    book.key = Fair.seed(env, "book|" .. s.tid)
-    if env.db then env.db.bookKeep = { tid = s.tid, me = env.me, key = book.key, g = book.g } end
+    book.key = nil
+    for _ = 1, 4 do
+      local key = Fair.seed(env, "book|" .. s.tid)
+      if usable(s, book, key) then book.key = key; break end
+    end
+    if env.db and book.key then env.db.bookKeep = { tid = s.tid, me = env.me, key = book.key, g = book.g } end
   end
   return book.key
 end
 
 -- My seed of hand h -> 32 hex | nil (an engine that is not sealed, or no seat).
 function Book.seedFor(s, h)
-  if not (s:engine().sealed and s.mySeat) then return nil end
-  return Fair.handSeed(Book.key(s), Fair.handId(s.tid, h))
+  local key = s:engine().sealed and s.mySeat and Book.key(s)
+  if not key then return nil end
+  return Fair.handSeed(key, Fair.handId(s.tid, h))
 end
 
 -- The hand of my round is over (rule 5): its record goes into the book and the

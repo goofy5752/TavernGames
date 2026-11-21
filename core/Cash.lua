@@ -13,9 +13,12 @@ local _, ns = ...
 --   the dealer, which holds the deck, asks the host for it (ACT {k="book",
 --   op="step", h, a = {k, cards}}) E.STREET_DELAY after it is due and again
 --   every FAIR_ASK_GAP while the table stands there (s.stepTimer); the host
---   plays `a` at seat 0 when it is the step the engine waits for and it
+--   plays `a` at seat 0 when it is the step the engine waits for, it carries
+--   every face the step deals (a street without them is refused) and it
 --   publishes only faces a watcher may then see (allPublic). One event a
---   street; a folded or unshown hand is in no event;
+--   street; a folded or unshown hand is in no event. A street event that
+--   lacks a face of its own cards is the foul "deal" on every client (only a
+--   modified host plays one);
 -- - a hand that is over is sealed into the book (Book.seal), a shuffle whose
 --   hand was settled before the deal (leaves) is dropped.
 -- Nothing is sent from the `table` hook (core/DealHooks.lua says why).
@@ -29,7 +32,19 @@ local C = ns.Const
 local Session = ns.Session
 local copy = ns.Util.copy
 local int = ns.Deal.int
-local handDone, stopWait, allPublic = int.handDone, int.stopWait, int.allPublic
+local handDone, stopWait, allPublic, foul = int.handDone, int.stopWait, int.allPublic, int.foul
+
+-- Does the street just dealt on `st` (the flop's three cards, else one) lack
+-- a face in `cards`? The engine takes a street with any subset of its faces
+-- on a view, so the table checks the step deals them all.
+local function faceless(st, cards)
+  local board = st.board or {}
+  local n = st.street == 1 and 3 or 1
+  for k = #board - n + 1, #board do
+    if type(cards) ~= "table" or cards[board[k]] == nil then return true end
+  end
+  return false
+end
 
 -- A book action to the host: handled at once when I host, else whispered as ACT.
 local request
@@ -51,6 +66,8 @@ function request(s, seat, a)
     return
   end
   local ev = { k = step.k, cards = step.cards }
+  local trial = copy(s.state)
+  if not s:engine().apply(trial, 0, ev) or (ev.k == "street" and faceless(trial, ev.cards)) then return end
   if allPublic(s, ev, ev.cards) then s:play(0, ev) end
 end
 
@@ -128,6 +145,8 @@ ns.Ext.cash = {
       s.handNames = copy(s.seats)
     elseif k == "fair" and a.op == "open" and s.fair then
       s.fair.who = namesOf(s, s.fair.p)
+    elseif k == "street" and s.fair and s.fair.stage == "dealt" and faceless(s.state, a.cards) then
+      foul(s.fair, "deal")
     end
     react(s)
   end,
