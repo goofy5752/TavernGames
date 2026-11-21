@@ -23,22 +23,23 @@ local copy, seatOf = ns.Util.copy, ns.Util.seatOf
 -- table(s, a) -> true (a seat-0 event the extension applied itself), snap(s)
 -- -> the SNP field `fr`. A hook that raises counts as nil: the error goes to
 -- env.log ("error", "ext", "<ext>.<hook>", message), so it cannot cut short the
--- request, event or snapshot handling around it (e.g. the sitter's SNP after a sit).
+-- request, event or snapshot handling around it (e.g. the sitter's SNP after a sit);
+-- an act hook that raises drops the action.
+local function call(s, id, x, name, ...)
+  local ok, got = pcall(x[name], s, ...)
+  if ok then return got end
+  local env = s.client.env
+  if env.log then env.log("error", "ext", id .. "." .. name, tostring(got)) end
+  if env.strictHooks then error(got, 0) end -- tests only: the WoW adapter never sets it
+  return nil
+end
+
 function Session:hook(name, ...)
   local ext, out = self:engine().ext or {}, nil
   for i = 1, #ext do
     local x = ns.Ext[ext[i]]
     local r = nil
-    if x and x[name] then
-      local ok, got = pcall(x[name], self, ...)
-      if ok then
-        r = got
-      else
-        local env = self.client.env
-        if env.log then env.log("error", "ext", ext[i] .. "." .. name, tostring(got)) end
-        if env.strictHooks then error(got, 0) end -- tests only: the WoW adapter never sets it
-      end
-    end
+    if x and x[name] then r = call(self, ext[i], x, name, ...) end
     if out == nil then out = r end
   end
   return out
@@ -58,7 +59,7 @@ function Session:filterAct(seat, a)
   local ext = self:engine().ext or {}
   for i = 1, #ext do
     local x = ns.Ext[ext[i]]
-    if a ~= nil and x and x.act then a = x.act(self, seat, a) end
+    if a ~= nil and x and x.act then a = call(self, ext[i], x, "act", seat, a) end
   end
   return a
 end

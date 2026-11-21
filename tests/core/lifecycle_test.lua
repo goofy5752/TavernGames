@@ -163,6 +163,31 @@ describe("game lifecycle", function()
     assert(okRun, err)
   end)
 
+  it("strictHooks: a throwing act hook raises in tests; in game the host drops that ACT and carries on", function()
+    local sim, a, b, c, d, tid = running()
+    local E = Sim.ns.Ext.picktest
+    local old = E.act
+    E.act = function() error("boom act") end
+    local lines = {}
+    a.env.log = function(dir, channel, peer, msg)
+      if dir == "error" then lines[#lines + 1] = { dir, channel, peer, msg } end
+    end
+    local okRun, err = pcall(function()
+      ok(a:act{k="inc", by=1}); sim:run(1)
+      raises(function() a.session:filterAct(2, { k = "inc", by = 1 }) end, "boom act")
+      eq(#lines, 1); eq({ lines[1][1], lines[1][2], lines[1][3] }, { "error", "ext", "picktest.act" })
+      a.env.strictHooks = false
+      local seq = a.session.seq
+      a:receive("WHISPER", B, {v=1, t="ACT", tid=tid, a={k="inc", by=1}}); sim:run(1)
+      eq(a.session.seq, seq); eq(#lines, 2)
+      E.act = old
+      a:receive("WHISPER", B, {v=1, t="ACT", tid=tid, a={k="inc", by=1}}); sim:run(1)
+      eq(a.session.seq, seq + 1)
+    end)
+    E.act = old
+    assert(okRun, err)
+  end)
+
   it("the act hook rewrites and drops a member's ACT", function()
     local sim, a, b, c, d, tid = running()
     ok(a:act{k="inc", by=1}); sim:run(1)
