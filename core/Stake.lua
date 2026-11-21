@@ -70,6 +70,7 @@ end
 local function over(s)
   return s.status ~= "live" or s:gameOver()
 end
+Stake.over = over
 
 -- The asked seat goes: I stand up, "refused"(tid, "stake").
 function Stake.standUp(client, s)

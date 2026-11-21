@@ -495,6 +495,66 @@ describe("stake", function()
     eq(b.session.mySeat, 2); eq(b.session.stake, 50000); eq(asks, { { tid, 50000 } })
   end)
 
+  it("a sit EV naming me that I never asked for stands me up before it counts (C-1)", function()
+    local sim, a, _, c = setup()
+    local tid = a:openTable{ game = "ttt", access = "guild", turn = 45, stake = 50000 }; sim:run(3)
+    c:watch(tid); sim:run(1)
+    local refused, live = record(c, "refused"), false
+    c:on("session", function(s) if s and s.status == "live" then live = true end end)
+    local mark = #sim.sent
+    a.session.watcherSet[P], a.session.watchers = nil, 0
+    a.session:event(0, { k = "sit", seat = 2, name = P }); a.session:startIfFull(); sim:run(1)
+    eq(c.session, nil); eq(#sent(sim, P, "STD", mark), 1); eq(refused, { { tid, "stake" } })
+    eq(live, false); eq(a.session.seats[2], false)
+  end)
+
+  it("an asked seat goes before a rematch, back to back with the winning mark (I-1)", function()
+    local sim, a, b, _, tid = seatedAt(50000)
+    sim.envs[B].db.stakeSat = nil
+    b = sim:relog(B); sim:run(3)
+    eq(b.session.stakeAsk, true)
+    -- One mark from the end of the match, on both clients.
+    local near = { board = { 1, 1, 0, 2, 2, 0, 0, 0, 0 }, turn = 1, score = { 2, 0 }, round = 3, first = 1,
+      phase = "play", draw = false, rematch = { false, false } }
+    a.session.state, b.session.state = ns.Util.copy(near), ns.Util.copy(near)
+    local refused, rematched = record(b, "refused"), false
+    b:on("session", function(s) if s and s.state and s.state.score[1] == 0 and s.state.phase == "play" then rematched = true end end)
+    ok(a:act{ k = "mark", c = 3 }); ok(a:act{ k = "rematch" }); a.session:play(2, { k = "rematch" })
+    eq(a.session.state.phase, "play"); eq(a.session.state.score, { 0, 0 })
+    sim:run(1)
+    eq(b.session, nil); eq(refused, { { tid, "stake" } }); eq(rematched, false)
+  end)
+
+  it("an asked seat stands up at a snapshot that brings what it did not see (I-2)", function()
+    local sim, a, b = setup()
+    local tid = a:openTable{ game = "deathroll", access = "guild", turn = 45, opt = { start = 100 }, stake = 50000 }
+    sim:run(3); b:sit(tid, 2, 50000); sim:run(1)
+    ok(a:startGame()); sim:run(1)
+    sim.envs[B].db.stakeSat = nil
+    b = sim:relog(B); sim:run(3)
+    eq(b.session.stakeAsk, true)
+    local refused = record(b, "refused")
+    -- Иван withholds his last roll from Мария and starts the next game: her SYN gets a snapshot of it.
+    sim.bus.filter = function(from, to, _, m)
+      if from == A and to == B and m.t == "EV" and not (m.a and m.a.k == "start") then return {} end
+      return { m }
+    end
+    sim.nextRolls = { 1 }; ok(a:roll()); sim:run(0)
+    ok(a.session:gameOver(), "the game ended"); ok(a:startGame()); sim:run(1)
+    sim.bus.filter = nil
+    sim:run(1)
+    eq(b.session, nil); eq(refused, { { tid, "stake" } }); eq(a.session.seats[2], false)
+  end)
+
+  it("after a clean stand and a relog a re-seat into a running game is never kept (m-1)", function()
+    local sim, a, b, _, tid = seatedAt(50000)
+    b:stand(); sim:run(1)
+    b = sim:relog(B); sim:run(1)
+    local refused, asks = record(b, "refused"), record(b, "stakeAsk")
+    a.session:event(0, { k = "sit", seat = 2, name = B }); a.session:startIfFull(); a.session:snapshotTo(B); sim:run(1)
+    eq(b.session, nil); eq(asks, {}); eq(refused, { { tid, "stake" } }); eq(a.session.seats[2], false)
+  end)
+
   it("Session.lua keeps its limit", function()
     local n = 0
     for _ in io.lines("core/Session.lua") do n = n + 1 end

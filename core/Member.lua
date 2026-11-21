@@ -42,14 +42,15 @@ end
 -- The stake I accepted for table `tid` -> known, sk: my own note for it
 -- (db.stakeSat, see ns.Stake.note), else the stake I am being asked about
 -- (s.stakeAsk, ns.Stake.ask), else none (nil: only a fun table) when I am at
--- the table in this run or my note was written or cleared in this run.
--- Unknown: a fresh login whose loaded note is of another table or missing (a
--- crash): ns.Stake.ask. Never a watcher session's stake.
+-- the table in this run, my note was written or cleared in this run, or the
+-- table is not the one my last client left me at (presence.home).
+-- Unknown: a fresh login back to that table whose loaded note is of another
+-- table or missing (a crash): ns.Stake.ask. Never a watcher session's stake.
 local function accepted(client, tid)
   local note, s = client.env.db.stakeSat, client.session
   if type(note) == "table" and note.tid == tid then return true, note.sk end
   if s and s.stakeAsk then return true, s.stake end
-  if s or client.stakeNoted then return true, nil end
+  if s or client.stakeNoted or tid ~= client.presence.home then return true, nil end
   return false, nil
 end
 
@@ -67,6 +68,13 @@ function Member.adopt(client, sender, m)
     if client.session and client.session.role == "host" then Succession.demote(client.session) end
     if client.session then Session.leave(client) end
     return Session.refuse(client, m.tid, "stake")
+  end
+  -- An asked seat takes no later snapshot that brings anything it did not
+  -- see (a gap, a host change, a new game): it stands up instead.
+  local asked = client.session
+  if seat and asked and asked.stakeAsk and m.q ~= asked.seq then
+    if sender ~= asked.host then client:send("WHISPER", sender, Session.message("STD", { tid = m.tid })) end
+    return ns.Stake.standUp(client, asked)
   end
   local ask = seat ~= nil and not known and t.sk ~= nil
   local fresh = client.session == nil -- no memory of this table (a relog, or I just came)
@@ -150,6 +158,16 @@ local function onSnapshot(client, sender, m)
     -- I never asked for: free the place again (the STD is the trace line).
     client:send("WHISPER", sender, Session.message("STD", { tid = m.tid }))
   end
+end
+
+-- Does the in-order event m stand me up before it is applied -> bool (see onEvent).
+function Member.staleSeat(s, m)
+  local a, client = m.a, s.client
+  if type(a) ~= "table" then return false end
+  if s.stakeAsk and (ns.Stake.over(s) or (m.seat == 0 and a.k == "start") or a.k == "rematch") then return true end
+  if s.stake == nil or m.seat ~= 0 or a.k ~= "sit" or a.name ~= client.env.me then return false end
+  local note = client.env.db.stakeSat
+  return not (type(note) == "table" and note.tid == s.tid and note.sk == s.stake)
 end
 
 -- My action goes to the host (Session.act) and is remembered, the last
@@ -241,8 +259,12 @@ local function onEvent(client, sender, m)
   if not s or s.role == "host" or s.tid ~= m.tid or s.host ~= sender or s.stale then return end
   if m.e ~= s.epoch or type(m.q) ~= "number" or m.q <= s.seq then return end
   if m.q > s.seq + 1 then return s:requestSync() end
-  -- An asked stake I did not accept goes before the next game begins (ns.Stake.ask).
-  if s.stakeAsk and m.seat == 0 and type(m.a) == "table" and m.a.k == "start" then return ns.Stake.standUp(client, s) end
+  -- Before the event is applied: an asked stake I did not accept goes before
+  -- anything that begins a new game (a start, a rematch, any event once the
+  -- asked game is over; ns.Stake.ask); at a staked table a sit naming me is
+  -- forged (an honest host skips the sitter, who gets the snapshot) unless my
+  -- own SIT note for this table and stake stands.
+  if Member.staleSeat(s, m) then return ns.Stake.standUp(client, s) end
   if m.seat == s.mySeat and s:engine().view and not Member.mine(s, m.a) and not Member.timedOut(s, m) then
     s:hook("forged", m.seat, m.a)
   elseif Member.unasked(s, m.seat, m.a) then
