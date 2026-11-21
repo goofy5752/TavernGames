@@ -11,7 +11,7 @@ local _, ns = ...
 -- table. It is in no message.
 local Dice = ns.Dice
 local Fair, int = ns.Fair, ns.Dice.int
-local same, seatOf = ns.Util.same, ns.Util.seatOf
+local same, seatOf, copy = ns.Util.same, ns.Util.seatOf, ns.Util.copy
 
 local AGAIN, REPEATS = 3, 2 -- g says its last throw action again after this long, this often
 
@@ -84,6 +84,51 @@ local function forged(s, h)
   if s.role ~= "host" then int.send(s, { k = "throw", op = "protest", h = h, why = "forged" }) end
 end
 
+-- The dice that the proof p = {h, c, s} of a closed throw gives (SNP.fr.p of
+-- snapshot m) -> x, y; nil when it is none: every seed must open its commit.
+local function proved(s, m, p)
+  if type(p) ~= "table" or type(p.c) ~= "table" or type(p.s) ~= "table" then return nil end
+  if type(p.h) ~= "number" or p.h % 1 ~= 0 or p.h > m.q then return nil end
+  local list = {}
+  for seat = 1, 2 do
+    local seed = p.s[seat]
+    if seed ~= nil then
+      if not int.isSeed(seed) or Fair.commit(seed) ~= p.c[seat] then return nil end
+      list[#list + 1] = seed
+    end
+  end
+  if #list == 0 then return nil end
+  return Fair.dice(list, Fair.handId(s.tid, p.h))
+end
+
+-- What the snapshot m shows of the dice against its proof p (dice x, y; nil:
+-- none) and against what I know -> the number of the throw that is forged,
+-- or nil. `known`: under the host I knew, not after a login.
+--   Anyone: dice or open steps without a proof, dice that are not the
+--   proof's, open steps that are not those dice's (engine.thrown).
+--   known: at my own event number the state must be mine (every client
+--   derives it); the proof of the throw I closed last must be the one I
+--   hold, and no older throw may be shown; a later throw with a seed under
+--   my seat is one I never made.
+local function forgery(s, prev, m, how, known, p, x, y)
+  local st, mine, last, engine = s.state, s.diceProof, s.diceLast, s:engine()
+  local h = last and last.h or m.q
+  if st and (st.dice ~= nil or st.left ~= nil) then
+    if not x or not same(st.dice, { x, y }) then return x and p.h or h end
+    if engine.thrown and not engine.thrown(st) then return p.h end
+  end
+  if not known then return nil end
+  if prev and st and m.q == how.q and not how.changed and not same(engine.snapshot(prev), engine.snapshot(st)) then return h end
+  if not x then return nil end
+  if mine and (p.h < mine.h or (p.h == mine.h and not same(p, mine))) then return mine.h end
+  local held = s.throw
+  if p.h > (mine and mine.h or 0) and s.mySeat and p.s[s.mySeat] ~= nil
+      and not (held and held.h == p.h and held.own ~= nil and held.own == p.c[s.mySeat]) then
+    return p.h
+  end
+  return nil
+end
+
 -- Is SNP.fr of snapshot m a throw I take -> true, false (not well formed, not
 -- opened by my host's seat, or the state asks for no dice) or "old" (I did
 -- not just log in, and my host used that number before).
@@ -101,14 +146,29 @@ end
 ns.Ext.dice.adopted = function(s, prev, m, how)
   if s.role == "host" then return end
   -- Under the host I knew (not after a login, not when another player hosts
-  -- now) my own state is what I hold the snapshot against.
-  local known = not how.fresh and not s.diceNew and prev ~= nil and s.state ~= nil
+  -- now) what I hold myself is what the snapshot is held against.
+  local known = not how.fresh and not s.diceNew
   s.diceNew, s.diceHost = nil, s.host
-  local held, fr, last, engine = s.throw, m.fr, s.diceLast, s:engine()
-  -- At my own event number the state must be mine: every client derives it.
-  if known and m.q == how.q and not how.changed and not same(engine.snapshot(prev), engine.snapshot(s.state)) then
-    forged(s, last and last.h or m.q)
-    known = false
+  local held, fr, mine = s.throw, m.fr, s.diceProof
+  local p = type(fr) == "table" and fr.p or nil
+  local x, y = proved(s, m, p)
+  local bad = forgery(s, prev, m, how, known, p, x, y)
+  local new = not bad and known and x ~= nil and p.h > (mine and mine.h or 0)
+  local counted = false
+  if bad then
+    forged(s, bad)
+  elseif x then
+    s.diceProof = copy(p)
+    if new and held and not held.done and held.h == p.h then
+      -- My throw closed in events I lost: taken from its proof, as its seeds
+      -- event would have been.
+      local d = held.d
+      if p.c[d] ~= held.commits[d] then int.foul(held, "commit") end
+      if s.mySeat == 3 - d and p.c[3 - d] ~= nil and p.c[3 - d] ~= held.own then Dice.notMine(held, held.fresh) end
+      held.commits, held.done, held.alone = copy(p.c), true, p.s[3 - d] == nil and 3 - d or nil
+      int.finish(s, held, p.s)
+      counted = true
+    end
   end
   local good = fits(s, m, how, held)
   if good == "old" then return end
@@ -118,9 +178,9 @@ ns.Ext.dice.adopted = function(s, prev, m, how)
     -- an epoch its opener (still my host) raised, a second try; else unheard.
     local why = held.foul or ((how.changed or not how.asked) and "dodge") or nil
     if why then int.close(s, held.h, "bad", why, held) else int.unheard(s) end
-  elseif known and s.mySeat and s.state.dice and not same(s.state.dice, prev.dice) then
-    -- Dice of a throw whose events never reached me: the same way.
-    if how.changed or not how.asked then int.close(s, m.q, "bad", "dodge") else int.unheard(s) end
+  elseif new and not counted and s.mySeat then
+    -- A proved throw whose events never reached me, made without me: the same way.
+    if how.changed or not how.asked then int.close(s, p.h, "bad", "dodge") else int.unheard(s) end
   end
   if not good then
     if held and not held.done then s.throw = nil; int.stopTimer(s); Dice.forget(s) end

@@ -85,8 +85,9 @@ TOC: `core/Dice.lua` right after `core/DealKeep.lua` (keeps the Deal trio togeth
 | `ACT` → `EV` seat 0 | `{k="throw", op="commit", h, c}` → `{k="throw", op="commit", h, seat, c}` | the other seat's commit |
 | `ACT` | `{k="throw", op="seed", h, s}` | the other seat's seed, 32 hex, to the host only; never relayed as it is |
 | `EV` seat 0 | `{k="throw", op="seeds", h, s = {[seat] = seed}}` | both seeds, or the opener's alone after `DICE_WAIT`; every client derives and applies the dice |
-| `SNP.fr` | `{h, d, c = {[seat] = commit}}`, or absent | the throw still running (public data): number, opener's seat, commits |
+| `SNP.fr` | `{h, d, c = {[seat] = commit}, p = {h, c = {[seat] = commit}, s = {[seat] = seed}}}`, or absent | `h, d, c`: the throw still running (public data): number, opener's seat, commits. `p` (Task 3 fix round 2): the proof of the last closed throw, its commits and published seeds; every adopter derives the dice from it and checks `state.dice` and `state.left` against them. Either part may be missing; `fr` is absent with neither |
 | `ACT` → `EV` seat 1–2 | `{k="move", steps = {{from, to}, …}}` | a whole turn; `from = 25` the bar, `to = 0` off |
+| `ACT` → `EV` seat 0 | `{k="throw", op="protest", h, why}` → `{k="throw", op="protest", h, seat, why}` | a member found throw `h` forged (Task 3 fix round 1); a claim, changes no verdict elsewhere |
 | `EV` seat 0 | `{k="next"}` | the next game, 3 s after one ended |
 
 **Session fields (dice games):** `s.throw = {h, d, commits, seed, own, asked, sent, done, alone, reload, foul, replaced}`; `s.diceLast = {h, verdict, why, by, silent, n}`; `s.diceSeen = {ok, alone, bad}`; `s.diceAlone[name]`; `s.diceUnheard`.

@@ -435,7 +435,9 @@ describe("tabla staging", function()
             end
           end
           local m = E.auto(s, seat)
+          if not E.thrown(s) then bad = bad + 1 end
           if not m or not E.apply(s, seat, m) then bad = bad + 1; break end
+          if not E.thrown(s) then bad = bad + 1 end
           if s.phase == "game" or s.phase == "match" then games = games + 1 end
         end
       end
@@ -443,6 +445,20 @@ describe("tabla staging", function()
     end
     eq(bad, 0)
     ok(checked >= 1000, "checked " .. checked); ok(early > 0 and early < checked / 100, "early " .. early)
+  end)
+end)
+
+describe("tabla thrown", function()
+  it("the open steps of a turn are what its dice give", function()
+    local s = E.new{}; ok(E.thrown(s)); ok(E.apply(s, 0, { k = "dice", d = { 5, 2 } })); ok(E.thrown(s))   -- the opening throw: nothing open
+    ok(E.apply(s, 0, { k = "dice", d = { 3, 1 } })); eq({ s.phase, s.left }, { "move", { 3, 1 } }); ok(E.thrown(s))
+    s.left = { 1, 3 }; ok(not E.thrown(s)); s.left = { 3, 1, 1 }; ok(not E.thrown(s)); s.left = { 6, 6, 6, 6 }; ok(not E.thrown(s))
+    s.left = nil; ok(not E.thrown(s)); s.left = { 3, 1 }; s.dice = nil; ok(not E.thrown(s)); s.dice = { 3, 3 }; ok(not E.thrown(s))
+    s.left = { 3, 3, 3, 3 }; ok(E.thrown(s)); s.left = { 3, 3, 3 }; ok(not E.thrown(s))
+    s.left, s.cv = { 5, 5, 5, 5 }, 5; ok(not E.thrown(s))                                      -- a cascade outside Гюлбара
+    s.var = "gul"; ok(E.thrown(s)); s.cv = 2; s.left = { 2, 2, 2, 2 }; ok(not E.thrown(s))     -- below the double thrown
+    s.cv, s.left = 5, { 5, 5 }; ok(not E.thrown(s)); s.xfer = true; ok(E.thrown(s))            -- a remainder only when transferred
+    s.phase = "roll"; ok(not E.thrown(s)); s.left = nil; ok(E.thrown(s))
   end)
 end)
 
@@ -466,7 +482,9 @@ describe("tabla fuzz", function()
           local seat = s.turn
           local m = E.auto(s, seat)
           if moves % 97 == 0 then eq(E.snapshot(E.restore(E.snapshot(s))), E.snapshot(s)) end
+          if not E.thrown(s) then bad = bad + 1 end
           if not m or not E.apply(s, seat, m) then bad = bad + 1; break end
+          if not E.thrown(s) then bad = bad + 1 end
           moves = moves + 1
           if s.xfer and s.turn ~= seat then seen.xfer = seen.xfer + 1 end
           if s.bar[1] + s.bar[2] > 0 then seen.hit = seen.hit + 1 end

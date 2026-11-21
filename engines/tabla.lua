@@ -408,6 +408,28 @@ function E.leave(s, seat)
   s.turn, s.left, s.cv, s.xfer = nil, nil, nil, nil
 end
 
+-- Are the open steps (left, with the cascade number cv) what the dice thrown last give for the
+-- turn in progress, and nothing open outside a turn -> bool. A turn is one move action, so a
+-- state between two actions always passes; the extension "dice" checks a snapshot with it.
+function E.thrown(s)
+  local d, left = s.dice, s.left
+  if s.phase ~= "move" then return left == nil end
+  if type(d) ~= "table" or type(left) ~= "table" or not die(d[1]) or not die(d[2]) then return false end
+  local x, y, n, v = d[1], d[2], #left, s.cv or d[1]
+  if s.cv then
+    -- a cascade: four steps of a number from the double thrown up; fewer only as a remainder
+    if s.var ~= "gul" or x ~= y or not die(v) or v < x or n < 1 or n > 4 or (n < 4 and not s.xfer) then return false end
+  elseif x ~= y then
+    return n == 2 and left[1] == x and left[2] == y
+  elseif n ~= 4 then
+    return false
+  end
+  for i = 1, n do
+    if left[i] ~= v then return false end
+  end
+  return true
+end
+
 -- The legal moves and the viability memo of the last staged turn (one entry, replaced by the next
 -- turn): a move is staged one click at a time, so consecutive calls share them. The key holds the
 -- variant, turn, dice, cascade and transfer state and the whole position (board, pins, bar, off).

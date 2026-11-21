@@ -95,6 +95,16 @@ function Dice.wait(s, h)
   end)
 end
 
+-- The throw's dice are applied: its verdict (a throw whose commit under my
+-- seat I could not check is never "ok"), and its proof for the snapshots.
+local function finish(s, throw, seeds)
+  stopTimer(s)
+  Dice.forget(s)
+  s.diceProof = { h = throw.h, c = copy(throw.commits), s = copy(seeds) }
+  local verdict = throw.foul and "bad" or throw.alone and "alone" or throw.reload and "unseen" or "ok"
+  close(s, throw.h, verdict, throw.foul, throw)
+end
+
 -- The seeds event: both seeds (or the opener's alone) fit the commits ->
 -- the dice applied on a copy of the state; nil when anything does not fit.
 local function applySeeds(s, throw, list)
@@ -114,7 +124,7 @@ local function applySeeds(s, throw, list)
 end
 
 Dice.int = {
-  close = close, foul = foul, unheard = unheard, stopTimer = stopTimer, send = send,
+  close = close, finish = finish, foul = foul, unheard = unheard, stopTimer = stopTimer, send = send,
   wantsDice = wantsDice, newSeed = newSeed, isCommit = isCommit, isSeed = isSeed,
 }
 
@@ -180,7 +190,7 @@ ns.Ext.dice = {
     if k == "start" or k == "abort" then
       s.throw, s.diceMine = nil, nil
       if k == "start" then
-        s.diceLast, s.diceSeen, s.diceBad, s.diceAlone, s.diceUnheard, s.diceCry = nil, nil, nil, nil, nil, nil
+        s.diceLast, s.diceSeen, s.diceBad, s.diceAlone, s.diceUnheard, s.diceCry, s.diceProof = nil, nil, nil, nil, nil, nil, nil
       end
       Dice.forget(s)
       return stopTimer(s)
@@ -210,18 +220,21 @@ ns.Ext.dice = {
       if a.c ~= throw.own then Dice.notMine(throw, throw.fresh) end
       Dice.part(s, throw)
     elseif a.op == "seeds" then
-      stopTimer(s)
-      Dice.forget(s)
-      -- A throw whose commit under my seat I could not check is never "ok".
-      local verdict = throw.foul and "bad" or throw.alone and "alone" or throw.reload and "unseen" or "ok"
-      close(s, throw.h, verdict, throw.foul, throw)
+      finish(s, throw, a.s)
     end
   end,
 
-  -- Host: the throw still running as SNP.fr (public data only), else nil.
+  -- Host: SNP.fr (public data only) = the throw still running {h, d, c} and
+  -- p, the proof of the last closed throw (its commits and seeds: the dice of
+  -- the snapshot's state are derived from it); nil without either.
   snap = function(s)
-    local throw = s.throw
-    return throw and not throw.done and { h = throw.h, d = throw.d, c = copy(throw.commits) } or nil
+    local throw, proof = s.throw, s.diceProof
+    local fr = throw and not throw.done and { h = throw.h, d = throw.d, c = copy(throw.commits) } or nil
+    if proof then
+      fr = fr or {}
+      fr.p = copy(proof)
+    end
+    return fr
   end,
 }
 
