@@ -364,12 +364,18 @@ ns.Ext.rolls = {
   -- My host changed (I took over, or I follow another): a claim held by the old
   -- host is gone with it, so the roll under way is dropped and the player may
   -- press „Хвърли“ again at once (a second server roll; the new host plays the
-  -- first one it sees). A host that steps down drops the claim it held. My own
-  -- roll stays (myRoll). At a staked table the same host at a new epoch is no
-  -- host change.
+  -- first one it sees). A host that steps down drops the claim it held. At a
+  -- staked table my roll the old host never answered is not held against the
+  -- new one (myRoll goes; its idle clock starts afresh, core/Stakes.lua) and
+  -- the UI says to roll again (rollUnheard); the same host at a new epoch is
+  -- no host change.
   hostChanged = function(s)
     if s.stake ~= nil and s.rollHost == s.host then return end
     s.rollHost = s.host
+    if s.stake ~= nil then
+      if s.mySeat and (s.rolling or s.myRoll) then s.rollUnheard = true end
+      s.myRoll = nil
+    end
     s.rolling, s.claim = nil, nil
   end,
   auto = function(s)

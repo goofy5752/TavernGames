@@ -293,10 +293,15 @@ ns.Ext.stakes = {
     refresh(s)
   end,
   adopted = adopted,
-  -- The idle stand is the host's: armed, or cancelled. The same host at a new epoch changes nothing.
+  -- The idle stand is the host's: armed, or cancelled. Another host gives the
+  -- seat on turn a fresh OFFLINE_STAND_SECONDS from the takeover (a roll the
+  -- old host never answered is not held against it: Rolls drops myRoll). The
+  -- same host at a new epoch changes nothing.
   hostChanged = function(s)
     if s.stakeHost == s.host then return end
     s.stakeHost = s.host
+    local t = s.stakeTurn
+    if t then s.stakeTurn = { seat = t.seat, at = s.client.env.now(), seen = true } end
     armIdle(s)
   end,
   leaving = function(s) refresh(s) end,

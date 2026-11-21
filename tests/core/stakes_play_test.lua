@@ -383,15 +383,15 @@ describe("stakes: play", function()
     ev = events(sim, A, mark, B)
     eq(ev[#ev].msg.a, { k = "stand", seat = 3, why = "idle" }); eq(ev[#ev].at - t0, 2 * C.OFFLINE_STAND_SECONDS - 1)
 
-    -- It follows a host change: Иван hands over, Петър stands Мария up on time.
-    -- Seats: Иван 1, Петър 2, Мария 3; Мария on turn.
+    -- It follows a host change: Иван hands over, Петър stands Мария up a fresh 180 s after
+    -- his takeover (round 2 follow-up ruling). Seats: Иван 1, Петър 2, Мария 3; Мария on turn.
     sim, a, b, c = drTable({ P, B }, SK)
     roll(sim, a, 50); roll(sim, c, 40)
-    t0 = sim.clock
     sim:run(100); a:stand(); sim:run(1)
+    local took = sim.clock
     eq(c.session.role, "host"); eq(c.session.state.turn, 3)
-    sim:run(C.OFFLINE_STAND_SECONDS - 100 - 2); eq(c.session.seats[3], B)
-    sim:run(1); eq(c.session.seats[3], false); eq(sim.clock - t0, C.OFFLINE_STAND_SECONDS)
+    sim:run(C.OFFLINE_STAND_SECONDS - 1); eq(c.session.seats[3], B)
+    sim:run(1); eq(c.session.seats[3], false); eq(sim.clock - took, C.OFFLINE_STAND_SECONDS)
 
     -- Only a host plays it: a demoted host cancels it ...
     local function stands(from, since)
@@ -685,7 +685,7 @@ describe("stakes: play, fix round 1", function()
     ok(b.session:gameOver()); eq(b.session.stakeLive, false); eq(b.session.stakeEndedAt, nil)
   end)
 
-  it("death roll: my roll outside the host's group is no foul; a host change keeps my roll", function()
+  it("death roll: my roll outside the host's group is no foul; another host drops my roll and says roll again", function()
     local sim, a, b = drTable({ B }, SK)
     roll(sim, a, 50)
     b.env.inGroup = function() return false end
@@ -695,13 +695,13 @@ describe("stakes: play, fix round 1", function()
     local s = b.session
     sim:run(C.OFFLINE_STAND_SECONDS + C.PING_EVERY + 1)
     eq(b.session, nil); eq(s.stakeFoul, nil)
-    -- In the group it counts, and a host change keeps it (round 2, C3).
+    -- In the group it counts; another host does not hold it (round 2 follow-up; the same host's new epoch keeps it).
     sim, a, b = drTable({ B }, SK)
     roll(sim, a, 50)
     sim.canSee = function(from, to) return not (from == B and to == A) end
     eq(Rolls.withHost(b.session), true)
     roll(sim, b, 40); eq(b.session.myRoll, { n = 40, max = 50 })
-    b.session.host = P; b.session:hook("hostChanged"); eq(b.session.myRoll, { n = 40, max = 50 })
+    b.session.host = P; b.session:hook("hostChanged"); eq(b.session.myRoll, nil); eq(b.session.rollUnheard, true)
   end)
 
   it("a watcher without /roll whose lobby lost the table still gets no staked seat", function()
@@ -875,5 +875,26 @@ describe("stakes: play, fix round 2", function()
     local s = b.session
     sim:run(C.OFFLINE_STAND_SECONDS - 101)
     eq(s.seats[2], false); eq(s.stakeFoul, "unseen")
+  end)
+end)
+
+describe("stakes: play, fix round 2 follow-up", function()
+  it("my roll to a host that crashes is not held against the new host: a fresh 180 s, no roll foul", function()
+    -- Seats: Иван 1 (host), Петър 2, Мария 3. Мария rolls on her turn; Иван never sees it and crashes.
+    local sim, a, b, c = drTable({ P, B }, SK)
+    roll(sim, a, 50); roll(sim, c, 40)
+    sim.canSee = function(from, to) return not (from == B and to == A) end
+    roll(sim, b, 30); eq(b.session.myRoll, { n = 30, max = 40 })
+    local t0 = sim.clock
+    sim:offline(A)
+    sim:run(C.SILENT_AFTER + 1)
+    eq(c.session.role, "host"); eq(b.session.host, P)
+    local took = sim.clock
+    eq(b.session.myRoll, nil); eq(b.session.rollUnheard, true) -- the UI says: roll again
+    local s = b.session
+    -- No stand at the old turn's 180 s, but a fresh 180 s after the takeover.
+    sim:run(t0 + C.OFFLINE_STAND_SECONDS + 1 - sim.clock); eq(s.seats[3], B)
+    sim:run(took + C.OFFLINE_STAND_SECONDS - sim.clock); eq(s.seats[3], false)
+    eq(s.stakeFoul, nil)
   end)
 end)
