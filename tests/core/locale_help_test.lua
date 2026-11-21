@@ -22,11 +22,11 @@ describe("locale and help", function()
     end
   end)
 
-  it("every help block and intro key exists in both languages; topics are hall, ttt, deathroll, santase, belot, fair, soon", function()
+  it("every help block and intro key exists in both languages; topics are hall, ttt, deathroll, santase, belot, tabla, fair, soon", function()
     local H = ns.Help
     local ids = {}
     for i, t in ipairs(H.topics) do ids[i] = t.id end
-    eq(ids, { "hall", "ttt", "deathroll", "santase", "belot", "fair", "soon" })
+    eq(ids, { "hall", "ttt", "deathroll", "santase", "belot", "tabla", "fair", "soon" })
     eq(#H.intro, 4)
     for _, t in ipairs(H.topics) do
       both(t.title, "topic title")
@@ -34,7 +34,7 @@ describe("locale and help", function()
       for _, b in ipairs(t.blocks) do
         both(b.key, "block key")
         if b.kind == "example" then examples = examples + 1 end
-        ok(b.kind == "p" or b.kind == "example" or b.kind == "board" or b.kind == "ladder" or b.kind == "cards", "bad kind " .. tostring(b.kind))
+        ok(b.kind == "p" or b.kind == "example" or b.kind == "board" or b.kind == "ladder" or b.kind == "cards" or b.kind == "dice", "bad kind " .. tostring(b.kind))
       end
       ok(examples >= 1, "no example in " .. t.id)
       eq(H.get(t.id), t)
@@ -81,22 +81,39 @@ describe("locale and help", function()
     end
     eq(bhands, { { "JH", "9H", "AH", "TH", "KH", "QH" }, { "9H", "TH", "JH" }, { "KS", "QS" } })
     eq(be.blocks[5].kind, "cards"); eq(be.blocks[7].kind, "cards"); eq(be.blocks[8].kind, "cards")
+    local ta = H.get("tabla")
+    eq(ta.title, "game.tabla")
+    local tkeys, tkinds, rows = {}, {}, {}
+    for i, tb in ipairs(ta.blocks) do
+      tkeys[i], tkinds[i] = tb.key, tb.kind
+      if tb.kind == "dice" then
+        rows[#rows + 1] = tb.dice
+        for _, n in ipairs(tb.dice) do ok(type(n) == "number" and n % 1 == 0 and n >= 1 and n <= 6, "not a die: " .. tostring(n)) end
+      end
+    end
+    eq(tkeys, { "help.tabla.p1", "help.tabla.example", "help.tabla.move", "help.tabla.staging", "help.tabla.std", "help.tabla.bearoff",
+      "help.tabla.tapa", "help.tabla.gul", "help.tabla.score", "help.tabla.time", "help.tabla.fair" })
+    eq(tkinds, { "p", "example", "dice", "p", "p", "p", "p", "dice", "p", "p", "p" })
+    eq(rows, { { 6, 3 }, { 4, 5, 6 } })
     eq(H.get("fair").title, "help.fair.title")
+    local fb = H.get("fair").blocks
+    eq(fb[#fb], { kind = "p", key = "help.fair.dice" })
     eq(H.get("nope"), nil)
   end)
 
-  it("every quoted label in the hall, ttt, deathroll, santase, belot, fair and soon help is a UI label, and no help title copies one", function()
+  it("every quoted label in the hall, ttt, deathroll, santase, belot, tabla, fair and soon help is a UI label, and no help title copies one", function()
     local QUOTES = { bg = { "„", "“" }, en = { "“", "”" } }
     for lang, q in pairs(QUOTES) do
       local ui = {}
       for k, v in pairs(T[lang]) do
         if not k:match("^help%.") and not k:match("^intro%.") then ui[v] = true end
       end
-      local checked, cards, belot = 0, 0, 0
+      local checked, cards, belot, tabla = 0, 0, 0, 0
       for k, text in pairs(T[lang]) do
         local card = k:match("^help%.santase%.") or k:match("^help%.fair%.")
         local isBelot = k:match("^help%.belot%.")
-        if card or isBelot or k:match("^help%.hall%.") or k:match("^help%.ttt%.") or k:match("^help%.deathroll%.") or k == "help.soon.example" then
+        local isTabla = k:match("^help%.tabla%.")
+        if card or isBelot or isTabla or k:match("^help%.hall%.") or k:match("^help%.ttt%.") or k:match("^help%.deathroll%.") or k == "help.soon.example" then
           local pos = 1
           while true do
             local a, b = text:find(q[1], pos, true)
@@ -109,6 +126,7 @@ describe("locale and help", function()
             checked = checked + 1
             if card then cards = cards + 1 end
             if isBelot then belot = belot + 1 end
+            if isTabla then tabla = tabla + 1 end
             pos = d + 1
           end
         end
@@ -116,6 +134,7 @@ describe("locale and help", function()
       ok(checked >= 26, lang .. ": only " .. checked .. " quoted labels found")
       ok(cards >= 8, lang .. ": only " .. cards .. " quoted labels in the santase and fair help")
       ok(belot >= 12, lang .. ": only " .. belot .. " quoted labels in the belot help")
+      ok(tabla >= 10, lang .. ": only " .. tabla .. " quoted labels in the tabla help")
       for k, v in pairs(T[lang]) do
         if k:match("^help%.") and k:match("%.title$") then ok(not ui[v], lang .. " " .. k .. " copies a UI label") end
       end
@@ -125,8 +144,15 @@ describe("locale and help", function()
   it("pinned texts are used verbatim", function()
     eq(T.bg["help.ttt.example"], "Иван е Х, Мария е О. Редуват се. Иван нарежда три Х в редица и печели играта. Който пръв спечели 3 игри, печели мача.")
     eq(T.bg["help.hall.example"], "Виждаш маса с празен стол с пунктир. Кликаш на стола и вече седиш. Ако масата е пълна, кликни на нея, за да гледаш.")
-    eq(T.bg["help.soon.p"], "Скоро идват Табла и Тексас Холдем, и игра на залог с тефтер на дълговете.")
-    eq(T.bg["help.soon.example"], "Засега в кръчмата се играят Морски шах, Death Roll, Сантасе и Белот. Другите игри стоят бледи в списъка, с надпис „Скоро“. Щом станат готови, правилата им ще се появят тук, в книжката.")
+    eq(T.bg["help.soon.p"], "Скоро идва Тексас Холдем, и игра на залог с тефтер на дълговете.")
+    eq(T.bg["help.soon.example"], "Засега в кръчмата се играят Морски шах, Death Roll, Сантасе, Белот и Табла. Тексас Холдем стои блед в списъка, с надпис „Скоро“. Щом стане готов, правилата му ще се появят тук, в книжката.")
+    eq(T.bg["help.tabla.tapa"], "На „Тапа“ всичките 15 пула тръгват от едно поле и не се бие. Стъпиш ли върху сам чужд пул, го затискаш: той не мърда, докато не си тръгнеш оттам. Мария затиска последния пул на Иван, останал на началното му поле. Това е майката. Играта свършва веднага и Мария взима 2 точки.")
+    eq(T.bg["help.tabla.time"], "Ако времето ти изтече, аддонът изиграва вместо теб първия позволен ход. Не губиш служебно. Ако някой стане от масата или го няма повече от три минути, губи партията.")
+    -- Pre-flight F13 + D13: the guest cannot pick a die; what a modified host can still do is said honestly (shown and counted, not prevented).
+    eq(T.bg["help.fair.dice"], "Заровете на таблата се хвърлят по същия начин. Домакинът заключва своето число. Гостът заключва своето и после го праща само на домакина. Чак тогава домакинът показва двете и всеки аддон сам пресмята заровете. Числото на домакина не излиза, преди да е дошло това на госта. Гостът не може да си избере зар. Подправен аддон на домакина пак може да хвърли сам или да се бави. Това не може да се спре, но аддонът на госта го показва под масата и го брои.")
+    eq(T.en["tabla.undo"], "Undo")
+    eq(T.en["tabla.done"], "Done")
+    eq(T.en["dice.ok"], "Dice: thrown by both players")
     eq(T.bg["help.belot.contra"], "Противникът е казал игра, а ти мислиш, че ще го биеш? Натисни „Контра“ и точките се броят двойно. Неговият отбор може да отвърне с „Реконтра“ и тогава са четворни. При контра всичките точки от раздаването взима отборът, който е събрал повече.")
     eq(T.bg["help.belot.time"], "Ако времето ти изтече при наддаването, аддонът казва „Пас“. Ако изтече при игра, той обявява каквото държиш и играе най-слабата ти позволена карта. Ако някой стане от масата или го няма повече от три минути, партията свършва и неговият отбор губи. Щом някой седне на свободния стол, започва нова партия. След нормален край домакинът натиска „Нова игра“.")
     eq(T.en["belot.bid.X"], "Double")

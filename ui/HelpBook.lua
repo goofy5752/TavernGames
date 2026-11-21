@@ -7,7 +7,8 @@ local _, ns = ...
 -- as a 3x3 mini board (26 px cells) whose `line` cells are gold, with its text
 -- beside it, "ladder" as its text over a row of numbers in the paper heading
 -- face with „›“ in brass between them and the last one in red, "cards" as a
--- row of card widgets (ui/Cards.lua, scale 0.8, 4 px apart) above its text.
+-- row of card widgets (ui/Cards.lua, scale 0.8, 4 px apart) above its text,
+-- "dice" as a row of die faces (the `dice` texture, 28 px, 6 px apart) above its text.
 -- A topic title too long for the list wraps and its row grows. The footer
 -- link „Покажи въведението пак“ starts the intro again.
 local Theme, W, L = ns.Theme, ns.W, ns.L
@@ -34,6 +35,7 @@ local INDENT = 16          -- an example's text, right of its rule
 local CELL, CELL_GAP = 26, 2
 local LADDER_SIZE, LADDER_ARROW, LADDER_GAP = 22, 16, 8
 local CARD_SCALE, CARD_GAP = 0.8, 4
+local DIE, DIE_GAP = 28, 6
 local TOPIC_H, TOPIC_GAP, TOPIC_PAD = 26, 4, 8 -- a list row: least height, gap below, text inset
 
 local function setColor(fs, token) fs:SetTextColor(Theme.rgb(token)) end
@@ -129,6 +131,23 @@ function BLOCKS.cards(content, b, y)
   end
   local fs, th = text(content, "paper", b.key, 0, y + h + LADDER_GAP, TEXT_W)
   return { kind = "cards", text = fs, cards = cards }, h + LADDER_GAP + th
+end
+
+-- The die faces left to right (faces 1-4 on the texture's top row, 5 and 6 below), then the text.
+function BLOCKS.dice(content, b, y)
+  local dice, x = {}, 4
+  for i, n in ipairs(b.dice) do
+    local d = content:CreateTexture(nil, "ARTWORK")
+    d:SetTexture(Theme.tex.dice)
+    d:SetSize(DIE, DIE)
+    local c, r = (n - 1) % 4, math.floor((n - 1) / 4)
+    d:SetTexCoord(c / 4, (c + 1) / 4, r / 2, (r + 1) / 2)
+    d:SetPoint("TOPLEFT", content, "TOPLEFT", x, -y)
+    dice[i] = d
+    x = x + DIE + DIE_GAP
+  end
+  local fs, th = text(content, "paper", b.key, 0, y + DIE + LADDER_GAP, TEXT_W)
+  return { kind = "dice", text = fs, dice = dice }, DIE + LADDER_GAP + th
 end
 
 local function buildPage(topic)

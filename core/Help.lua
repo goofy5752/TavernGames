@@ -7,7 +7,8 @@ local _, ns = ...
 -- `board` holds 9 cells, 0 empty, 1 X, 2 O, and `line` the three cells that
 -- glow, next to the text `key`), "ladder" (the text `key` over a row of Death
 -- Roll numbers `rolls`, the last one the losing 1), "cards" (a row of card
--- faces `cards`, as in ui/Cards.lua, above the text `key`).
+-- faces `cards`, as in ui/Cards.lua, above the text `key`), "dice" (a row of
+-- die faces `dice`, each 1..6, above the text `key`).
 local Help = {}
 ns.Help = Help
 
@@ -66,7 +67,20 @@ Help.topics = {
     { kind = "p", key = "help.belot.time" },
     { kind = "p", key = "help.belot.fair" },
   } },
-  -- Why the card deal is fair; the table's fairness line opens it.
+  { id = "tabla", title = "game.tabla", blocks = {
+    { kind = "p", key = "help.tabla.p1" },
+    { kind = "example", key = "help.tabla.example" },
+    { kind = "dice", key = "help.tabla.move", dice = { 6, 3 } },
+    { kind = "p", key = "help.tabla.staging" },
+    { kind = "p", key = "help.tabla.std" },
+    { kind = "p", key = "help.tabla.bearoff" },
+    { kind = "p", key = "help.tabla.tapa" },
+    { kind = "dice", key = "help.tabla.gul", dice = { 4, 5, 6 } },
+    { kind = "p", key = "help.tabla.score" },
+    { kind = "p", key = "help.tabla.time" },
+    { kind = "p", key = "help.tabla.fair" },
+  } },
+  -- Why the card deal (and the Табла dice) is fair; the table's fairness line opens it.
   { id = "fair", title = "help.fair.title", blocks = {
     { kind = "p", key = "help.fair.p1" },
     { kind = "example", key = "help.fair.example" },
@@ -74,6 +88,7 @@ Help.topics = {
     { kind = "p", key = "help.fair.verify" },
     { kind = "p", key = "help.fair.dealer" },
     { kind = "p", key = "help.fair.bad" },
+    { kind = "p", key = "help.fair.dice" },
   } },
   { id = "soon", title = "games.soon", blocks = {
     { kind = "p", key = "help.soon.p" },
