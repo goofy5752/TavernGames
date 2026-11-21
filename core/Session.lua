@@ -92,7 +92,7 @@ function Session:record()
   return {
     tid = self.tid, g = self.game, h = self.host, e = self.epoch, ac = self.access,
     tn = self.turn, st = self.status == "live" and "live" or "open", s = copy(self.seats),
-    w = self.watchers, o = next(self.opt) ~= nil and copy(self.opt) or nil,
+    w = self.watchers, o = self.opt and next(self.opt) ~= nil and copy(self.opt) or nil,
   }
 end
 
