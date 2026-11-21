@@ -9,13 +9,24 @@ local _, ns = ...
 -- for a player who does not (src "timeout"). Every client logs its sightings
 -- and cross-checks each "seen" or "claim" entry of the game against them.
 --
+-- A staked game (state.staked) takes only what the host saw: no claim, no
+-- ask and no timeout roll (engines/deathroll.lua); a member's own roll the
+-- host has not played within ROLL_CLAIM_WAIT + ROLL_VERIFY_WAIT is unheard
+-- (the UI says: stay in the group and roll again). Rolls.audit sums up what my
+-- client saw of the game's rolls, for its note (core/Stakes.lua).
+--
 -- Session fields (local, never sent):
---   rollLog    sightings {seat, n, max, at}, newest last, at most ROLL_LOG
---   rollCheck  index in state.rolls -> "ok" | "unseen" | "mismatch"
---   rolling    {seen = bool} while my roll is under way (seen: it showed up in chat)
---   rollStuck  true when my server roll never showed up (the UI says: type /roll)
---   claim      {seat, n, max}: the member's claim the host holds (host only)
--- All five start empty with every new game (the start event, or a snapshot of
+--   rollLog     sightings {seat, n, max, at, own}, newest last, at most ROLL_LOG
+--               (own: the line was my own roll, shown as env.me)
+--   rollCheck   index in state.rolls -> "ok" | "unseen" | "mismatch"
+--   rollNotMine index -> true: a roll of my seat at a staked table that my
+--               client did not make (no own sighting ROLL_VERIFY_WAIT after it)
+--   rolling     {seen = bool} while my roll is under way (seen: it showed up in chat)
+--   rollStuck   true when my server roll never showed up (the UI says: type /roll)
+--   rollUnheard true when the host of a staked game never played my seen roll
+--   myRoll      {n, max}: my own roll seen on my current turn at its max
+--   claim       {seat, n, max}: the member's claim the host holds (host only)
+-- All of them start empty with every new game (the start event, or a snapshot of
 -- another game than the one I had); a host change drops `rolling` and `claim`.
 local Rolls = {}
 ns.Rolls = Rolls
@@ -91,18 +102,54 @@ local function recheck(s)
   end
 end
 
+-- Did my client see itself roll `entry` (an own sighting of that n and max)?
+local function ownSeen(s, entry)
+  local log = s.rollLog or {}
+  for i = 1, #log do
+    local g = log[i]
+    if g.own and g.n == entry.n and g.max == entry.max then return true end
+  end
+  return false
+end
+
 -- The roll state.rolls[index] was just applied: "ok" at once when my log
 -- confirms it, else the final verdict ROLL_VERIFY_WAIT later (same game only).
+-- At a staked table a roll of my seat with no own sighting by then is not
+-- mine (rollNotMine: a namesake's line, or one I never made).
 local function verify(s, index)
   local entry = s.state.rolls[index]
   if not entry or not checked(entry) then return end
   local v = verdict(s, entry, false)
-  if v then return setVerdict(s, index, v) end
+  if v then setVerdict(s, index, v) end
+  local mine = s.stake ~= nil and entry.seat == s.mySeat
+  if v and not (mine and not ownSeen(s, entry)) then return end
   local client, check = s.client, s.rollCheck
   client:after(C.ROLL_VERIFY_WAIT, function()
-    if client.session ~= s or s.rollCheck ~= check or check[index] then return end
-    setVerdict(s, index, verdict(s, entry, true))
+    if client.session ~= s or s.rollCheck ~= check then return end
+    if not check[index] then setVerdict(s, index, verdict(s, entry, true)) end
+    if mine and not ownSeen(s, entry) then
+      s.rollNotMine = s.rollNotMine or {}
+      s.rollNotMine[index] = true
+      Session.emit(client)
+    end
   end)
+end
+
+-- What my client saw of the rolls of the game it holds -> nil | "roll" |
+-- "unseen": "roll" when a recorded roll is one I saw with another number or a
+-- roll of my seat I did not make, "unseen" when one I never saw (an entry
+-- still without a verdict counts as nothing). From s.rollCheck and
+-- s.rollNotMine only, never from s.rollLog (which keeps the last ROLL_LOG
+-- sightings), so a long game keeps its early rolls. Final ROLL_FINAL_WAIT
+-- after the game's result: every verdict of it has been given by then.
+function Rolls.audit(s)
+  if next(s.rollNotMine or {}) ~= nil then return "roll" end
+  local out = nil
+  for _, v in pairs(s.rollCheck or {}) do
+    if v == "mismatch" then return "roll" end
+    if v == "unseen" then out = "unseen" end
+  end
+  return out
 end
 
 -- A server roll seen in chat by `client` (`shown` normalized; my own as env.me).
@@ -113,14 +160,26 @@ function Rolls.seen(client, shown, n, lo, hi)
   local seat = Rolls.seatFor(s.seats, shown)
   if not seat then return end
   s.rollLog = s.rollLog or {}
-  local log = s.rollLog
-  log[#log + 1] = { seat = seat, n = n, max = hi, at = client.env.now() }
+  local log, own = s.rollLog, shown == client.env.me
+  log[#log + 1] = { seat = seat, n = n, max = hi, at = client.env.now(), own = own or nil }
   if #log > C.ROLL_LOG then table.remove(log, 1) end
   recheck(s)
   local st = s.state
   if s.status ~= "live" or not st or st.turn ~= seat or hi ~= st.max then return end
+  if own and seat == s.mySeat then s.myRoll = { n = n, max = hi } end
   if s.role == "host" then
     s:play(seat, { k = "roll", n = n, max = hi, src = "seen" })
+  elseif st.staked then
+    -- Only what the host sees counts: no claim. My own roll it never plays is unheard.
+    if not (own and seat == s.mySeat) then return end
+    local mine = { seen = true }
+    s.rolling, s.rollStuck, s.rollUnheard = mine, false, nil
+    client:after(C.ROLL_CLAIM_WAIT + C.ROLL_VERIFY_WAIT, function()
+      if client.session ~= s or s.rolling ~= mine then return end
+      s.rolling, s.rollUnheard = nil, true
+      Session.emit(client)
+    end)
+    Session.emit(client)
   elseif seat == s.mySeat then
     -- Also when `rolling` is nil: after the stuck hint the player types /roll by hand.
     client:send("WHISPER", s.host, Session.message("ACT", { tid = s.tid, a = { k = "roll", n = n, max = hi } }))
@@ -130,7 +189,8 @@ function Rolls.seen(client, shown, n, lo, hi)
 end
 
 -- My roll -> true | nil, code: "none", "seat", "live", "turn" (not my turn),
--- "wait" (my roll is already under way). With env.roll a server roll, which
+-- "wait" (my roll is already under way), "roll" (a staked game and no server
+-- roll: no env.roll, or the automatic path). With env.roll a server roll, which
 -- comes back through Rolls.seen; without, or with `byTable` (the automatic
 -- path: a server roll comes only from a click), the table rolls for me (src "ask").
 function Rolls.roll(client, byTable)
@@ -141,6 +201,8 @@ function Rolls.roll(client, byTable)
   if s.state.turn ~= s.mySeat then return nil, "turn" end
   if s.rolling then return nil, "wait" end
   local env, max = client.env, s.state.max
+  if s.state.staked and (byTable or not env.roll) then return nil, "roll" end
+  s.rollUnheard = nil
   if env.roll and not byTable then
     local mine = { seen = false }
     s.rolling = mine
@@ -168,7 +230,7 @@ end
 local function act(s, seat, a)
   if a.k ~= "roll" then return a end
   local st = s.state
-  if a.max ~= st.max or st.turn ~= seat then return nil end
+  if a.max ~= st.max or st.turn ~= seat or st.staked then return nil end -- staked: my own sighting only
   local max = st.max
   if a.src == "ask" then
     return { k = "roll", n = s.client.env.random(1, max), max = max, src = "ask" }
@@ -189,8 +251,8 @@ end
 -- A new game: no verdict, sighting, roll under way or claim of the last one
 -- carries over (a sighting of game 1 must never confirm a claim in game 2).
 local function resetGame(s)
-  s.rollCheck, s.rollLog = {}, {}
-  s.rolling, s.rollStuck, s.claim = nil, false, nil
+  s.rollCheck, s.rollLog, s.rollNotMine = {}, {}, {}
+  s.rolling, s.rollStuck, s.claim, s.rollUnheard, s.myRoll = nil, false, nil, nil, nil
 end
 
 local function sameRoll(x, y)
@@ -213,7 +275,7 @@ local function applied(s, seat, a)
     return
   end
   if a.k ~= "roll" then return end
-  s.rolling, s.rollStuck, s.claim = nil, false, nil
+  s.rolling, s.rollStuck, s.claim, s.rollUnheard, s.myRoll = nil, false, nil, nil, nil
   s.rollCheck = s.rollCheck or {} -- joined mid-game: checks from here on
   verify(s, #s.state.rolls)
 end

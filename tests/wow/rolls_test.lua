@@ -70,6 +70,7 @@ describe("wow: roll line", function()
   it("my own roll is passed under my full name; another player's as shown", function()
     local w = setup()
     local seen = rollsSeen(w)
+    w.ns.client.env.roll(1, 1000)
     w:fire("CHAT_MSG_SYSTEM", "Иван rolls 57 (1-1000)"); w:fire("CHAT_MSG_SYSTEM", "Мария rolls 3 (1-57)")
     w:fire("CHAT_MSG_SYSTEM", "Мария has gone offline.")
     eq(seen, { { ME, 57, 1, 1000 }, { "Мария", 3, 1, 57 } }); eq(w.ns.RollChat.last.raw, "Мария rolls 3 (1-57)")
@@ -83,7 +84,28 @@ describe("wow: roll line", function()
     w = setup()
     seatAt(w, B, { ME, B }); eq(w.ns.client.session.mySeat, 1)
     seen = rollsSeen(w)
+    w.ns.client.env.roll(1, 1000)
     w:fire("CHAT_MSG_SYSTEM", "Иван rolls 57 (1-1000)"); eq(seen, { { ME, 57, 1, 1000 } })
+  end)
+
+  it("a namesake's roll line is shown as shown: only a roll I made in the last 3 s is mine", function()
+    local w = setup()
+    local seen = rollsSeen(w)
+    -- No RandomRoll of that range: a namesake's line, passed as shown.
+    w:fire("CHAT_MSG_SYSTEM", "Иван rolls 57 (1-1000)"); eq(seen[1], { "Иван", 57, 1, 1000 })
+    -- The addon's own roll (env.roll) of that range just before: mine, once.
+    w.ns.client.env.roll(1, 1000); w:advance(2)
+    w:fire("CHAT_MSG_SYSTEM", "Иван rolls 58 (1-1000)"); eq(seen[2], { ME, 58, 1, 1000 })
+    w:fire("CHAT_MSG_SYSTEM", "Иван rolls 59 (1-1000)"); eq(seen[3], { "Иван", 59, 1, 1000 })
+    -- The player's own /roll, caught by the hook on RandomRoll (the slash command passes strings).
+    w.G.RandomRoll("1", "500")
+    w:fire("CHAT_MSG_SYSTEM", "Иван rolls 60 (1-500)"); eq(seen[4], { ME, 60, 1, 500 })
+    w.G.RandomRoll(1, 500)
+    w:fire("CHAT_MSG_SYSTEM", "Иван rolls 61 (1-100)"); eq(seen[5], { "Иван", 61, 1, 100 }) -- another range
+    -- Older than ROLL_ECHO_WAIT: not mine any more.
+    w.G.RandomRoll(1, 500); w:advance(3.5)
+    w:fire("CHAT_MSG_SYSTEM", "Иван rolls 62 (1-500)"); eq(seen[6], { "Иван", 62, 1, 500 })
+    eq(w.rolls, { { 1, 1000 }, { "1", "500" }, { 1, 500 }, { 1, 500 } })
   end)
 
   it("env.roll, env.group and env.groupInvite reach the game API; a bot env has only random", function()

@@ -45,6 +45,7 @@ core/Member.lua
 core/Rolls.lua
 core/Party.lua
 core/Lifecycle.lua
+core/Stakes.lua
 core/Deal.lua
 core/DealLine.lua
 core/Book.lua

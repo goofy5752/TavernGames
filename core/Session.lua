@@ -41,7 +41,7 @@ local WHISPERED = {
 
 local TIMERS = {
   "announceTimer", "heartbeatTimer", "tickTimer", "pingTimer", "turnTimer", "systemTimer",
-  "sweepTimer", "silenceTimer", "fairTimer", "askTimer", "autoTimer", "stepTimer", "keysTimer", "bookTimer",
+  "sweepTimer", "silenceTimer", "fairTimer", "askTimer", "autoTimer", "stepTimer", "keysTimer", "bookTimer", "idleTimer",
 }
 
 -- message, emit and refuse are shared with core/Member.lua and core/Succession.lua.
@@ -190,7 +190,7 @@ end
 -- After a game event: the engine's pending system action (one that needs
 -- randomness goes to the extensions' `need`, never to play) and the turn timer,
 -- whose expiry plays Engine.auto for the seat on turn; with engine.view only
--- for my own seat (another hand is played by its owner, Session:armAuto).
+-- for my own seat (another hand is played by its owner, Session:armAuto); another seat's AUTO_GRACE later (view or staked).
 -- Not live: no timers.
 function Session:armTimers()
   if self.turnTimer then self.turnTimer.cancel(); self.turnTimer = nil end
@@ -209,7 +209,7 @@ function Session:armTimers()
   if seat then
     self.deadline = client.env.now() + self.turn
     if engine.view and seat ~= self.mySeat and not engine.publicAuto then return end
-    self.turnTimer = client:after(self.turn + (seat ~= self.mySeat and engine.view and C.AUTO_GRACE or 0), function()
+    self.turnTimer = client:after(self.turn + (seat ~= self.mySeat and (engine.view or self.stake) and C.AUTO_GRACE or 0), function()
       self.turnTimer = nil
       local auto = engine.auto(self.state, seat, client.env.random)
       if auto then self:play(seat, auto, true) end

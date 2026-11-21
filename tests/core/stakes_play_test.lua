@@ -1,0 +1,565 @@
+local Sim = require("sim")
+local ns = Sim.ns
+local C, Stakes, Rolls, Util = ns.Const, ns.Stakes, ns.Rolls, ns.Util
+local TTT, DR = ns.Engines.ttt, ns.Engines.deathroll
+
+-- И hosts; М and П are guild members.
+local A, B, P = "Иван Петров", "Мария Стоянова", "Петър Колев"
+local SK = 50000
+
+-- Иван, Мария, Петър, all in one group (a staked Death Roll starts only so).
+local function setup()
+  local sim = Sim.new()
+  local a = sim:add(A, { cls = "MAGE" })
+  local b = sim:add(B, { cls = "PRIEST" })
+  local c = sim:add(P, { cls = "ROGUE" })
+  for _, env in pairs(sim.envs) do env.inGroup = function() return true end end
+  sim:run(1)
+  return sim, a, b, c
+end
+
+-- Every emission of `event` on `client`, as a list of argument lists.
+local function record(client, event)
+  local list = {}
+  client:on(event, function(...) list[#list + 1] = { ... } end)
+  return list
+end
+
+-- The messages of type `t` from `from` after sim.sent[mark], as sim.sent rows.
+local function sent(sim, from, t, mark)
+  local out = {}
+  for i, s in ipairs(sim.sent) do
+    if i > (mark or 0) and s.from == from and s.msg.t == t then out[#out + 1] = s end
+  end
+  return out
+end
+
+-- The EVs `from` whispered to `to` after sim.sent[mark], as sim.sent rows.
+local function events(sim, from, mark, to)
+  local out = {}
+  for _, s in ipairs(sent(sim, from, "EV", mark)) do
+    if s.target == to then out[#out + 1] = s end
+  end
+  return out
+end
+
+-- A Морски шах of Иван at stake `sk` (nil: for fun), Мария seated: the match runs, Иван on turn.
+local function tttTable(sk)
+  local sim, a, b, c = setup()
+  local tid = a:openTable{ game = "ttt", access = "guild", turn = 45, stake = sk }; sim:run(3)
+  b:sit(tid, 2, sk); sim:run(1)
+  return sim, a, b, c, tid
+end
+
+-- The same, after Иван's mark on cell 1: Мария on turn.
+local function tttMariaOnTurn(sk)
+  local sim, a, b, c, tid = tttTable(sk)
+  ok(a:act({ k = "mark", c = 1 })); sim:run(0)
+  return sim, a, b, c, tid
+end
+
+-- Both players of a ttt table play E.auto until the match is over.
+local function playOut(sim, host, guest)
+  for _ = 1, 200 do
+    local s = host.session
+    if not s or s:gameOver() then return end
+    local seat = s.state and s.state.turn
+    if seat == 1 then host:act(TTT.auto(s.state, 1)) elseif seat == 2 then guest:act(TTT.auto(guest.session.state, 2)) end
+    sim:run(1)
+  end
+end
+
+-- A Death Roll of Иван from `start` (default 100) at stake `sk`, with `others`
+-- (names) in seats 2.., started: Иван (seat 1) on turn.
+local function drTable(others, sk, start)
+  local sim, a, b, c = setup()
+  local by = { [B] = b, [P] = c }
+  local tid = a:openTable{ game = "deathroll", access = "guild", turn = 45, opt = { start = start or 100 }, stake = sk }
+  sim:run(3)
+  for i, name in ipairs(others) do by[name]:sit(tid, i + 1, sk) end
+  sim:run(1)
+  ok(a:startGame()); sim:run(0)
+  return sim, a, b, c, tid
+end
+
+-- `client` rolls n: its server roll, seen by whoever sim.canSee lets.
+local function roll(sim, client, n)
+  sim.nextRolls = { n }
+  ok(client:roll()); sim:run(0)
+end
+
+-- Counts the calls of every stakes hook while fn runs.
+local HOOKS = { "applied", "forged", "refused", "adopted", "hostChanged", "leaving", "gone" }
+local function spied(fn)
+  local x, saved, calls = ns.Ext.stakes, {}, {}
+  for _, h in ipairs(HOOKS) do
+    saved[h] = x[h]
+    x[h] = function(...)
+      calls[h] = (calls[h] or 0) + 1
+      return saved[h](...)
+    end
+  end
+  local done, err = pcall(fn)
+  for _, h in ipairs(HOOKS) do x[h] = saved[h] end
+  if not done then error(err, 0) end
+  return calls
+end
+
+describe("stakes: play", function()
+  it("Stakes.foul keeps the higher rank", function()
+    eq(Stakes.RANK, { forged = 4, roll = 3, stand = 2, unseen = 1 })
+    local s = {}
+    Stakes.foul(s, "unseen"); eq(s.stakeFoul, "unseen")
+    Stakes.foul(s, "roll"); Stakes.foul(s, "stand"); eq(s.stakeFoul, "roll")
+    Stakes.foul(s, "forged"); Stakes.foul(s, "unseen"); eq(s.stakeFoul, "forged")
+  end)
+
+  it("the hooks of stakes run only at a staked table", function()
+    local calls = spied(function() tttMariaOnTurn(SK) end)
+    ok((calls.applied or 0) > 0, "no applied hook at a staked table")
+    eq(spied(function() tttMariaOnTurn(nil) end), {})
+  end)
+
+  it("ttt: a move the host makes for my seat is the foul forged", function()
+    for _, stake in ipairs({ SK, false }) do
+      local sk = stake or nil
+      local calls = spied(function()
+        local sim, a, b = tttMariaOnTurn(sk)
+        -- Иван's client plays cell 9 for Мария, who sent cell 5.
+        sim.bus.filter = function(from, _, _, m)
+          if from == B and m.t == "ACT" then m.a = { k = "mark", c = 9 } end
+          return { m }
+        end
+        ok(b:act({ k = "mark", c = 5 })); sim:run(1)
+        sim.bus.filter = nil
+        eq(b.session.state.board[9], 2); eq(b.session.state.board[5], 0)
+        eq(b.session.stakeFoul, sk and "forged" or nil); eq(a.session.stakeFoul, nil)
+        if not sk then eq(b.session.stakeLive, nil); eq(b.session.stakeRoster, nil); eq(b.session.stakeTurn, nil) end
+      end)
+      if not sk then eq(calls, {}) end
+    end
+  end)
+
+  it("ttt: the host's timeout for my seat is taken only after my own clock ran out", function()
+    local sim, a, b = tttMariaOnTurn(SK)
+    local mark = #sim.sent
+    sim:run(C.TURN_DEFAULT + C.AUTO_GRACE - 1); eq(b.session.state.board[2], 0)
+    sim:run(1); eq(b.session.state.board[2], 2); eq(b.session.stakeFoul, nil)
+    local ev = events(sim, A, mark, B)
+    eq(#ev, 1); eq(ev[1].msg.auto, true); eq(ev[1].msg.seat, 2)
+    -- A host that plays it after 10 s.
+    sim, a, b = tttMariaOnTurn(SK)
+    sim:run(10)
+    a.session:play(2, TTT.auto(a.session.state, 2), true); sim:run(0)
+    eq(b.session.state.board[2], 2); eq(b.session.stakeFoul, "forged")
+  end)
+
+  it("ttt: the host waits AUTO_GRACE before it moves for the other seat, and not for its own", function()
+    for _, stake in ipairs({ SK, false }) do
+      local sim = tttTable(stake or nil)
+      local start, mark = sim.clock, #sim.sent
+      sim:run(100)
+      local autos = {}
+      for _, s in ipairs(events(sim, A, mark, B)) do
+        if s.msg.auto then autos[#autos + 1] = { s.msg.seat, s.at - start } end
+      end
+      eq(autos, stake and { { 1, 45 }, { 2, 97 } } or { { 1, 45 }, { 2, 90 } })
+    end
+  end)
+
+  it("ttt: an event my engine refuses is forged", function()
+    local sim, _, b, _, tid = tttMariaOnTurn(SK)
+    local s = b.session
+    -- Иван marks again, on the taken cell 1, while Мария is on turn.
+    b:receive("WHISPER", A, { v = 1, t = "EV", tid = tid, e = s.epoch, q = s.seq + 1, seat = 1, a = { k = "mark", c = 1 } })
+    eq(s.stakeFoul, "forged")
+    sim:run(1)
+    -- The snapshot it asked for is the very game it holds: the foul stays.
+    eq(b.session, s); eq(s.stakeFoul, "forged"); eq(s.seq, sim.clients[A].session.seq)
+  end)
+
+  it("ttt: an auto move for my seat while my ACT is unmatched is forged", function()
+    local function dropped(at)
+      local sim, _, b = tttMariaOnTurn(SK)
+      sim.bus.filter = function(from, _, _, m)
+        if from == B and m.t == "ACT" then return {} end
+        return { m }
+      end
+      sim:run(at); ok(b:act({ k = "mark", c = 9 }))
+      sim:run(C.TURN_DEFAULT + C.AUTO_GRACE - at)
+      sim.bus.filter = nil
+      eq(b.session.state.board[2], 2); eq(b.session.state.board[9], 0)
+      return b.session.stakeFoul
+    end
+    eq(dropped(10), "forged")
+    -- An ACT sent after her own deadline is no move in time: the timeout stands.
+    eq(dropped(C.TURN_DEFAULT + 2), nil)
+  end)
+
+  it("a snapshot I asked for into a running game is unseen; a pushed one that changes it is forged", function()
+    local sim, _, b = tttMariaOnTurn(SK)
+    b = sim:relog(B); sim:run(1)
+    eq(b.session.mySeat, 2); eq(b.session.stakeLive, true); eq(b.session.stakeFoul, "unseen")
+    eq(b.session.stakeRoster, { A, B })
+    local a
+    sim, a, b = tttMariaOnTurn(SK)
+    ok(b:act({ k = "mark", c = 5 })); sim:run(1)
+    eq(b.session.stakeFoul, nil)
+    -- The same snapshot again changes nothing.
+    a.session:snapshotTo(B); sim:run(0); eq(b.session.stakeFoul, nil)
+    a.session.state.board[5] = 1 -- Мария's mark becomes Иван's, at the same q
+    a.session:snapshotTo(B); sim:run(0)
+    eq(b.session.state.board[5], 1); eq(b.session.stakeFoul, "forged")
+  end)
+
+  it("an honest takeover is unseen, not forged", function()
+    -- Seats: Иван 1, Петър 2, Мария 3. Иван rolls, Петър rolls (the EV of it
+    -- does not reach `hold`), Иван goes silent and Петър takes the table over.
+    local function takeover(hold, tamper)
+      local sim, a, b, c = drTable({ P, B }, SK)
+      roll(sim, a, 50)
+      sim.bus.filter = function(from, to, _, m)
+        if from == A and m.t == "EV" and to == hold then return {} end
+        return { m }
+      end
+      roll(sim, c, 40)
+      sim.bus.filter = nil
+      sim:offline(A)
+      if tamper then tamper(c.session.state) end
+      sim:run(C.SILENT_AFTER + 1)
+      eq(c.session.role, "host"); eq(b.session.host, P)
+      return b.session
+    end
+    eq(takeover(nil).stakeFoul, nil)  -- the very game Мария holds
+    eq(takeover(B).stakeFoul, "unseen") -- Мария missed the last roll: her game is a prefix of Петър's
+    eq(takeover(P).stakeFoul, "unseen") -- Петър missed it: his game is a prefix of hers
+    eq(takeover(B, function(st) st.rolls[1].n = 49 end).stakeFoul, "forged")
+  end)
+
+  it("the staked flag comes from what I accepted", function()
+    local sim, a, b = drTable({ B }, SK)
+    roll(sim, a, 50)
+    sim.bus.filter = function(_, to, _, m)
+      if to == B and m.t == "SNP" and type(m.st) == "table" then m.st.staked = false end
+      return { m }
+    end
+    b = sim:relog(B); sim:run(1)
+    sim.bus.filter = nil
+    local s = b.session
+    eq(s.mySeat, 2); eq(s.state.staked, true); eq(s.stakeFoul, "forged")
+    for _, src in ipairs({ "claim", "ask", "timeout" }) do
+      eq({ DR.apply(Util.copy(s.state), 2, { k = "roll", n = 10, max = 50, src = src }) }, { nil, "src" })
+    end
+    eq(DR.auto(s.state, 2, function() return 1 end), nil)
+  end)
+
+  it("the foul is reset when the next game begins", function()
+    -- Морски шах: a forged move, the match played out, „Реванш“ from both.
+    local sim, a, b = tttMariaOnTurn(SK)
+    sim:run(10)
+    a.session:play(2, TTT.auto(a.session.state, 2), true); sim:run(0)
+    eq(b.session.stakeFoul, "forged")
+    playOut(sim, a, b)
+    ok(b.session:gameOver()); eq(b.session.stakeFoul, "forged"); eq(b.session.stakeLive, false)
+    eq(b.session.stakeRoster, nil)
+    ok(a:act({ k = "rematch" })); ok(b:act({ k = "rematch" })); sim:run(1)
+    eq(b.session:gameOver(), false); eq(b.session.stakeLive, true); eq(b.session.stakeFoul, nil)
+    -- Death Roll: an unseen relog, the game played out, „Нова игра“.
+    sim, a, b = drTable({ B }, SK)
+    b = sim:relog(B); sim:run(1); eq(b.session.stakeFoul, "unseen")
+    roll(sim, a, 1); ok(a.session:gameOver()); eq(b.session.stakeFoul, "unseen")
+    sim:run(C.STAKE_BREAK); ok(a:startGame()); sim:run(0)
+    eq(b.session.stakeFoul, nil); eq(b.session.stakeRoster, { A, B })
+  end)
+
+  it("a foul raised by the event that starts a game counts against the new game", function()
+    local sim, a, b = tttTable(SK)
+    playOut(sim, a, b)
+    ok(b.session:gameOver())
+    ok(a:act({ k = "rematch" })); sim:run(0)
+    a.session:play(2, { k = "rematch" }); sim:run(0) -- Мария never pressed „Реванш“
+    eq(b.session:gameOver(), false); eq(b.session.stakeLive, true)
+    eq(b.session.stakeFoul, "forged"); eq(b.session.stakeRoster, { A, B })
+  end)
+
+  it("a staked game gets a break", function()
+    local sim, a, b = drTable({ B }, SK)
+    roll(sim, a, 1); ok(a.session:gameOver())
+    eq({ a:startGame() }, { nil, "break" })
+    sim:run(C.STAKE_BREAK - 1); eq({ a:startGame() }, { nil, "break" })
+    sim:run(1); ok(a:startGame()); sim:run(0)
+    eq(b.session.stakeLive, true); eq(b.session.stakeFoul, nil)
+    -- A host that starts earlier: Мария's clock says no break was given.
+    sim, a, b = drTable({ B }, SK)
+    roll(sim, a, 1); sim:run(5)
+    a.session:event(0, { k = "start", first = 1 }); a.session:recordChanged(); sim:run(0)
+    eq(b.session.stakeLive, true); eq(b.session.stakeFoul, "forged")
+    -- A fun table starts at once, as today.
+    sim, a, b = drTable({ B }, nil)
+    roll(sim, a, 1); ok(a:startGame()); sim:run(0)
+    eq(b.session.state.phase, "play"); eq(b.session.stakeFoul, nil)
+    -- Морски шах starts when a sit fills the table (no „Започни“, no break):
+    -- a watcher who sits down right after an abort sees no foul.
+    local c, tid
+    sim, a, b, c, tid = tttMariaOnTurn(SK)
+    c:watch(tid); sim:run(1)
+    b:stand(); sim:run(0); eq(c.session.status, "aborted")
+    c:sit(tid, 2, SK); sim:run(0)
+    eq(c.session.mySeat, 2); eq(c.session.stakeLive, true); eq(c.session.stakeFoul, nil)
+  end)
+
+  it("the roster is who plays the running game", function()
+    local sim, a, b, c, tid = drTable({ B }, SK)
+    c:sit(tid, 3, SK); sim:run(1)
+    eq(c.session.seats[3], P)
+    for _, cl in ipairs({ a, b, c }) do eq(cl.session.stakeRoster, { A, B }) end
+  end)
+
+  it("death roll: the host cannot start while a seated player is not in its group", function()
+    local sim, a, b = setup()
+    a.env.inGroup = function() return false end
+    local tid = a:openTable{ game = "deathroll", access = "guild", turn = 45, stake = SK }; sim:run(3)
+    b:sit(tid, 2, SK); sim:run(1)
+    eq({ a:startGame() }, { nil, "group" })
+    a.env.inGroup = function() return true end
+    ok(a:startGame())
+    -- A fun table starts as today.
+    sim, a, b = setup()
+    a.env.inGroup = function() return false end
+    tid = a:openTable{ game = "deathroll", access = "guild", turn = 45 }; sim:run(3)
+    b:sit(tid, 2); sim:run(1)
+    ok(a:startGame())
+  end)
+
+  it("death roll: a client that cannot /roll gets no staked seat", function()
+    local sim, a, _, c = setup()
+    local G = "Гошо Гошев"
+    local d = sim:add(G, { cls = "MAGE", roll = false }); sim:run(1)
+    local tid = a:openTable{ game = "deathroll", access = "guild", turn = 45, stake = SK }; sim:run(3)
+    local refused, mark = record(d, "refused"), #sim.sent
+    eq({ d:sit(tid, 2, SK) }, { nil, "roll" }); sim:run(1)
+    eq(refused, { { tid, "roll" } }); eq(#sent(sim, G, "SIT", mark), 0); eq(d.session, nil)
+    -- At a fun table it sits as today.
+    local fun = c:openTable{ game = "deathroll", access = "guild", turn = 45 }; sim:run(3)
+    d:sit(fun, 2); sim:run(1)
+    eq(d.session.mySeat, 2); eq(#refused, 1)
+  end)
+
+  it("death roll: only a roll the host saw counts", function()
+    local sim, a, b = drTable({ B }, SK)
+    roll(sim, a, 50)
+    sim.canSee = function(from, to) return not (from == B and to == A) end
+    local mark = #sim.sent
+    roll(sim, b, 40); sim:run(C.ROLL_CLAIM_WAIT)
+    eq(#events(sim, A, mark, B), 0); eq(#a.session.state.rolls, 1)
+    eq(#sent(sim, B, "ACT", mark), 0) -- no claim at a staked table
+    sim:run(C.ROLL_VERIFY_WAIT)
+    sim.canSee = function() return true end
+    roll(sim, b, 40)
+    local ev = events(sim, A, mark, B)
+    eq(#ev, 1); eq(ev[1].msg.a, { k = "roll", n = 40, max = 50, src = "seen" })
+  end)
+
+  it("death roll: nobody rolls for a silent seat; 180 s on turn stands it up as idle", function()
+    -- Мария on turn and silent: no roll at 45 s, the idle stand at 180 s.
+    local sim, a, b, c = drTable({ B, P }, SK)
+    roll(sim, a, 50)
+    local t0, mark = sim.clock, #sim.sent
+    sim:run(C.TURN_DEFAULT + C.AUTO_GRACE + 1); eq(#events(sim, A, mark, P), 0)
+    sim:run(C.OFFLINE_STAND_SECONDS - (C.TURN_DEFAULT + C.AUTO_GRACE + 1) - 1); eq(#events(sim, A, mark, P), 0)
+    sim:run(1)
+    local ev = events(sim, A, mark, P)
+    eq(#ev, 1); eq(ev[1].msg.a, { k = "stand", seat = 2, why = "idle" }); eq(ev[1].at - t0, C.OFFLINE_STAND_SECONDS)
+    eq(c.session.state.turn, 3); eq(a.session.status, "live")
+
+    -- A roll at 179 s cancels it; the next seat's turn has a full 180 s of its own.
+    sim, a, b, c = drTable({ B, P }, SK)
+    roll(sim, a, 50)
+    t0, mark = sim.clock, #sim.sent
+    sim:run(C.OFFLINE_STAND_SECONDS - 1); roll(sim, b, 40)
+    sim:run(C.OFFLINE_STAND_SECONDS - 1)
+    for _, s in ipairs(events(sim, A, mark, B)) do ok(s.msg.a.k ~= "stand", "a stand before its time") end
+    sim:run(1)
+    ev = events(sim, A, mark, B)
+    eq(ev[#ev].msg.a, { k = "stand", seat = 3, why = "idle" }); eq(ev[#ev].at - t0, 2 * C.OFFLINE_STAND_SECONDS - 1)
+
+    -- It follows a host change: Иван hands over, Петър stands Мария up on time.
+    -- Seats: Иван 1, Петър 2, Мария 3; Мария on turn.
+    sim, a, b, c = drTable({ P, B }, SK)
+    roll(sim, a, 50); roll(sim, c, 40)
+    t0 = sim.clock
+    sim:run(100); a:stand(); sim:run(1)
+    eq(c.session.role, "host"); eq(c.session.state.turn, 3)
+    sim:run(C.OFFLINE_STAND_SECONDS - 100 - 2); eq(c.session.seats[3], B)
+    sim:run(1); eq(c.session.seats[3], false); eq(sim.clock - t0, C.OFFLINE_STAND_SECONDS)
+
+    -- Only a host plays it: a demoted host cancels it ...
+    local function stands(from, since)
+      local n = 0
+      for _, s in ipairs(sent(sim, from, "EV", since)) do
+        if s.msg.a.k == "stand" then n = n + 1 end
+      end
+      return n
+    end
+    sim, a, b = drTable({ B }, SK)
+    roll(sim, a, 50)
+    sim:run(100)
+    ok(a.session.idleTimer, "no idle timer at the host")
+    mark = #sim.sent
+    ns.Succession.follow(a.session, P, a.session.epoch + 1)
+    eq(a.session.idleTimer, nil)
+    sim:run(C.OFFLINE_STAND_SECONDS); eq(stands(A, mark), 0)
+    -- ... and a timer left armed does nothing once I do not host.
+    sim, a, b = drTable({ B }, SK)
+    roll(sim, a, 50)
+    mark = #sim.sent
+    ns.Succession.demote(a.session)
+    ok(a.session.idleTimer, "demote alone leaves the timer")
+    sim:run(C.OFFLINE_STAND_SECONDS + 1); eq(stands(A, mark), 0)
+  end)
+
+  it("death roll: the host's own idle seat hands the table over", function()
+    local sim, a, b = drTable({ B }, SK)
+    local t0, mark, idle = sim.clock, #sim.sent, nil
+    local saved = ns.Ext.stakes.leaving
+    ns.Ext.stakes.leaving = function(s)
+      idle = s.stakeIdle
+      return saved(s)
+    end
+    local done, err = pcall(function()
+      sim:run(C.OFFLINE_STAND_SECONDS - 1); eq(a.session.role, "host"); eq(a.session.state.turn, 1)
+      sim:run(1)
+    end)
+    ns.Ext.stakes.leaving = saved
+    if not done then error(err, 0) end
+    eq(idle, true); eq(a.session, nil); eq(b.session.role, "host")
+    local ev = events(sim, A, mark, B)
+    eq(ev[1].msg.a, { k = "stand", seat = 1, why = "left" }); eq(ev[1].at - t0, C.OFFLINE_STAND_SECONDS)
+  end)
+
+  it("death roll: a staked game played cleanly has no foul", function()
+    local sim, a, b, c = drTable({ B, P }, SK)
+    local by = { a, b, c }
+    for _, n in ipairs({ 90, 80, 70, 60, 50, 40, 30, 20, 10, 1 }) do roll(sim, by[a.session.state.turn], n) end
+    ok(a.session:gameOver()); eq(#b.session.state.rolls, 10)
+    sim:run(C.ROLL_FINAL_WAIT)
+    for _, cl in ipairs(by) do
+      eq(cl.session.stakeFoul, nil); eq(Rolls.audit(cl.session), nil)
+    end
+  end)
+
+  it("death roll: an idle stand after my own roll is the foul roll", function()
+    local function idleAfter(rolled)
+      local sim, a, b = drTable({ B }, SK)
+      roll(sim, a, 50)
+      sim.canSee = function(from, to) return not (from == B and to == A) end -- the host never sees her roll
+      if rolled then roll(sim, b, 40) end
+      local s = b.session
+      sim:run(C.OFFLINE_STAND_SECONDS + C.PING_EVERY + 1)
+      eq(b.session, nil); eq(a.session.seats[2], false)
+      return s
+    end
+    eq(idleAfter(true).stakeFoul, "roll")
+    eq(idleAfter(false).stakeFoul, nil)
+  end)
+
+  it("death roll: a roll the host never played clears my rolling flag", function()
+    local sim, a, b = drTable({ B }, SK)
+    roll(sim, a, 50)
+    sim.canSee = function(from, to) return not (from == B and to == A) end
+    roll(sim, b, 40); ok(b.session.rolling, "rolling"); eq(b.session.rollUnheard, nil)
+    sim:run(C.ROLL_CLAIM_WAIT + C.ROLL_VERIFY_WAIT - 1); ok(b.session.rolling, "still rolling")
+    sim:run(1); eq(b.session.rolling, nil); eq(b.session.rollUnheard, true)
+    -- The host sees the next one in time: no hint.
+    sim.canSee = function() return true end
+    roll(sim, b, 40); eq(b.session.rollUnheard, nil)
+    sim:run(C.ROLL_CLAIM_WAIT + C.ROLL_VERIFY_WAIT)
+    eq(b.session.rollUnheard, nil); eq(b.session.rolling, nil); eq(#b.session.state.rolls, 2)
+  end)
+
+  it("a namesake's roll under my seat is the foul roll", function()
+    local sim, a, b = drTable({ B }, SK)
+    roll(sim, a, 50)
+    -- Another Мария of the guild types /roll 50 on Мария's turn: every client sees „Мария“.
+    a:rollSeen("Мария", 30, 1, 50); b:rollSeen("Мария", 30, 1, 50); sim:run(0)
+    eq(b.session.state.rolls[2], { seat = 2, n = 30, max = 50, src = "seen" }); eq(Rolls.check(b.session, 2), "ok")
+    eq(b.session.rolling, nil)
+    sim:run(C.ROLL_VERIFY_WAIT)
+    eq(Rolls.audit(b.session), "roll"); eq(Rolls.audit(a.session), nil)
+  end)
+
+  it("Rolls.audit", function()
+    -- Иван's roll seen with another number: "roll".
+    local sim, a, b = drTable({ B }, SK)
+    sim.canSee = function(from, to) return not (from == A and to == B) end
+    b:rollSeen("Иван", 41, 1, 100); roll(sim, a, 40)
+    eq(Rolls.audit(b.session), nil) -- no verdict yet
+    sim:run(C.ROLL_VERIFY_WAIT)
+    eq(Rolls.check(b.session, 1), "mismatch"); eq(Rolls.audit(b.session), "roll")
+    -- Never seen: "unseen"; a later mismatch wins over it.
+    sim, a, b = drTable({ B }, SK)
+    sim.canSee = function(from, to) return not (from == A and to == B) end
+    roll(sim, a, 40); sim:run(C.ROLL_VERIFY_WAIT)
+    eq(Rolls.check(b.session, 1), "unseen"); eq(Rolls.audit(b.session), "unseen")
+    sim.canSee = function() return true end
+    roll(sim, b, 30)
+    sim.canSee = function(from, to) return not (from == A and to == B) end
+    b:rollSeen("Иван", 21, 1, 30); roll(sim, a, 20); sim:run(C.ROLL_VERIFY_WAIT)
+    eq(Rolls.check(b.session, 2), "ok"); eq(Rolls.check(b.session, 3), "mismatch"); eq(Rolls.audit(b.session), "roll")
+    -- A game of more than ROLL_LOG rolls keeps its early rolls.
+    sim, a, b = drTable({ B }, SK, 1000)
+    local hide = true
+    sim.canSee = function(from, to) return not (hide and from == A and to == B) end
+    local by = { a, b }
+    for n = 999, 975, -1 do
+      roll(sim, by[a.session.state.turn], n)
+      hide = false
+    end
+    eq(#b.session.state.rolls, 25); eq(#b.session.rollLog, C.ROLL_LOG)
+    sim:run(C.ROLL_VERIFY_WAIT)
+    eq(Rolls.check(b.session, 1), "unseen"); eq(Rolls.check(b.session, 2), "ok"); eq(Rolls.audit(b.session), "unseen")
+    -- Final ROLL_FINAL_WAIT after the result: the last roll's verdict was still open at it.
+    sim, a, b = drTable({ B }, SK)
+    roll(sim, a, 50)
+    sim.canSee = function(from, to) return not (from == A and to == B) end
+    roll(sim, b, 30); roll(sim, a, 1)
+    ok(b.session:gameOver()); eq(Rolls.audit(b.session), nil)
+    sim:run(C.ROLL_FINAL_WAIT - 1); eq(Rolls.audit(b.session), nil)
+    sim:run(1); eq(Rolls.audit(b.session), "unseen")
+    ok(C.ROLL_FINAL_WAIT >= C.ROLL_VERIFY_WAIT)
+  end)
+
+  it("a stand of my own seat while my client runs is the foul stand, unless idle and my clock agrees", function()
+    -- Мария on turn; Иван's client stands her up `after` s later (nil: its own idle timer).
+    local function stoodUp(why, after)
+      local sim, a, b = drTable({ B }, SK)
+      roll(sim, a, 50)
+      local s = b.session
+      if after then
+        sim:run(after)
+        ns.Succession.untrack(a.session, B) -- as the host's own stands do
+        a.session:event(0, { k = "stand", seat = 2, why = why }); a.session:abortIfShort(); a.session:recordChanged()
+      end
+      sim:run(C.OFFLINE_STAND_SECONDS + C.PING_EVERY + 1)
+      eq(b.session, nil) -- her host's SNO "gone" ended her session
+      return s
+    end
+    eq(stoodUp("offline", 10).stakeFoul, "stand")
+    eq(stoodUp(nil, nil).stakeFoul, nil) -- idle at 180 s by her clock
+    eq(stoodUp("idle", 60).stakeFoul, "stand")
+    -- A stand of my seat that reaches me as an event is judged by its why.
+    local function told(why, after)
+      local sim, a, b, _, tid = drTable({ B, P }, SK)
+      roll(sim, a, 50)
+      a.session.idleTimer.cancel() -- this host plays its stands by hand
+      sim:run(after)
+      local s = b.session
+      b:receive("WHISPER", A, { v = 1, t = "EV", tid = tid, e = s.epoch, q = s.seq + 1, seat = 0,
+                                a = { k = "stand", seat = 2, why = why } })
+      eq(s.seats[2], false)
+      return s.stakeFoul
+    end
+    eq(told("offline", 10), "stand"); eq(told("left", 10), "stand")
+    eq(told("idle", C.OFFLINE_STAND_SECONDS), nil); eq(told("idle", 60), "stand")
+  end)
+end)

@@ -107,6 +107,9 @@ function Member.adopt(client, sender, m)
   s.opt = ns.Games.resolve(t.g, t.o)
   local engine = ns.Games.engine(t.g)
   s.state = type(m.st) == "table" and engine.restore(m.st) or nil
+  -- The stake I accepted decides whether the game is staked, never the host's
+  -- state (a snapshot that said otherwise is forged: core/Stakes.lua).
+  if s.state and engine.idle then s.state.staked = s.stake ~= nil or nil end
   -- A result already in the snapshot was announced before: noted, not emitted.
   s.resultSeen = s.state ~= nil and engine.result ~= nil and engine.result(s.state) ~= nil
   -- No result yet: the table as it sits now is the one a "result" names (Session:noteResult).
@@ -183,13 +186,14 @@ function Member.staleSeat(s, m)
 end
 
 -- My action goes to the host (Session.act) and is remembered, the last
--- SENT_KEPT of them, until the host's event for my seat shows it (the same
--- action sent again, a retried timeout, is remembered once).
+-- SENT_KEPT of them as {a, at = env.now() when sent}, until the host's event
+-- for my seat shows it (the same action sent again, a retried timeout, is
+-- remembered once).
 local SENT_KEPT = 8
 function Member.sendAct(s, a)
   local sent = s.sent or {}
   s.sent = sent
-  if not ns.Util.same(sent[#sent], a) then sent[#sent + 1] = copy(a) end
+  if not (sent[#sent] and ns.Util.same(sent[#sent].a, a)) then sent[#sent + 1] = { a = copy(a), at = s.client.env.now() } end
   if #sent > SENT_KEPT then table.remove(sent, 1) end
   s.client:send("WHISPER", s.host, Session.message("ACT", { tid = s.tid, a = a }))
 end
@@ -199,7 +203,7 @@ end
 function Member.mine(s, a)
   local sent = s.sent or {}
   for i = 1, #sent do
-    if ns.Util.same(sent[i], a) then
+    if ns.Util.same(sent[i].a, a) then
       for _ = 1, i do table.remove(sent, 1) end
       return true
     end
@@ -208,15 +212,24 @@ function Member.mine(s, a)
 end
 
 -- Is the event m the host's timeout for my seat, due by my own clock -> bool?
--- Only for an engine whose automatic move needs no hidden card (publicAuto:
--- the host plays it AUTO_GRACE after the deadline, Session:armTimers): flagged
--- auto, the move engine.auto makes, and my own turn time has run out since my
--- seat came on turn (s.turnAt, my env.now() then). The host's `left` is not
--- taken: a host that sent left = 0 could fold me at once.
+-- Only for an engine whose automatic move needs no hidden card (publicAuto, or
+-- any engine without `view` at a staked table: the host plays it AUTO_GRACE
+-- after the deadline, Session:armTimers): flagged auto, the move engine.auto
+-- makes, and my own turn time has run out since my seat came on turn
+-- (s.turnAt, my env.now() then). The host's `left` is not taken: a host that
+-- sent left = 0 could fold me at once. At a staked table no timeout is due
+-- while an ACT I sent on this turn before my deadline is still unmatched in
+-- s.sent: the host dropped my move.
 function Member.timedOut(s, m)
   local engine, at = s:engine(), s.turnAt
-  if m.auto ~= true or not engine.publicAuto or not at or type(s.turn) ~= "number" then return false end
+  if m.auto ~= true or not (engine.publicAuto or (s.stake and not engine.view)) or not at or type(s.turn) ~= "number" then return false end
   if s.client.env.now() < at + s.turn then return false end
+  if s.stake ~= nil then
+    local sent = s.sent or {}
+    for i = 1, #sent do
+      if sent[i].at >= at and sent[i].at < at + s.turn then return false end
+    end
+  end
   return s.state ~= nil and ns.Util.same(m.a, engine.auto(s.state, m.seat))
 end
 
@@ -260,8 +273,10 @@ end
 
 -- Events are taken only from my host, at exactly my epoch, in order. An epoch
 -- is never adopted from an EV, and a stale member waits for its snapshot.
--- With hidden hands (engine.view) nobody but my client moves for my seat, my
--- timeouts included (Session:armAuto), but for the host's public timeout once
+-- With hidden hands (engine.view), and at a staked table whose engine has no
+-- `idle` (Морски шах; Death Roll's rolls are judged by Rolls.audit alone),
+-- nobody but my client moves for my seat, my timeouts included
+-- (Session:armAuto), but for the host's public timeout once
 -- my own clock ran out (Member.timedOut): an event for it that I did not send
 -- is reported to the extensions (hook `forged`) and applied like any other;
 -- so is a seat-0 event of a sealed table no honest host plays now (unasked). s.turnAt: my env.now() when
@@ -277,7 +292,8 @@ local function onEvent(client, sender, m)
   -- forged (an honest host skips the sitter, who gets the snapshot) unless my
   -- own SIT note for this table and stake stands.
   if Member.staleSeat(s, m) then return ns.Stake.standUp(client, s) end
-  if m.seat == s.mySeat and s:engine().view and not Member.mine(s, m.a) and not Member.timedOut(s, m) then
+  local engine = s:engine()
+  if m.seat == s.mySeat and (engine.view or (s.stake and not engine.idle)) and not Member.mine(s, m.a) and not Member.timedOut(s, m) then
     s:hook("forged", m.seat, m.a)
   elseif Member.unasked(s, m.seat, m.a) then
     s:hook("forged", m.seat, m.a)
@@ -319,9 +335,11 @@ local function onRefusal(client, sender, m)
     client.pending = nil
     Session.refuse(client, m.tid, m.why)
   elseif s and s.role ~= "host" and s.tid == m.tid and s.host == sender then
-    -- "gone": I am not at its table any more. Stale: the new host did not take me in.
+    -- "gone": I am not at its table any more (my seat went without my STD: the
+    -- extensions hear of it first, hook `gone`). Stale: the new host did not take me in.
     -- Anything else I can live with, e.g. a watcher asking for a taken chair.
     s.sitAsked = nil
+    if m.why == "gone" and s.mySeat then s:hook("gone") end
     if m.why == "gone" or s.stale then Session.leave(client) end
     Session.refuse(client, m.tid, m.why)
   end

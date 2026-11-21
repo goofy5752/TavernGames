@@ -18,3 +18,6 @@ Later tasks of the stage append their rows below.
 | 6 | several small trades and letters in a row | does an economy hold appear; its message text | not yet measured |
 | 7 | two characters, one with 30 entries more: `/tavern debug` on both | one `LVC`, `LEV` batches two seconds apart, no error, no disconnect; `/tavern` stays usable meanwhile | not yet measured |
 | 8 | the same while playing Холдем on the sending client | the table does not stall (the `LEV` batches come six seconds apart) | not yet measured |
+| 9 | staked Death Roll, three characters in one party | every roll shows without „?“; a player outside the party cannot be started with („Започни“ says why) | not yet measured |
+| 10 | a third guild character with the first name of a seated player types `/roll <max>` on that player's turn | what the table does, and that the seated player's line turns red | not yet measured |
+| 11 | leave a staked Death Roll turn untouched for three minutes | stood up, the bill names the idle player | not yet measured |

@@ -10,6 +10,8 @@ local function setup()
   local a = sim:add(A, { cls = "MAGE" })
   local b = sim:add(B, { cls = "PRIEST" })
   local c = sim:add(P, { cls = "ROGUE" })
+  -- One group for all: a staked Death Roll starts only so (Session:canStart "group").
+  for _, env in pairs(sim.envs) do env.inGroup = function() return true end end
   sim:run(1)
   return sim, a, b, c
 end
@@ -484,7 +486,7 @@ describe("stake", function()
       return { m }
     end
     sim.nextRolls = { 1 }; ok(a:roll()); sim:run(0)
-    ok(a.session:gameOver(), "the game ended"); ok(a:startGame()); sim:run(0)
+    ok(a.session:gameOver(), "the game ended"); sim:run(ns.Const.STAKE_BREAK); ok(a:startGame()); sim:run(0)
     sim.bus.filter = nil
     eq(#held, 2)
     for i = 1, #held do sim.bus:send(A, "WHISPER", B, held[i]) end
@@ -547,7 +549,7 @@ describe("stake", function()
       return { m }
     end
     sim.nextRolls = { 1 }; ok(a:roll()); sim:run(0)
-    ok(a.session:gameOver(), "the game ended"); ok(a:startGame()); sim:run(1)
+    ok(a.session:gameOver(), "the game ended"); sim:run(ns.Const.STAKE_BREAK); ok(a:startGame()); sim:run(1)
     sim.bus.filter = nil
     sim:run(1)
     eq(b.session, nil); eq(refused, { { tid, "stake" } }); eq(a.session.seats[2], false)

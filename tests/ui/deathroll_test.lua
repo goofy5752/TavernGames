@@ -178,6 +178,16 @@ describe("ui: Death Roll view", function()
     eq(#w:texts("Не стана."), 0)
   end)
 
+  it("a roll the host of a staked game never played: the hint to stay in the group and roll again", function()
+    local w, V = setup()
+    local s = w.ns.client.session
+    s.rollUnheard = true; w.ns.client.events:emit("session", s); w:advance(0)
+    eq(#w:texts("Домакинът не видя хвърлянето ти. Остани в групата и хвърли пак."), 1); eq(#w:texts("Не стана."), 0)
+    eq(V.rollButton:IsEnabled(), true)
+    s.rollUnheard = nil; w.ns.client.events:emit("session", s); w:advance(0)
+    eq(#w:texts("Домакинът не видя"), 0)
+  end)
+
   it("a long ladder keeps the newest rolls behind „…“; rolling 1 ends it with the loser named", function()
     local w, V, View = setup()
     local s = w.ns.client.session

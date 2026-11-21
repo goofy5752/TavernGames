@@ -4,8 +4,10 @@ local _, ns = ...
 -- chat (RANDOM_ROLL_RESULT), the env calls env.random, env.roll, env.group and
 -- env.groupInvite, the automatic accept of my host's group invite, and the group
 -- changes. Produces ns.RollChat. RandomRoll is called only through env.roll (a
--- click on „Хвърли“) and from /tavern probe roll (wow/Slash.lua).
+-- click on „Хвърли“) and from /tavern probe roll (wow/Slash.lua); every call of
+-- it, the player's typed /roll too, is caught by a hook (RollChat.made).
 local Names, Adapter = ns.Names, ns.Adapter
+local C = ns.Const
 
 local RollChat = {}
 ns.RollChat = RollChat
@@ -96,11 +98,46 @@ function RollChat.env(env, bot)
   end
 end
 
+-- My RandomRoll calls of the last ROLL_ECHO_WAIT s: {lo, hi, at = GetTime()}.
+-- The /roll slash command passes its numbers as text, and one number alone
+-- is the top of 1..n.
+local made = {}
+
+local function range(lo, hi)
+  lo, hi = tonumber(lo), tonumber(hi)
+  if not hi then return 1, lo or 100 end
+  return lo or 1, hi
+end
+
+-- A RandomRoll of lo..hi ran in the last ROLL_ECHO_WAIT s -> bool; the call
+-- is used up (one call, one roll line).
+function RollChat.made(lo, hi)
+  local now, found = GetTime(), false
+  for i = #made, 1, -1 do
+    local r = made[i]
+    if now - r.at > C.ROLL_ECHO_WAIT then
+      table.remove(made, i)
+    elseif not found and r.lo == lo and r.hi == hi then
+      table.remove(made, i)
+      found = true
+    end
+  end
+  return found
+end
+
+if type(hooksecurefunc) == "function" and type(RandomRoll) == "function" then
+  hooksecurefunc("RandomRoll", function(lo, hi)
+    lo, hi = range(lo, hi)
+    made[#made + 1] = { lo = lo, hi = hi, at = GetTime() }
+  end)
+end
+
 -- The name a roll line shows, as `client` takes it: my own first name (what
--- UnitName gives) stands for env.me, unless another seat at my table has a
--- name it matches too (a namesake: then it is passed as shown, and the roll
--- reaches no seat rather than a wrong one).
-local function rollerName(client, shown)
+-- UnitName gives) stands for env.me only when a RandomRoll of that range ran
+-- in the last ROLL_ECHO_WAIT s (RollChat.made) and no other seat at my table
+-- has a name it matches too. Otherwise it is passed as shown: a namesake's
+-- roll reaches no seat rather than a wrong one, and is never taken for mine.
+local function rollerName(client, shown, lo, hi)
   local me = client.env.me
   if shown ~= Names.normalize(UnitName("player")) then return shown end
   local s = client.session
@@ -108,7 +145,7 @@ local function rollerName(client, shown)
   for i = 1, #seats do
     if seats[i] and seats[i] ~= me and Names.matches(seats[i], shown) then return shown end
   end
-  return me
+  return RollChat.made(lo, hi) and me or shown
 end
 
 -- The last roll line seen, for /tavern probe roll: {raw, name, n, lo, hi, at};
@@ -121,7 +158,7 @@ local EVENTS = {
     local shown, n, lo, hi = RollChat.parse(text)
     if not shown then return end
     local client = ns.client
-    local name = client and rollerName(client, shown) or shown
+    local name = client and rollerName(client, shown, lo, hi) or shown
     RollChat.last = { raw = text, name = name, n = n, lo = lo, hi = hi, at = GetTime() }
     if client then client:rollSeen(name, n, lo, hi) end
   end,

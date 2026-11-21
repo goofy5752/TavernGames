@@ -16,24 +16,27 @@ local _, ns = ...
 -- its own hand on timeout (armAuto), again every AUTO_RETRY seconds while the
 -- turn stays mine (the move was lost, or my cards had not come yet).
 local Session = ns.Session
+local C = ns.Const
 local copy, seatOf = ns.Util.copy, ns.Util.seatOf
 
--- Extensions ns.Ext[x], x in engine.ext (a name not registered is skipped): hook
+-- Extensions ns.Ext[x], x in engine.ext (a name not registered is skipped), and
+-- at a staked table (s.stake) last of all ns.Ext.stakes (core/Stakes.lua): hook
 -- calls `name` on every one that has it and returns the first non-nil result;
 -- filterAct passes a member's action through their act hooks until one drops it.
 -- Hooks: act, applied, auto (see the shared contracts), adopted(s, prevState, m,
 -- how) after the snapshot m replaced my state (how: see Member.adopt),
 -- hostChanged(s) when my table changed host; refused(s, seat, a) (member: an
 -- event of my host that does not apply), forged(s, seat, a) (member, engine
--- with `view`: an event for my seat that I did not send and that is no public
--- timeout due by my own clock, or a seat-0 event no honest host plays now;
--- Member.timedOut, Member.unasked),
+-- with `view`, or a staked table's engine without `idle`: an event for my seat
+-- that I did not send and that is no public timeout due by my own clock, or a
+-- seat-0 event no honest host plays now; Member.timedOut, Member.unasked),
 -- stuck(s) (my deadline passed and I have no automatic move to make: e.g. my cards are missing);
 -- need(s, action) (host: a system action that needs randomness), lapsed(s)
 -- (host: a shuffle was not dealt in FAIR_WAIT; called before it is opened again),
 -- table(s, a) -> true (a seat-0 event the extension applied itself), snap(s)
 -- -> the SNP field `fr`, leaving(s) (my client stands up: Client:stand, before
--- its STD). A hook that raises counts as nil: the error goes to
+-- its STD), gone(s) (member: my host answered SNO "gone" while I held a seat,
+-- before my session ends). A hook that raises counts as nil: the error goes to
 -- env.log ("error", "ext", "<ext>.<hook>", message), so it cannot cut short the
 -- request, event or snapshot handling around it (e.g. the sitter's SNP after a sit);
 -- an act hook that raises drops the action.
@@ -46,8 +49,22 @@ local function call(s, id, x, name, ...)
   return nil
 end
 
+local NONE, STAKED = {}, {} -- STAKED[ext]: that list with "stakes" last
+
+local function exts(s)
+  local ext = s:engine().ext or NONE
+  if s.stake == nil then return ext end
+  local list = STAKED[ext]
+  if not list then
+    list = { unpack(ext) }
+    list[#list + 1] = "stakes"
+    STAKED[ext] = list
+  end
+  return list
+end
+
 function Session:hook(name, ...)
-  local ext, out = self:engine().ext or {}, nil
+  local ext, out = exts(self), nil
   for i = 1, #ext do
     local x = ns.Ext[ext[i]]
     local r = nil
@@ -68,7 +85,7 @@ function Session:applyUnsent(seat, a)
 end
 
 function Session:filterAct(seat, a)
-  local ext = self:engine().ext or {}
+  local ext = exts(self)
   for i = 1, #ext do
     local x = ns.Ext[ext[i]]
     if a ~= nil and x and x.act then a = call(self, ext[i], x, "act", seat, a) end
@@ -87,11 +104,12 @@ local function occupied(seats)
 end
 
 -- The engine state of a new game: `first` when that seat is occupied, else the
--- lowest occupied seat begins. With engine.view: my seat's view of it.
+-- lowest occupied seat begins; opts.staked at a staked table. With
+-- engine.view: my seat's view of it.
 function Session:newGame(first)
   local seats, lowest = occupied(self.seats)
   local engine = self:engine()
-  local state = engine.new({ first = seats[first] and first or lowest, seats = seats, opt = copy(self.opt) })
+  local state = engine.new({ first = seats[first] and first or lowest, seats = seats, opt = copy(self.opt), staked = self.stake ~= nil })
   if engine.view then return engine.view(state, self.mySeat or 0) end
   return state
 end
@@ -137,9 +155,10 @@ function Session:armAuto()
 end
 
 -- The engine's result turned from nil to a value: event "result" (once), with
--- left = the seat whose leaving ended the game (the engine's r.left, else nil)
--- and names = seat -> name or false as the table sat before the event that
--- ended it. While there is no result, s.seatedBefore keeps that copy of the
+-- left = the seat whose leaving ended the game (the engine's r.left, else nil),
+-- names = seat -> name or false as the table sat before the event that
+-- ended it, q = the number of that event and sk = the table's stake (nil: for
+-- fun). While there is no result, s.seatedBefore keeps that copy of the
 -- seats (Member.adopt sets it too, for a member whose first event ends the game).
 -- s.gameNo (local, never sent) names the game my client holds: it goes up
 -- when a game begins here, by a start (`began`) or inside the engine (a known
@@ -155,6 +174,7 @@ function Session:noteResult(began)
       tid = self.tid, game = self.game, opt = copy(self.opt), seats = copy(self.seats),
       winners = copy(r.winners), losers = copy(r.losers), left = r.left,
       names = copy(self.seatedBefore or self.seats), at = self.client.env.epoch(),
+      q = self.seq + 1, sk = self.stake,
     })
   end
   if not r then self.seatedBefore = copy(self.seats) end
@@ -175,8 +195,10 @@ end
 -- over: it starts by itself), "short" (fewer than minSeats seated), "live" (a
 -- game is running and not over), "book" (a sealed game is over at a live table and my book has
 -- not published its keys yet: the check of every hand would be lost; an aborted
--- table's book is closed and waits for nothing). The
--- checks of startGame, no effect.
+-- table's book is closed and waits for nothing); at a staked table "group" (a
+-- seated player outside my group, for an engine that needs one: Stakes.grouped)
+-- and "break" (STAKE_BREAK has not passed by my clock since the last game
+-- ended: s.stakeEndedAt, core/Stakes.lua). The checks of startGame, no effect.
 function Session:canStart()
   if self.role ~= "host" then return nil, "nothost" end
   local engine, over = self:engine(), self:gameOver()
@@ -184,6 +206,8 @@ function Session:canStart()
   if self:seatedCount() < engine.minSeats then return nil, "short" end
   if self.status == "live" and not over then return nil, "live" end
   if engine.sealed and over and self.status == "live" and not (self.book and self.book.published) then return nil, "book" end
+  if self.stake ~= nil and engine.needsGroup and not ns.Stakes.grouped(self) then return nil, "group" end
+  if self.stake ~= nil and self.stakeEndedAt and self.client.env.now() < self.stakeEndedAt + C.STAKE_BREAK then return nil, "break" end
   return true
 end
 

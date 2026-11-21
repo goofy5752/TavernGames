@@ -266,13 +266,13 @@ function View.update(f, s)
   local rolling = s.rolling ~= nil
   f.rollButton:SetShown(myTurn)
   f.range:SetShown(myTurn)
-  f.stuck:SetShown(myTurn and s.rollStuck == true and not rolling)
+  f.stuck:SetShown(myTurn and (s.rollStuck == true or s.rollUnheard == true) and not rolling)
   if myTurn then
     f.rollButton.text:SetText(L(rolling and "deathroll.rolling" or "deathroll.roll"))
     f.rollButton:SetEnabled(not rolling)
     f.rollButton:SetAlpha(rolling and ROLLING_ALPHA or 1)
     f.range:SetText(L("deathroll.range", st.max))
-    f.stuck:SetText(L("deathroll.stuck", st.max))
+    f.stuck:SetText(s.rollUnheard and L("roll.unheard") or L("deathroll.stuck", st.max))
   end
   local text, color = statusLine(s, myTurn, client)
   f.status:SetText(text or "")

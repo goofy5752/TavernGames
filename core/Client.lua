@@ -87,10 +87,16 @@ end
 -- Refusals arrive as the event "refused"(tid, why). `sk`: the table's stake I
 -- accept (nil at a fun table); any other is refused "stake". A client without a
 -- ledger (a bot) sits at no staked table -> nil, "stake" at once, nothing sent.
+-- A client without /roll (env.roll) sits at no staked Death Roll (an engine
+-- with `idle` takes only rolls the host saw): "refused"(tid, "roll") and nil, "roll".
 function Client:sit(tid, seat, sk)
-  if not self.ledger then
-    local rec, s = self.lobby:get(tid), self.session
-    if sk ~= nil or (rec and rec.stake ~= nil) or (s and s.tid == tid and s.stake ~= nil) then return nil, "stake" end
+  local rec, s = self.lobby:get(tid), self.session
+  local staked = sk ~= nil or (rec and rec.stake ~= nil) or (s and s.tid == tid and s.stake ~= nil)
+  if not self.ledger and staked then return nil, "stake" end
+  local engine = rec and ns.Games.engine(rec.game)
+  if staked and not self.env.roll and engine and engine.idle then
+    ns.Session.refuse(self, tid, "roll")
+    return nil, "roll"
   end
   ns.Session.request(self, "SIT", tid, seat, sk)
 end

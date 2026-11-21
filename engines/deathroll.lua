@@ -6,8 +6,11 @@ ns.Engines = ns.Engines or {}
 -- from the "rolls" extension (server roll seen, claimed, asked for, or a
 -- timeout's local roll, see E.SOURCES), the players share a group ("party").
 -- At most 5 players (Const.PARTY_SIZE) so everyone fits one WoW party; the addon never converts a group to a raid.
+-- A staked game (opts.staked: state.staked) takes only rolls the host saw
+-- (src "seen") and has no automatic roll; a seat that stays on turn instead
+-- is stood up by the host (E.idle, core/Stakes.lua).
 local E = {
-  id = "deathroll", minSeats = 2, maxSeats = 5, start = "host", needsGroup = true, stakes = true,
+  id = "deathroll", minSeats = 2, maxSeats = 5, start = "host", needsGroup = true, stakes = true, idle = true,
   ext = { "rolls", "party" },
   options = { { id = "start", choices = { 100, 1000, 10000, 100000 }, default = 1000 } },
   SOURCES = { seen = true, claim = true, ask = true, timeout = true },
@@ -34,6 +37,7 @@ function E.new(opts)
   return {
     players = players, turn = (first and seats[first]) and first or players[1],
     start = start, max = start, rolls = {}, phase = "play", loser = nil,
+    staked = (opts and opts.staked) or nil,
   }
 end
 
@@ -44,7 +48,7 @@ function E.apply(s, seat, a)
   if a.max ~= s.max then return nil, "max" end
   local n = a.n
   if type(n) ~= "number" or n % 1 ~= 0 or n < 1 or n > s.max then return nil, "n" end
-  if not E.SOURCES[a.src] then return nil, "src" end
+  if not E.SOURCES[a.src] or (s.staked and a.src ~= "seen") then return nil, "src" end
   s.rolls[#s.rolls + 1] = { seat = seat, n = n, max = s.max, src = a.src }
   if n == 1 then
     s.phase, s.loser, s.turn = "over", seat, nil
@@ -61,7 +65,7 @@ function E.legal(s, seat)
 end
 
 function E.auto(s, seat, random)
-  if s.phase ~= "play" or s.turn ~= seat then return nil end
+  if s.phase ~= "play" or s.turn ~= seat or s.staked then return nil end
   return { k = "roll", n = (random or math.random)(1, s.max), max = s.max, src = "timeout" }
 end
 
