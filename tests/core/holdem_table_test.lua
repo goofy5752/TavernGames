@@ -702,7 +702,7 @@ describe("holdem: the book", function()
     tap(cl[3], function() if not gone and cl[3].session:gameOver() then gone = true; sim:offline(N[3]) end end, true)
     ok(ns.Cash.close(cl[1])); finishHand(); eq(st().phase, "closed"); eq(keyActs(N[3]), 1)
     eq({ cl[1]:startGame() }, { nil, "book" }); eq(#log, 0)
-    sim:run(30); eq(cl[1].session.book.published, true); local q0 = cl[1].session.seq
+    sim:run(31); eq(cl[1].session.book.published, true); local q0 = cl[1].session.seq
     eq(#log, 3)                                                                                -- the host, seat 2 and the watcher
     for _, x in ipairs(log) do eq({ x.q <= q0, x.g, x.open, x.missing }, { true, g, 3, { N[3] } }) end
     ok(cl[1]:startGame()); sim:run(1); local g2 = st().g; ok(g2 ~= g); eq(#log, 3)               -- ended before the start: nothing more
@@ -793,6 +793,21 @@ describe("holdem: the book", function()
     ok(ns.Cash.close(cl[1])); finishHand(); sim:run(32)
     spentFirst(); eq(keyActs(N[3]), 2); eq(#log, 4)                                             -- seats 2 and 3 at the close, the host's own, seat 3 again
     ns.Book.spend = spend
+  end)
+  it("the last hand outlasts BOOK_WAIT after „Приключи“: the wait runs from the end of the game, the one final event has every key", function()
+    tableN(3, nil, 90); local bk = { books(cl[1]), books(cl[2]), books(w) }; ok(cl[1]:startGame()); sim:run(3); play(1)
+    -- every key reaches the host 2 s after it was sent
+    local recv = cl[1].receive
+    cl[1].receive = function(self, ch, from, msg)
+      if msg.t == "ACT" and msg.a.op == "key" then sim.envs[N[1]].after(2, function() recv(self, ch, from, msg) end); return end
+      recv(self, ch, from, msg)
+    end
+    local mark = #sim.sent; ok(ns.Cash.close(cl[1])); sim:run(ns.Const.BOOK_WAIT + 5); eq({ st().closing, E.over(st()) }, { true, false })
+    finishHand(); eq(st().phase, "closed"); sim:run(5)
+    local keys = {}
+    for _, a in ipairs(evs(W, mark)) do if a.k == "book" then keys[#keys + 1] = a end end
+    eq(keys, { { k = "book", op = "keys", m = { KEY(1), KEY(2), KEY(3) }, g = st().g, f = true } })
+    for i = 1, 3 do eq(#bk[i], 1); eq({ bk[i][1].ok, bk[i][1].open, bk[i][1].missing }, { 2, 0, {} }) end
   end)
   it("a closed game that was aborted and then changed host: the new host starts „Нова игра“", function()
     tableN(3); ok(cl[1]:startGame()); sim:run(3); play(1); ok(ns.Cash.close(cl[1])); finishHand(); sim:run(3)

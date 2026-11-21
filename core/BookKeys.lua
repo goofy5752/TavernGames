@@ -9,7 +9,7 @@ local _, ns = ...
 -- Once the game is over (the host's „Приключи“ {k="close"}, the hand played
 -- out: E.over) every seated client sends its key once (book.sent); the host
 -- keeps them (book.wait) and publishes them with its own when every seated
--- seat's is in, BOOK_WAIT after the close event at the latest (s.keysTimer;
+-- seat's is in, BOOK_WAIT after the game was over at the latest (s.keysTimer;
 -- book.published); that event and every later one is final (f = true): only
 -- a final event closes the book. A STD meanwhile publishes the keys kept
 -- first (not final); a member that sees a final event without the key it sent
@@ -17,7 +17,7 @@ local _, ns = ...
 -- stands up: the host's key goes out before the table stops. A key leaves
 -- only spent (Book.spend), always the one this game's commits came from. A
 -- published key under my seat is mine (book.out, my kept key dropped) or
--- forged (book.forged, a bad hand). Also book.closeAt (my clock at the close).
+-- forged (book.forged, a bad hand). Also book.overAt (my clock when the game was over).
 local Book = ns.Book
 
 local C = ns.Const
@@ -135,19 +135,21 @@ function Book.take(s, seat, a)
 end
 
 -- Cash's react: once the game is over my key is due. Host: the publish when
--- every seated seat's is in, else BOOK_WAIT after the close event.
+-- every seated seat's is in, else BOOK_WAIT after the game was over (book.overAt:
+-- the hand running at „Приключи“ is played out first, however long it takes).
 function Book.due(s)
   if not over(s) then return end
-  local book = Book.of(s)
+  local book, now = Book.of(s), s.client.env.now()
+  book.overAt = book.overAt or now
   if s.role ~= "host" then
     if s.mySeat and not (book.sent or book.out) and myKey(s, book) then send(s, book, book.key) end
     return
   end
   if book.published then return end
-  local all, now = true, s.client.env.now()
+  local all = true
   for q, name in ipairs(s.seats) do all = all and (not name or q == s.mySeat or book.given[q]) end
   if all then return publish(s, book, true) end
-  s.keysTimer = s.keysTimer or s.client:after(math.max(0, (book.closeAt or now) + C.BOOK_WAIT - now), function()
+  s.keysTimer = s.keysTimer or s.client:after(math.max(0, book.overAt + C.BOOK_WAIT - now), function()
     s.keysTimer = nil
     if s.client.session == s and s.role == "host" and s.book == book and not book.published then publish(s, book, true) end
   end)
@@ -160,8 +162,6 @@ function Book.event(s, seat, a)
   if k == "book" and a.op == "keys" then
     Book.addKeys(s, a.m, a.g)
     if a.f and over(s) then Book.close(s); send(s, book, book.sent, "resent") end
-  elseif k == "close" then
-    book.closeAt = s.client.env.now()
   elseif k == "abort" then
     book.published = s.role == "host" or nil -- nothing is waited for
     Book.close(s)
