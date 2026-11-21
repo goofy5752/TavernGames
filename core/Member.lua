@@ -39,11 +39,31 @@ function Session:requestSync()
   end
 end
 
+-- The stake I accepted for table `tid` -> known, sk: the note of my SIT
+-- (db.stakeSat, Session.request: it outlives a /reload or a logout), else my
+-- session at that table. Unknown (a crash, or a table I opened): the
+-- snapshot's stake is taken.
+local function accepted(client, tid)
+  local note, s = client.env.db.stakeSat, client.session
+  if type(note) == "table" and note.tid == tid then return true, note.sk end
+  if s and s.tid == tid then return true, s.stake end
+  return false, nil
+end
+
 -- Member: session from a snapshot (new, or replacing the current one; a host
--- that lost its table to `sender` steps down first).
+-- that lost its table to `sender` steps down first). A snapshot that seats me
+-- at another stake than the one I accepted stands me up ("refused" "stake").
 function Member.adopt(client, sender, m)
   local t, me = m.tbl, client.env.me
   local seat = seatOf(t.s, me)
+  local known, sk = accepted(client, m.tid)
+  if seat and known and sk ~= t.sk then
+    client:send("WHISPER", sender, Session.message("STD", { tid = m.tid }))
+    client.pending, client.gaveUp = nil, m.tid
+    if client.session and client.session.role == "host" then Succession.demote(client.session) end
+    if client.session then Session.leave(client) end
+    return Session.refuse(client, m.tid, "stake")
+  end
   local fresh = client.session == nil -- no memory of this table (a relog, or I just came)
   local s = client.session or setmetatable({ client = client }, Session)
   local prevState, prevHost = s.state, s.host
@@ -59,7 +79,7 @@ function Member.adopt(client, sender, m)
   if s.role == "host" then Succession.demote(s) end
   s.tid, s.role, s.mySeat, s.host = m.tid, seat and "player" or "watcher", seat, sender
   s.epoch, s.seq, s.seats = m.e, m.q, copy(t.s)
-  s.game, s.access, s.turn, s.watchers = t.g, t.ac, t.tn, t.w or 0
+  s.game, s.access, s.turn, s.watchers, s.stake = t.g, t.ac, t.tn, t.w or 0, t.sk
   s.opt = ns.Games.resolve(t.g, t.o)
   local engine = ns.Games.engine(t.g)
   s.state = type(m.st) == "table" and engine.restore(m.st) or nil

@@ -1,7 +1,7 @@
 local _, ns = ...
 ns.Engines = ns.Engines or {}
 
-local E = { id = "ttt", minSeats = 2, maxSeats = 2, WINS = 3 }
+local E = { id = "ttt", minSeats = 2, maxSeats = 2, WINS = 3, stakes = true }
 ns.Engines.ttt = E
 
 local LINES = {

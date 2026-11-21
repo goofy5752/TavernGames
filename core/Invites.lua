@@ -8,15 +8,18 @@ local _, ns = ...
 -- after INVITE_SECONDS (INR "auto" "timeout") or goes stale because its table
 -- filled or closed ("inviteGone"). A "yes" sits down through the lobby record.
 --
--- Events: "invite"({tid, game, host, seats, expires}) and "inviteGone"(tid) on
--- the invitee, "inviteAnswer"(name, a, why) on the host.
+-- Events: "invite"({tid, game, host, seats, expires, stake}) and "inviteGone"(tid) on
+-- the invitee, "inviteAnswer"(name, a, why) on the host. INV carries the
+-- table's stake `sk` (absent at a fun table); a "yes" sits with it. A client
+-- whose invites.noStakes is set (a bot) declines a staked one ("auto" "busy").
 -- Owned by a Client: timers go through client:after so client:stop cancels them.
 local Invites = {}
 Invites.__index = Invites
 ns.Invites = Invites
 
 local C = ns.Const
-local copy = ns.Util.copy
+local Session = ns.Session
+local copy, byteLess = ns.Util.copy, ns.Util.byteLess
 
 local ANSWERS = { yes = true, no = true, auto = true }
 
@@ -53,7 +56,8 @@ function Invites.new(client)
   local self = setmetatable({
     client = client,
     sent = {},       -- host side: invitee name -> { tid, timer }
-    received = nil,  -- invitee side: { tid, game, host, seats, expires, timer }
+    received = nil,  -- invitee side: { tid, game, host, seats, expires, stake, timer }
+    noStakes = false, -- true: every invitation to a staked table is declined (Bots)
   }, Invites)
   client:on("session", function(s) self:sessionChanged(s) end)
   client:on("tables", function() self:tablesChanged() end)
@@ -98,7 +102,7 @@ function Invites:send(name)
     client.events:emit("inviteAnswer", name, "auto", "timeout")
   end)
   self.sent[name] = entry
-  client:send("WHISPER", name, message("INV", { tid = s.tid, g = s.game, h = client.env.me, s = copy(s.seats) }))
+  client:send("WHISPER", name, message("INV", { tid = s.tid, g = s.game, h = client.env.me, s = copy(s.seats), sk = s.stake }))
   -- Seated players may become host: they learn the new name at once (INA), so
   -- an invited watcher is still let in after a claim. Newcomers get it in SNP.
   if s.access == "invite" then
@@ -159,13 +163,14 @@ end
 function Invites:onInvite(sender, m)
   local client, env = self.client, self.client.env
   if m.h ~= sender or type(m.g) ~= "string" or type(m.s) ~= "table" then return end
+  if m.sk ~= nil and not ns.Stake.valid(m.sk) then return end
   local r = self.received
   if r and r.tid == m.tid and r.host == sender then return end -- a repeated whisper
-  if r then return reply(client, sender, m.tid, "auto", "busy") end
+  if r or (m.sk ~= nil and self.noStakes) then return reply(client, sender, m.tid, "auto", "busy") end
   local s = client.session
   local why = Invites.autoReason(env.status(), env.db.snoozeUntil, env.epoch(), s ~= nil and s.tid ~= m.tid)
   if why then return reply(client, sender, m.tid, "auto", why) end
-  r = { tid = m.tid, game = m.g, host = sender, seats = copy(m.s), expires = env.now() + C.INVITE_SECONDS }
+  r = { tid = m.tid, game = m.g, host = sender, seats = copy(m.s), expires = env.now() + C.INVITE_SECONDS, stake = m.sk }
   r.timer = client:after(C.INVITE_SECONDS, function()
     if self.received ~= r then return end
     reply(client, r.host, r.tid, "auto", "timeout")
@@ -174,7 +179,9 @@ function Invites:onInvite(sender, m)
   -- Known to the lobby already: from now on its record going away means the table closed.
   r.listed = client.lobby:get(r.tid) ~= nil
   self.received = r
-  client.events:emit("invite", { tid = r.tid, game = r.game, host = r.host, seats = copy(r.seats), expires = r.expires })
+  client.events:emit("invite", {
+    tid = r.tid, game = r.game, host = r.host, seats = copy(r.seats), expires = r.expires, stake = r.stake,
+  })
   self:tablesChanged()
 end
 
@@ -193,12 +200,14 @@ end
 
 -- answer "yes" | "no" | "snooze". "snooze" says "no" and keeps further
 -- invitations away for SNOOZE_SECONDS. "yes" asks for the lowest free seat of
--- the lobby record; without one it is refused locally ("gone" or "taken").
+-- the lobby record, at the invitation's stake; without one it is refused
+-- locally ("gone" or "taken").
 function Invites:answer(tid, answer)
   if answer ~= "yes" and answer ~= "no" and answer ~= "snooze" then return end
   local client, env = self.client, self.client.env
-  local r = self.received
+  local r, stake = self.received, nil
   if r and r.tid == tid then
+    stake = r.stake
     reply(client, r.host, tid, answer == "yes" and "yes" or "no")
     self:drop(false)
   end
@@ -208,7 +217,7 @@ function Invites:answer(tid, answer)
   if not rec then return client.events:emit("refused", tid, "gone") end
   local seat = freeSeat(rec.seats)
   if not seat then return client.events:emit("refused", tid, "taken") end
-  ns.Session.request(client, "SIT", tid, seat)
+  client:sit(tid, seat, stake)
 end
 
 local HANDLERS = { INV = Invites.onInvite, INR = Invites.onAnswer, INA = Invites.onAdded }
@@ -218,4 +227,27 @@ function Invites:receive(channel, sender, m)
   local handler = HANDLERS[m.t]
   if not handler or channel ~= "WHISPER" or type(m.tid) ~= "string" then return end
   handler(self, sender, m)
+end
+
+---------------------------------------------------------------------------
+-- The invited set of a session (methods of ns.Session; called at run time only)
+---------------------------------------------------------------------------
+
+-- The invited set of an "invite" table as a list in byte order (nil when empty),
+-- so a member that becomes host keeps letting the same people in.
+function Session:invitedList()
+  if self.access ~= "invite" then return nil end
+  local out = {}
+  for name in pairs(self.invited) do out[#out + 1] = name end
+  if #out == 0 then return nil end
+  table.sort(out, byteLess)
+  return out
+end
+
+-- Adds every string in `list` (from an SNP or HND) to the invited set.
+function Session:addInvited(list)
+  if type(list) ~= "table" then return end
+  for i = 1, #list do
+    if type(list[i]) == "string" then self.invited[list[i]] = true end
+  end
 end

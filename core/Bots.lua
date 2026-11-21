@@ -21,7 +21,10 @@ local _, ns = ...
 -- env.groupInvite: its rolls are table rolls (src "ask").
 --
 -- Behaviour: a bot accepts an invitation after ACCEPT_AFTER s (two bots that
--- accept at once both get a seat: see Invites.seatFor), on its turn makes its
+-- accept at once both get a seat: see Invites.seatFor), but declines one to a
+-- staked table at once ("auto" "busy", invites.noStakes): a bot never plays
+-- for gold, and neither Bots:fill nor a bot's own fill does anything at a
+-- staked table. On its turn a bot makes its
 -- move after MOVE_AFTER s (the engine's bot move `engine.bot(view, seat,
 -- random)` when the engine has one and it returns an action, else its
 -- automatic move, client:playAuto), in phase "match" asks for a rematch after
@@ -177,7 +180,7 @@ end
 -- engine with botFill: fewer than botFill, live or not)?
 local function wantsFill(bot)
   local s = bot.session
-  if not s or s.role ~= "host" or next(bot.invites.sent) ~= nil then return false end
+  if not s or s.role ~= "host" or s.stake or next(bot.invites.sent) ~= nil then return false end
   local n, engine = s:seatedCount(), s:engine()
   if engine.botFill then return n >= 2 and n < math.min(engine.botFill, #s.seats) end
   return s.status ~= "live" and n >= 2 and n < engine.minSeats
@@ -245,6 +248,7 @@ function Bots:spawn(name, cls)
     end
   end
   local bot = ns.Client.new(env)
+  bot.invites.noStakes = true
   self.list[#self.list + 1] = bot
   self.isBot[name] = true
   if env.guid then self.botGuid[env.guid] = true end
@@ -319,11 +323,11 @@ local function fillMine(self)
 end
 
 -- Fills a table I host with idle bots -> how many are asked | nil (bot mode
--- off, I host no table, or its game runs and the engine takes nobody in
--- then: no botFill). See the header.
+-- off, I host no table, it is staked, or its game runs and the engine takes
+-- nobody in then: no botFill). See the header.
 function Bots:fill(n)
   local s = self.client.session
-  if self.disabled or not s or s.role ~= "host" or (s.status == "live" and not s:gameOver() and not s:engine().botFill) then return nil end
+  if self.disabled or not s or s.role ~= "host" or s.stake or (s.status == "live" and not s:gameOver() and not s:engine().botFill) then return nil end
   local free = #s.seats - s:seatedCount()
   local asked = math.min(n or free, free)
   self.wanted = { tid = s.tid, left = asked }

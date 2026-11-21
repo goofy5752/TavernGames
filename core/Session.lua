@@ -86,6 +86,7 @@ function Session:record()
     tid = self.tid, g = self.game, h = self.host, e = self.epoch, ac = self.access,
     tn = self.turn, st = self.status == "live" and "live" or "open", s = copy(self.seats),
     w = self.watchers, o = self.opt and next(self.opt) ~= nil and copy(self.opt) or nil,
+    sk = self.stake,
   }
 end
 
@@ -269,25 +270,6 @@ function Session:scheduleTick()
   end)
 end
 
--- The invited set of an "invite" table as a list in byte order (nil when empty),
--- so a member that becomes host keeps letting the same people in.
-function Session:invitedList()
-  if self.access ~= "invite" then return nil end
-  local out = {}
-  for name in pairs(self.invited) do out[#out + 1] = name end
-  if #out == 0 then return nil end
-  table.sort(out, byteLess)
-  return out
-end
-
--- Adds every string in `list` (from an SNP or HND) to the invited set.
-function Session:addInvited(list)
-  if type(list) ~= "table" then return end
-  for i = 1, #list do
-    if type(list[i]) == "string" then self.invited[list[i]] = true end
-  end
-end
-
 function Session:snapshotTo(name)
   self.client:send("WHISPER", name, message("SNP", {
     tid = self.tid, e = self.epoch, q = self.seq, tbl = self:record(),
@@ -304,24 +286,25 @@ function Session:allows(peer)
 end
 
 -- Refusal reason for a SIT/WAT from `sender`, in the spec's order, or nil.
-function Session:check(sender, kind, seat)
+function Session:check(sender, kind, seat, sk)
   local peer = self.client.presence:get(sender)
   if not peer or peer.incompatible then return "version" end
   if peer.at ~= nil and peer.at ~= self.tid then return "busy" end
   if not self:allows(peer) then return "access" end
   if kind ~= "SIT" then return self.watchers >= (self:engine().watchers or C.MAX_WATCHERS) and "full" or nil end
+  if sk ~= self.stake then return "stake" end -- a SIT accepts the table's stake, or none at a fun table
   if type(seat) ~= "number" or self.seats[seat] ~= false then return "taken" end
   return nil
 end
 
-function Session:onRequest(sender, kind, seat)
+function Session:onRequest(sender, kind, seat, sk)
   -- Already here (a repeated click): just the snapshot again.
   if seatOf(self.seats, sender) or (kind == "WAT" and self.watcherSet[sender]) then
     return self:snapshotTo(sender)
   end
   -- An invitee whose seat was taken a moment ago gets another free one.
   if kind == "SIT" then seat = ns.Invites.seatFor(self, sender, seat) end
-  local why = self:check(sender, kind, seat)
+  local why = self:check(sender, kind, seat, sk)
   if why then
     return self.client:send("WHISPER", sender, message("SNO", { tid = self.tid, why = why }))
   end
@@ -387,12 +370,13 @@ end
 -- Client entry points
 ---------------------------------------------------------------------------
 
--- opts {game, access, turn, opt} -> tid | nil, code ("busy" "game" "access" "turn" "opt").
+-- opts {game, access, turn, opt, stake} -> tid | nil, code ("busy" "game" "stake" "access" "turn" "opt").
 function Session.open(client, opts)
   opts = opts or {}
   if client.session then return nil, "busy" end
   local engine = ns.Games.engine(opts.game)
   if not engine then return nil, "game" end
+  if opts.stake ~= nil and not ns.Stake.allowed(opts.game, opts.stake) then return nil, "stake" end
   if not ACCESS[opts.access] then return nil, "access" end
   local turn = opts.turn == nil and C.TURN_DEFAULT or opts.turn
   if not contains(C.TURN_CHOICES, turn) then return nil, "turn" end
@@ -409,7 +393,7 @@ function Session.open(client, opts)
     client = client,
     tid = tid, role = "host", mySeat = 1, host = env.me, epoch = 1, seq = 0,
     seats = seats, state = nil, status = "open", deadline = nil, hostSilent = false,
-    game = opts.game, access = opts.access, turn = turn, opt = opt, watchers = 0,
+    game = opts.game, access = opts.access, turn = turn, opt = opt, watchers = 0, stake = opts.stake,
     watcherSet = {}, -- name -> true
     lastHeard = {},  -- member name -> env.now() of its last message
     invited = {},    -- name -> true, for access "invite" (client:invite; travels in SNP/HND)
@@ -420,9 +404,9 @@ function Session.open(client, opts)
   return tid
 end
 
--- kind "SIT" (with seat) or "WAT"; the answer is an SNP or the event "refused".
--- Unanswered for PENDING_SECONDS: given up ("gone"), so a late SNP is refused.
-function Session.request(client, kind, tid, seat)
+-- kind "SIT" (with seat and my stake sk, noted in db.stakeSat: Member.adopt) or "WAT"; the answer is an SNP
+-- or the event "refused". Unanswered for PENDING_SECONDS: given up ("gone"), so a late SNP is refused.
+function Session.request(client, kind, tid, seat, sk)
   local s = client.session
   if s and (s.tid ~= tid or s.role == "host") then return refuse(client, tid, "busy") end
   local host = s and s.host
@@ -442,7 +426,8 @@ function Session.request(client, kind, tid, seat)
       refuse(client, tid, "gone")
     end)
   end
-  local m = kind == "SIT" and { tid = tid, seat = seat } or { tid = tid }
+  local m = kind == "SIT" and { tid = tid, seat = seat, sk = sk } or { tid = tid }
+  if kind == "SIT" and not (s and s.mySeat) then client.env.db.stakeSat = { tid = tid, sk = sk } end -- a repeat keeps it
   client:send("WHISPER", host, message(kind, m))
 end
 
@@ -518,7 +503,7 @@ function Session.receive(client, channel, sender, m)
   local hosting = s and s.role == "host" and s.tid == m.tid
   if t == "SIT" or t == "WAT" then
     if hosting then
-      s:onRequest(sender, t, m.seat)
+      s:onRequest(sender, t, m.seat, m.sk)
     else
       client:send("WHISPER", sender, message("SNO", { tid = m.tid, why = "gone" }))
     end

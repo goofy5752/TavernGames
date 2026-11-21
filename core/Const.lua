@@ -49,4 +49,7 @@ ns.Const = {
   BOOK_KEYS = 24,    -- published keys a snapshot carries (the newest)
   BOOK_BATCH = 2,    -- hands of the book checked a tick
   AUTO_GRACE = 7,    -- the host plays a public timeout (E.publicAuto) for another seat this long after its deadline
+
+  STAKE_MIN = 100,         -- copper: the smallest stake (1s)
+  STAKE_MAX = 99999990000, -- copper: the largest stake (the gold cap, whole silver)
 }

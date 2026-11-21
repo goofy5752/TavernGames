@@ -60,11 +60,13 @@ function Client:peerOffline(name)
   self.presence:remove(name)
 end
 
--- opts {game, access, turn, opt} -> tid | nil, code ("busy" "game" "access" "turn" "opt").
+-- opts {game, access, turn, opt, stake} -> tid | nil, code ("busy" "game" "stake" "access" "turn" "opt").
+-- `stake`: copper (ns.Stake.valid), only for a game whose engine has `stakes = true`; nil = for fun.
 function Client:openTable(opts) return ns.Session.open(self, opts) end
 
--- Refusals arrive as the event "refused"(tid, why).
-function Client:sit(tid, seat) ns.Session.request(self, "SIT", tid, seat) end
+-- Refusals arrive as the event "refused"(tid, why). `sk`: the table's stake I
+-- accept (nil at a fun table); any other is refused "stake".
+function Client:sit(tid, seat, sk) ns.Session.request(self, "SIT", tid, seat, sk) end
 function Client:watch(tid) ns.Session.request(self, "WAT", tid) end
 
 -- Stands up or stops watching (the extensions hear of it first: hook `leaving`).
