@@ -252,6 +252,7 @@ ns.Ext.cash = {
     local key = dueKey(s)
     if key ~= s.dueKey then s.dueKey, s.dueAt = key, nil end
     armStep(s)
+    if s.role == "host" then s.backAsked, s.lapseOut = nil, nil; ns.Member.comeBack(s) end -- a held seat that hosts now asks itself
   end,
 
   -- Member: a forged event while no round runs (the hand is dealt in, its

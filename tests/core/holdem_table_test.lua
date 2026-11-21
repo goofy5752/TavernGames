@@ -586,4 +586,13 @@ describe("holdem: a seat a lapse named is held only while a hand can start witho
     cl[2]:stand(); sim:run(1); local c5 = sim:add(N[5]); sim.envs[N[5]].random = rnd(5); sim:run(1); c5:sit(tid, 2); sim:run(1)
     eq({ s.seats[2], s.lapseOut[2] }, { N[5], nil })
   end)
+  it("I-B: a held seat that becomes the host asks itself back; play resumes once the old host is stood", function()
+    tableN(3); tap(cl[1], function(m, from) return m.t == "SED" and from == N[2] end)
+    ok(cl[1]:startGame()); sim:run(3); heldBack(2); eq({ st().seats[2].away, cl[2].session.backAsked }, { true, true })
+    sim:offline(N[1])
+    for _ = 1, 150 do if host() then break end; sim:run(1) end
+    eq(host(), cl[2]); sim:run(2); eq({ st().seats[2].away, cl[2].session.lapseOut }, { false, nil })
+    for _ = 1, 260 do if st().seats[1] == false and st().phase == "bet" then break end; auto(1) end
+    eq({ st().seats[1], st().phase, E.players(st()), not st().seats[2].away, not st().seats[3].away }, { false, "bet", { 2, 3 }, true, true })
+  end)
 end)
