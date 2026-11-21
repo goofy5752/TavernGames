@@ -167,8 +167,9 @@ end
 -- Would startGame start the next game now -> true | nil, code: "nothost",
 -- "mode" (the engine has neither start == "host" nor `again` with the game
 -- over: it starts by itself), "short" (fewer than minSeats seated), "live" (a
--- game is running and not over), "book" (a sealed game is over and my book has
--- not published its keys yet: the check of every hand would be lost). The
+-- game is running and not over), "book" (a sealed game is over at a live table and my book has
+-- not published its keys yet: the check of every hand would be lost; an aborted
+-- table's book is closed and waits for nothing). The
 -- checks of startGame, no effect.
 function Session:canStart()
   if self.role ~= "host" then return nil, "nothost" end
@@ -176,7 +177,7 @@ function Session:canStart()
   if engine.start ~= "host" and not (engine.again and over) then return nil, "mode" end
   if self:seatedCount() < engine.minSeats then return nil, "short" end
   if self.status == "live" and not over then return nil, "live" end
-  if engine.sealed and over and not ns.Book.of(self).published then return nil, "book" end
+  if engine.sealed and over and self.status == "live" and not (self.book and self.book.published) then return nil, "book" end
   return true
 end
 

@@ -794,6 +794,14 @@ describe("holdem: the book", function()
     spentFirst(); eq(keyActs(N[3]), 2); eq(#log, 4)                                             -- seats 2 and 3 at the close, the host's own, seat 3 again
     ns.Book.spend = spend
   end)
+  it("a closed game that was aborted and then changed host: the new host starts „Нова игра“", function()
+    tableN(3); ok(cl[1]:startGame()); sim:run(3); play(1); ok(ns.Cash.close(cl[1])); finishHand(); sim:run(3)
+    eq({ st().phase, cl[1].session.book.published }, { "closed", true })
+    cl[2]:stand(); sim:run(1); cl[3]:stand(); sim:run(1); eq(cl[1].session.status, "aborted")
+    cl[2]:sit(tid, 2); sim:run(1); cl[3]:sit(tid, 3); sim:run(1); cl[1]:stand(); sim:run(3)       -- the host hands the table on
+    local h = host(); eq({ h, h.session.status, h.session:gameOver(), h.session.book and h.session.book.published }, { cl[2], "aborted", true, nil })
+    eq({ h:startGame() }, { true }); sim:run(3); eq({ st().hand, st().phase, cl[3].session.status }, { 1, "bet", "live" })
+  end)
 end)
 
 describe("holdem: what a full table costs", function()
