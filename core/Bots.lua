@@ -22,11 +22,18 @@ local _, ns = ...
 --
 -- Behaviour: a bot accepts an invitation after ACCEPT_AFTER s (two bots that
 -- accept at once both get a seat: see Invites.seatFor), on its turn makes its
--- automatic move (client:playAuto) after MOVE_AFTER s, in phase "match" asks
--- for a rematch after REMATCH_AFTER s, and as host starts the next game
--- START_AFTER s after any change that leaves Session.startable true (a game
--- the host starts, or the next match of an engine with `again`, once at least
--- minSeats are seated and no game runs).
+-- move after MOVE_AFTER s (the engine's bot move `engine.bot(view, seat,
+-- random)` when the engine has one and it returns an action, else its
+-- automatic move, client:playAuto), in phase "match" asks for a rematch after
+-- REMATCH_AFTER s, and as host starts the next game START_AFTER s after any
+-- change that leaves Session.startable true (a game the host starts, or the
+-- next match of an engine with `again`, once at least minSeats are seated and
+-- no game runs).
+-- Filling: a bot that hosts a table that is not "live" (open, or aborted after
+-- a stand) with at least 2 but fewer than minSeats seated and no invitation of
+-- its own pending invites one idle bot (Bots:idle) FILL_AFTER s after a change
+-- of its session; each seat taken is such a change, so a table of four fills
+-- one bot at a time. A table of a two-player game never fills this way.
 local Bots = {}
 Bots.__index = Bots
 ns.Bots = Bots
@@ -37,7 +44,7 @@ local copy = ns.Util.copy
 local MAX_BOTS = 12
 local STARTERS = { { "Бот Иванов", "PRIEST" }, { "Bot Barleybrew", "WARRIOR" }, { "Бот Петрова", "MAGE" } }
 local SPARE_CLASSES = { "ROGUE", "HUNTER", "WARLOCK", "DRUID", "PALADIN", "SHAMAN", "PRIEST", "WARRIOR", "MAGE" }
-local ACCEPT_AFTER, MOVE_AFTER, REMATCH_AFTER, START_AFTER = 1, 1.5, 2, 2
+local ACCEPT_AFTER, MOVE_AFTER, REMATCH_AFTER, START_AFTER, FILL_AFTER = 1, 1.5, 2, 2, 1
 
 local function hasBot(self, seats)
   for i = 1, #(seats or {}) do
@@ -152,10 +159,35 @@ local function nextAction(bot)
     return nil
   end
   if st.turn ~= s.mySeat then return nil end
-  return function() bot:playAuto() end, MOVE_AFTER
+  return function()
+    local engine = s:engine()
+    local a = engine.bot and engine.bot(st, s.mySeat, bot.env.random)
+    if a then bot:act(a) else bot:playAuto() end
+  end, MOVE_AFTER
 end
 
-local function behave(bot)
+-- Does `bot` host a table that waits for more players than have come (at least
+-- one guest, fewer than minSeats, no game running, no invitation pending)?
+local function wantsFill(bot)
+  local s = bot.session
+  if not s or s.role ~= "host" or s.status == "live" then return false end
+  local n = s:seatedCount()
+  return n >= 2 and n < s:engine().minSeats and next(bot.invites.sent) == nil
+end
+
+-- One idle bot is invited to `bot`'s table. A bot spawned just now is invited
+-- after the pending deliveries, so the host has heard its HI.
+local function fill(bots, bot)
+  local other = bots:idle()
+  if not other then return end
+  local name = other.env.me
+  if bot.presence:get(name) then return bot:invite(name) end
+  bot:after(0, function()
+    if wantsFill(bot) then bot:invite(name) end
+  end)
+end
+
+local function behave(bot, bots)
   bot:on("invite", function(inv)
     bot:after(ACCEPT_AFTER, function()
       local r = bot.invites.received
@@ -163,8 +195,14 @@ local function behave(bot)
     end)
   end)
   -- One pending step at a time; what to do is decided again when it fires.
-  local step
+  local step, filling
   bot:on("session", function()
+    if not filling and wantsFill(bot) then
+      filling = bot:after(FILL_AFTER, function()
+        filling = nil
+        if wantsFill(bot) then fill(bots, bot) end
+      end)
+    end
     if step then return end
     local act, delay = nextAction(bot)
     if not act then return end
@@ -197,7 +235,7 @@ function Bots:spawn(name, cls)
   self.isBot[name] = true
   if env.guid then self.botGuid[env.guid] = true end
   self.bus:join(name, function(channel, sender, msg) bot:receive(channel, sender, msg) end)
-  behave(bot)
+  behave(bot, self)
   bot:start()
   return bot
 end

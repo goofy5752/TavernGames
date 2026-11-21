@@ -266,6 +266,75 @@ describe("bots for any game", function()
     sim:run(4); eq(a.session.state.gp, { 0, 0 }); eq(a.session.state.phase, "play")
   end)
 
+  it("one human and three bots play a whole Белот match; every deal is checked; nothing leaves the machine", function()
+    local sim, a = setup(); local E = ns.Engines.belot
+    local fair, res = {}, {}; a:on("fair", function(e) fair[#fair + 1] = e.verdict end); a:on("result", function(r) res[#res + 1] = r end)
+    local tid = a:openTable{ game = "belot", access = "invite", turn = 45 }; ok(tid)
+    for _, name in ipairs(STARTERS) do ok(a:invite(name)) end
+    local mark = #sim.sent; sim:run(5); eq(a.session:seatedCount(), 4); eq(a.session.status, "live")
+    for _ = 1, 40000 do
+      local st = a.session.state; if E.over(st) then break end
+      if st.turn == 1 then a:playAuto() end; sim:run(1)                       -- I only ever pass and play my lowest card
+    end
+    sim:run(1); local st = a.session.state; eq(E.over(st), true); eq(#res, 1); ok(#fair >= 4)
+    eq(res[1].winners, st.winner == 1 and { 1, 3 } or { 2, 4 }); eq(res[1].left, nil); ok(st.score[st.winner] >= 151)
+    for _, v in ipairs(fair) do eq(v, "ok") end
+    eq(sim:count(function(m) return m.msg.t == "SED" or m.msg.t == "PRV" or m.msg.t == "PRQ" end), 0)
+    eq(sim.groupInvites, {}); eq(sim.rolled, {})
+    -- Nothing of the bot table (its seeds, faces, events, a bot's name) reached
+    -- the real side after the bots were invited.
+    local words, real = { tid, STARTERS[1], STARTERS[2], STARTERS[3] }, 0
+    for i = mark + 1, #sim.sent do
+      local m = sim.sent[i]
+      ok(not mentions(m.msg, words), "leak in " .. tostring(m.msg.t) .. " on " .. m.channel)
+      real = real + 1
+    end
+    ok(real > 0, "A sent nothing for real") -- its HIs went out, without `at`
+    local first = st.first; ok(a:startGame()); sim:run(4)
+    eq({ a.session.state.score, a.session.state.phase, a.session.state.first }, { { 0, 0 }, "bid", first % 4 + 1 })
+  end)
+
+  it("a bot-hosted Белот table fills with bots once I sit, and the bot host starts the next match", function()
+    local sim, a, _, bots = setup(); local E = ns.Engines.belot
+    local tid = bots:hostTable("belot"); ok(tid); sim:run(3)
+    local rec = a.lobby:get(tid); ok(rec, "the bot table is unknown"); eq(#rec.seats, 4)
+    local taken = 0
+    for i = 1, #rec.seats do if rec.seats[i] then taken = taken + 1 end end
+    eq(taken, 1)
+    a:sit(tid, 2); sim:run(8)
+    local s = a.session; eq(s:seatedCount(), 4); eq(s.mySeat, 2); eq(s.status, "live")
+    ok(bots.isBot[s.seats[1]]); ok(bots.isBot[s.seats[3]]); ok(bots.isBot[s.seats[4]])
+    local results = 0; a:on("result", function() results = results + 1 end)
+    for _ = 1, 40000 do
+      local st = a.session.state; if E.over(st) then break end
+      if st.turn == 2 then a:playAuto() end; sim:run(1)
+    end
+    eq(E.over(a.session.state), true); eq(results, 1)
+    sim:run(6); eq(a.session.state.score, { 0, 0 }); eq(a.session.state.phase, "bid")
+    -- A bot at seat 3 stands: the match ends, the table is aborted with three seated and fills again.
+    local short = false
+    a:on("session", function(cur)
+      if cur and cur.status == "aborted" and cur:seatedCount() == 3 then short = true end
+    end)
+    local three = a.session.seats[3]
+    for k = 1, #bots.list do
+      if bots.list[k].env.me == three then bots.list[k]:stand() end
+    end
+    sim:run(8)
+    ok(short, "the table was never aborted with three seated")
+    eq(a.session:seatedCount(), 4); eq(a.session.status, "live")
+    -- A bot table of Морски шах with me seated invites nobody.
+    local sim2, a2, _, bots2 = setup()
+    local invs = 0
+    bots2.busSend = function(self, from, channel, target, msg)
+      if msg.t == "INV" then invs = invs + 1 end
+      return Bots.busSend(self, from, channel, target, msg)
+    end
+    local tid2 = bots2:hostTable("ttt"); ok(tid2); sim2:run(3); a2:sit(tid2, 2); sim2:run(8)
+    eq(a2.session:seatedCount(), 2); eq(invs, 0)
+    for k = 1, #bots2.list do eq(next(bots2.list[k].invites.sent), nil) end
+  end)
+
   it("hostTable and inviteMe refuse a game that is not built", function()
     local _, _, _, bots = setup()
     eq(bots:hostTable("tabla"), nil); eq(bots:inviteMe("holdem"), nil); ok(bots:hostTable()) -- default ttt
