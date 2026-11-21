@@ -141,9 +141,15 @@ end
 -- and names = seat -> name or false as the table sat before the event that
 -- ended it. While there is no result, s.seatedBefore keeps that copy of the
 -- seats (Member.adopt sets it too, for a member whose first event ends the game).
-function Session:noteResult()
+-- s.gameNo (local, never sent) names the game my client holds: it goes up
+-- when a game begins here, by a start (`began`) or inside the engine (a known
+-- result is gone again: Морски шах's rematch), and with every snapshot that
+-- replaces my state (Member.adopt). An asked seat is kept for one gameNo only
+-- (ns.Stake.ask).
+function Session:noteResult(began)
   local engine = self:engine()
   local r = self.state and engine.result and engine.result(self.state)
+  if began or (self.resultSeen and not r) then self.gameNo = (self.gameNo or 0) + 1 end
   if r and not self.resultSeen then
     self.client.events:emit("result", {
       tid = self.tid, game = self.game, opt = copy(self.opt), seats = copy(self.seats),

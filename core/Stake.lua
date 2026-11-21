@@ -82,12 +82,17 @@ end
 
 -- Member.adopt seated me at a staked table without a note of mine for it (a
 -- crash, or a login with a stale note): the seat is kept for the running game
--- only, "stakeAsk"(tid, sk) asks me, and unless I accept (Stake.accept) the
--- game's end or the next game's start (Member's onEvent) stands me up
--- ("refused" "stake"). No game running: at once.
+-- only (s.stakeGame, its s.gameNo: Session:noteResult), "stakeAsk"(tid, sk)
+-- asks me, and unless I accept (Stake.accept) the game's end, the next game's
+-- start (Member's onEvent), a snapshot of anything but that game
+-- (Member.adopt) or a call to host the table (core/Succession.lua) stands me
+-- up ("refused" "stake"). No game running: at once. Meanwhile my note says
+-- "no stake accepted here": after a /reload the seat is refused, not asked
+-- about again in what may be the next game.
 function Stake.ask(client)
   local s = client.session
-  s.stakeAsk = true
+  s.stakeAsk, s.stakeGame = true, s.gameNo
+  Stake.note(client, s.tid, nil)
   if over(s) then return Stake.standUp(client, s) end
   client.events:emit("stakeAsk", s.tid, s.stake)
 end
@@ -102,8 +107,9 @@ function Stake.accept(client)
 end
 
 -- Client.new. "session"(nil), I left: the note goes. An asked seat I lost
--- ends the question at once; one still unaccepted when the game is over
--- stands me up, after the "session" handlers of that change have run.
+-- ends the question at once; one still unaccepted when the game is over, or
+-- when the game I hold is not the one I was asked in any more, stands me up,
+-- after the "session" handlers of that change have run.
 -- "refused"(tid) of a SIT of mine, I hold no seat there: the note goes.
 function Stake.watch(client)
   client:on("session", function(s)
@@ -111,7 +117,7 @@ function Stake.watch(client)
     if not s.stakeAsk then return end
     if not seated(client, s) then s.stakeAsk = nil; return end
     client:after(0, function()
-      if client.session == s and s.stakeAsk and over(s) then Stake.standUp(client, s) end
+      if client.session == s and s.stakeAsk and (over(s) or s.gameNo ~= s.stakeGame) then Stake.standUp(client, s) end
     end)
   end)
   client:on("refused", function(tid)

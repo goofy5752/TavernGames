@@ -39,19 +39,28 @@ function Session:requestSync()
   end
 end
 
--- The stake I accepted for table `tid` -> known, sk: my own note for it
--- (db.stakeSat, see ns.Stake.note), else the stake I am being asked about
--- (s.stakeAsk, ns.Stake.ask), else none (nil: only a fun table) when I am at
+-- The stake I accepted for table `tid` -> known, sk: the stake I am being
+-- asked about (s.stakeAsk, ns.Stake.ask), else my own note for the table
+-- (db.stakeSat, see ns.Stake.note), else none (nil: only a fun table) when I am at
 -- the table in this run, my note was written or cleared in this run, or the
 -- table is not the one my last client left me at (presence.home).
 -- Unknown: a fresh login back to that table whose loaded note is of another
 -- table or missing (a crash): ns.Stake.ask. Never a watcher session's stake.
 local function accepted(client, tid)
   local note, s = client.env.db.stakeSat, client.session
-  if type(note) == "table" and note.tid == tid then return true, note.sk end
   if s and s.stakeAsk then return true, s.stake end
+  if type(note) == "table" and note.tid == tid then return true, note.sk end
   if s or client.stakeNoted or tid ~= client.presence.home then return true, nil end
   return false, nil
+end
+
+-- Does the snapshot m show the very game I hold -> bool: my own seq and the
+-- state I have, live or not as mine. The only snapshot an asked seat takes: a
+-- snapshot carries no other proof of which game it is, and at my own seq an
+-- honest host holds the state I hold.
+function Member.sameGame(s, m)
+  local mine = s.state and s:engine().snapshot(s.state) or nil
+  return m.q == s.seq and (m.tbl.st == "live") == (s.status == "live") and ns.Util.same(m.st, mine)
 end
 
 -- Member: session from a snapshot (new, or replacing the current one; a host
@@ -69,10 +78,12 @@ function Member.adopt(client, sender, m)
     if client.session then Session.leave(client) end
     return Session.refuse(client, m.tid, "stake")
   end
-  -- An asked seat takes no later snapshot that brings anything it did not
-  -- see (a gap, a host change, a new game): it stands up instead.
+  -- An asked seat is kept for the game it was asked in only: a snapshot, at
+  -- any q, that is not that very game (a new game, a gap, another state at my
+  -- own q) stands me up before anything of it is taken.
   local asked = client.session
-  if seat and asked and asked.stakeAsk and m.q ~= asked.seq then
+  local same = seat and asked and asked.stakeAsk and Member.sameGame(asked, m)
+  if seat and asked and asked.stakeAsk and not same then
     if sender ~= asked.host then client:send("WHISPER", sender, Session.message("STD", { tid = m.tid })) end
     return ns.Stake.standUp(client, asked)
   end
@@ -105,6 +116,7 @@ function Member.adopt(client, sender, m)
   -- My turn in a snapshot: no clock of mine saw it begin, the host's word dates it.
   s.turnAt = seat and s.state and s.state.turn == seat and s.deadline and type(s.turn) == "number" and s.deadline - s.turn or nil
   s.stale, s.sitAsked, s.asked = nil, nil, nil
+  if not same then s.gameNo = (s.gameNo or 0) + 1 end -- another game, for all I can tell (Session:noteResult)
   s.invited = {}
   s:addInvited(m.inv)
   client.pending, client.gaveUp = nil, nil

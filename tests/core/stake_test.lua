@@ -555,6 +555,129 @@ describe("stake", function()
     eq(b.session, nil); eq(asks, {}); eq(refused, { { tid, "stake" } }); eq(a.session.seats[2], false)
   end)
 
+  -- A staked Death Roll of Иван; Мария crashed into her seat (asked), then Иван rolled once.
+  local function askedAtDeathRoll()
+    local sim, a, b = setup()
+    local tid = a:openTable{ game = "deathroll", access = "guild", turn = 45, opt = { start = 100 }, stake = 50000 }
+    sim:run(3); b:sit(tid, 2, 50000); sim:run(1)
+    ok(a:startGame()); sim:run(1)
+    sim.envs[B].db.stakeSat = nil
+    b = sim:relog(B); sim:run(3)
+    sim.nextRolls = { 50 }; ok(a:roll()); sim:run(1)
+    eq(b.session.stakeAsk, true); eq(b.session.seq, a.session.seq); eq(#b.session.state.rolls, 1)
+    return sim, a, b, tid
+  end
+
+  it("an asked seat keeps a snapshot of its own game and stands at one of another game at its own q (I-1)", function()
+    local sim, a, b, tid = askedAtDeathRoll()
+    local refused, fresh = record(b, "refused"), false
+    b:on("session", function(s) if s and s.state and #s.state.rolls == 0 then fresh = true end end)
+    -- The very game she holds, again: the question stays.
+    a.session:snapshotTo(B); sim:run(1)
+    eq(b.session.mySeat, 2); eq(b.session.stakeAsk, true); eq(refused, {})
+    -- Another game at the same q, with no event between.
+    local mark, q = #sim.sent, b.session.seq
+    a.session.state = a.session:newGame(1)
+    a.session:snapshotTo(B); sim:run(1)
+    eq(sent(sim, A, "SNP", mark)[1].msg.q, q)
+    eq(b.session, nil); eq(refused, { { tid, "stake" } }); eq(fresh, false)
+    ok(#sent(sim, B, "STD", mark) >= 1, "Мария sent no STD"); eq(a.session.seats[2], false)
+  end)
+
+  it("an asked seat stands at a snapshot of another game that it asked for itself (I-1)", function()
+    local sim, a, b, tid = askedAtDeathRoll()
+    local refused, fresh = record(b, "refused"), false
+    b:on("session", function(s) if s and s.state and #s.state.rolls == 0 then fresh = true end end)
+    -- A TCK ahead of her makes her ask; the answer is another game at her own q.
+    a.session.state = a.session:newGame(1)
+    local mark = #sim.sent
+    sim.bus:send(A, "WHISPER", B, { v = 1, t = "TCK", tid = tid, e = a.session.epoch, q = a.session.seq + 1 })
+    sim:run(1)
+    eq(#sent(sim, B, "SYN", mark), 1)
+    eq(b.session, nil); eq(refused, { { tid, "stake" } }); eq(fresh, false); eq(a.session.seats[2], false)
+  end)
+
+  it("the game my client holds is counted, and an asked seat is kept for that one only (I-1)", function()
+    local sim, a, b, _, tid = seatedAt(50000)
+    local ga, gb = a.session.gameNo, b.session.gameNo -- local counts: hers took a snapshot and the start
+    eq(ga, 1); eq(gb, 2)
+    local near = { board = { 1, 1, 0, 2, 2, 0, 0, 0, 0 }, turn = 1, score = { 2, 0 }, round = 3, first = 1,
+      phase = "play", draw = false, rematch = { false, false } }
+    a.session.state, b.session.state = ns.Util.copy(near), ns.Util.copy(near)
+    ok(a:act{ k = "mark", c = 3 }); ok(a:act{ k = "rematch" }); sim:run(1)
+    eq(a.session.gameNo, ga); eq(b.session.gameNo, gb)
+    ok(b:act{ k = "rematch" }); sim:run(1)
+    eq(a.session.state.phase, "play"); eq(a.session.gameNo, ga + 1); eq(b.session.gameNo, gb + 1)
+    a.session:snapshotTo(B); sim:run(1)
+    eq(b.session.gameNo, gb + 2) -- a snapshot is another game for all she can tell
+    -- Asked: the question names the game; a duplicate snapshot keeps it, another game under it stands her up.
+    sim.envs[B].db.stakeSat = nil
+    b = sim:relog(B); sim:run(3)
+    local refused = record(b, "refused")
+    eq(b.session.stakeAsk, true); eq(b.session.stakeGame, b.session.gameNo)
+    a.session:snapshotTo(B); sim:run(1)
+    eq(b.session.stakeGame, b.session.gameNo); eq(refused, {})
+    b.session.gameNo = b.session.gameNo + 1; ns.Session.emit(b); sim:run(0)
+    eq(b.session, nil); eq(refused, { { tid, "stake" } })
+  end)
+
+  it("a reload while asked does not bring the seat back (m-1)", function()
+    local sim, a, b, tid = askedAtDeathRoll()
+    b = sim:relog(B)
+    local asks, refused = record(b, "stakeAsk"), record(b, "refused")
+    sim:run(3)
+    eq(b.session, nil); eq(asks, {}); eq(refused, { { tid, "stake" } }); eq(a.session.seats[2], false)
+  end)
+
+  -- Мария crashed into her seat of Иван's staked ttt match: asked.
+  local function askedAtTTT()
+    local sim, a, b, _, tid = seatedAt(50000)
+    sim.envs[B].db.stakeSat = nil
+    b = sim:relog(B); sim:run(3)
+    eq(b.session.stakeAsk, true)
+    local refused, seen = record(b, "refused"), { host = false }
+    b:on("session", function(s) if s and s.role == "host" then seen.host = true end end)
+    return sim, a, b, tid, refused, seen
+  end
+
+  it("an asked seat named in a handoff stands up instead of hosting, a SIT right behind (I-2)", function()
+    local sim, a, b, tid, refused, seen = askedAtTTT()
+    sim.bus:send(A, "WHISPER", B, { v = 1, t = "HND", tid = tid, e = a.session.epoch + 1, to = B, inv = {} })
+    sim.bus:send(A, "WHISPER", B, { v = 1, t = "SIT", tid = tid, seat = 1, sk = 50000 })
+    sim:run(1)
+    eq(b.session, nil); eq(refused, { { tid, "stake" } }); eq(seen.host, false)
+    eq(b.env.db.stakeSat, nil); eq(a.session.seats[2], false)
+  end)
+
+  it("an asked seat stands up instead of claiming a silent host's table, STD and SIT right behind (I-2)", function()
+    local sim, _, b, tid, refused, seen = askedAtTTT()
+    sim:offline(A)
+    for _ = 1, 120 do
+      if not b.session or b.session.role == "host" then break end
+      sim:run(1)
+    end
+    sim:online(A)
+    sim.bus:send(A, "WHISPER", B, { v = 1, t = "STD", tid = tid })
+    sim.bus:send(A, "WHISPER", B, { v = 1, t = "SIT", tid = tid, seat = 1, sk = 50000 })
+    sim:run(1)
+    eq(b.session, nil); eq(refused, { { tid, "stake" } }); eq(seen.host, false); eq(b.env.db.stakeSat, nil)
+  end)
+
+  it("a sit EV naming me is applied while my own SIT note for the table stands (m-3)", function()
+    local sim, a, _, c = setup()
+    local tid = a:openTable{ game = "deathroll", access = "guild", turn = 45, stake = 50000 }; sim:run(3)
+    c:watch(tid); sim:run(1)
+    local refused = record(c, "refused")
+    -- His SIT is on its way (the note is written); the host's sit EV reaches him before any snapshot.
+    sim.bus.filter = function(from, _, _, m) return (from == P and m.t == "SIT") and {} or { m } end
+    c:sit(tid, 2, 50000); sim:run(0)
+    sim.bus.filter = nil
+    eq(c.env.db.stakeSat, { tid = tid, sk = 50000 })
+    a.session.watcherSet[P], a.session.watchers = nil, 0
+    a.session:event(0, { k = "sit", seat = 2, name = P }); sim:run(1)
+    eq(c.session.seats[2], P); eq(c.session.seq, a.session.seq); eq(refused, {})
+  end)
+
   it("Session.lua keeps its limit", function()
     local n = 0
     for _ in io.lines("core/Session.lua") do n = n + 1 end

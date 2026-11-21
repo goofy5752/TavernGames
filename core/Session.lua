@@ -132,7 +132,7 @@ function Session:apply(seat, a)
       self.state = trial
     end
   end
-  self:noteResult()
+  self:noteResult(k == "start")
   return true
 end
 

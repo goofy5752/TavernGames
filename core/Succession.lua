@@ -196,8 +196,12 @@ local function becomeHost(s, oldHost, oldHeard)
   s:recordChanged()
 end
 
--- The host went silent and it is my turn among the candidates.
+-- The host went silent and it is my turn among the candidates. A seat whose
+-- stake I was asked about and did not accept (s.stakeAsk, ns.Stake.ask) never
+-- hosts, here or by a handoff: a host starts the next game itself. It stands
+-- up instead, and the next candidate claims in its turn.
 function Succession.claim(s)
+  if s.stakeAsk then return ns.Stake.standUp(s.client, s) end
   local oldHost, oldHeard = s.host, s.hostHeard
   s.epoch = s.epoch + 1
   becomeHost(s, oldHost, oldHeard)
@@ -248,6 +252,7 @@ function Succession.onHandoff(client, sender, m)
   if type(m.e) ~= "number" or m.e <= s.epoch or type(m.to) ~= "string" or m.to == sender then return end
   if m.to ~= client.env.me then return Succession.follow(s, m.to, m.e) end
   if not s.mySeat then return end -- watchers never become host
+  if s.stakeAsk then return ns.Stake.standUp(client, s) end -- nor an asked seat (Succession.claim)
   local seat = seatOf(s.seats, sender)
   if seat then s:applyUnsent(0, { k = "stand", seat = seat, why = "left" }) end -- its stand never reached me
   s.epoch = m.e
