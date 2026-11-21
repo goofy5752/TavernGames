@@ -26,7 +26,7 @@ Everything in the stage 1 and A–E constraint files still holds. Added for F1:
   | `TBL`, `SNP.tbl` | `sk` | stake in copper; absent = for fun |
   | `SIT` | `sk` | the stake the sitter accepted; absent at a fun table |
   | `INV` | `sk` | the stake of the table the invitation is for |
-  | `SNO.why` | `"stake"` | the `sk` of the `SIT` is not the table's; `"roll"`: a staked Death Roll seat needs a client that can `/roll` |
+  | `SNO.why` | `"stake"` | the `sk` of the `SIT` is not the table's |
   | `HI` | `ld` | 8 hex: digest of my ledger; absent on a client without a guild ledger (a bot) |
   | `EV` seat 0 | `{k="stand", seat, why="idle"}` | staked Death Roll: 180 s on turn without a roll |
   | new `LEV` | G: `ev` (1–4 entries, **all authored by the sender**); W: `ev` (1–`LEDGER_BATCH` entries of any author), `f = true` on the last batch of an answer | ledger entries |
@@ -70,7 +70,9 @@ Everything in the stage 1 and A–E constraint files still holds. Added for F1:
 - **Fouls** my client notes against the running game of a staked table (the first of the higher rank wins; reset when a new game begins): `forged` (an event for my seat I did not send and that is no due timeout; an event of my host my engine refused; a pushed snapshot that changes the game I hold) > `roll` (Death Roll: a recorded roll I saw with another number, or a roll for my seat that I did not make) > `stand` (my seat stood up while my client ran and I did not ask, unless `idle` and my own clock agrees) > `unseen` (a snapshot I asked for or logged in with brought me into the game; a recorded roll I never saw).
 - **What my client does with a claim against me** (`D` with `f` = me, authored by `t`): my note for that `gid` has the pair and the amount and no foul → `C`; a foul `forged`, `roll` or `stand` → `N` with that reason; another amount → `N` `"amount"`; I pressed „Стани“ myself at that table (`stakeLeft`, the claim's `why = "left"`, the amount is the table's stake, within `STAKE_LEFT_WINDOW = 600` s, once per creditor) → `C`; anything else (no note: I was offline; foul `unseen`) → it is put to me („Потвърждавам“ / „Оспорвам“). If I noted a clean loss and no claim arrives within `STAKE_OWE_WAIT = 60` s, my client authors the `D` itself.
 - **Payment detection.** A `P` is authored only by the creditor's client: automatically after a completed trade in which no item changed hands and the payer's `PAY` came within `PAY_WINDOW = 300` s; automatically when money is taken from a letter whose subject starts with `Tavern Games:` and whose sender matches exactly one of my debtors; in every other case in which gold came from a debtor it is put to me. The amount is `min(received, net(payer, me))`; nothing is recorded when the net is not positive. „Уредено“ authors a `P` `"hand"` for the whole net.
-- **Files.** `core/Session.lua` stays below 540 lines: Task 2 first moves `Session:invitedList` and `Session:addInvited` to `core/Invites.lua`, then adds four lines; every other edit to it is inside an existing line. New caps in `tests/toc_test.lua`: `core/Ledger.lua` < 300, `core/LedgerView.lua` < 260, `core/LedgerNet.lua` < 240, `core/LedgerSync.lua` < 300, `core/Stakes.lua` < 340, `core/Pay.lua` < 240. The existing caps stay.
+- **Files.** `core/Session.lua` stays below 540 lines: Task 2 first moves `Session:invitedList` and `Session:addInvited` to `core/Invites.lua`, then adds four lines; every other edit to it is inside an existing line.
+- **Existing tests.** A test that compares a whole `HI`, or counts every GUILD message after a game with a result, now sees `ld` and the host's `LEV`; the task that causes it (5, 6 or 8) updates exactly those assertions and lists them in its report. No other existing assertion changes.
+- **The budget numbers are caps, measured at each pinning test's first green run.** If a measurement exceeds a cap, lower `LEDGER_BATCH` (or the entries per live `LEV`) until it holds; never raise a cap. New caps in `tests/toc_test.lua`: `core/Ledger.lua` < 300, `core/LedgerView.lua` < 260, `core/LedgerNet.lua` < 240, `core/LedgerSync.lua` < 300, `core/Stakes.lua` < 340, `core/Pay.lua` < 240. The existing caps stay.
 - **Locale.** Every new string in `locale/bg.lua` and `locale/en.lua` with the same keys and placeholders; Bulgarian in „…“ quotes inside texts. The exact Bulgarian of each label is in the task that adds it; the English is the implementer's translation.
 - Commits are local only, never pushed; every commit message ends with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
 
@@ -345,7 +347,7 @@ Store tests:
 
 **Files:**
 - Create: `core/LedgerNet.lua`, `tests/core/ledger_net_test.lua`
-- Modify: `core/Client.lua` (`Client.new` composes `self.ledger`, `self.ledgerNet` when `env.guild` and `env.db` exist; `receive` passes messages on; `start`/`stop` call `ledgerNet:start()`/`:stop()`), `wow/Adapter.lua` (`env.guild` from `GetGuildInfo("player")`, the store `ns.db.ledger`; `Adapter.priority`: `LVC`, `LID` and a whispered `LEV` → `"BULK"`), `tests/helpers/sim.lua` (`env.guild = opts.guild or "МЕХАНАТА"` and `db.ledger = {}`, both kept across `sim:relog`; `sim:crash(name)` = a relog that restores `db` to its copy at the last clean stop or at `sim:add`), `TavernGames.toc`, `tests/toc_test.lua` (cap `< 240`)
+- Modify: `core/Client.lua` (`Client.new` composes `self.ledger`, `self.ledgerNet` when `env.guild` and `env.db` exist; `receive` passes messages on; `start`/`stop` call `ledgerNet:start()`/`:stop()`), `wow/Adapter.lua` (`env.guild` from `GetGuildInfo("player")`, the store `ns.db.ledger`; `Adapter.priority`: `LVC`, `LID` and a whispered `LEV` → `"BULK"`), `tests/helpers/sim.lua` (`sim:add` gives `env.guild = opts.guild or "МЕХАНАТА"` and `db.ledger = {}`, both kept across `sim:relog`; `sim.makeEnv`, the bots' env, gives neither; `sim:settle()` calls `ledgerNet:settle()` on every client, so a test need not wait out the adoption window of a new store; `sim:crash(name)` = a relog that restores `db` to its copy at the last clean stop or at `sim:add`), `TavernGames.toc`, `tests/toc_test.lua` (cap `< 240`)
 
 **Interfaces:**
 - Consumes: Tasks 3, 4; `Client:send`, `Client:after`.
@@ -419,7 +421,7 @@ Store tests:
 
 **Files:**
 - Create: `core/Stakes.lua` (the extension and the fouls only; Task 8 adds the money), `tests/core/stakes_play_test.lua`
-- Modify: `core/Lifecycle.lua` (`Session:hook` and `Session:filterAct` also call `ns.Ext.stakes` when `self.stake`; `Session:newGame` passes `staked = self.stake ~= nil`; `Session:canStart` → `"group"`; `noteResult` adds `q = self.seq + 1` and `sk = self.stake` to `"result"`), `core/Member.lua` (`onEvent`: `engine.view` → `(engine.view or s.stake)`; `Member.timedOut`: `engine.publicAuto` → `(engine.publicAuto or (s.stake and not engine.view))`), `core/Session.lua` (inside existing lines only: `armTimers` grace `(engine.view or self.stake)`; `"idleTimer"` in `TIMERS`; `check` → `"roll"`), `engines/deathroll.lua`, `core/Rolls.lua`, `TavernGames.toc`, `tests/toc_test.lua` (cap `core/Stakes.lua < 340`)
+- Modify: `core/Lifecycle.lua` (`Session:hook` and `Session:filterAct` also call `ns.Ext.stakes` when `self.stake`; `Session:newGame` passes `staked = self.stake ~= nil`; `Session:canStart` → `"group"`; `noteResult` adds `q = self.seq + 1` and `sk = self.stake` to `"result"`), `core/Member.lua` (`onEvent`: `engine.view` → `(engine.view or s.stake)`; `Member.timedOut`: `engine.publicAuto` → `(engine.publicAuto or (s.stake and not engine.view))`), `core/Session.lua` (inside existing lines only: `armTimers` grace `(engine.view or self.stake)`; `"idleTimer"` in `TIMERS`), `core/Client.lua` (`Client:sit` refuses locally, event `"refused"(tid, "roll")`, a seat at a staked table whose engine has `idle` when `env.roll` is absent), `engines/deathroll.lua`, `core/Rolls.lua`, `TavernGames.toc`, `tests/toc_test.lua` (cap `core/Stakes.lua < 340`)
 - Test: `tests/core/stakes_play_test.lua`, `tests/engines/deathroll_test.lua`
 
 **Interfaces:**
@@ -429,7 +431,7 @@ Store tests:
   - `Stakes.foul(s, why)` (keeps the higher rank), `Stakes.RANK = {forged = 4, roll = 3, stand = 2, unseen = 1}`
   - `Rolls.audit(s) -> nil | "roll" | "unseen"` (from `s.state.rolls` and `s.rollLog` now; `log` entries gain `own = true` when the sighting's shown name is exactly `env.me`)
   - Death Roll: `state.staked`; `E.idle = true` (the marker for the idle stand)
-  - `Session:canStart()` code `"group"`; `SNO.why = "roll"`
+  - `Session:canStart()` code `"group"`; the local refusal `"roll"`
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -456,7 +458,7 @@ Simulator (`tests/core/stakes_play_test.lua`; staked tables, И hosts):
 - `the foul is reset when the next game begins` (ttt „Реванш“; Death Roll „Нова игра“).
 - `the roster is who plays the running game`: Death Roll with И, М seated, „Започни“, then П sits → `stakeRoster == {И, М}` on every client (П's too, from its snapshot: `E.playing`).
 - `death roll: the host cannot start while a seated player is not in its group`: `client:startGame()` → `nil, "group"`; once `env.inGroup` says yes → `true`. Fun table: starts as today.
-- `death roll: a client that cannot /roll gets no staked seat`: a client added with `roll = false` → `SNO` `"roll"`.
+- `death roll: a client that cannot /roll gets no staked seat`: a client added with `roll = false` calls `client:sit(tid, 2, 50000)` → its `"refused"` event is `(tid, "roll")` and no `SIT` is sent; at a fun table it sits as today.
 - `death roll: only a roll the host saw counts`: М rolls where the host cannot see it (`sim.canSee`) → after 3 s no event; after И sees the same roll (canSee restored, М rolls again) → the event with `src == "seen"`.
 - `death roll: nobody rolls for a silent seat; 180 s on turn stands it up as idle`: М on turn and silent → no roll event at 45 s; at 180 s the event `{k = "stand", seat = 2, why = "idle"}`; a roll at 179 s cancels it; the timer restarts with every turn and follows a host change.
 - `death roll: the host's own idle seat hands the table over` (`client:stand()` after 180 s on its own turn).
@@ -492,7 +494,7 @@ Simulator (`tests/core/stakes_play_test.lua`; staked tables, И hosts):
 - At a fun table: the host authors `R` (no `sk`) on `"result"`; nothing else.
 - Several entries of one client for one outcome go out in one `LEV` (at most 4 per message).
 
-- [ ] **Step 1: Write the failing tests** (simulator; stake 5g = 50000 unless said)
+- [ ] **Step 1: Write the failing tests** (simulator; stake 5g = 50000 unless said; every scenario begins with `sim:settle()` unless it is about the adoption window)
 
 - `ttt: the loser owes the winner; three entries, all confirmed`: И beats М. GUILD carried exactly: И's `LEV` with `R` and `D` (М→И, 50000, `"lost"`, `gid = tid .. "/" .. q` of the winning move), М's `LEV` with `C`. On П (a bystander) `View.net(view, М, И) == 50000` and the debt is `"confirmed"`.
 - `ttt: a rematch is a second debt with its own gid`.
@@ -511,7 +513,7 @@ Simulator (`tests/core/stakes_play_test.lua`; staked tables, И hosts):
 - `a claim about a game I never played is put to me, not confirmed`; `twenty-five such claims from one creditor show twenty`.
 - `the claim may come before or after my note`: deliver И's `LEV` to М before М applied the last move (bus filter delays the `EV`) → still exactly one `C`.
 - `the loser's note survives a relog and confirms the late claim` (Review Focus 5): М's client noted the loss; И's `LEV` is dropped by the bus; М relogs; the sync brings the claim → `C` without a question.
-- `no claim within 60 s: the loser writes the debt itself`: И crashes on the winning move (its client applied it, sent nothing more) → at 60 s М authors `D` (author М, `f = М`, `t = И`), `"confirmed"`; when И returns and claims the same `gid`, it is still one debt of 50000.
+- `no claim within 60 s: the loser writes the debt itself`: И crashes on the winning move (its client applied it, sent nothing more) → at 60 s М authors `D` (author М, `f = М`, `t = И`), `"confirmed"`; a claim by И for the same `gid` that arrives later (a hand-made `D` in the test) leaves it one debt of 50000.
 - `the host hands over mid-game and the debts still come`: И (host) stands in a live game → forfeit by И owed to М, claimed by М, the new host; `R` authored by М.
 - `a snapshot that already shows the result writes nothing`: П reloads after the end → no entry from П.
 - `review is idempotent`: calling `stakes:review()` ten times adds no entry.
@@ -638,7 +640,7 @@ Simulator (`tests/core/stakes_play_test.lua`; staked tables, И hosts):
 | `stake.ask.yes` | „Приемам и сядам“ |
 | `stake.ask.no` | „Отказ“ |
 | `refused.stake` | „Залогът на масата е друг. Виж го и седни отново.“ |
-| `refused.roll` | „На тази маса се хвърля с истински /roll. Твоят клиент не може.“ |
+| `refused.roll` | „На тази маса се хвърля само с истински /roll, а твоят клиент не може.“ |
 | `table.stake` | „Залог: %s“ |
 | `table.stake.none` | „За удоволствие“ |
 | `stand.stake` | „Ако станеш сега, губиш служебно и дължиш %s.“ |
