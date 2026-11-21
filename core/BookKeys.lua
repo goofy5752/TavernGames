@@ -2,15 +2,18 @@ local _, ns = ...
 
 -- The traffic of a sealed table's book (core/Book.lua): the handlers
 -- core/Cash.lua dispatches to. Rule 6, keys: a player who stands up (hook
--- `leaving`) sends its key first (ACT {k="book", op="key", m}), published at
--- once while the game runs (EV {k="book", op="keys", m = {[seat] = key}}).
+-- `leaving`) sends its key first (ACT {k="book", op="key", m, g}), published at
+-- once while the game runs (EV {k="book", op="keys", m = {[seat] = key}, g}).
+-- g is the game's (book.g): a key of another game is refused by the host and
+-- by every client (a late key of the last game touches nothing of this one).
 -- Once the game is over (the host's „Приключи“ {k="close"}, the hand played
 -- out: E.over) every seated client sends its key once (book.sent); the host
 -- keeps them (book.wait) and publishes them with its own when every seated
 -- seat's is in, BOOK_WAIT after the close event at the latest (s.keysTimer;
--- book.published). A STD meanwhile publishes the keys kept first; a later key
--- goes out in a further event; a member that sees the game over without the
--- key it sent sends it once more (book.resent). The last player but one
+-- book.published); that event and every later one is final (f = true): only
+-- a final event closes the book. A STD meanwhile publishes the keys kept
+-- first (not final); a member that sees a final event without the key it sent
+-- sends it once more (book.resent; a snapshot of the game over: book.synced). The last player but one
 -- stands up: the host's key goes out before the table stops. A key leaves
 -- only spent (Book.spend), always the one this game's commits came from. A
 -- published key under my seat is mine (book.out, my kept key dropped) or
@@ -18,7 +21,7 @@ local _, ns = ...
 local Book = ns.Book
 
 local C = ns.Const
-local copy, contains = ns.Util.copy, ns.Util.contains
+local copy = ns.Util.copy
 
 -- Is my sealed game over (my key is then due)?
 local function over(s)
@@ -33,46 +36,6 @@ function Book.submit(s, a)
   else
     s.client:send("WHISPER", s.host, ns.Session.message("ACT", { tid = s.tid, a = a }))
   end
-end
-
--- Host: a book action by `seat`; it never reaches the engine. op "step": the
--- dealer of my round gives the faces of the step the engine waits for. op
--- "missing": the dealer of a shuffle in stage seed names the participants
--- whose seed it lacks (fair.missing; they sit out with it if the shuffle lapses).
-function Book.request(s, seat, a)
-  local fair, step = s.fair, a.a
-  if not fair or s.status ~= "live" or a.h ~= fair.h or seat ~= fair.d then return end
-  if a.op == "missing" and fair.stage == "seed" and type(a.seats) == "table" then
-    local out = {}
-    for _, q in ipairs(a.seats) do
-      if q ~= seat and contains(fair.p, q) and not contains(out, q) then out[#out + 1] = q end
-    end
-    fair.missing = out
-  end
-  if a.op ~= "step" or fair.stage ~= "dealt" then return end
-  local want = s:engine().system(s.state)
-  if not (want and want.need == "faces" and type(step) == "table" and step.k == want.k and type(step.cards) == "table") then
-    return
-  end
-  local ev = { k = step.k, cards = step.cards }
-  local trial = copy(s.state)
-  if not s:engine().apply(trial, 0, ev) or (ev.k == "street" and Book.faceless(trial, ev.cards)) then return end
-  if ns.Deal.int.allPublic(s, ev, ev.cards) then s:play(0, ev) end
-end
-
--- The hand on my state ended and I have not told it yet: event "hand" (Cash).
-function Book.told(s)
-  local st = s.state
-  local last = st and st.last
-  if not last or last.hand == s.handSeen then return end
-  s.handSeen = last.hand
-  local chips = {}
-  for i, x in pairs(st.seats) do if x then chips[i] = x.chips end end
-  local client = s.client
-  client.events:emit("hand", {
-    tid = s.tid, game = s.game, opt = copy(s.opt), n = last.hand, last = copy(last), chips = chips,
-    names = copy(s.handNames or s.seats), at = client.env.epoch(),
-  })
 end
 
 -- My kept key of this game (env.db.bookKeep), or nil.
@@ -102,9 +65,10 @@ local function mine(s, book, m, judge)
   end
 end
 
--- Everyone: the keys of a keys event {[seat] = key}, seats ascending, under its seq.
-function Book.addKeys(s, map)
+-- Everyone: the keys of a keys event {[seat] = key} of game g, seats ascending, under its seq.
+function Book.addKeys(s, map, g)
   local book, seats = Book.of(s), {}
+  if g ~= book.g then return end -- a key of another game
   for q in pairs(map) do seats[#seats + 1] = q end
   table.sort(seats)
   for _, q in ipairs(seats) do
@@ -145,24 +109,27 @@ local function publish(s, book, final)
     end
   end
   for q in pairs(m) do if not s.seats[q] then m[q] = nil end end
-  s:play(0, { k = "book", op = "keys", m = m })
+  s:play(0, { k = "book", op = "keys", m = m, g = book.g, f = final or nil })
 end
 
--- Member: `key` to the host, spent first; `again`: the resend, once.
-local function send(s, book, key, again)
-  if not key or again and (s.role == "host" or not over(s) or book.out or book.resent) then return end
-  book.resent = again or book.resent
+-- Member: `key` to the host, spent first; `once` ("resent", "synced"): the
+-- resend of the game over, once each.
+local function send(s, book, key, once)
+  if not key or once and (s.role == "host" or not over(s) or book.out or book[once]) then return end
+  if once then book[once] = true end
   Book.spend(s)
   book.sent = key
-  Book.submit(s, { k = "book", op = "key", m = key })
+  Book.submit(s, { k = "book", op = "key", m = key, g = book.g })
 end
 
--- Host: ACT {k="book", op="key", m} of `seat`, the first since its player sat.
-function Book.take(s, seat, m)
-  local book = Book.of(s)
-  if s.status ~= "live" or not Book.isKey(m) or book.given[seat] or known(book, seat, m) then return end
+-- Host: ACT a = {k="book", op="key", m, g} of `seat`, the first of this game since its player sat.
+function Book.take(s, seat, a)
+  local book, m = Book.of(s), a.m
+  if s.status ~= "live" or a.g ~= book.g or not Book.isKey(m) or book.given[seat] or known(book, seat, m) then return end
   book.given[seat] = true
-  if not over(s) or book.published then return s:play(0, { k = "book", op = "keys", m = { [seat] = m } }) end
+  if not over(s) or book.published then
+    return s:play(0, { k = "book", op = "keys", m = { [seat] = m }, g = book.g, f = book.published or nil })
+  end
   book.wait[seat] = m
   Book.due(s)
 end
@@ -186,13 +153,13 @@ function Book.due(s)
   end)
 end
 
--- Everyone, after every event (Cash's `applied`): keys (a game over closes
--- the book), the close, an abort, a stand that leaves fewer than minSeats.
+-- Everyone, after every event (Cash's `applied`): keys (a final event of a
+-- game over closes the book), the close, an abort, a stand that leaves fewer than minSeats.
 function Book.event(s, seat, a)
   local k, book = seat == 0 and a.k, Book.of(s)
   if k == "book" and a.op == "keys" then
-    Book.addKeys(s, a.m)
-    if over(s) then Book.close(s); send(s, book, book.sent, true) end
+    Book.addKeys(s, a.m, a.g)
+    if a.f and over(s) then Book.close(s); send(s, book, book.sent, "resent") end
   elseif k == "close" then
     book.closeAt = s.client.env.now()
   elseif k == "abort" then
@@ -204,7 +171,8 @@ function Book.event(s, seat, a)
   end
 end
 
--- Member: a snapshot's keys (SNP.fr.k) not known yet; a key I sent and lack goes again.
+-- Member: a snapshot's keys (SNP.fr.k) not known yet (never judged: after a
+-- relog my kept key may be gone); with the game over, a key I sent and lack goes again.
 function Book.adopt(s, list)
   local book = Book.of(s)
   for _, e in ipairs(type(list) == "table" and list or {}) do
@@ -215,7 +183,7 @@ function Book.adopt(s, list)
   end
   table.sort(book.keys, function(x, y) return x.q < y.q or (x.q == y.q and x.seat < y.seat) end)
   Book.run(s)
-  send(s, book, book.sent, true)
+  send(s, book, book.sent, "synced")
 end
 
 -- Hook `leaving` (before my STD), seated in a live game: my key goes first (a host's with all it keeps).

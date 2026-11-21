@@ -628,7 +628,7 @@ describe("holdem: the book", function()
     eq(ns.Cash.close(cl[1]), true); eq({ ns.Cash.close(cl[1]) }, { nil, "live" })
     eq({ st().closing, st().phase, E.over(st()) }, { true, "bet", false }); auto(3); sim:run(1)
     eq({ st().phase, cl[3].session:gameOver(), cl[1].session.status }, { "closed", true, "live" })
-    local e = evs(W, mark); eq(kinds(e), { "close", "fold", "fold", "book" }); eq(e[4], { k = "book", op = "keys", m = { KEY(1), KEY(2), KEY(3) } })
+    local e = evs(W, mark); eq(kinds(e), { "close", "fold", "fold", "book" }); eq(e[4], { k = "book", op = "keys", m = { KEY(1), KEY(2), KEY(3) }, g = st().g, f = true })
     eq(sim:count(function(m) return m.msg.t == "ACT" and m.msg.a.k == "book" and m.msg.a.op == "key" end), 2)
     sim:run(3)
     for i = 1, 3 do eq(bk[i], { { tid = tid, game = "holdem", hands = 4, ok = 4, bad = 0, open = 0, missing = {}, at = bk[i][1].at } }) end
@@ -641,7 +641,7 @@ describe("holdem: the book", function()
     eq({ st().order, cl[1].session.fair.p }, { { 3, 2 }, { 2, 3 } }); auto(1); stacks{ [1] = 1000, [4] = 1000 }; sim:run(5)
     eq({ st().hand, #st().order, (ns.Book.status(cl[4].session)) }, { 2, 4, "seal.sealed" }); local mark = #sim.sent
     cl[2]:stand(); sim:run(1); local e = evs(W, mark)                                          -- seat 2 leaves hand 2 (seat 3 deals it)
-    eq(kinds(e), { "book", "stand" }); eq(e[1], { k = "book", op = "keys", m = { [2] = KEY(2) } }); eq(sim.envs[N[2]].db.bookKeep, nil)
+    eq(kinds(e), { "book", "stand" }); eq(e[1], { k = "book", op = "keys", m = { [2] = KEY(2) }, g = st().g }); eq(sim.envs[N[2]].db.bookKeep, nil)
     eq(cl[4].session.book.keys, { { seat = 2, q = 14, m = KEY(2) } }); eq({ ns.Book.status(cl[4].session) }, { "seal.sealed", "inkDim", 1, 0 })
     auto(4); eq({ st().phase, cl[4].session.book.n }, { "done", 2 }); cl[3]:stand(); sim:run(2)
     for _, c in ipairs{ cl[1], cl[4], w } do eq({ ns.Book.status(c.session) }, { "seal.sealed", "inkDim", 1, 1 }) end   -- hand 1 is checked, hand 2 waits
@@ -659,7 +659,7 @@ describe("holdem: the book", function()
     for _ = 1, 100 do if cl[2].session.role == "host" then break end; sim:run(1) end
     eq({ cl[2].session.role, cl[3].session.host, cl[2].session.state.hand }, { "host", N[2], 3 }); local b3, bw = books(cl[3]), books(w)
     play(3); eq({ st().seats[1].away, #st().order }, { true, 2 }); eq(ns.Cash.close(cl[2]), true); auto(4); eq(st().phase, "closed")
-    sim:run(30); eq(evs(W, 0)[#evs(W, 0)], { k = "book", op = "keys", m = { [2] = KEY(2), [3] = KEY(3) } }); sim:run(4)   -- seat 1's key never comes: BOOK_WAIT
+    sim:run(30); eq(evs(W, 0)[#evs(W, 0)], { k = "book", op = "keys", m = { [2] = KEY(2), [3] = KEY(3) }, g = st().g, f = true }); sim:run(4)   -- seat 1's key never comes: BOOK_WAIT
     eq({ b3[1].hands, b3[1].ok, b3[1].bad, b3[1].open, b3[1].missing, bw[1].open }, { 6, 3, 0, 3, { N[1] }, 3 })
     eq({ ns.Book.status(cl[3].session) }, { "seal.open", "gold", 3, N[1] })
   end)
@@ -681,7 +681,7 @@ describe("holdem: the book", function()
   end)
   it("a key under my seat that is not mine; a member that missed a key gets it with the snapshot", function()
     tableN(3); ok(cl[1]:startGame()); sim:run(3); play(1); sim:offline(N[3])
-    cl[1].session:play(0, { k = "book", op = "keys", m = { [2] = ("00"):rep(16) } }); sim:run(1)
+    cl[1].session:play(0, { k = "book", op = "keys", m = { [2] = ("00"):rep(16) }, g = st().g }); sim:run(1)
     eq({ cl[2].session.book.forged, (ns.Book.status(cl[2].session)) }, { true, "seal.bad" }); eq(#cl[3].session.book.keys, 0)
     sim:online(N[3]); sim:run(31); eq(cl[3].session.book.keys, { { seat = 2, q = cl[1].session.book.keys[1].q, m = ("00"):rep(16) } })
     local T = ns.Ext.cash.table
@@ -712,22 +712,46 @@ describe("holdem: the book", function()
     for _, c in ipairs{ cl[1], cl[2], w } do eq({ c.session.book.n, #c.session.book.keys }, { 0, 0 }) end
   end)
   it("close, one player stands within a second: every hand still ok", function()
-    tableN(3); local bk = { books(cl[1]), books(cl[2]), books(w) }; ok(cl[1]:startGame()); sim:run(3); play(3)
-    -- seat 2's key reaches the host 2 s late; seat 3 presses „Стани“ the moment it has sent its key
+    tableN(3); local bk = { books(cl[1]), books(cl[2]), books(w) }; ok(cl[1]:startGame()); sim:run(3); play(3); local g = st().g
+    -- seat 2's key reaches the host 10 s late; seat 3 presses „Стани“ the moment it has sent its key
     local recv, late = cl[1].receive, false
     cl[1].receive = function(self, ch, from, msg)
       if from == N[2] and msg.t == "ACT" and msg.a.op == "key" and not late then
-        late = true; sim.envs[N[1]].after(2, function() recv(self, ch, from, msg) end); return
+        late = true; sim.envs[N[1]].after(10, function() recv(self, ch, from, msg) end); return
       end
       recv(self, ch, from, msg)
     end
     local stood = false
     tap(cl[3], function() if not stood and cl[3].session and cl[3].session:gameOver() then stood = true; cl[3]:stand() end end, true)
-    local mark = #sim.sent; ok(ns.Cash.close(cl[1])); finishHand(); sim:run(4); ok(stood)
+    local mark = #sim.sent; ok(ns.Cash.close(cl[1])); finishHand(); sim:run(1); ok(stood)
     local e = evs(W, mark); local n = #e
-    eq({ e[n - 2], e[n - 1].k, e[n - 1].seat, e[n] }, { { k = "book", op = "keys", m = { [3] = KEY(3) } }, "stand", 3, { k = "book", op = "keys", m = { KEY(1), KEY(2) } } })
-    for i = 1, 3 do local b = bk[i][#bk[i]]; eq({ b.hands, b.ok, b.bad, b.open, b.missing }, { 4, 4, 0, 0, {} }) end
+    eq({ e[n - 1], e[n].k, e[n].seat }, { { k = "book", op = "keys", m = { [3] = KEY(3) }, g = g }, "stand", 3 })   -- the flush: not the final event
+    for i = 1, 3 do eq(#bk[i], 0) end                                                         -- no early end naming seat 2, whose key is on its way
+    for _, c in ipairs{ cl[1], cl[2], w } do eq({ c.session.book.final, (ns.Book.status(c.session)) }, { nil, "seal.sealed" }) end
+    eq({ cl[2].session.book.resent, keyActs(N[2]) }, { nil, 1 })                              -- its one resend is not used up
+    sim:run(10); e = evs(W, mark); n = #e
+    eq(e[n], { k = "book", op = "keys", m = { KEY(1), KEY(2) }, g = g, f = true })
+    sim:run(2)
+    for i = 1, 3 do eq(#bk[i], 1); local b = bk[i][1]; eq({ b.hands, b.ok, b.bad, b.open, b.missing }, { 4, 4, 0, 0, {} }) end
     for _, c in ipairs{ cl[1], cl[2], w } do eq({ ns.Book.status(c.session) }, { "seal.ok", "good", 4 }) end
+  end)
+  it("I2: a late key of the old game after „Нова игра“ touches nothing of the new game; the real new key goes out", function()
+    tableN(3); ok(cl[1]:startGame()); sim:run(3); play(1); finishHand()
+    local recv, held = cl[1].receive, nil
+    cl[1].receive = function(self, ch, from, msg)
+      if from == N[3] and msg.t == "ACT" and msg.a.op == "key" and not held then held = { ch, from, msg }; return end
+      recv(self, ch, from, msg)
+    end
+    ok(ns.Cash.close(cl[1])); sim:run(31); ok(held); eq(cl[1].session.book.published, true)
+    sim.envs[N[3]].random = rnd(9)                                                            -- its key of the new game is KEY(9)
+    ok(cl[1]:startGame()); sim:run(3); local g2, mark = st().g, #sim.sent
+    recv(cl[1], held[1], held[2], held[3]); sim:run(2)                                        -- its old key arrives now
+    local function keysEvents(from) local n = 0; for _, x in ipairs(evs(W, from)) do if x.k == "book" then n = n + 1 end end; return n end
+    eq(keysEvents(mark), 0)                                                                   -- the host refuses it: no keys event
+    for _, c in ipairs{ cl[1], cl[2], cl[3], w } do eq({ #c.session.book.keys, c.session.book.given[3], c.session.book.forged, c.session.book.seen.bad }, { 0, nil, nil, 0 }) end
+    play(1); mark = #sim.sent; cl[3]:stand(); sim:run(1)
+    eq(evs(W, mark)[1], { k = "book", op = "keys", m = { [3] = KEY(9) }, g = g2 })
+    eq(cl[2].session.book.keys, { { seat = 3, q = cl[2].session.book.keys[1].q, m = KEY(9) } })
   end)
   it("a key after the publish: the hands leave open", function()
     tableN(3); local bk = { books(cl[1]), books(cl[2]), books(w) }; ok(cl[1]:startGame()); sim:run(3); play(1); finishHand()   -- two hands in the book
@@ -737,7 +761,7 @@ describe("holdem: the book", function()
     for i = 1, 3 do eq(#bk[i], 1); eq({ bk[i][1].open, bk[i][1].missing }, { 2, { N[3] } }) end
     local b3, mark = books(cl[3]), #sim.sent; sim:online(N[3])
     for _ = 1, 60 do if #bk[1] == 2 then break end; sim:run(1) end
-    sim:run(2); eq(evs(W, mark)[#evs(W, mark)], { k = "book", op = "keys", m = { [3] = KEY(3) } })
+    sim:run(2); eq(evs(W, mark)[#evs(W, mark)], { k = "book", op = "keys", m = { [3] = KEY(3) }, g = st().g, f = true })   -- after the publish: final too
     for i = 1, 3 do eq(#bk[i], 2); eq({ bk[i][2].ok, bk[i][2].open, bk[i][2].missing }, { 2, 0, {} }) end
     eq({ b3[#b3].ok, b3[#b3].open, b3[#b3].missing }, { 2, 0, {} })
     eq(keyActs(N[3]), 2); sim:run(40); eq(keyActs(N[3]), 2)                                     -- once more, and not a third time

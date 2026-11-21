@@ -21,7 +21,7 @@ local _, ns = ...
 --   before the void) and closes "void". A round with a foul against it, or
 --   private faces the engine refused, closes "bad" as in stage B.
 -- Rule 6, keys: core/BookKeys.lua (who sends its key when, the publish).
--- Rule 7, the check: a hand is checked once, for every participant, a key
+-- Rule 7, the check (core/BookCheck.lua): a hand is checked once, for every participant, a key
 --   published for its seat at or after the hand gives a seed whose commit is
 --   the one held; every recorded face must then be the deck's ("ok", else
 --   "bad", "deal"). A hand is tried once a count of keys, BOOK_BATCH a tick of
@@ -32,7 +32,7 @@ local _, ns = ...
 -- open = {h, ...} (hands sealed and not checked yet, oldest first), keys =
 -- {{seat, q, m}, ...} (the published keys), seen = {ok, bad, open}, n (hands
 -- sealed or found bad in this game), given (seat -> its player's key came),
--- tried = {[h] = #keys}, closed, final, dirty, missing; core/BookKeys.lua's};
+-- tried = {[h] = #keys}, lack = {[h] = seats}, closed, final, dirty, missing; BookKeys'};
 -- s.bookTimer, s.handSeen, s.handNames (the seats when the last hand began).
 -- The engine state carries g too (state.g, set at `start` by core/Cash.lua),
 -- so a snapshot tells which game it is of; a book of another game is ended
@@ -61,7 +61,7 @@ function Book.of(s)
   local g = s.state and s.state.g
   if s.book and s.book.g ~= g then drop(s) end
   if not s.book then
-    s.book = { rec = {}, open = {}, keys = {}, seen = { ok = 0, bad = 0, open = 0 }, n = 0, given = {}, g = g, wait = {}, tried = {} }
+    s.book = { rec = {}, open = {}, keys = {}, seen = { ok = 0, bad = 0, open = 0 }, n = 0, given = {}, g = g, wait = {}, tried = {}, lack = {} }
   end
   return s.book
 end
@@ -143,6 +143,7 @@ function Book.seal(s, verdict)
   ns.Deal.close(s, verdict or "sealed")
 end
 
+-- The book actions (ACT {k="book"}, core/Cash.lua): the step's check and the host's handling.
 -- Does the street just dealt on `st` (the flop's three cards, else one) lack
 -- a face in `cards`? The engine takes a street with any subset of its faces
 -- on a view, so the table checks the step deals them all.
@@ -155,105 +156,46 @@ function Book.faceless(st, cards)
   return false
 end
 
--- Rule 7, hand h of my book -> "ok" | "bad" (a face that is not the deck's)
--- | nil, missing (the participants without a key giving the commit held).
-function Book.check(s, h, book)
-  book = book or s.book
-  local rec, hid, seeds, missing = book.rec[h], Fair.handId(s.tid, h), {}, {}
-  for i, q in ipairs(rec.p) do
-    for _, k in ipairs(book.keys) do
-      local seed = k.seat == q and k.q >= h and Fair.handSeed(k.m, hid)
-      if seed and Fair.commit(seed) == rec.c[q] then seeds[i] = seed; break end
+-- Host: a book action by `seat`; it never reaches the engine. op "step": the
+-- dealer of my round gives the faces of the step the engine waits for. op
+-- "missing": the dealer of a shuffle in stage seed names the participants
+-- whose seed it lacks (fair.missing; they sit out with it if the shuffle lapses).
+function Book.request(s, seat, a)
+  local fair, step = s.fair, a.a
+  if not fair or s.status ~= "live" or a.h ~= fair.h or seat ~= fair.d then return end
+  if a.op == "missing" and fair.stage == "seed" and type(a.seats) == "table" then
+    local out = {}
+    for _, q in ipairs(a.seats) do
+      if q ~= seat and ns.Util.contains(fair.p, q) and not ns.Util.contains(out, q) then out[#out + 1] = q end
     end
-    if not seeds[i] then missing[#missing + 1] = q end
+    fair.missing = out
   end
-  if missing[1] then return nil, missing end
-  local deck = Fair.deck(s:engine().DECK, seeds, hid)
-  for i, x in pairs(rec.f) do
-    if deck[i] ~= x then return "bad" end
+  if a.op ~= "step" or fair.stage ~= "dealt" then return end
+  local want = s:engine().system(s.state)
+  if not (want and want.need == "faces" and type(step) == "table" and step.k == want.k and type(step.cards) == "table") then
+    return
   end
-  return "ok"
+  local ev = { k = step.k, cards = step.cards }
+  local trial = copy(s.state)
+  if not s:engine().apply(trial, 0, ev) or (ev.k == "street" and Book.faceless(trial, ev.cards)) then return end
+  if ns.Deal.int.allPublic(s, ev, ev.cards) then s:play(0, ev) end
 end
 
--- BOOK_BATCH hands not tried with this many keys (all of them with `all`): a
--- verdict takes the record out and is counted; a bad one is a "fair" event.
-local function tick(s, book, all)
-  local n, i, client = 0, 1, s.client
-  while book.open[i] and (all or n < C.BOOK_BATCH) do
-    local h, v = book.open[i], nil
-    if book.tried[h] ~= #book.keys then n, v, book.tried[h] = n + 1, Book.check(s, h, book), #book.keys end
-    if v then
-      table.remove(book.open, i)
-      book.rec[h], book.seen[v] = nil, book.seen[v] + 1
-      if book.final then book.seen.open, book.dirty = book.seen.open - 1, true end -- a late key: the end again
-      if v == "bad" then client.events:emit("fair", { tid = s.tid, game = s.game, h = h, verdict = "bad", why = "deal", at = client.env.epoch() }) end
-    else
-      i = i + 1
-    end
+-- The hand on my state ended and I have not told it yet: event "hand" (Cash).
+function Book.told(s)
+  local st = s.state
+  local last = st and st.last
+  if not last or last.hand == s.handSeen then return end
+  s.handSeen = last.hand
+  local chips = {}
+  for i, x in pairs(st.seats) do
+    if x then chips[i] = x.chips end
   end
-end
-
--- The end of a closed book: the hands left are open and their players
--- without a key named (sorted by bytes); "book", "session".
-local function finish(s, book)
-  if book.final and not book.dirty then return end
-  local names, seen, client = {}, {}, s.client
-  for _, h in ipairs(book.open) do
-    local _, missing = Book.check(s, h, book)
-    for _, q in ipairs(missing or {}) do
-      local name = book.rec[h].who[q]
-      if name and not seen[name] then seen[name], names[#names + 1] = true, name end
-    end
-  end
-  table.sort(names, ns.Util.byteLess)
-  book.final, book.dirty, book.missing, book.seen.open = true, nil, names, #book.open
-  client.events:emit("book", { tid = s.tid, game = s.game, hands = book.n, ok = book.seen.ok, bad = book.seen.bad,
-    open = #book.open, missing = copy(names), at = client.env.epoch() })
-  ns.Session.emit(client)
-end
-
--- The check runs (s.bookTimer, 0.1 s) while a hand waits to be tried; then a closed book ends.
-function Book.run(s, book)
-  book = book or Book.of(s)
-  for _, h in ipairs(book.open) do
-    if book.tried[h] ~= #book.keys then
-      s.bookTimer = s.bookTimer or s.client:after(0.1, function()
-        s.bookTimer = nil
-        if s.client.session == s and s.book == book then tick(s, book); Book.run(s, book) end
-      end)
-      return
-    end
-  end
-  if book.closed then finish(s, book) end
-end
-
--- The book closes; `now` (the old game's book at a new game): every hand tried and the end at once.
-function Book.close(s, book, now)
-  book = book or Book.of(s)
-  book.closed = true
-  if now then tick(s, book, true); finish(s, book) else Book.run(s, book) end
-end
-
--- The book's line under the felt -> key, tone, arg, arg2 | nil (not sealed, no
--- book, or no hand ended yet); a book that ended: bad, else open (the first missing name), else ok.
-function Book.status(s)
-  local book = s.book
-  if not (s:engine().sealed and book) then return nil end
-  if book.seen.bad > 0 then return "seal.bad", "red", book.seen.bad end
-  if book.final and book.seen.open > 0 then return "seal.open", "gold", book.seen.open, book.missing[1] end
-  if book.final then return "seal.ok", "good", book.seen.ok end
-  if book.n == 0 then return nil end
-  return "seal.sealed", "inkDim", #book.open, book.seen.ok
-end
-
--- The tooltip of the line -> {{tone, key, arg}, ...} | nil.
-function Book.tip(s)
-  local book = s:engine().sealed and s.book
-  if not book then return nil end
-  local out = { { "ink", "seal.tip" } }
-  if book.seen.bad > 0 then out[#out + 1] = { "red", "seal.tip.bad", book.seen.bad } end
-  for _, name in ipairs(book.final and book.missing or {}) do out[#out + 1] = { "gold", "seal.tip.open", name } end
-  return out
+  local client = s.client
+  client.events:emit("hand", {
+    tid = s.tid, game = s.game, opt = copy(s.opt), n = last.hand, last = copy(last), chips = chips,
+    names = copy(s.handNames or s.seats), at = client.env.epoch(),
+  })
 end
 
 return Book

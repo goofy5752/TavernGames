@@ -199,7 +199,7 @@ ns.Ext.cash = {
     local out = a.k == "back" and s.lapseOut and s.lapseOut[seat]
     if out then out.back = true; release(s); return nil end
     if a.k ~= "book" then return a end
-    if a.op == "key" then ns.Book.take(s, seat, a.m) else ns.Book.request(s, seat, a) end
+    if a.op == "key" then ns.Book.take(s, seat, a) else ns.Book.request(s, seat, a) end
     return nil
   end,
 
