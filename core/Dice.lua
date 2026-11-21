@@ -35,9 +35,9 @@ local function wantsDice(s)
   return action ~= nil and action.need == "dice" and action or nil
 end
 
-local function newSeed(s)
-  local env = s.client.env
-  return Fair.seed(function(lo, hi) return env.random(lo, hi) end)
+-- My seed for throw h (out of my client's secret pool, core/Fair.lua).
+local function newSeed(s, h)
+  return Fair.seed(s.client.env, "dice|" .. Fair.handId(s.tid, h))
 end
 
 local function send(s, a)
@@ -85,7 +85,8 @@ end
 -- the commit of a fresh seed of mine and replaces the wait. Else nothing.
 function Dice.open(s)
   if s.role ~= "host" or not s.mySeat or not wantsDice(s) then return end
-  local h, seed = s.seq + 1, newSeed(s)
+  local h = s.seq + 1
+  local seed = newSeed(s, h)
   s.diceMine = { h = h, seed = seed }
   Dice.wait(s, h)
   s:play(0, { k = "throw", op = "open", h = h, c = Fair.commit(seed) })

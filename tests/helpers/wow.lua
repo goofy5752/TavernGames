@@ -168,6 +168,7 @@ function Wow.new(opts)
     -- Globals that may be absent in the game too (saved variables, optional APIs).
     local optional = {
       TavernGamesDB = true, CUSTOM_CLASS_COLORS = true, SOUNDKIT = true, issecretvalue = true, InviteUnit = true,
+      debugprofilestop = true, GetFramerate = true,
     }
     setmetatable(G, { __index = function(_, k)
       if optional[k] then return nil end

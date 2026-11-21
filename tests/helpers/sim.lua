@@ -7,6 +7,18 @@ Sim.ns = Loader.ns()
 
 local EPOCH0 = 1700000000
 
+-- Seeds. A sim client makes its seeds the plain way, SEED_BYTES values of its
+-- env.random as hex, so that a test can say what a seed will be (sim.nextRandom,
+-- or env.random replaced). A client whose env has realSeeds = true makes them
+-- as the game does, out of its secret pool (core/Fair.lua): Sim.realSeed.
+Sim.realSeed = Sim.ns.Fair.seed
+Sim.ns.Fair.seed = function(env, purpose)
+  if env.realSeeds then return Sim.realSeed(env, purpose) end
+  local out = {}
+  for i = 1, Sim.ns.Const.SEED_BYTES do out[i] = string.format("%02x", env.random(0, 255)) end
+  return table.concat(out)
+end
+
 function Sim.new(ns)
   local self = setmetatable({
     ns = ns or Sim.ns,

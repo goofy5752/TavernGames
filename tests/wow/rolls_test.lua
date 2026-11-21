@@ -99,6 +99,17 @@ describe("wow: roll line", function()
     eq(bot.roll, nil); eq(bot.groupInvite, nil); eq(bot.group, nil); eq(type(bot.random(1, 6)), "number")
   end)
 
+  it("env.entropy feeds the seed pool with the client's clocks, with or without the optional calls", function()
+    local w = setup()
+    local env = w.ns.client.env
+    local e1 = env.entropy(); eq(type(e1), "string"); ok(#e1 > 8)
+    w.G.debugprofilestop, w.G.GetFramerate = function() return 123456.789 end, function() return 59.94 end
+    local e2 = env.entropy(); ok(e2:find("123456.789", 1, true) and e2:find("59.94", 1, true), e2)
+    eq(type(w.ns.Adapter.botEnv("Бот Иванов", "PRIEST").entropy()), "string")
+    local seed = w.ns.Fair.seed(env, "dice|t#1/3"); ok(#seed == 32 and not seed:find("[^0-9a-f]"), seed)
+    ok(w.ns.Fair.seed(env, "dice|t#1/3") ~= seed)
+  end)
+
   it("env.group is absent unless all four group functions exist", function()
     for _, fn in ipairs({ "IsInGroup", "UnitIsGroupLeader", "IsInRaid", "GetNumGroupMembers" }) do
       local w = Wow.new()

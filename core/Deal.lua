@@ -541,8 +541,7 @@ function Deal.react(s)
   if fair.stage ~= "dealt" then fair.fresh = nil end -- I see this deal happen: nothing to ask for
   if fair.stage == "commit" then
     if part and not fair.seed and fair.commits[me] == nil then
-      local env = s.client.env
-      fair.seed = Fair.seed(function(lo, hi) return env.random(lo, hi) end)
+      fair.seed = Fair.seed(s.client.env, "deal|" .. Fair.handId(s.tid, fair.h))
       fair.seat, fair.own = me, Fair.commit(fair.seed)
       Deal.submit(s, { k = "fair", op = "commit", h = fair.h, c = fair.own })
     end

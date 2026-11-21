@@ -22,9 +22,23 @@ local function rec()
 end
 
 describe("fair", function()
-  it("a seed is 16 random bytes in hex and the commit is its SHA-256", function()
-    local calls = 0; eq(F.seed(function(lo, hi) calls = calls + 1; eq({ lo, hi }, { 0, 255 }); return 255 end), SEED); eq(calls, 16)
-    eq(F.seed(function() return 0 end), ZERO); eq(F.seed(function() return 10 end), ("0a"):rep(16))
+  -- An env whose generator gives `n` every time (the worst one there is).
+  local function envOf(n, me)
+    local env = { me = me or "Иван Петров", guid = "Player-1", calls = 0, now = function() return 12.5 end, epoch = function() return 1700000000 end }
+    env.random = function(lo, hi) env.calls = env.calls + 1; eq({ lo, hi }, { 0, 255 }); return n end
+    return env
+  end
+  local function isSeed(x) return type(x) == "string" and #x == 32 and not x:find("[^0-9a-f]") end
+
+  it("a seed is 16 bytes in hex out of the client's secret pool, never the generator's own output; the commit is its SHA-256", function()
+    local seed, env = Sim.realSeed, envOf(255)
+    local x = seed(env, "dice|t#1/3"); ok(isSeed(x), x); ok(x ~= SEED); eq(env.calls, 64)
+    local y, z = seed(env, "dice|t#1/3"), seed(env, "deal|t#1/3"); ok(isSeed(y) and isSeed(z)); eq(env.calls, 64)   -- the pool is built once
+    ok(x ~= y and y ~= z and x ~= z)                                           -- the counter and the purpose both tell seeds apart
+    local other = seed(envOf(255, "Мария Стоянова"), "dice|t#1/3"); ok(isSeed(other) and other ~= x)   -- another client, the same generator
+    ok(seed(envOf(0), "dice|t#1/3") ~= x)
+    local late = envOf(255); late.now = function() return 99 end; ok(seed(late, "dice|t#1/3") ~= x)
+    local rich = envOf(255); rich.entropy = function() return "e" end; ok(seed(rich, "dice|t#1/3") ~= x)
     eq(F.commit(SEED), "352302489bc2fcf025cf00cda8308033f97ac87712ce90b4d7cd72c58e4c3af9")
     eq(F.commit("abc"), "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"); eq(F.handId("Иван Петров#17", 7), "Иван Петров#17/7")
   end)

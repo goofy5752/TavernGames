@@ -57,7 +57,7 @@ function Dice.part(s, throw)
   if c ~= nil and c ~= throw.own then return end
   if c == nil then
     if not throw.seed then
-      throw.seed = int.newSeed(s)
+      throw.seed = int.newSeed(s, throw.h)
       throw.own = Fair.commit(throw.seed)
       int.own(s, throw, throw.own)
       if env.db then

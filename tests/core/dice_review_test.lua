@@ -151,3 +151,58 @@ describe("final review: complaints (I5)", function()
     s:play(0, { k = "start" }); sim:run(1); protest(3); eq(relayed(), 6)   -- a new match: heard again
   end)
 end)
+
+describe("final review: seeds out of a secret pool (I4)", function()
+  -- Every string in `v`, at any depth.
+  local function strings(v, out, seen)
+    out, seen = out or {}, seen or {}
+    if type(v) == "string" then out[#out + 1] = v end
+    if type(v) == "table" and not seen[v] then
+      seen[v] = true
+      for k, x in pairs(v) do strings(k, out, seen); strings(x, out, seen) end
+    end
+    return out
+  end
+
+  it("two clients with the same weak generator throw with seeds that differ, 32 hex each; no pool is in a message, a trace line or the saved variables", function()
+    sim = Sim.new()
+    local logged = {}
+    local function add(name, cls)
+      local env = sim:newEnv(name, { cls = cls }); sim:addFakes(env, {})
+      env.realSeeds, env.log = true, function(...) logged[#logged + 1] = { ... } end
+      return sim:join(name, env)
+    end
+    -- What the pools are: the text every seed is hashed from (pool|counter|purpose).
+    local pools, hex = {}, ns.Sha256.hex
+    ns.Sha256.hex = function(text)
+      local pool = text:match("^(%x+)|%d+|dice|")
+      if pool then pools[pool] = true end
+      return hex(text)
+    end
+    local done, err = pcall(function()
+      a, b, w = add(A, "MAGE"), add(B, "PRIEST"), add(W, "DRUID"); sim:run(1)
+      local tid = a:openTable{ game = "tabla", access = "guild", turn = 30 }; sim:run(3)
+      w:watch(tid); sim:run(1); b:sit(tid, 2); sim:run(200)
+    end)
+    ns.Sha256.hex = hex; if not done then error(err, 0) end
+    local seeds, n = {}, 0
+    for _, m in ipairs(sim.sent) do
+      local x = m.msg.t == "EV" and m.target == W and m.msg.a
+      if x and x.op == "seeds" then
+        for seat = 1, 2 do
+          local seed = x.s[seat]; ok(#seed == 32 and not seed:find("[^0-9a-f]"), seed)
+          ok(not seeds[seed], "a seed came twice"); seeds[seed], n = true, n + 1
+        end
+      end
+    end
+    ok(n >= 12, tostring(n)); eq(b.session.state, a.session.state); eq(b.session.diceSeen.bad + b.session.diceSeen.alone, 0)
+    local count = 0
+    for pool in pairs(pools) do count = count + 1; eq(#pool, 64) end
+    eq(count, 2)                                                       -- one pool a client that throws
+    local said = strings({ sim.sent, logged, sim.envs[A].db, sim.envs[B].db })
+    ok(#said > 100)
+    for _, text in ipairs(said) do
+      for pool in pairs(pools) do ok(not text:find(pool, 1, true), "a pool left the client") end
+    end
+  end)
+end)

@@ -130,12 +130,24 @@ local function timer(seconds, fn)
   return { cancel = function() t:Cancel() end }
 end
 
+-- Cheap entropy for the seed pool (core/Fair.lua): the client's clocks, the
+-- frame rate and the address of a fresh table. The two finer ones are used
+-- only where the client has them.
+local function entropy()
+  return table.concat({
+    tostring(GetTime()), tostring(GetServerTime()),
+    type(debugprofilestop) == "function" and tostring(debugprofilestop()) or "",
+    type(GetFramerate) == "function" and tostring(GetFramerate()) or "",
+    tostring({}),
+  }, "|")
+end
+
 local function baseEnv(me, guid, cls)
   return {
     me = me, guid = guid, cls = cls,
     now = function() return GetTime() end,
     epoch = function() return GetServerTime() end,
-    after = timer,
+    after = timer, entropy = entropy,
   }
 end
 
