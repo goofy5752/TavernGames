@@ -36,6 +36,7 @@ core/Rolls.lua
 core/Party.lua
 core/Lifecycle.lua
 core/Deal.lua
+core/DealLine.lua
 core/DealHooks.lua
 core/DealKeep.lua
 core/Dice.lua
@@ -78,6 +79,7 @@ ui/HallPeers.lua
 ui/Hall.lua
 ui/Minimap.lua
 ui/TableFrame.lua
+ui/TablePanels.lua
 ui/games/TicTacToeView.lua
 ui/games/DeathRollView.lua
 ui/games/SantaseView.lua

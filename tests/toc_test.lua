@@ -66,4 +66,10 @@ describe(".pkgmeta", function()
     eq(tags, expected)
     for _, tag in pairs(tags) do ok(license:find(tag, 1, true), "tag not in LICENSE-THIRD-PARTY.md: " .. tag) end
   end)
+
+  it("the big files keep their limits", function()
+    local function lines(path) local n = 0; for _ in io.lines(path) do n = n + 1 end; return n end
+    ok(lines("core/Session.lua") < 540, "Session.lua"); ok(lines("core/Deal.lua") <= 700, "Deal.lua " .. lines("core/Deal.lua"))
+    ok(lines("core/DealHooks.lua") < 400, "DealHooks.lua"); ok(lines("ui/TableFrame.lua") < 600, "TableFrame.lua " .. lines("ui/TableFrame.lua"))
+  end)
 end)
