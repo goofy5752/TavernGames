@@ -24,6 +24,25 @@ function Stakes.pairs(losers, winners, c)
   return out
 end
 
+-- A team game (engine.teams): the i-th loser owes the i-th winner c (both
+-- lists by ascending seat; the extra names of the longer list owe and are owed nothing) -> {{f, t, c}}.
+function Stakes.matched(losers, winners, c)
+  local out = {}
+  for i = 1, math.min(#losers, #winners) do out[i] = { f = losers[i], t = winners[i], c = c } end
+  return out
+end
+
+-- Whom the leaver of `seat` owes: the other players of `roster` (seat -> name)
+-- but its partner (engine.partner) -> names, seats (in seat order).
+function Stakes.owed(s, roster, seat)
+  local engine, to, w = s:engine(), {}, {}
+  local partner = engine.partner and engine.partner(seat)
+  for i = 1, #s.seats do
+    if i ~= seat and i ~= partner and roster[i] then to[#to + 1], w[#w + 1] = roster[i], i end
+  end
+  return to, w
+end
+
 local function worse(a, b) return (not a or (b and Stakes.RANK[b] > Stakes.RANK[a])) and b or a end
 local function rolls(s) return ns.Util.contains(s:engine().ext or {}, "rolls") end
 local function names(seats, list)
@@ -91,24 +110,36 @@ function Book:last(tid)
   return best
 end
 
--- "result" (inside the event's apply): the host's R; at a staked table the
--- rest after the event's hooks (Book:settle, from the stakes hook applied).
+-- The host's R of a "result".
+local function hostR(self, s, r)
+  if s.role ~= "host" then return end
+  local gid = r.tid .. "/" .. r.q
+  self:make("R" .. gid, "R", { gid = gid, g = r.game, n = copy(r.names), w = copy(r.winners), l = copy(r.losers), sk = r.sk,
+    why = r.left and "left" or nil })
+end
+
+-- "result" (inside the event's apply): a fun table's R, the host's; at a
+-- staked table everything after the event's hooks (Book:settle, from the stakes hook applied).
 function Book:result(r)
   local s = self.client.session
   if not (s and s.tid == r.tid) or self:bot(r.tid) then return end
-  local gid = r.tid .. "/" .. r.q
-  if s.role == "host" then
-    self:make("R" .. gid, "R", { gid = gid, g = r.game, n = copy(r.names), w = copy(r.winners), l = copy(r.losers), sk = r.sk,
-      why = r.left and "left" or nil })
-  end
-  if r.sk ~= nil then s.stakeResult = r end
+  if r.sk == nil then return hostR(self, s, r) end
+  s.stakeResult = r
 end
 
-function Book:settle(s)
+-- The outcome of the event's "result" and the host's R. `quits`: the event is
+-- the stand of a seat of the running game, which the forfeit settles (core/Stakes.lua):
+-- the result is dropped, one outcome per game. A team game's losers pay by
+-- Stakes.matched, every other game's by Stakes.pairs.
+function Book:settle(s, quits)
   local r = s.stakeResult
   if not r then return end
   s.stakeResult = nil
-  self:outcome(s, r.tid .. "/" .. r.q, Stakes.pairs(names(r.names, r.losers), names(r.names, r.winners), r.sk), r.left and "left" or "lost")
+  if quits then return end
+  hostR(self, s, r)
+  local function by(list) local out = copy(list or {}); table.sort(out); return names(r.names, out) end
+  local pair = s:engine().teams and Stakes.matched or Stakes.pairs
+  self:outcome(s, r.tid .. "/" .. r.q, pair(by(r.losers), by(r.winners), r.sk), r.left and "left" or "lost")
 end
 
 -- My note of an outcome and my entries for it: my claims, the owe timer, the

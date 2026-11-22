@@ -32,9 +32,12 @@ function Stake.fromParts(gold, silver)
 end
 
 -- The most a player of game `id` can lose at a table of stake `copper`:
--- Death Roll pays everyone else, every other game one stake.
+-- Death Roll pays everyone else, a team game (engine.teams) two stakes (a
+-- leaver pays both opponents), every other game one stake.
 function Stake.worst(id, copper)
   if id == "deathroll" then return copper * (ns.Engines.deathroll.maxSeats - 1) end
+  local engine = ns.Games.engine(id)
+  if engine and engine.teams then return copper * 2 end
   return copper
 end
 

@@ -5,16 +5,19 @@ local _, ns = ...
 --   (its gid, why "left", the table's stake, within STAKE_LEFT_WINDOW of it,
 --   a creditor I left behind) -> C, once per creditor, unless my note of that
 --   game holds any foul (then put to me; its roll part pending -> wait); another amount there
---   -> N "amount", any other claim at that gid -> put to me; a "left" claim
---   at that table more than LEAVE_SLACK events after it, with no note of mine
---   for its gid: a game I was not in (N "forged") once that creditor's claim
---   of my stand was taken and the claim came within LEAVE_AT_SLACK of the
---   leave, else put to me (in-flight timing is no foul); an asked seat's
---   leave is inert;
+--   -> N "amount", any other claim at that gid -> put to me; in a team game (engine.partner) a
+--   creditor who is no opponent -> N "no", and the C waits for the one R of that game naming my
+--   seat (my partner's stand may have come first), put to me STAKE_OWE_WAIT after my stand
+--   without it or at once with another; a "left" claim at that table more than
+--   LEAVE_SLACK events after it, with no note of mine for its gid: a game I was
+--   not in (N "forged") once that creditor's claim of my stand was taken and the
+--   claim came within LEAVE_AT_SLACK of the leave, else put to me (in-flight
+--   timing is no foul); an asked seat's leave is inert;
 --   my note of its gid: roll part pending -> wait, a foul forged/roll/stand
---   -> N with it, another amount -> N "amount", my pair clean and the claim
---   written within STAKE_LEFT_WINDOW of my note -> C (my own D when its id
---   holds bodies of more than one debt);
+--   -> N with it, a creditor I owe nothing at a clean loss -> N "no", another
+--   amount -> N "amount", my pair clean and the claim written within
+--   STAKE_LEFT_WINDOW of my note -> C (my own D when its id holds bodies of
+--   more than one debt);
 --   an event of my running table I have not applied yet -> wait;
 --   the newest open note of that table at or before its q, written within
 --   STAKE_LEFT_WINDOW of the claim: a foul -> N with it, another amount -> N
@@ -36,11 +39,18 @@ function Book:judge(b, taken)
   local left, note = self:left()[tid], self:seen()[b.gid]
   local lq = type(left) == "table" and tonumber(left.q) or nil
   if q == lq and left.sk ~= nil then -- an inert leave (an asked seat's) neither confirms nor contests
-    local used = (type(left.used) == "table" and left.used[b.t]) or taken[b.t]
-    if b.why == "left" and left.sk == b.c and near(b.at, left.at) and (not used or used == b.h)
-        and Util.contains(type(left.names) == "table" and left.names or {}, b.t) then
+    local used, E = (type(left.used) == "table" and left.used[b.t]) or taken[b.t], left.g and ns.Games.engine(left.g)
+    local owed = Util.contains(type(left.names) == "table" and left.names or {}, b.t)
+    if E and E.partner and not owed then return "N", "no" end -- my partner, or nobody of that game
+    if b.why == "left" and left.sk == b.c and near(b.at, left.at) and (not used or used == b.h) and owed then
       -- Never from a game my client holds any foul of (forged, roll, stand, unseen): that is put to me.
       if type(note) == "table" and (note.wait or note.foul) then return note.wait and "wait" or "ask" end
+      if E and E.partner then -- my partner's stand may have come first: only the one R of it naming me confirms
+        local n, named = self:results(b.gid)
+        local due = (left.at or 0) + C.STAKE_OWE_WAIT - self.env.epoch()
+        if not named and (n > 0 or due <= 0) then return "ask" end
+        if not named then self.wake = self.wake or self.client:after(due + 1, function() self.wake = nil; self:review() end); return "wait" end
+      end
       taken[b.t] = b.h
       return "C", nil, left
     end
@@ -49,8 +59,9 @@ function Book:judge(b, taken)
   if type(note) == "table" and not note.open then
     if note.wait then return "wait" end
     if BAD[note.foul] then return "N", note.foul end
-    local p
-    for _, x in ipairs(note.pairs or {}) do if x.f == me and x.t == b.t then p = x end end
+    local p, mine
+    for _, x in ipairs(note.pairs or {}) do if x.f == me then mine = true; if x.t == b.t then p = x end end end
+    if mine and not p and not note.foul then return "N", "no" end -- a creditor I do not owe
     if b.c ~= (p and p.c or note.sk) then return "N", "amount" end
     return (p and not note.foul and near(b.at, note.at)) and "C" or "ask"
   end
@@ -68,6 +79,19 @@ function Book:judge(b, taken)
   local sk = (open and open.sk) or (type(left) == "table" and left.sk)
   if sk and b.c ~= sk then return "N", "amount" end
   return "ask"
+end
+
+-- The R bodies of gid in my ledger (neither denied nor put to me; indexed once per ledger
+-- revision) -> how many, and whether there is one and it names my seat alone as the loser.
+function Book:results(gid)
+  local L = self.client.ledger
+  if not (self.rs and self.rs.rev == L.rev) then
+    local by = {}
+    L:each(function(e) if e.k == "R" and type(e.gid) == "string" and not e.un and not L:denied(e) then by[e.gid] = by[e.gid] or {}; table.insert(by[e.gid], e) end end)
+    self.rs = { rev = L.rev, by = by }
+  end
+  local rs = self.rs.by[gid] or {}
+  return #rs, #rs == 1 and type(rs[1].l) == "table" and #rs[1].l == 1 and type(rs[1].n) == "table" and rs[1].n[rs[1].l[1]] == self.env.me
 end
 
 -- The claim bodies of debt d (its creditor's D entries), and whether an id of

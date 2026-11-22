@@ -212,15 +212,13 @@ end
 
 -- A seat-0 stand of seat a.seat of `roster` (the running game's, before the
 -- event) is the forfeit "forfeit"{tid, game, q, seat, name, to, why, sk, at}:
--- owed to the roster's other names at gid tid .. "/" .. q; the seat leaves the
--- roster. The host writes its R; a leaving host's R is its successor's
--- (s.stakeR, hostChanged). The players' outcome: core/StakesBook.lua.
+-- owed to the roster's other names but the leaver's partner (Stakes.owed) at gid
+-- tid .. "/" .. q; the seat leaves the roster. The host writes its R; a leaving
+-- host's R is its successor's (s.stakeR, hostChanged). The players' outcome: core/StakesBook.lua.
 local function forfeit(s, a, roster)
-  local env, book, name, to, w = s.client.env, s.client.stakes, roster[a.seat], {}, {}
+  local env, book, name = s.client.env, s.client.stakes, roster[a.seat]
   local why = (a.why == "offline" or a.why == "idle") and a.why or "left" -- a reason the ledger knows, whatever the host sent
-  for i = 1, #s.seats do
-    if i ~= a.seat and roster[i] then to[#to + 1], w[#w + 1] = roster[i], i end
-  end
+  local to, w = Stakes.owed(s, roster, a.seat)
   roster[a.seat] = nil
   s.client.events:emit("forfeit", { tid = s.tid, game = s.game, q = s.seq, seat = a.seat, name = name, to = to, why = why, sk = s.stake, at = env.epoch() })
   if not book or #to == 0 or book:bot(s.tid) then return end
@@ -241,10 +239,9 @@ local function quit(s)
   local env, roster, sat = s.client.env, s.stakeRoster, s.client.env.db.stakeSat
   if not (s.client.stakes and s.stakeLive and roster and s.mySeat and roster[s.mySeat] == env.me) then return end
   local mine = type(sat) == "table" and sat.tid == s.tid and sat.sk == s.stake
-  local to, q, at = {}, s.seq + 1, env.epoch()
-  for i = 1, #s.seats do if i ~= s.mySeat and roster[i] then to[#to + 1] = roster[i] end end
+  local to, q, at = Stakes.owed(s, roster, s.mySeat), s.seq + 1, env.epoch()
   env.db.stakeLeft = env.db.stakeLeft or {} -- an asked seat's leave is inert: no stake, nothing to use
-  env.db.stakeLeft[s.tid] = mine and { at = at, sk = s.stake, names = to, q = q, used = {} } or { at = at, q = q, names = to }
+  env.db.stakeLeft[s.tid] = mine and { at = at, sk = s.stake, names = to, q = q, used = {}, g = s.game } or { at = at, q = q, names = to, g = s.game }
   if s.role == "host" then return end
   s.client.events:emit("forfeit", { tid = s.tid, game = s.game, q = q, seat = s.mySeat, name = env.me, to = to, why = "left", sk = s.stake, at = at })
   s.client.stakes:quit(s, s.tid .. "/" .. q, { at = at, g = s.game, sk = s.stake, pairs = Stakes.pairs({ env.me }, to, s.stake), why = "left",
@@ -264,6 +261,7 @@ end
 ns.Ext.stakes = {
   applied = function(s, seat, a)
     local live, roster = s.stakeLive, s.stakeRoster -- before the event
+    local quits = seat == 0 and a.k == "stand" and live and roster and type(roster[a.seat]) == "string" -- the forfeit settles it
     local start = seat == 0 and a.k == "start"
     -- My own move as host; as a member what my client took for mine (my own ACT, or my timeout
     -- due by my clock): the log holds every action in my name that was not forged.
@@ -278,8 +276,8 @@ ns.Ext.stakes = {
     if seat == 0 and a.k == "stand" then s.stakeRefill = "empty" end
     if seat == 0 and a.k == "sit" and s.stakeRefill == "empty" then s.stakeRefill = "filled" end
     refresh(s, start, seat ~= 0)
-    if s.client.stakes then s.client.stakes:settle(s) end -- the outcome of a "result" of this event
-    if seat == 0 and a.k == "stand" and live and roster and type(roster[a.seat]) == "string" then forfeit(s, a, roster) end
+    if s.client.stakes then s.client.stakes:settle(s, quits) end -- the outcome of a "result" of this event
+    if quits then forfeit(s, a, roster) end
   end,
   -- The event is applied (or refused) next. The timeout of a turn a login
   -- brought me (no clock of mine saw it begin) is a question, not forged.

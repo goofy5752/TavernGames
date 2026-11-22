@@ -964,6 +964,9 @@ function E.leave(s, seat)
   return true
 end
 
+-- The seat of `seat`'s partner (1 and 3, 2 and 4): it owes nothing when `seat` leaves.
+function E.partner(seat) return (seat + 1) % 4 + 1 end
+
 function E.snapshot(s) return copy(s) end
 function E.restore(t) return copy(t) end
 
