@@ -441,7 +441,8 @@ describe("stakes: the verdict feeds the confirmation", function()
     s.fairVoids = { ["Петър Колев"] = 1 }; s.fairLapses = { ["Петър Колев"] = 1 }
     eq(f{ verdict = "void", dealer = "Петър Колев" }, "deal")
     s.fairVoids = { ["Мария Стоянова"] = 3 }
-    eq(f{ verdict = "void", dealer = "Мария Стоянова" }, nil); eq(f{ verdict = "void", dealer = "Иван Петров" }, nil)
+    eq(f{ verdict = "void", dealer = "Мария Стоянова" }, "unseen"); eq(f{ verdict = "void", dealer = "Иван Петров" }, nil) -- my partner's: I cannot see that it asked (C1)
+    eq(f{ verdict = "bad", why = "nodeal", dealer = "Иван Петров" }, "unseen")
     -- Сантасе has no partner: my side is me alone; a throw of Табла is judged by its own verdict.
     local s2 = fakeSession{ me = "Иван Петров", seat = 1, seats = { "Иван Петров", "Петър Колев" }, game = "santase" }
     eq(Stakes.fairFoul(s2, { verdict = "bad", why = "noreveal", dealer = "Петър Колев" }), "deal")
@@ -663,7 +664,7 @@ describe("stakes: the verdict feeds the confirmation", function()
     end
   end)
 
-  it("my own void costs me nothing (Белот: the dealer comes back without its deck; its partner confirms)", function()
+  it("my own void costs me nothing (Белот: the dealer comes back without its deck; its partner's loss is a question)", function()
     shortly("belot", function()
       for seed = 1, 60 do
         local sim, cl, _, rnd = belot(seed)
@@ -671,15 +672,15 @@ describe("stakes: the verdict feeds the confirmation", function()
         for _ = 1, 2 do Play.step(sim, cl[I]) end
         cl[G] = sim:crash(G); cl[G].env.random = rnd; sim:settle(); sim:run(4)
         eq(cl[I].session.fairVoids, { [G] = 1 })
-        eq(cl[P].session.stakeFoul, nil) -- my partner's void: nothing
+        eq(cl[P].session.stakeFoul, "unseen") -- my partner's void: my client cannot see that it asked (C1)
         eq({ cl[I].session.stakeFoul, cl[M].session.stakeFoul }, { "unseen", "unseen" }) -- an opponent's first
         local gid, L, W = finish(sim, cl[I])
         sim:run(C.STAKE_FAIR_WAIT + 5)
         if creditorOf(G, L, W) then
           ok(asked(cl[G], gid, G, creditorOf(G, L, W)), "Гошо's debt is put to it (its login)")
           eq(#wordsAt(sim, G, "N", gid), 0)
-          eq(#wordsAt(sim, P, "C", gid), 1); eq(#wordsAt(sim, P, "N", gid), 0)
-          eq(Play.debt(cl[I], gid, P, creditorOf(P, L, W)).status, "confirmed")
+          eq(#wordsAt(sim, P, "C", gid), 0); eq(#wordsAt(sim, P, "N", gid), 0)
+          ok(asked(cl[P], gid, P, creditorOf(P, L, W)), "its partner's debt is put to it")
           return
         end
       end

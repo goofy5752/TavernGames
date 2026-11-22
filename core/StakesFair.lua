@@ -17,7 +17,8 @@ local _, ns = ...
 --   "bad", why "announce"                                  none (the engine scored it 0 on every client)
 --   "bad", why "noreveal", the dealer on my side           unseen
 --   any other "bad"                                        deal
---   "void", or "bad" "nodeal", the dealer on my side       none ("nodeal" on my side: unseen)
+--   "void", the dealer is me                               none (my client asked for it)
+--   "void" of my partner's deal; "nodeal" on my side       unseen (I cannot see that my partner asked)
 --   "void" or "bad" "nodeal", the dealer not on my side:
 --     that dealer's first in the match                     unseen
 --     its second (fairVoids[name] + fairLapses[name] >= 2) deal
@@ -86,7 +87,8 @@ function Stakes.fairFoul(s, v)
   local side = mySide(s, v.dealer)
   if verdict == "bad" and why == "noreveal" then return side and "unseen" or "deal" end
   if verdict == "void" or why == "nodeal" then
-    if side then return verdict == "bad" and "unseen" or nil end
+    -- Only my own void is one my client knows it asked for (an unasked one closed "bad" "forged").
+    if side then return (verdict == "bad" or v.dealer ~= s.client.env.me) and "unseen" or nil end
     local n = ((s.fairVoids or NONE)[v.dealer] or 0) + ((s.fairLapses or NONE)[v.dealer] or 0)
     return n >= 2 and "deal" or "unseen"
   end
