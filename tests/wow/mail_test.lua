@@ -4,8 +4,8 @@ local ME, M = "Иван Петров", "Мария Колева"
 local M_GUID = "Player-1-00000002"
 local SUBJECT = "Tavern Games: Морски шах 14.11"
 
-local function guildWow()
-  local w = Wow.new()
+local function guildWow(opts)
+  local w = Wow.new(opts)
   w.inGuild = true
   w.roster = {
     { name = ME .. "-Forever", online = true, guid = Wow.GUID },
@@ -74,6 +74,11 @@ describe("wow mail: the send frame", function()
     w2:fireMail("MAIL_SHOW")
     eq(w2.ns.Mail.fill(M, SUBJECT, "тяло", 100), true)
     eq(w2.G.MailEditBox:GetText(), "тяло")
+    -- The money box refuses the amount: the game's „Send“ would send 0, so nothing is filled.
+    local w4 = guildWow()
+    w4.G.MoneyInputFrame_SetCopper = function() error("no money box") end
+    w4:fireMail("MAIL_SHOW")
+    eq(w4.ns.Mail.fill(M, SUBJECT, "тяло", 100), nil)
     -- Without a recipient box nothing can be filled.
     local w3 = guildWow()
     w3.G.SendMailNameEditBox = nil
@@ -163,8 +168,7 @@ describe("wow mail: money taken from a letter", function()
   end)
 
   it("without hooksecurefunc the bag money decides", function()
-    local w = guildWow()
-    w.G.hooksecurefunc = nil
+    local w = guildWow({ noHooks = true })
     local got = mailedLog(w)
     atMailbox(w, { { sender = "Мария", subject = SUBJECT, money = 50000 }, { sender = "Петър", subject = "Здрасти", money = 700 } })
     w:playerCalls("TakeInboxMoney", 1)
@@ -190,6 +194,25 @@ describe("wow mail: money taken from a letter", function()
     table.remove(w.inbox, 2) -- the other letter is returned to its sender
     w:fireMail("MAIL_INBOX_UPDATE")
     eq(#got, 1)
+  end)
+
+  it("the hooks are set when the file loads: a take through a copy made before the mailbox opened is seen", function()
+    local w = guildWow()
+    local take = w.G.TakeInboxMoney -- another mail addon keeps its own copy of the function
+    local got = mailedLog(w)
+    atMailbox(w, { { sender = "Мария", subject = SUBJECT, money = 50000 } })
+    w.byPlayer = true
+    take(1)
+    w.byPlayer = false
+    moneyTaken(w, 1)
+    eq(got, { { shown = "Мария", subject = SUBJECT, c = 50000 } })
+  end)
+
+  it("a forbidden call from a hook fails the test even inside the player's click", function()
+    local w = guildWow()
+    w.G.hooksecurefunc("TakeInboxMoney", function() w.G.SendMail() end)
+    raises(function() w:playerCalls("TakeInboxMoney", 1) end, "called SendMail")
+    eq(w:called("SendMail"), 1)
   end)
 
   it("the addon never takes the money itself", function()

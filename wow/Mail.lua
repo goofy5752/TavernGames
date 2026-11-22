@@ -41,12 +41,12 @@ function Mail.fill(name, subject, body, c)
   -- The game's „Send“ sends the money box as money or as COD by these two buttons.
   call(lookup("SendMailSendMoneyButton"), "SetChecked", true)
   call(lookup("SendMailCODButton"), "SetChecked", false)
-  local filled = false
-  local show, box = fn("MoneyInputFrame_SetCopper"), lookup("SendMailMoney")
-  if show and box then filled = pcall(show, box, c) end
-  local set = fn("SetSendMailMoney")
-  if set then filled = pcall(set, c) or filled end
-  return filled or nil
+  -- The game's „Send“ sends what the money box shows: where the box exists, it decides.
+  local show, box, set = fn("MoneyInputFrame_SetCopper"), lookup("SendMailMoney"), fn("SetSendMailMoney")
+  local boxed = show and box and pcall(show, box, c)
+  local direct = set and pcall(set, c)
+  if show and box then return boxed or nil end
+  return direct or nil
 end
 
 -- The copper the post takes for one letter: the game's price, C.MAIL_FEE without it.
@@ -93,6 +93,9 @@ end
 
 -- The hook of TakeInboxMoney and AutoLootMailItem runs after the call, while the
 -- game has not changed the row yet: it notes the row as the cache shows it.
+-- Residual: several takes between two updates (another addon opening all
+-- letters) can note a row by a stale index; that misses a payment, and credits
+-- a wrong one only when a letter of the noted key is returned within TAKE_WAIT s.
 local function took(i)
   local r = rows[i]
   if brings(r) then taken[#taken + 1] = { row = r, at = GetTime() } end
@@ -149,6 +152,10 @@ local function update()
   end
   rows, bags = now, money
 end
+
+-- At load, so that a mail addon that copies TakeInboxMoney later still goes
+-- through the hook; again at the mailbox for a client that defines it late.
+hook()
 
 local EVENTS = {
   MAIL_SHOW = function()

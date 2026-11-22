@@ -68,6 +68,7 @@ local function tocFiles(prefix)
 end
 
 -- opts.saved: a TavernGamesDB table from an earlier session (a /reload).
+-- opts.noHooks: a client without hooksecurefunc.
 -- opts.ui: also run the ui/ files.
 function Wow.new(opts)
   opts = opts or {}
@@ -183,6 +184,7 @@ function Wow.new(opts)
   G.GetTargetTradeMoney = function() return self.tradeMoney.target end
   G.ERR_TRADE_COMPLETE = "Trade complete."
   G.ERR_TRADE_CANCELLED = "Trade cancelled."
+  G.ERR_TRADE_BAG_FULL = "Trade failed, you don't have enough bag space."
   -- The money box of the trade frame and of the send-mail frame: {copper}.
   G.TradePlayerInputMoneyFrame, G.SendMailMoney = { copper = 0 }, { copper = 0 }
   G.MoneyInputFrame_SetCopper = api(self, "MoneyInputFrame_SetCopper", function(frame, c) frame.copper = c end)
@@ -210,10 +212,15 @@ function Wow.new(opts)
     local orig = tbl[name]
     tbl[name] = function(...)
       local r = { orig(...) }
+      -- The hook is addon code: a call it makes is the addon's, even inside the player's click.
+      local player = self.byPlayer
+      self.byPlayer = false
       fn(...)
+      self.byPlayer = player
       return unpack(r)
     end
   end
+  if opts.noHooks then G.hooksecurefunc = nil end
   if opts.saved then G.TavernGamesDB = opts.saved end
 
   for _, path in ipairs(LIBS) do run(path, G, "TavernGames") end

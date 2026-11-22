@@ -36,12 +36,19 @@ local function opened(w, c)
   eq(w.ns.Trade.open(M, c), true)
 end
 
--- Both sides put in money and accept.
-local function bothAccept(w, gave, got)
+-- Both sides put in money and accept, `first` ("target", the default, or "me")
+-- first. The game shows both accepts together, (1, 1), only when I accepted
+-- after the target: when I accept first, (1, 0) is the last update before the
+-- server completes the trade.
+local function bothAccept(w, gave, got, first)
   w.tradeMoney = { player = gave, target = got }
   w:fireTrade("TRADE_MONEY_CHANGED")
-  w:fireTrade("TRADE_ACCEPT_UPDATE", 1, 0)
-  w:fireTrade("TRADE_ACCEPT_UPDATE", 1, 1)
+  if first == "me" then
+    w:fireTrade("TRADE_ACCEPT_UPDATE", 1, 0)
+  else
+    w:fireTrade("TRADE_ACCEPT_UPDATE", 0, 1)
+    w:fireTrade("TRADE_ACCEPT_UPDATE", 1, 1)
+  end
 end
 
 describe("wow trade: state and open", function()
@@ -55,6 +62,13 @@ describe("wow trade: state and open", function()
     eq(T.state(M), "ok")
     w.G.CheckInteractDistance = function() error("combat lockdown") end
     eq(T.state(M), "ok")
+    -- In combat the range check is restricted (blocked, not raising): it is not asked.
+    local asked = 0
+    w.G.CheckInteractDistance = function() asked = asked + 1 end
+    w.combat = true
+    eq(T.state(M), "ok"); eq(asked, 0)
+    w.combat = false
+    eq(T.state(M), "far"); eq(asked, 1)
     w.G.CheckInteractDistance = nil
     eq(T.state(M), "ok")
     w.G.InitiateTrade = nil
@@ -157,6 +171,39 @@ describe("wow trade: what arrived", function()
     eq(got, { { name = M, gave = 0, got = 50000, items = false } })
   end)
 
+  it("a completed trade is reported in either accept order", function()
+    local w = guildWow()
+    local got = tradedLog(w)
+    -- I accept first: the last update is (1, 0); the window closes before the completion line.
+    shows(w)
+    bothAccept(w, 0, 50000, "me")
+    w:fireTrade("TRADE_CLOSED")
+    w:fireTrade("UI_INFO_MESSAGE", 0, w.G.ERR_TRADE_COMPLETE)
+    -- I accept first, and the completion line comes before the close.
+    shows(w)
+    bothAccept(w, 0, 40000, "me")
+    w:fireTrade("UI_INFO_MESSAGE", 0, w.G.ERR_TRADE_COMPLETE)
+    w:fireTrade("TRADE_CLOSED")
+    -- The target accepts first: (0, 1), then (1, 1).
+    shows(w)
+    bothAccept(w, 0, 30000, "target")
+    w:fireTrade("TRADE_CLOSED")
+    w:fireTrade("UI_INFO_MESSAGE", 0, w.G.ERR_TRADE_COMPLETE)
+    eq(got, { { name = M, gave = 0, got = 50000, items = false }, { name = M, gave = 0, got = 40000, items = false },
+              { name = M, gave = 0, got = 30000, items = false } })
+  end)
+
+  it("an error that is not the trade's own does not lose a completed trade", function()
+    local w = guildWow()
+    local got = tradedLog(w)
+    shows(w)
+    bothAccept(w, 0, 50000, "me")
+    w:fireTrade("TRADE_CLOSED")
+    w:fireTrade("UI_ERROR_MESSAGE", 0, "Ability is not ready yet.")
+    w:fireTrade("UI_INFO_MESSAGE", 0, w.G.ERR_TRADE_COMPLETE)
+    eq(got, { { name = M, gave = 0, got = 50000, items = false } })
+  end)
+
   it("the completion may come after the window closed, and with the message as its only argument", function()
     local w = guildWow()
     local got = tradedLog(w)
@@ -192,8 +239,8 @@ describe("wow trade: what arrived", function()
     shows(w)
     w.tradeMoney = { player = 0, target = 50000 }
     w:fireTrade("TRADE_MONEY_CHANGED")
-    w:fireTrade("TRADE_ACCEPT_UPDATE", 1, 0)
-    w:fireTrade("UI_INFO_MESSAGE", 0, w.G.ERR_TRADE_COMPLETE) -- only one side accepted
+    w:fireTrade("TRADE_ACCEPT_UPDATE", 0, 1)
+    w:fireTrade("UI_INFO_MESSAGE", 0, w.G.ERR_TRADE_COMPLETE) -- I have not accepted
     w:fireTrade("TRADE_CLOSED")
     w:fireTrade("UI_INFO_MESSAGE", 0, w.G.ERR_TRADE_COMPLETE) -- a stray line: no trade is open
     shows(w)
@@ -205,18 +252,22 @@ describe("wow trade: what arrived", function()
     w:fireTrade("TRADE_MONEY_CHANGED")
     w:fireTrade("TRADE_REQUEST_CANCEL")
     w:fireTrade("UI_INFO_MESSAGE", 0, w.G.ERR_TRADE_COMPLETE)
-    -- Both accepted, the window closed, and the completion never came in time.
-    shows(w)
-    bothAccept(w, 0, 50000)
-    w:fireTrade("TRADE_CLOSED")
-    w:advance(5)
-    w:fireTrade("UI_INFO_MESSAGE", 0, w.G.ERR_TRADE_COMPLETE)
-    -- Both accepted, then the trade failed.
-    shows(w)
-    bothAccept(w, 0, 50000)
-    w:fireTrade("UI_ERROR_MESSAGE", 0, "Trade failed, you don't have enough bag space.")
-    w:fireTrade("TRADE_CLOSED")
-    w:fireTrade("UI_INFO_MESSAGE", 0, w.G.ERR_TRADE_COMPLETE)
+    -- I accepted, the window closed, and the completion never came in time.
+    for _, first in ipairs({ "me", "target" }) do
+      shows(w)
+      bothAccept(w, 0, 50000, first)
+      w:fireTrade("TRADE_CLOSED")
+      w:advance(5)
+      w:fireTrade("UI_INFO_MESSAGE", 0, w.G.ERR_TRADE_COMPLETE)
+    end
+    -- I accepted, then the trade failed with the trade's own error.
+    for _, first in ipairs({ "me", "target" }) do
+      shows(w)
+      bothAccept(w, 0, 50000, first)
+      w:fireTrade("UI_ERROR_MESSAGE", 0, w.G.ERR_TRADE_BAG_FULL)
+      w:fireTrade("TRADE_CLOSED")
+      w:fireTrade("UI_INFO_MESSAGE", 0, w.G.ERR_TRADE_COMPLETE)
+    end
     eq(got, {})
   end)
 
@@ -264,15 +315,17 @@ describe("wow trade: what arrived", function()
     eq(got, {})
   end)
 
-  it("the amounts read once both accepted stay when the money reads 0 at the end", function()
+  it("the amounts read once I accepted stay when the money reads 0 at the end", function()
     local w = guildWow()
     local got = tradedLog(w)
-    shows(w)
-    bothAccept(w, 0, 50000)
-    w.tradeMoney = { player = 0, target = 0 }
-    w:fireTrade("TRADE_MONEY_CHANGED")
-    w:fireTrade("UI_INFO_MESSAGE", 0, w.G.ERR_TRADE_COMPLETE)
-    eq(got, { { name = M, gave = 0, got = 50000, items = false } })
+    for _, first in ipairs({ "me", "target" }) do
+      shows(w)
+      bothAccept(w, 0, 50000, first)
+      w.tradeMoney = { player = 0, target = 0 }
+      w:fireTrade("TRADE_MONEY_CHANGED")
+      w:fireTrade("UI_INFO_MESSAGE", 0, w.G.ERR_TRADE_COMPLETE)
+    end
+    eq(got, { { name = M, gave = 0, got = 50000, items = false }, { name = M, gave = 0, got = 50000, items = false } })
   end)
 
   it("the forbidden functions are never called", function()

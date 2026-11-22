@@ -32,15 +32,24 @@ local function unitOf(name)
   return nil
 end
 
+-- True while I am in combat (the client restricts the range check then).
+local function inCombat()
+  local combat = fn("InCombatLockdown")
+  if not combat then return false end
+  local okCombat, on = pcall(combat)
+  return okCombat and on and true or false
+end
+
 -- "ok" | "far" | "none" (no unit of that player) | "off" (no InitiateTrade).
--- Without a range answer (no CheckInteractDistance, or it raises in combat) the
--- state is "ok": the game itself refuses a far trade.
+-- Without a range answer (no CheckInteractDistance, it raises, or I am in combat,
+-- where it is restricted and never asked) the state is "ok": the game itself
+-- refuses a far trade.
 function Trade.state(name)
   if not fn("InitiateTrade") then return "off" end
   local unit = unitOf(name)
   if not unit then return "none" end
   local near = fn("CheckInteractDistance")
-  if not near then return "ok" end
+  if not near or inCombat() then return "ok" end
   local okNear, inRange = pcall(near, unit, RANGE)
   if okNear and not inRange then return "far" end
   return "ok"
@@ -84,7 +93,9 @@ local function amounts()
 end
 
 -- The trade in progress: {name (the partner's full name by GUID, nil for a
--- stranger), gave, got, items, both (both sides accepted), closedAt}.
+-- stranger), gave, got, items, mine (I accepted), closedAt}. The game shows the
+-- partner's accept together with mine only when the partner accepted first, so
+-- the proof of a trade is the completion line, after my own accept.
 local current
 
 local function read()
@@ -104,7 +115,7 @@ end
 local function completed()
   local t = current
   current = nil
-  if not (t and t.both and t.name and t.gave) then return end
+  if not (t and t.mine and t.name and t.gave) then return end
   if t.closedAt and GetTime() - t.closedAt > COMPLETE_WAIT then return end
   local client = ns.client
   if not (client and client.pay) or t.name == client.env.me then return end
@@ -123,6 +134,24 @@ local function says(global, ...)
   return false
 end
 
+-- The trade's own error lines: every ERR_TRADE_* text but the completion, collected once.
+local tradeErrors
+
+local function tradeError(...)
+  if not tradeErrors then
+    tradeErrors = {}
+    for k, v in pairs(_G) do
+      if type(k) == "string" and k:sub(1, 10) == "ERR_TRADE_" and k ~= "ERR_TRADE_COMPLETE" and type(v) == "string" then
+        tradeErrors[v] = true
+      end
+    end
+  end
+  for i = 1, select("#", ...) do
+    if tradeErrors[select(i, ...)] then return true end
+  end
+  return false
+end
+
 local function item()
   if current and not current.closedAt then current.items = true end
 end
@@ -130,7 +159,7 @@ end
 local EVENTS = {
   TRADE_SHOW = function()
     local name = partner()
-    current = { name = name, items = false, both = false }
+    current = { name = name, items = false, mine = false }
     read()
     local w = wanted
     if w and GetTime() - w.at > FILL_WAIT then wanted, w = nil, nil end
@@ -139,24 +168,25 @@ local EVENTS = {
       fill(w.c)
     end
   end,
-  -- After both accepted the amounts stay as read: a change resets the accepts first.
-  TRADE_MONEY_CHANGED = function() if current and not current.both then read() end end,
-  TRADE_ACCEPT_UPDATE = function(player, target)
+  -- After my accept the amounts stay as read: a change resets the accepts
+  -- (TRADE_ACCEPT_UPDATE(0, 0)), which reads them again.
+  TRADE_MONEY_CHANGED = function() if current and not current.mine then read() end end,
+  TRADE_ACCEPT_UPDATE = function(player)
     if not current or current.closedAt then return end
     read()
-    current.both = accepted(player) and accepted(target)
+    current.mine = accepted(player)
   end,
   TRADE_PLAYER_ITEM_CHANGED = item,
   TRADE_TARGET_ITEM_CHANGED = item,
   TRADE_REQUEST_CANCEL = function() current = nil end,
-  -- Closed before both accepted: cancelled. After: the completion line decides.
+  -- Closed before my accept: cancelled. After: the completion line decides, within COMPLETE_WAIT s.
   TRADE_CLOSED = function()
-    if current and current.both then current.closedAt = current.closedAt or GetTime() else current = nil end
+    if current and current.mine then current.closedAt = current.closedAt or GetTime() else current = nil end
   end,
   UI_INFO_MESSAGE = function(...) if says("ERR_TRADE_COMPLETE", ...) then completed() end end,
-  -- A cancel, or any error once both accepted (bags full, too far): no trade.
+  -- The trade's own error (cancelled, bags full, too far): no trade. Any other error line is not about it.
   UI_ERROR_MESSAGE = function(...)
-    if current and (current.both or says("ERR_TRADE_CANCELLED", ...)) then current = nil end
+    if current and tradeError(...) then current = nil end
   end,
 }
 
