@@ -308,6 +308,44 @@ describe("stakes: from a game to the ledger", function()
     sim.bus.filter = nil
   end)
 
+  it("an asked seat's stand leaves an inert leave: an earlier used leave never contests the host's shifted claim", function()
+    local sim, cl = setup()
+    local tid = dr(sim, cl, { B }, SK)
+    sim.envs[B].db.stakeSat = nil -- a crash: no note of the stake I accepted
+    local b = sim:relog(B); sim:run(3); sim:settle()
+    eq(b.session.stakeAsk, true)
+    local seq = b.session.seq
+    -- An earlier „Стани“ of mine at this table against Иван, its claim already confirmed.
+    b.env.db.stakeLeft = { [tid] = { at = EPOCH0 + sim.clock - 30, sk = SK, names = { A }, q = seq - 6, used = { [A] = "0123456789abcdef" } } }
+    local mark = #sim.sent
+    ns.Stake.standUp(b, b.session); sim:run(1)
+    -- The host's claim, shifted by one event in flight.
+    eq(b.ledgerNet:take(cl[A].ledgerNet:make("D", { gid = tid .. "/" .. (seq + 2), g = "deathroll", f = B, t = A, c = SK, why = "left" }), A, true), "new")
+    sim:run(10)
+    eq(#sentOf(sim, B, mark), 0)
+    local gids = {}
+    for _, d in ipairs(b.stakes:asks()) do gids[#gids + 1] = d.gid end
+    table.sort(gids)
+    eq(gids, { tid .. "/" .. (seq + 1), tid .. "/" .. (seq + 2) })
+    local inert = b.env.db.stakeLeft[tid]
+    eq({ inert.q, inert.names, inert.sk, inert.used }, { seq + 1, { A }, nil, nil })
+  end)
+
+  it("a far left claim is contested only when it comes within LEAVE_AT_SLACK of the stored leave (a crash may have lost a later one)", function()
+    local sim, cl = setup()
+    local tid = ttt(sim, cl, SK)
+    match(sim, { cl[A], cl[B] }, 1); sim:run(10)
+    cl[B]:stand(); sim:run(1) -- after the game: no leave of its own
+    -- My saved leave of this table, its claim confirmed, from 300 s ago; a later „Стани“ of mine was lost with a crash.
+    cl[B].env.db.stakeLeft = { [tid] = { at = EPOCH0 + sim.clock - 300, sk = SK, names = { A }, q = 3, used = { [A] = "0123456789abcdef" } } }
+    local mark = #sim.sent
+    eq(cl[B].ledgerNet:take(cl[A].ledgerNet:make("D", { gid = tid .. "/" .. 60, g = "ttt", f = B, t = A, c = SK, why = "left" }), A, true), "new")
+    sim:run(10)
+    eq(#sentOf(sim, B, mark), 0)
+    local asks = cl[B].stakes:asks()
+    eq(#asks, 1); eq(asks[1].gid, tid .. "/60")
+  end)
+
   it("my „Стани“ confirms only its own claim, whatever comes first (review probe A)", function()
     local sim, cl = setup()
     local tid = ttt(sim, cl, SK)
@@ -531,7 +569,7 @@ describe("stakes: from a game to the ledger", function()
     b.env.db.stakeLeft = { [tid] = left }
     local mark = #sim.sent
     ns.Stake.standUp(b, b.session); sim:run(10) -- as at a snapshot of another game (Member.adopt)
-    eq(b.env.db.stakeLeft, { [tid] = left }); eq(left.used, {}) -- no new leave of mine, nothing used
+    eq(b.env.db.stakeLeft[tid].sk, nil); eq(left.used, {}) -- my leave here is now inert (fix round 2), nothing was used
     local d = sentOf(sim, A, mark, "D")
     eq(#d, 1); eq(d[1].why, "left")
     sim:run(30)

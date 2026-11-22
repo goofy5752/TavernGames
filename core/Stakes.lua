@@ -231,7 +231,7 @@ local function forfeit(s, a, roster)
 end
 
 -- „Стани“ in the running game I play: at the stake I accepted (my note
--- db.stakeSat) db.stakeLeft[tid] = {at, sk, names, q, used}, before my STD
+-- db.stakeSat) db.stakeLeft[tid] = {at, sk, names, q, used} (else inert: {at, q, names}), before my STD
 -- (q: the stand's predicted event number; its claims, core/StakesClaims.lua);
 -- a member, whose client never applies its stand, also notes the forfeit
 -- ("unseen" for an asked seat, which has no stake note) and tells it
@@ -242,10 +242,8 @@ local function quit(s)
   local mine = type(sat) == "table" and sat.tid == s.tid and sat.sk == s.stake
   local to, q, at = {}, s.seq + 1, env.epoch()
   for i = 1, #s.seats do if i ~= s.mySeat and roster[i] then to[#to + 1] = roster[i] end end
-  if mine then
-    env.db.stakeLeft = env.db.stakeLeft or {}
-    env.db.stakeLeft[s.tid] = { at = at, sk = s.stake, names = to, q = q, used = {} }
-  end
+  env.db.stakeLeft = env.db.stakeLeft or {} -- an asked seat's leave is inert: no stake, nothing to use
+  env.db.stakeLeft[s.tid] = mine and { at = at, sk = s.stake, names = to, q = q, used = {} } or { at = at, q = q, names = to }
   if s.role == "host" then return end
   s.client.events:emit("forfeit", { tid = s.tid, game = s.game, q = q, seat = s.mySeat, name = env.me, to = to, why = "left", sk = s.stake, at = at })
   s.client.stakes:seen(true)[s.tid .. "/" .. q] = { at = at, g = s.game, sk = s.stake, pairs = Stakes.pairs({ env.me }, to, s.stake), why = "left",

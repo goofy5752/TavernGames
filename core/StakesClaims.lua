@@ -7,7 +7,9 @@ local _, ns = ...
 --   -> N "amount", any other claim at that gid -> put to me; a "left" claim
 --   at that table more than LEAVE_SLACK events after it, with no note of mine
 --   for its gid: a game I was not in (N "forged") once that creditor's claim
---   of my stand was taken, else put to me (in-flight timing is no foul);
+--   of my stand was taken and the claim came within LEAVE_AT_SLACK of the
+--   leave, else put to me (in-flight timing is no foul); an asked seat's
+--   leave is inert;
 --   my note of its gid: roll part pending -> wait, a foul forged/roll/stand
 --   -> N with it, another amount -> N "amount", my pair clean and the claim
 --   written within STAKE_LEFT_WINDOW of my note -> C (my own D when its id
@@ -21,6 +23,7 @@ local Book = ns.Stakes.Book
 
 local BAD = { forged = true, roll = true, stand = true }
 local LEAVE_SLACK = 4 -- events my host may order between my „Стани“ and its stand
+local LEAVE_AT_SLACK = 120 -- s: a far claim is contested only this close to the stored leave (a crash may lose a later one)
 
 local function near(a, b) return type(a) == "number" and type(b) == "number" and math.abs(a - b) <= C.STAKE_LEFT_WINDOW end
 
@@ -31,7 +34,7 @@ function Book:judge(b, taken)
   q = tonumber(q)
   local left, note = self:left()[tid], self:seen()[b.gid]
   local lq = type(left) == "table" and tonumber(left.q) or nil
-  if q == lq then
+  if q == lq and left.sk ~= nil then -- an inert leave (an asked seat's) neither confirms nor contests
     local used = (type(left.used) == "table" and left.used[b.t]) or taken[b.t]
     if b.why == "left" and left.sk == b.c and near(b.at, left.at) and (not used or used == b.h)
         and Util.contains(type(left.names) == "table" and left.names or {}, b.t) then
@@ -50,7 +53,7 @@ function Book:judge(b, taken)
   end
   if lq and b.why == "left" and q > lq + LEAVE_SLACK then -- a game after I left, once my stand's own claim was taken
     local used = (type(left.used) == "table" and left.used[b.t]) or taken[b.t]
-    if used and used ~= b.h then return "N", "forged" end
+    if used and used ~= b.h and math.abs(b.at - (left.at or 0)) <= LEAVE_AT_SLACK then return "N", "forged" end
   end
   local s = self.client.session
   if s and s.tid == tid and q > s.seq then self.held = true; return "wait" end -- again at each change of my table
