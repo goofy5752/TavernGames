@@ -1299,3 +1299,111 @@ describe("stakes: play, fix round 4", function()
     eq(b.session.state.board[9], 2); eq(b.session.stakeFoul, "forged")
   end)
 end)
+
+describe("stakes: play, fix round 5", function()
+  -- Round 1: Иван 1, Мария 2 by the host's timeout, Иван 4, Мария 5,
+  -- Иван 7 and the round; then round 2, Мария's mark on 9.
+  local function intoRoundTwo()
+    local sim, a, b = tttMariaOnTurn(SK)
+    sim:run(C.TURN_DEFAULT + C.AUTO_GRACE)
+    eq(b.session.state.board[2], 2); eq(b.session.stakeFoul, nil)
+    ok(a:act({ k = "mark", c = 4 })); sim:run(1)
+    ok(b:act({ k = "mark", c = 5 })); sim:run(1)
+    ok(a:act({ k = "mark", c = 7 })); sim:run(4)
+    eq(b.session.state.round, 2); eq(b.session.state.score, { 1, 0 })
+    ok(b:act({ k = "mark", c = 9 })); sim:run(1)
+    eq(b.session.stakeFoul, nil)
+    return sim, a, b
+  end
+
+  -- Иван, at a new epoch, sends round 1 again as it stood before his last mark, with `board`.
+  local function backToRoundOne(sim, a, board)
+    local s, st = a.session, TTT.new()
+    st.board = board
+    s.state, s.epoch = st, s.epoch + 1
+    s:snapshotTo(B); sim:run(0)
+  end
+
+  it("I1: an earlier round sent again is checked against what I sent: a mark I never made is forged", function()
+    -- The honest one: my own mark and the timeout my client took for mine.
+    local sim, a, b = intoRoundTwo()
+    backToRoundOne(sim, a, { 1, 2, 0, 1, 2, 0, 0, 0, 0 })
+    eq(b.session.state.round, 1); eq(b.session.stakeFoul, "unseen"); eq(b.session.stakeNo, 1)
+    -- A mark in my name that I never sent, in the round I had left.
+    sim, a, b = intoRoundTwo()
+    backToRoundOne(sim, a, { 1, 2, 0, 1, 0, 0, 0, 2, 0 })
+    eq(b.session.state.board[8], 2); eq(b.session.stakeFoul, "forged")
+  end)
+
+  it("I2: a log a crash brought back is in doubt: the honest „Реванш“ after mine is unseen, not forged", function()
+    local sim, a, b = tttTable(SK)
+    playOut(sim, a, b); ok(b.session:gameOver())
+    b:stop(); b = sim:relog(B); sim:run(1) -- a /reload: saved
+    eq(b.session.stakeDoubt, nil)
+    ok(b:act({ k = "rematch" })); sim:run(1)
+    b = sim:crash(B); sim:run(1) -- the log of the /reload comes back, without my „Реванш“
+    eq(b.session.mySeat, 2); eq(b.session.stakeDoubt, true)
+    ok(a:act({ k = "rematch" })); sim:run(1)
+    eq(b.session.stakeLive, true); eq(b.session.stakeFoul, "unseen"); eq(b.session.stakeDoubt, nil)
+    -- The same with a /reload in place of the crash: saved, so trusted, and clean.
+    sim, a, b = tttTable(SK)
+    playOut(sim, a, b)
+    b:stop(); b = sim:relog(B); sim:run(1)
+    ok(b:act({ k = "rematch" })); sim:run(1)
+    b:stop(); b = sim:relog(B); sim:run(1)
+    eq(b.session.stakeDoubt, nil)
+    ok(a:act({ k = "rematch" })); sim:run(1)
+    eq(b.session.stakeLive, true); eq(b.session.stakeFoul, nil)
+    -- In doubt, my own „Реванш“ of this run is mine: clean.
+    sim, a, b = tttTable(SK)
+    playOut(sim, a, b)
+    b:stop(); b = sim:relog(B); sim:run(1)
+    ok(b:act({ k = "rematch" })); sim:run(1)
+    b = sim:crash(B); sim:run(1)
+    eq(b.session.stakeDoubt, true)
+    ok(b:act({ k = "rematch" })); ok(a:act({ k = "rematch" })); sim:run(1)
+    eq(b.session.stakeLive, true); eq(b.session.stakeFoul, nil)
+  end)
+
+  it("I2: a stale „Реванш“ a crash brought back never makes a match I did not agree to clean", function()
+    local sim, a, b = tttTable(SK)
+    playOut(sim, a, b)
+    ok(b:act({ k = "rematch" })); sim:run(1)
+    b:stop(); b = sim:relog(B); sim:run(1) -- saved: my „Реванш“ of match 1
+    eq(b.session.stakeDoubt, nil)
+    ok(a:act({ k = "rematch" })); sim:run(1)
+    eq(b.session.stakeLive, true); eq(b.session.stakeFoul, nil); eq(b.session.stakeNo, 2)
+    playOut(sim, a, b); ok(b.session:gameOver())
+    -- The host's „Реванш“ in my name is on the table when I come back: only the game the log was saved at tells.
+    a.session:play(2, { k = "rematch" }); sim:run(0)
+    b = sim:crash(B); sim:run(1)
+    eq(b.session.state.rematch[2], true); eq(b.session.stakeNo, 1); eq(b.session.stakeDoubt, true)
+    ok(a:act({ k = "rematch" })); sim:run(1)
+    eq(b.session.stakeLive, true); eq(b.session.stakeFoul, "unseen")
+    -- After a /reload the log is current: the same „Реванш“ in my name is forged.
+    sim, a, b = tttTable(SK)
+    playOut(sim, a, b)
+    b:stop(); b = sim:relog(B); sim:run(1)
+    a.session:play(2, { k = "rematch" }); ok(a:act({ k = "rematch" })); sim:run(1)
+    eq(b.session.stakeLive, true); eq(b.session.stakeFoul, "forged")
+  end)
+
+  it("minors: a saved log that is no log is not taken; the note names who ended my game; first and winner are compared", function()
+    local sim, a, b, _, tid = tttTable(SK)
+    playOut(sim, a, b)
+    b.env.db.stakeLog = { tid = tid, no = "1", log = 7 }
+    b = sim:relog(B); sim:run(1)
+    eq(b.session.stakeLog, nil); eq(b.session.stakeNo, nil)
+    sim, a, b, _, tid = drTable({ B }, SK)
+    roll(sim, a, 50)
+    local q = b.session.seq
+    a:send("WHISPER", B, { v = 1, t = "END", tid = tid, e = a.session.epoch }); sim:run(0)
+    eq(b.env.db.stakeSeen[tid .. "/" .. q].h, A)
+    local mid = TTT.new(); mid.board = { 1, 1, 0, 2, 2, 0, 0, 0, 0 }
+    local won = TTT.new()
+    won.board, won.round, won.first, won.turn, won.phase, won.score = { 1, 1, 0, 2, 2, 2, 0, 0, 0 }, 2, 2, nil, "round", { 0, 1 }
+    ok(Stakes.leadsTo(mid, won))
+    won.first = 1; ok(not Stakes.leadsTo(mid, won)); won.first = 2
+    won.winner = 1; ok(not Stakes.leadsTo(mid, won))
+  end)
+end)

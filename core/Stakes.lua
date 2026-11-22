@@ -40,8 +40,9 @@ local _, ns = ...
 -- Death Roll's rolls are judged by Rolls.audit, not here.
 -- A foul survives my session only where my host ends it for me (the hook
 -- `ended`): as the note db.stakeSeen[tid .. "/" .. my seq] = {at, tid, g, sk,
--- q, foul, open = true}; open: the game had not ended on my client, so the
--- note answers every claim about this table from a later event.
+-- q, foul, h, open = true}; open: the game had not ended on my client, so the
+-- note answers every claim about this table from a later event; h: who sent
+-- what ended it (my host, or a seated player that called itself the host).
 --
 -- Session fields (local, never sent):
 --   stakeLive    a game runs (live, a state, not over); recomputed at the end of every hook
@@ -49,6 +50,8 @@ local _, ns = ...
 --                (the seats engine.playing accepts); nil while none runs
 --   stakeNo      how many games began on my client at this table (saved with
 --                s.stakeLog: Stakes.save, core/StakesWatch.lua)
+--   stakeDoubt   the log a login took up may be older than my last session here
+--                (Stakes.restore), until the next game begins
 --   stakeFoul    nil | "forged" | "roll" | "stand" | "unseen"
 --   stakePend    the foul of the event being handled, set at the end of the hook
 --   stakeTurn    {seat, at, seen, was}: the seat on turn and my env.now() when my client
@@ -104,11 +107,34 @@ Stakes.running = running
 
 -- My log and my game counter go to my saved variables, beside my stake note
 -- for this table and only while it stands (ns.Stake.clear drops both):
--- db.stakeLog = {tid, no, log}; a login back to the table takes them up again.
+-- db.stakeLog = {tid, no, log, st}, st the game state they were saved at
+-- (also when my client stops: Client:stop).
 function Stakes.save(s)
   local db = s.client.env.db
   local note = db.stakeSat
-  if type(note) == "table" and note.tid == s.tid then db.stakeLog = { tid = s.tid, no = s.stakeNo, log = s.stakeLog } end
+  if type(note) ~= "table" or note.tid ~= s.tid then return end
+  db.stakeLog = { tid = s.tid, no = s.stakeNo, log = s.stakeLog, st = s.state and s:engine().snapshot(s.state) or nil }
+end
+
+-- A login back to my table takes up what Stakes.save kept. WoW writes saved
+-- variables only at a logout or /reload, so after a crash the copy is the one
+-- before my last session: it is current only when the game it was saved at is
+-- the one the table shows now (but for the „Реванш“ flags) and my own flag
+-- there is what the log says. Otherwise its entries are in doubt (e.old,
+-- s.stakeDoubt) until the next game begins: what rests on them is "unseen".
+function Stakes.restore(s)
+  local saved, st = s.client.env.db.stakeLog, s.state and s:engine().snapshot(s.state) or nil
+  if type(saved) ~= "table" or saved.tid ~= s.tid or type(saved.log) ~= "table" or type(saved.no or 0) ~= "number" then return end
+  s.stakeLog, s.stakeNo = saved.log, saved.no
+  local was, asked = type(saved.st) == "table" and ns.Util.copy(saved.st) or saved.st, false
+  for _, e in ipairs(saved.log) do
+    e.old = true
+    asked = asked or (e.k == "rematch" and e.g == (saved.no or 0))
+  end
+  local mine = st ~= nil and type(st.rematch) == "table" and st.rematch[s.mySeat] == true
+  if st then st.rematch = nil end
+  if type(was) == "table" then was.rematch = nil end
+  s.stakeDoubt = not (same(was, st) and mine == asked) or nil
 end
 
 local function roster(s)
@@ -152,7 +178,7 @@ local function refresh(s, fresh, moved, snap)
   local now, on = s.client.env.now(), running(s)
   if on and (fresh or not s.stakeLive) then
     Stakes.began(s, snap)
-    s.stakeRoster, s.stakeFoul, s.stakeTurn, s.stakeStood, s.stakeRefill = roster(s), nil, nil, nil, nil
+    s.stakeRoster, s.stakeFoul, s.stakeTurn, s.stakeStood, s.stakeRefill, s.stakeDoubt = roster(s), nil, nil, nil, nil, nil
     s.stakeNo = (s.stakeNo or 0) + 1
     Stakes.save(s)
   elseif not on then
@@ -186,7 +212,9 @@ end
 ns.Ext.stakes = {
   applied = function(s, seat, a)
     local start = seat == 0 and a.k == "start"
-    if s.role == "host" and seat ~= 0 and seat == s.mySeat then Stakes.sent(s, a) end -- my own move
+    -- My own move as host; as a member what my client took for mine (my own ACT, or my timeout
+    -- due by my clock): the log holds every action in my name that was not forged.
+    if seat ~= 0 and seat == s.mySeat and (s.role == "host" or (not s:engine().idle and s.stakePend ~= "forged")) then Stakes.sent(s, a) end
     if start and s.role ~= "host" and Stakes.badStart(s) then
       pend(s, "forged")
     elseif seat == 0 and a.k == "stand" and s.role == "host" then
@@ -235,14 +263,14 @@ ns.Ext.stakes = {
   -- Member: my host ends my session (its END, a snapshot at another stake)
   -- while I sit in the running game, which no honest host does: forged, and
   -- noted where it outlives the session (db.stakeSeen, above) -> true
-  ended = function(s)
+  ended = function(s, by)
     local env = s.client.env
     if not (running(s) and s.mySeat and s.seats[s.mySeat] == env.me) then return end
     Stakes.foul(s, "forged")
     local db = env.db
     db.stakeSeen = db.stakeSeen or {}
     db.stakeSeen[s.tid .. "/" .. s.seq] = {
-      at = env.epoch and env.epoch() or env.now(), tid = s.tid, g = s.game, sk = s.stake, q = s.seq, foul = s.stakeFoul, open = true,
+      at = env.epoch and env.epoch() or env.now(), tid = s.tid, g = s.game, sk = s.stake, q = s.seq, foul = s.stakeFoul, h = by, open = true,
     }
     return true
   end,

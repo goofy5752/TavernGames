@@ -20,12 +20,14 @@ local _, ns = ...
 --       name that I did not send, a new match of Морски шах that seats me
 --       without my own sit or „Реванш“ since the last began (Stakes.began,
 --       events too). It is saved with my stake note (Stakes.save), so a
---       /reload keeps what I sent.
+--       /reload keeps what I sent; a copy a crash brought back is in doubt
+--       (Stakes.restore): a start that rests on it is "unseen".
 --   A snapshot shows my game when legal play leads from the state I hold to
 --   it (Stakes.leadsTo), a round's end and the rounds after it included: what
 --   I did not see of it is "unseen". Only what no play reaches is another game.
 -- Session fields (local, never sent):
---   stakeLog  {k, c, g, r}: the action's kind and cell, s.stakeNo and the round when sent
+--   stakeLog  {k, c, g, r, old}: the action's kind and cell, s.stakeNo and the round
+--             when sent; old: a login took the entry up from my saved variables
 local Stakes = ns.Stakes
 
 local C = ns.Const
@@ -34,33 +36,38 @@ local pend, refresh, running = Stakes.pend, Stakes.refresh, Stakes.running
 
 local LOG_KEPT = 32
 
--- I sent `a` (a member's ACT, a host's own move, my sit, my stand).
+-- Did I send a `k` (cell c, in round r) since the last game began here -> the
+-- entry | nil (`sure`: not one in doubt)
+local function sentIn(s, k, c, r, sure)
+  local log, g = s.stakeLog or {}, s.stakeNo or 0
+  for i = 1, #log do
+    local e = log[i]
+    if e.k == k and e.g == g and e.c == c and (r == nil or e.r == r) and not (sure and e.old and s.stakeDoubt) then return e end
+  end
+  return nil
+end
+
+-- I sent `a` (a member's ACT, a host's own move, my sit, my stand), or my
+-- client took it for mine (Stakes' applied); logged once, and of this run.
 function Stakes.sent(s, a)
-  local log = s.stakeLog or {}
+  local log, r = s.stakeLog or {}, s.state and s.state.round
   s.stakeLog = log
-  log[#log + 1] = { k = a.k, c = a.c, g = s.stakeNo or 0, r = s.state and s.state.round }
+  local e = sentIn(s, a.k, a.c, r)
+  if e then e.old = nil else log[#log + 1] = { k = a.k, c = a.c, g = s.stakeNo or 0, r = r } end
   if #log > LOG_KEPT then table.remove(log, 1) end
   Stakes.save(s)
 end
 
--- Did I send a `k` (cell c, in round r) since the last game began here -> bool
-local function sentIn(s, k, c, r)
-  local log, g = s.stakeLog or {}, s.stakeNo or 0
-  for i = 1, #log do
-    local e = log[i]
-    if e.k == k and e.g == g and e.c == c and (r == nil or e.r == r) then return true end
-  end
-  return false
-end
-
 -- A game begins on my client (Stakes' refresh, before the reset; `snap`: by a
 -- snapshot). Морски шах (no host start) seats a member in a new match only
--- by its own sit or its own „Реванш“ since the last one began.
+-- by its own sit or its own „Реванш“ since the last one began. While my log
+-- is in doubt only one of this run counts, and without it the start is a
+-- question ("unseen"), neither forged nor clean.
 function Stakes.began(s, snap)
   local seat = s.mySeat
   if s.role == "host" or s:engine().start == "host" or (snap and snap.fresh) then return end
   if not seat or s.seats[seat] ~= s.client.env.me then return end
-  if not (sentIn(s, "rematch") or sentIn(s, "sit")) then pend(s, "forged") end
+  if not (sentIn(s, "rematch", nil, nil, true) or sentIn(s, "sit", nil, nil, true)) then pend(s, s.stakeDoubt and "unseen" or "forged") end
 end
 
 -- My seat `seat` went while a game runs and I did not ask (`why`: the stand's,
@@ -97,18 +104,21 @@ end
 
 -- What a snapshot of Морски шах did for my seat that I did not -> true:
 -- forged. A mark of mine that my game did not have and my log does not: in
--- another game any; in my game carried on (`forward`) any but one in the
--- round I hold, engine.auto's cell: my timeout, due by my clock or of a turn
--- a login brought me (no clock of mine saw it begin: the snapshot's "unseen").
-local function doneForMe(s, prev, st, seat, forward)
+-- another game any; in my game (carried on, `forward`, or a changed host's
+-- `prefix` of it, an earlier round too) any but, carried on in the round I
+-- hold, engine.auto's cell: my timeout, due by my clock or of a turn a login
+-- brought me (no clock of mine saw it begin: the snapshot's "unseen").
+local function doneForMe(s, prev, st, seat, forward, prefix)
   if not (st and st.board and seat) then return false end
-  local round, t = forward and prev.round == st.round, s.stakeTurn
-  local auto = round and (timeoutDue(s, seat) or (t and t.seat == seat and not t.seen)) and s:engine().auto(prev, seat)
+  local round, t = (forward or prefix) and prev.round == st.round, s.stakeTurn
+  local auto = forward and round and (timeoutDue(s, seat) or (t and t.seat == seat and not t.seen)) and s:engine().auto(prev, seat)
   for c = 1, 9 do
     if st.board[c] == seat and not (round and prev.board[c] == seat) then
-      if forward and sentIn(s, "mark", c, st.round) then
-        ns.Member.mine(s, { k = "mark", c = c }) -- shown: no later event may pass for it
-      elseif not (auto and auto.c == c) then
+      if (forward or prefix) and sentIn(s, "mark", c, st.round) then
+        if forward then ns.Member.mine(s, { k = "mark", c = c }) end -- shown: no later event may pass for it
+      elseif auto and auto.c == c then
+        Stakes.sent(s, { k = "mark", c = c }) -- taken for mine
+      else
         return true
       end
     end
@@ -155,7 +165,8 @@ local function marksLead(a, b)
     local over = b.score[1] >= E.WINS or b.score[2] >= E.WINS
     if played and y.turn == b.turn and y.first == b.first and h1 >= 0 and h2 >= 0 and h1 + h2 <= hidden
         and (skip == 0 or (b.score[1] - g1 < E.WINS and b.score[2] - g2 < E.WINS))
-        and b.phase == ((y.phase == "play" and not over and "play") or (over and "match") or "round") then
+        and b.phase == ((y.phase == "play" and not over and "play") or (over and "match") or "round")
+        and b.winner == (b.phase == "match" and (b.score[1] >= E.WINS and 1 or 2) or nil) then
       return true
     end
   end
@@ -196,8 +207,8 @@ end
 
 -- A snapshot replaced my state (how: see Member.adopt). The very game I hold:
 -- nothing. My game carried on (or, from a changed host, one behind mine, a
--- prefix: nothing in it is new, so nothing of it is judged): the same game,
--- "unseen". Anything else is another game. A snapshot nobody asked
+-- prefix: its marks in my name are judged by my log like any other): the same
+-- game, "unseen". Anything else is another game. A snapshot nobody asked
 -- for that changes my game is "forged", from my own host always, from a
 -- changed host unless it is a prefix (F21); one I asked for or logged in with
 -- is "unseen". Its Death Roll state must say staked (Member.adopt set mine).
@@ -206,8 +217,7 @@ end
 -- judged the rolls it brought in my name. The clock of my turn is my own (a).
 ns.Ext.stakes.adopted = function(s, prev, m, how)
   local st, was, on, me = s.state, s.stakeLive, running(s), s.client.env.me
-  local saved = s.client.env.db.stakeLog -- a login back to my table: what I sent there before
-  if how.fresh and type(saved) == "table" and saved.tid == s.tid then s.stakeLog, s.stakeNo = saved.log, saved.no end
+  if how.fresh then Stakes.restore(s) end -- a login back to my table: what I sent there before
   local kept = was and s.stakeFoul or nil
   if s:engine().idle and type(m.st) == "table" and m.st.staked ~= true then pend(s, "forged") end
   local identical = prev ~= nil and st ~= nil and same(prev, st) and was == on
@@ -219,7 +229,7 @@ ns.Ext.stakes.adopted = function(s, prev, m, how)
     pend(s, (pushed or (how.changed and not how.asked and not cont)) and "forged" or "unseen")
   end
   local held = s.stakeSeat -- my seat before this snapshot
-  if held and not identical and not prefix and doneForMe(s, prev, st, held, forward) then pend(s, "forged") end
+  if held and not identical and doneForMe(s, prev, st, held, forward, prefix) then pend(s, "forged") end
   if held and s.seats[held] ~= me then Stakes.stood(s, held, nil, true, prev and prev.max) end
   local sat = how.sat or (how.sit and not held) -- a seat I did not hold (one the host had stood: by my own SIT)
   if sat then s.stakeRefill = "filled" end -- my own sit filled the seat

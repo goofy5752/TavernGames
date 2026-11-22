@@ -64,6 +64,7 @@ end
 function Client:stop()
   if not self.running then return end
   self.running = false
+  if self.session and self.session.stake ~= nil then ns.Stakes.save(self.session) end -- what I sent there, as it stands now
   ns.Session.stop(self) -- keeps the seat; END only for a host alone (no HI: BYE follows)
   if self.ledgerNet then self.ledgerNet:stop(); self.ledgerSync:stop() end -- my entries of the last seconds still go out
   self:send("GUILD", nil, { v = C.PROTOCOL, t = "BYE" })

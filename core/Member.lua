@@ -74,7 +74,7 @@ function Member.adopt(client, sender, m)
   -- My staked table at another stake while I sit in its running game: forged
   -- (the hook `ended`, core/Stakes.lua), and no STD goes: I gave up no seat.
   local cur = client.session
-  local robbed = cur ~= nil and cur.tid == m.tid and cur.stake ~= nil and cur.stake ~= t.sk and cur:hook("ended") == true
+  local robbed = cur ~= nil and cur.tid == m.tid and cur.stake ~= nil and cur.stake ~= t.sk and cur:hook("ended", sender) == true
   if seat and known and sk ~= t.sk then
     if not robbed then client:send("WHISPER", sender, Session.message("STD", { tid = m.tid })) end
     client.pending, client.gaveUp = nil, m.tid
@@ -356,7 +356,7 @@ local function onEnd(client, sender, m)
   local s, p = client.session, client.pending
   if s and s.role ~= "host" and s.tid == m.tid and s.host == sender
       and type(m.e) == "number" and m.e >= s.epoch then
-    if s.stake ~= nil then s:hook("ended") end -- while I sit in a running staked game: forged (core/Stakes.lua)
+    if s.stake ~= nil then s:hook("ended", sender) end -- while I sit in a running staked game: forged (core/Stakes.lua)
     Session.leave(client)
   elseif p and p.tid == m.tid and p.host == sender then
     client.pending = nil
