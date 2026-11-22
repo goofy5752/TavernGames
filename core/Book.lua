@@ -4,7 +4,8 @@ local _, ns = ...
 -- deal of core/Deal.lua without a reveal a hand.
 -- Rule 2, key and seeds: every seated client has one table key per sitting,
 --   Fair.seed of its own (Book.key), kept in env.db.bookKeep = {tid, me, key,
---   g, h} so that it survives a /reload and a relog; g is the seq of the running
+--   g, h, sk} so that it survives a /reload and a relog (sk: the table's stake,
+--   core/StakesCashLate.lua's late key); g is the seq of the running
 --   game's `start` event, so a kept key is taken only for that game, and never
 --   one that is already among the book's published keys. Before it is
 --   published the key is in no message and never in the trace. A key I have
@@ -82,7 +83,7 @@ function Book.isKey(m)
   return type(m) == "string" and #m == 2 * C.SEED_BYTES and m:find("^[0-9a-f]+$") ~= nil
 end
 
-local SPENT_KEPT = 32
+local SPENT_KEPT = 32; Book.SPENT_KEPT = SPENT_KEPT
 
 -- May `key` still deal for me: neither published in the book nor spent by
 -- me at this table (the spent list is mine alone; the host has no say in it)?
@@ -124,7 +125,7 @@ function Book.key(s)
       local key = Fair.seed(env, "book|" .. s.tid)
       if usable(s, book, key) then book.key = key; break end
     end
-    if env.db and book.key then env.db.bookKeep = { tid = s.tid, me = env.me, key = book.key, g = book.g } end
+    if env.db and book.key then env.db.bookKeep = { tid = s.tid, me = env.me, key = book.key, g = book.g, sk = s.stake } end
   end
   return book.key
 end

@@ -138,8 +138,10 @@ end
 -- (his cashout at its end); Kiro offline for OFFLINE_STAND_SECONDS (vanish); 8 hands; the host
 -- stands (its successor hosts on); 6 hands; the new host's „Приключи“; BOOK_WAIT + 10 s; Kiro
 -- relogs (vanish); 300 s of sync -> sim, cl, outs (the "cashout" events of the client hosting at
--- the time), stats, the new host, forfeits.
-local function evening(mode, vanish)
+-- the time), stats, the new host, forfeits. opt (with vanish): before(sim, cl), called before
+-- Kiro's relog; key, the key his saved variables hold then (a forged one); never: he stays away.
+local function evening(mode, vanish, opt)
+  opt = opt or {}
   BOT = lcg(7)
   local sim, cl = Play.cash(6, { blinds = 10, rebuy = mode }, { 400, 600, 800, 1000, 1000, 500 })
   local outs, stats, forfeits = {}, { allin = 0, side = 0, rebuys = 0, seen = {} }, { n = 0 }
@@ -203,7 +205,11 @@ local function evening(mode, vanish)
   assert(ns.Cash.close(h)); sim:run(1)
   between(sim)
   sim:run(C.BOOK_WAIT + 10)
-  if vanish then cl[K] = sim:relog(K); sim:settle() end
+  if vanish then
+    if opt.before then opt.before(sim, cl) end
+    if opt.key then sim.envs[K].db.bookKeep.key = opt.key end
+    if not opt.never then cl[K] = sim:relog(K); sim:settle() end
+  end
   sim:run(300)
   return sim, cl, outs, stats, h, forfeits.n
 end
@@ -218,10 +224,13 @@ end
 -- forfeit; one S per out record, its seats bounded by its names. `clean`: the debtors whose own D
 -- confirms their debts; every other debt is pending and put to its debtor. A pair whose creditor
 -- is in `gone` (it wrote no claim) and whose debtor is not clean is in no ledger: it is the
--- debtor's question „Да запиша ли дълга?“ (Book:owing). -> the names that owe.
-local function checked(sim, cl, outs, h, forfeits, clean, gone)
+-- debtor's question „Да запиша ли дълга?“ (Book:owing). x.contest: the debtors whose debts are
+-- contested (no own D, no question); x.away: the names whose client is gone at the end (not looked at).
+-- -> the names that owe.
+local function checked(sim, cl, outs, h, forfeits, clean, gone, x)
   local final, said = {}, {}
-  for _, name in ipairs(ALL) do final[#final + 1] = cl[name] end
+  local contest, away = x and x.contest or {}, x and x.away or {}
+  for _, name in ipairs(ALL) do if not away[name] then final[#final + 1] = cl[name] end end
   for _, e in ipairs(entries(sim)) do
     if e.k == "D" and e.why == "cash" and Ledger.author(e.i) == e.f then said[e.gid .. "|" .. e.f .. "|" .. e.t] = true end
   end
@@ -232,22 +241,21 @@ local function checked(sim, cl, outs, h, forfeits, clean, gone)
       owes[p.f] = true
       if gone and gone[p.t] and not clean[p.f] then
         for _, c in ipairs(final) do eq(Play.debt(c, v.gid, p.f, p.t), nil, c.env.me .. ": " .. key) end
-        local o = owing(cl[p.f], key)
-        ok(o, "put to " .. p.f .. ": " .. key); eq(o and o.c, p.c)
+        local o = not away[p.f] and owing(cl[p.f], key)
+        if contest[p.f] then ok(not o, "not put to " .. p.f .. ": " .. key)
+        elseif not away[p.f] then ok(o, "put to " .. p.f .. ": " .. key); eq(o and o.c, p.c) end
       else
         n = n + 1
         for _, c in ipairs(final) do
           local d = Play.debt(c, v.gid, p.f, p.t)
           ok(d, c.env.me .. " holds " .. key)
           eq(d and d.c, p.c, c.env.me)
-          if d and clean[p.f] then
-            eq(d.status, "confirmed", c.env.me .. ": " .. key)
-          elseif d then
-            eq(d.status, "pending", c.env.me .. ": " .. key)
+          if d then
+            eq(d.status, clean[p.f] and "confirmed" or contest[p.f] and "contested" or "pending", c.env.me .. ": " .. key)
           end
         end
         if clean[p.f] then ok(said[key], "the debtor's own D: " .. key) else
-          ok(asked(cl[p.f], key), "put to " .. p.f .. ": " .. key)
+          if not away[p.f] then eq(asked(cl[p.f], key), not contest[p.f], "put to " .. p.f .. ": " .. key) end
           ok(not said[key], "no own D: " .. key)
         end
       end
@@ -288,11 +296,13 @@ local function checked(sim, cl, outs, h, forfeits, clean, gone)
 end
 
 describe("a staked Холдем evening", function()
-  -- Kiro's key never comes out (E9: as E6): every hand he was dealt into stays open in the book, and
-  -- every note at or after such a hand of a player dealt into it reads unseen. He played from the
-  -- first hand, so no debtor's client confirms anything: every debt of the evening is put to its debtor.
-  it("an evening at a cash table", function()
-    local sim, cl, outs, stats, h, forfeits = evening("bust", true)
+  -- Kiro's hands in the book of client: how many stay open there.
+  local function kiros(client)
+    local book, n = client.session.book, 0
+    for _, x in ipairs(book.open) do if book.rec[x] ~= nil and book.rec[x].who[5] == K then n = n + 1 end end
+    return n
+  end
+  local function shape(stats, outs)
     ok(stats.allin >= 3 and stats.side >= 1, "all-ins " .. stats.allin .. ", side pots " .. stats.side)
     ok(stats.rebuys >= 2, "rebuys " .. stats.rebuys)
     local why = {}
@@ -300,15 +310,62 @@ describe("a staked Холдем evening", function()
     for _, k in ipairs({ G .. "/nil", K .. "/offline", A .. "/nil", B .. "/close", M .. "/close", N6 .. "/close" }) do
       ok(why[k], "an out record " .. k)
     end
-    local owes = checked(sim, cl, outs, h, forfeits, {}, { [K] = true })
+  end
+
+  -- Kiro is stood up offline, so his key does not come out at the close: every hand he was dealt
+  -- into stays open, and every note at or after such a hand of a player dealt into it reads unseen.
+  -- He comes back after the close: his client publishes the key it kept, the books take it, and the
+  -- waiting notes are judged on it as at the close: the clean debtors confirm by their own D.
+  it("an evening at a cash table", function()
+    local sim, cl, outs, stats, h, forfeits = evening("bust", true)
+    shape(stats, outs)
+    local owes = checked(sim, cl, outs, h, forfeits, { [B] = true, [N6] = true }, { [K] = true })
     ok(owes[M] and owes[N6], "Мария and Нади owe in the evening")
-    -- The clean ones were asked only because of the missing key.
     for _, name in ipairs({ B, N6 }) do
-      local book = cl[name].session.book
-      local open = false
-      for _, x in ipairs(book.open) do open = open or (book.rec[x] ~= nil and book.rec[x].who[5] == K) end
-      ok(open, name .. ": a hand of Kiro's stays open")
+      eq(kiros(cl[name]), 0, name .. ": Kiro's hands are checked")
+      eq(cl[name].session.book.seen.bad, 0, name)
     end
+    local db, late = sim.envs[K].db, {}
+    eq(db.bookSpent[#db.bookSpent].key, db.bookKeep.key) -- spent: it never deals again
+    for _, m in ipairs(sim.sent) do if m.msg.t == "KEY" then late[#late + 1] = { m.from, m.channel, m.msg.m } end end
+    eq(late, { { K, "GUILD", db.bookKeep.key } }) -- once; Мария, who reloaded seated, sent hers by the close
+  end)
+
+  -- He never comes back (E9: as E6): he played from the first hand, so no debtor's client confirms
+  -- anything: every debt of the evening is put to its debtor.
+  it("an evening at a cash table where the player stood up offline never comes back", function()
+    local sim, cl, outs, stats, h, forfeits = evening("bust", true, { never = true })
+    shape(stats, outs)
+    checked(sim, cl, outs, h, forfeits, {}, { [K] = true }, { away = { [K] = true } })
+    for _, name in ipairs({ B, N6 }) do ok(kiros(cl[name]) > 0, name .. ": a hand of Kiro's stays open") end
+  end)
+
+  -- A late key is committed: one that gives none of his commits is no gap but a lie. His hands are
+  -- bad, and every debtor whose final book holds one it was dealt into contests; the others keep
+  -- their questions (Мария shared no hand with him after her reload, Гошо and Иван left before the close).
+  it("a forged late key: Kiro's hands are bad and the debts of those at the close are contested", function()
+    local sim, cl, outs, stats, h, forfeits = evening("bust", true, { key = string.rep("ab", C.SEED_BYTES) })
+    shape(stats, outs)
+    checked(sim, cl, outs, h, forfeits, {}, { [K] = true }, { contest = { [B] = true, [N6] = true } })
+    for _, name in ipairs({ B, N6 }) do
+      eq(kiros(cl[name]), 0, name)
+      ok(cl[name].session.book.seen.bad > 0, name .. ": bad hands")
+    end
+  end)
+
+  -- Нади answers every question of the evening before Kiro is back (no to each): her word stands,
+  -- the late key changes none of her notes; Петър, who answered nothing, is judged on it (clean).
+  it("a late key after a question was answered changes nothing of that note", function()
+    local answered = 0
+    local sim, cl, outs, stats, h, forfeits = evening("bust", true, { before = function(sim, cl)
+      sim:run(C.STAKE_OWE_WAIT + 5)
+      for _, d in ipairs(cl[N6].stakes:asks()) do answered = answered + 1; ok(cl[N6].stakes:answer(d.key, false)) end
+      for _, o in ipairs(cl[N6].stakes:owing()) do answered = answered + 1; ok(cl[N6].stakes:admit(o.key, false)) end
+      sim:run(5)
+    end })
+    shape(stats, outs)
+    ok(answered > 0, "Нади was asked")
+    checked(sim, cl, outs, h, forfeits, { [B] = true }, { [K] = true }, { contest = { [N6] = true } })
   end)
 
   for _, mode in ipairs({ "bust", "top", "none" }) do

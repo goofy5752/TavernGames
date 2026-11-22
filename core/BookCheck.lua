@@ -53,8 +53,8 @@ local function tick(s, book, all)
 end
 
 -- The end of a closed book (every hand tried): the hands left are open and
--- their players without a key named (sorted by bytes); "book", "session".
-local function finish(s, book)
+-- their players without a key named (sorted by bytes); "book", "session" (`quiet`: neither).
+local function finish(s, book, quiet)
   if book.final and not book.dirty then return end
   local names, seen, client = {}, {}, s.client
   for _, h in ipairs(book.open) do
@@ -65,6 +65,7 @@ local function finish(s, book)
   end
   table.sort(names, ns.Util.byteLess)
   book.final, book.dirty, book.missing, book.seen.open = true, nil, names, #book.open
+  if quiet then return end
   client.events:emit("book", { tid = s.tid, game = s.game, hands = book.n, ok = book.seen.ok, bad = book.seen.bad,
     open = #book.open, missing = copy(names), at = client.env.epoch() })
   ns.Session.emit(client)
@@ -90,6 +91,56 @@ function Book.close(s, book, now)
   book = book or Book.of(s)
   book.closed = true
   if now then tick(s, book, true); finish(s, book) else Book.run(s, book) end
+end
+
+-- Does a published key already give the commit of seat q in hand h?
+local function covered(book, h, q, hid, c)
+  for _, k in ipairs(book.keys) do
+    if k.seat == q and k.q >= h and Fair.commit(Fair.handSeed(k.m, hid)) == c then return true end
+  end
+  return false
+end
+
+-- A late key (core/StakesCashLate.lua): `name`'s table key, published by its own client after the
+-- close, for its seats of the hands still open in my ended book that no published key covers.
+-- A key is committed: one that gives none of those commits is a lie, not a gap, and those hands
+-- are bad (book.cashBad too); one that gives some is published under those seats. The open hands
+-- are then tried again and the book ends again ("book") -> true when it changed.
+function Book.late(s, book, name, key)
+  local tag = name .. "|" .. key
+  book.lateSeen = book.lateSeen or {}
+  if not book.final or book.lateSeen[tag] then return false end
+  book.lateSeen[tag] = true
+  local his, seats, hit = {}, {}, false
+  for _, h in ipairs(book.open) do
+    local rec, hid = book.rec[h], Fair.handId(s.tid, h)
+    for _, q in ipairs(rec and rec.p or {}) do
+      if rec.who[q] == name and not covered(book, h, q, hid, rec.c[q]) then
+        his[h] = true
+        if Fair.commit(Fair.handSeed(key, hid)) == rec.c[q] and not seats[q] then
+          hit, seats[q] = true, true
+          book.keys[#book.keys + 1] = { seat = q, q = s.seq, m = key }
+        end
+      end
+    end
+  end
+  if not next(his) then return false end
+  local i = 1
+  while book.open[i] do
+    local h = book.open[i]
+    local v, lack
+    if his[h] and not hit then v = "bad" else v, lack = Book.check(s, h, book) end
+    if v then
+      table.remove(book.open, i)
+      book.rec[h], book.tried[h], book.seen[v] = nil, nil, book.seen[v] + 1
+      if v == "bad" then book.cashBad = book.cashBad or {}; book.cashBad[h] = true end
+    else
+      book.lack[h], book.tried[h], i = lack, #book.keys, i + 1
+    end
+  end
+  book.dirty = true
+  finish(s, book, not (s.client.session == s and s.book == book)) -- another game's "book" would end its notes
+  return true
 end
 
 -- The book's line under the felt -> key, tone, arg, arg2 | nil (not sealed, no
