@@ -18,8 +18,9 @@ local _, ns = ...
 -- game shown changes.
 -- A banner across the felt: waiting for players (or for the host to start;
 -- a table that does not start by the host waits for a second player, or for
--- more players when its engine needs more than two seats), an aborted
--- match, a silent host, and for RESYNC_SECONDS after "desync" the resync note.
+-- more players when its engine needs more than two seats; a staked table full
+-- again counts down the break its start waits for), an aborted match, a silent
+-- host, and for RESYNC_SECONDS after "desync" the resync note.
 -- The fairness line is ui/TablePanels.lua's (TableFrame.panels.renderFair,
 -- .fairTooltip): on a card table (ns.Deal.status) one line at the bottom edge of the felt:
 -- the shuffle under way or the verdict on the last hand; on a dice table
@@ -242,13 +243,16 @@ local function renderBoard(v, s, rows)
   if s.state then view.update(board, s) end
 end
 
--- Precedence: hostSilent > resynced > aborted > the open table's waiting line.
--- A host-started table waits for players, then for its host; any other open
--- table for a second player, or for more players when its engine needs more
--- than two seats; a game that is over shows none (the view says who lost).
+-- Precedence: hostSilent > resynced > the held start (a staked table full again,
+-- s.holdTimer: key, whole seconds, seconds left of Stakes.held) > aborted > the
+-- open table's waiting line. A host-started table waits for players, then for
+-- its host; any other open table for a second player, or for more players when
+-- its engine needs more than two seats; a game that is over shows none (the view says who lost).
 local function bannerKey(s, engine)
   if s.hostSilent then return "table.hostSilent" end
   if TableFrame.resyncTid == s.tid then return "table.resynced" end
+  local left = s.holdTimer and s.role == "host" and ns.Stakes.held(s)
+  if left then return "table.holdStart", math.max(1, math.ceil(left)), left end
   if s.status == "aborted" then return "table.aborted" end
   if s.status ~= "open" then return nil end
   if engine.start ~= "host" then return engine.minSeats > 2 and "table.waitingMore" or "table.waiting" end
@@ -288,6 +292,15 @@ local function renderStart(v, s, engine, client)
   v.line:SetPoint("RIGHT", TableFrame.frame, "BOTTOMRIGHT", -(EDGE + 8), EDGE + 20)
 end
 
+-- A countdown on the felt (the held start, a guest's bill line), `left` s to go: redrawn as its whole second changes.
+local function countdown(left)
+  if TableFrame.countTimer or not left or left <= 0 then return end
+  TableFrame.countTimer = C_Timer.NewTimer(left - math.ceil(left) + 1.01, function()
+    TableFrame.countTimer = nil
+    TableFrame.refresh()
+  end)
+end
+
 -- After the access and the turn time: " · <option> <value>" for every option.
 local function metaText(s, engine)
   local text = L("access." .. tostring(s.access)) .. " · " .. L("hall.turn", s.turn or 0)
@@ -320,6 +333,7 @@ function TableFrame.render()
   local s = client and client.session
   if not s then
     if TableFrame.breakTimer then TableFrame.breakTimer:Cancel(); TableFrame.breakTimer = nil end
+    if TableFrame.countTimer then TableFrame.countTimer:Cancel(); TableFrame.countTimer = nil end
     if TableFrame.frame then
       TableFrame.view.confirm:Hide()
       TableFrame.frame:Hide()
@@ -350,11 +364,12 @@ function TableFrame.render()
   v.watchers:SetShown(watchers > 0)
   v.stake:SetText(s.stake and L("table.stake", ns.Util.money(s.stake)) or "")
   v.stake:SetShown(s.stake ~= nil)
-  ns.StakePanels.bill(v, s) -- before the board: its view hides its own result line under the bill
+  local billLeft = ns.StakePanels.bill(v, s) -- before the board: its view hides its own result line under the bill
   renderBoard(v, s, renderPlates(v, s, client))
-  local key = bannerKey(s, engine)
-  if key then v.bannerText:SetText(L(key)) end
+  local key, secs, left = bannerKey(s, engine)
+  if key then v.bannerText:SetText(secs and L(key, secs) or L(key)) end
   v.banner:SetShown(key ~= nil)
+  countdown(left or billLeft)
   v.standButton.text:SetText(L(s.role == "watcher" and "table.toHall" or "table.stand"))
   if not TableFrame.standCosts(s) then v.confirm:Hide() elseif v.confirm:IsShown() then TableFrame.panels.confirm(v, s) end -- ended, or the cost moved
   local canInvite = s.role == "host" and firstFree(s.seats) ~= nil

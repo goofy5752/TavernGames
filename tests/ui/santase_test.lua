@@ -184,6 +184,21 @@ describe("ui: Сантасе view", function()
     eq(View.model(s, false).text, { "santase.match", ME }) -- without the view's memory: the winner
   end)
 
+  it("the end line of the match hides under the bill of a staked match (StakePanels.shown); nothing else does", function()
+    local w, V, View = boot(); local s = w.ns.client.session
+    local P = w.ns.StakePanels
+    local st = E.view(full(), 1); show(w, st)
+    P.shown = true; View.update(V, s)
+    eq(V.text:IsVisible(), true); eq(plain(V.text:GetText()), "Твой ход") -- a running match keeps its line
+    st.phase, st.winner = "match", 2
+    P.shown = false; View.update(V, s)
+    eq(V.text:IsVisible(), true); eq(plain(V.text:GetText()), "Бот Иванов печели партията!")
+    P.shown = true; View.update(V, s)
+    eq(V.text:IsVisible(), false)
+    P.shown = false; View.update(V, s)
+    eq(V.text:IsVisible(), true); eq(plain(V.text:GetText()), "Бот Иванов печели партията!")
+  end)
+
   it("solo against a bot from a real deal: six faces for me, six backs for the bot, a click plays", function()
     local w, V = boot(); local s = w.ns.client.session
     eq(#s.state.hands[1], 6); for k = 1, 6 do ok(V.myFan.cards[k].face); eq(V.oppFan.cards[k].face, nil) end

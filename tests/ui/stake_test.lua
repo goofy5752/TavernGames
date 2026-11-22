@@ -1,13 +1,16 @@
 local Wow = require("wow")
+local Play = require("play")
 
 -- The stake at the table in the UI: the new-table dialog, the question before
 -- a staked chair, the stake in the hall, the invitation and the table header,
 -- the warning on „Стани“, the bill „Сметката“ and the start refusals.
 local ME, B, C, D = "Иван Петров", "Мария Стоянова", "Тодор Ангелов", "Дара Колева"
 
--- In a guild, booted with the ui/ files, own name resolved, PLAYER_LOGIN fired.
-local function guildWow()
+-- In a guild, booted with the ui/ files, own name resolved, PLAYER_LOGIN fired;
+-- the engines named in `staked` take a stake in this world's own namespace (ruling G6).
+local function guildWow(staked)
   local w = Wow.new{ ui = true }
+  if staked then Play.staked(w.ns, unpack(staked)) end
   w.inGuild = true
   w.roster = { { name = ME .. "-Forever", online = true, guid = Wow.GUID } }
   w:boot()
@@ -18,11 +21,14 @@ local function guildWow()
 end
 
 -- ... and my login queue has closed: my ledger entries leave at once.
-local function readyWow()
-  local w = guildWow()
+local function readyWow(staked)
+  local w = guildWow(staked)
   w:advance(w.ns.Const.LEDGER_ADOPT_WAIT + 1)
   return w
 end
+
+-- readyWow where Сантасе, Белот and Табла take a stake (Task 10 turns them on for good).
+local function stakedWow() return readyWow({ "santase", "belot", "tabla" }) end
 
 local function lastSent(w, t)
   local all = w:sentOf(t)
@@ -701,5 +707,184 @@ describe("ui: the stake, the minors of fix round 1", function()
     ok(TF.breakTimer, "no break timer")
     w.ns.client:stand(); w:advance(0)
     eq(TF.breakTimer, nil)
+  end)
+end)
+
+-- Stage F2, Task 9: the staked table of Сантасе, Белот and Табла.
+
+-- The running match at my table s (I host it) ends, `winner` (a seat; Белот: a
+-- team) the winner, as the event that ends it does on my client: its
+-- "result", the event's number, the hook of the extension stakes, the redraw.
+local function over(w, s, winner)
+  s.state.phase, s.state.winner = "match", winner
+  s:noteResult()
+  s.seq = s.seq + 1
+  w.ns.Ext.stakes.applied(s, 0, { k = "end" })
+  w.ns.Session.emit(s.client)
+  w:advance(0)
+end
+
+-- The visible lines of the bill, colour codes stripped, each with its mark ("" for none).
+local function billLines(v)
+  local out = {}
+  for _, line in ipairs(v.bill.lines) do
+    if line.text:IsVisible() then out[#out + 1] = { plain(line.text:GetText()), line.mark:IsVisible() and line.mark:GetText() or "" } end
+  end
+  return out
+end
+
+describe("ui: the staked table of Сантасе, Белот and Табла (F2)", function()
+  it("the question at a Белот chair names both prices", function()
+    local w = stakedWow()
+    w.ns.MainWindow.show()
+    local P, L = w.ns.StakePanels, w.ns.L
+    eq(L("stake.ask.team", "1g", "1g", "1g", "2g"), "Залогът е 1g. Ако отборът ти загуби, плащаш 1g на един от противниците. "
+      .. "Ако напуснеш играта, плащаш по 1g и на двамата, общо 2g. Партньорът ти не дължи нищо.")
+    tbl(w, B, 10000, "belot", { B, false, false, false })
+    w:click(w.ns.Hall.view.tables[1].chairs[2].button)
+    ok(P.askFrame:IsShown(), "no question")
+    eq(P.askText:GetText(), L("stake.ask.team", "1g", "1g", "1g", "2g"))
+    w:click(P.askNo)
+    for _, game in ipairs({ "santase", "tabla" }) do
+      P.ask({ tid = C .. "#1", game = game, stake = 10000 }, 2)
+      eq(P.askText:GetText(), L("stake.ask.text", "1g", "1g"), game)
+      w:click(P.askNo)
+    end
+  end)
+
+  it("a card table warns about the dealer", function()
+    local w = stakedWow()
+    local P, L = w.ns.StakePanels, w.ns.L
+    eq(L("stake.ask.cards"), "Аддонът на раздаващия знае тестето на ръката, която раздава. Играй карти за голд с хора, на които вярваш.")
+    local function asked(card, what)
+      ok(P.askFrame:IsShown(), "no question: " .. what)
+      eq(P.askWarn:IsVisible(), card, what)
+      eq(P.askFrame:GetHeight(), card and 200 + 44 or 200, what)
+      if card then
+        eq(P.askWarn:GetText(), L("stake.ask.cards"))
+        eq(P.askWarn.points[1], { "TOPLEFT", P.askLeave, "BOTTOMLEFT", 0, -10 })
+      end
+    end
+    for _, game in ipairs({ "santase", "belot", "tabla", "ttt", "deathroll", "belot" }) do
+      P.ask({ tid = C .. "#1", game = game, stake = 10000 }, 2)
+      asked(game == "santase" or game == "belot", game)
+      w:click(P.askNo)
+    end
+    for _, game in ipairs({ "belot", "tabla" }) do
+      P.askInvite({ tid = C .. "#2", game = game, stake = 10000 })
+      asked(game == "belot", "invitation " .. game)
+      w:click(P.askNo)
+    end
+    -- The asked seat's question.
+    local tid, s = host(w, "santase", 10000)
+    s.stakeAsk = true
+    w.ns.client.acceptStake = function() return true end
+    w.ns.client.events:emit("stakeAsk", tid, 10000); w:advance(0)
+    eq(P.question.kind, "keep")
+    asked(true, "asked seat")
+  end)
+
+  it("„Стани“ in a staked Белот match names what I owe", function()
+    local w = stakedWow()
+    local TF, L = w.ns.TableFrame, w.ns.L
+    local _, s = host(w, "belot", 10000, { B, C, D })
+    eq(s.status, "live")
+    w:click(TF.view.standButton)
+    ok(TF.view.confirm:IsShown(), "no question")
+    eq(TF.view.confirm.text:GetText(), L("stand.stake.team", "1g", "2g"))
+    eq(TF.view.confirm.text:GetText(), "Ако станеш сега, отборът ти губи. Дължиш по 1g на двамата противници, общо 2g. Партньорът ти не дължи нищо.")
+    ok(TF.view.confirm:GetHeight() >= TF.view.confirm.text:GetStringHeight() + 48, "the text runs into the buttons")
+    w:click(TF.view.confirm.no)
+    w.ns.client:stand(); w:advance(0)
+    local _, s2 = host(w, "santase", 10000, { B })
+    eq(s2.status, "live")
+    w:click(TF.view.standButton)
+    eq(TF.view.confirm.text:GetText(), L("stand.stake", "1g"))
+    eq(TF.view.confirm:GetHeight(), 82)
+  end)
+
+  it("the bill of a Белот match shows two rows", function()
+    local w = stakedWow()
+    local L = w.ns.L
+    local _, s = host(w, "belot", 10000, { B, C, D })
+    local v = w.ns.TableFrame.view
+    over(w, s, 1) -- my team (seats 1 and 3) won: seat 2 owes me, seat 4 my partner
+    ok(v.bill:IsVisible(), "no bill"); eq(w.ns.StakePanels.shown, true)
+    eq(v.bill.title:GetText(), "Сметката")
+    eq(billLines(v), { { "Мария дължи на Иван 1g", L("bill.pending") }, { "Дара дължи на Тодор 1g", L("bill.pending") } })
+    eq(v.bill:GetHeight(), 32 + 2 * 18)
+    word(w, B, 1, myClaim(w, B), "C")
+    eq(billLines(v), { { "Мария дължи на Иван 1g", "" }, { "Дара дължи на Тодор 1g", L("bill.pending") } })
+    eq(w.ns.TableFrame.built.belot.text:IsVisible(), false)
+  end)
+
+  it("the bill of a leave names the leaver and its two debts", function()
+    local w = stakedWow()
+    local L = w.ns.L
+    eq(L("bill.left.team", "Мария"), "Мария напусна играта и плаща на двамата противници. Партньорът му не дължи нищо.")
+    local tid = host(w, "belot", 10000, { B, C, D })
+    local v = w.ns.TableFrame.view
+    w:deliver("WHISPER", B, { v = 1, t = "STD", tid = tid }); w:advance(0) -- seat 2: owes seats 1 and 3, never its partner in 4
+    ok(v.bill:IsVisible(), "no bill")
+    eq(billLines(v), { { L("bill.left.team", "Мария"), "" }, { "Мария дължи на Иван 1g", L("bill.pending") },
+                       { "Мария дължи на Тодор 1g", L("bill.pending") } })
+    eq(v.bill:GetHeight(), 32 + 4 * 18) -- the leave line takes two rows
+    -- My partner leaves: I owe nothing and am owed nothing, so no bill and the view's own line.
+    w.ns.client:stand(); w:advance(2) -- another table (its id has another second in it)
+    local tid2 = host(w, "belot", 10000, { B, C, D })
+    ok(tid2 ~= tid, "the same table id")
+    w:deliver("WHISPER", C, { v = 1, t = "STD", tid = tid2 }); w:advance(0)
+    eq(w.ns.StakePanels.shown, false); eq(v.bill:IsVisible(), false)
+    local f = w.ns.TableFrame.built.belot
+    ok(f.text:IsVisible(), "no end line"); ok(has(f.text:GetText(), "Тодор Ангелов"), plain(f.text:GetText()))
+  end)
+
+  it("a guest's bill says when the next match may begin", function()
+    local w = stakedWow()
+    local TF, L = w.ns.TableFrame, w.ns.L
+    eq(L("bill.again.wait", 25), "Домакинът може да започне нова игра за същия залог след 25 сек. Не искаш ли, натисни „Към залата“.")
+    eq(L("bill.again.ready"), "Домакинът може да започне нова игра за същия залог. Не искаш ли, натисни „Към залата“.")
+    local _, s = host(w, "santase", 10000, { B })
+    local v = TF.view
+    over(w, s, 1)
+    w:advance(5)
+    s.role = "player"; TF.render() -- a guest's view of the same table
+    local lines = billLines(v)
+    eq(lines[#lines], { L("bill.again.wait", 25), "" })
+    eq(v.bill.rematch:IsVisible(), false); eq(v.startButton:IsVisible(), false)
+    eq(v.bill:GetHeight(), 32 + 3 * 18) -- the row, and the guest's line on two
+    w:advance(1.5)
+    lines = billLines(v)
+    eq(lines[#lines], { L("bill.again.wait", 24), "" })
+    -- The host: „Реванш на същата маса“ is „Нова игра“; the start button dim inside the break.
+    s.role = "host"; TF.render()
+    eq(#billLines(v), 1)
+    ok(v.bill.rematch:IsVisible(), "no rematch for the host"); eq(v.bill.rematch.text:GetText(), "Реванш на същата маса")
+    local started, start = 0, TF.startGame
+    TF.startGame = function() started = started + 1 end
+    w:click(v.bill.rematch)
+    eq(started, 1)
+    TF.startGame = start
+    ok(v.startButton:IsVisible() and v.startButton:IsEnabled(), "no start button to click")
+    eq(v.startButton:GetAlpha(), 0.5)
+    w:advance(w.ns.Stakes.gap(s) - 6.5 + 0.1) -- the break is over: drawn again by itself
+    eq(v.startButton:GetAlpha(), 1)
+    s.role = "player"; TF.render()
+    lines = billLines(v)
+    eq(lines[#lines], { L("bill.again.ready"), "" })
+  end)
+
+  it("the guest's countdown ends with the break, drawn again by itself", function()
+    local w = stakedWow()
+    local TF, L = w.ns.TableFrame, w.ns.L
+    local _, s = host(w, "tabla", 10000, { B })
+    over(w, s, 2)
+    s.role = "player"; TF.render()
+    local lines = billLines(TF.view)
+    eq(lines[#lines], { L("bill.again.wait", 30), "" })
+    w:advance(30.1)
+    lines = billLines(TF.view)
+    eq(lines[#lines], { L("bill.again.ready"), "" })
+    eq(TF.countTimer, nil)
   end)
 end)

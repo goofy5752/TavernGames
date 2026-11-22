@@ -201,6 +201,21 @@ describe("ui: Белот view", function()
     eq(plain(f2.text:GetText()), "Kiro Barley стана от масата. Отборът му губи.")
   end)
 
+  it("the end line of the match hides under the bill of a staked match (StakePanels.shown); nothing else does", function()
+    local w, View, f = boot(); local P = w.ns.StakePanels
+    local mid = E.view(started(DECK_A, "S P P P"), 1)
+    P.shown = true; View.update(f, sess(mid, 1))
+    eq({ f.text:IsVisible(), f.text:GetText() }, { true, "Твой ход" }) -- a running match keeps its line
+    local st = scored()
+    st.phase, st.winner = "match", 1
+    P.shown = false; View.update(f, sess(st, 1))
+    eq({ f.text:IsVisible(), f.text:GetText() }, { true, "Печелим партията!" })
+    P.shown = true; View.update(f, sess(st, 1))
+    eq(f.text:IsVisible(), false)
+    P.shown = false; View.update(f, sess(st, 1))
+    eq({ f.text:IsVisible(), f.text:GetText() }, { true, "Печелим партията!" })
+  end)
+
   it("a deal everybody passed says so once", function()
     local w, View, f = boot(); local st = scored()
     st.res = { round = 1, raw = { 0, 0 }, pts = { 0, 0 }, hang = 0, valat = false, ann = {} }; View.update(f, sess(st, 1))

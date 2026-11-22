@@ -10,6 +10,7 @@ local TableFrame = ns.TableFrame
 local Theme, W, L = ns.Theme, ns.W, ns.L
 
 local PICK_W, PICK_ROWS, PICK_ROW_H = 230, 8, 20
+local CONFIRM_H = 82 -- the „Стани“ question at its least: its text 9 px under the top, the buttons 9 px over the bottom
 
 local function seated(seats, name)
   for i = 1, #seats do
@@ -187,24 +188,29 @@ local function buildPicker(v, f)
   v.picker = picker
 end
 
--- What „Стани“ costs me now at a staked table: the stake for every other
--- player of the running game I play in (its roster, core/Stakes.lua) -> copper | nil.
+-- What „Стани“ costs me now at a staked table: the stake for every player of
+-- the running game I play in (its roster, core/Stakes.lua) that my leave
+-- owes, which is everyone but me and my partner (ns.Stakes.owed) -> copper | nil.
 local function forfeitCost(s)
   local roster = s.stakeRoster
   if s.stake == nil or not roster or not s.mySeat then return nil end
-  local me = s.client.env.me
-  if roster[s.mySeat] ~= me then return nil end
-  local others = 0
-  for _, name in pairs(roster) do
-    if name ~= me then others = others + 1 end
-  end
-  return others > 0 and s.stake * others or nil
+  if roster[s.mySeat] ~= s.client.env.me then return nil end
+  local owed = #ns.Stakes.owed(s, roster, s.mySeat)
+  return owed > 0 and s.stake * owed or nil
 end
 
--- The question before „Стани“, with its text for my table s.
+-- The question before „Стани“, with its text for my table s (a staked team
+-- game: the stake to each opponent and the sum); the panel grows with it.
 local function confirm(v, s)
-  local cost = s and forfeitCost(s)
-  v.confirm.text:SetText(cost and L("stand.stake", ns.Util.money(cost)) or L("table.standWarn"))
+  local cost, money = s and forfeitCost(s), ns.Util.money
+  local text = L("table.standWarn")
+  if cost and s:engine().teams then
+    text = L("stand.stake.team", money(s.stake), money(cost))
+  elseif cost then
+    text = L("stand.stake", money(cost))
+  end
+  v.confirm.text:SetText(text)
+  v.confirm:SetHeight(math.max(CONFIRM_H, v.confirm.text:GetStringHeight() + 48))
   v.confirm:Show()
 end
 
@@ -212,7 +218,7 @@ end
 local function buildConfirm(v, f)
   local panel = W.Panel(f)
   panel.fill:SetColorTexture(20 / 255, 10 / 255, 5 / 255, 0.95)
-  panel:SetSize(250, 82)
+  panel:SetSize(250, CONFIRM_H)
   panel:SetPoint("BOTTOMLEFT", v.standButton, "TOPLEFT", 0, 6)
   panel:SetFrameLevel(f:GetFrameLevel() + 22)
   panel:EnableMouse(true)

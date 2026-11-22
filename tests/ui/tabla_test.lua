@@ -121,6 +121,20 @@ describe("ui: Табла view", function()
     eq({ f.staged, f.sent, f.doneButton.enabled, #shownCheckers(f.spikes[8]) }, { {}, nil, false, 3 })
   end)
 
+  it("the end line of the match hides under the bill of a staked match (StakePanels.shown); nothing else does", function()
+    local w, View, f = setup(); local P = w.ns.StakePanels
+    local st = E.new{}; roll(st, 6, 1); roll(st, 3, 1)
+    P.shown = true; draw(f, st, 1)
+    eq({ f.text:IsVisible(), f.text:GetText() }, { true, "Твой ход: кликни пул" })
+    st.phase, st.winner = "match", 1
+    P.shown = false; draw(f, st, 1)
+    eq({ f.text:IsVisible(), f.text:GetText() }, { true, "Печелиш партията!" })
+    P.shown = true; draw(f, st, 1)
+    eq(f.text:IsVisible(), false)
+    P.shown = false; draw(f, st, 1)
+    eq({ f.text:IsVisible(), f.text:GetText() }, { true, "Печелиш партията!" })
+  end)
+
   it("a table event throws the staged move away; a watcher has no buttons and nothing to pick", function()
     local w, View, f, acts = setup(); local st = E.new{}; roll(st, 6, 1); roll(st, 3, 1); draw(f, st, 1)
     w:click(f.spikes[8]); w:click(f.spikes[5]); local s = sess(st, 1); s.seq = 2; View.update(f, s); eq({ f.staged, f.pick, #shownCheckers(f.spikes[8]) }, { {}, nil, 3 })

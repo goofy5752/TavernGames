@@ -651,6 +651,49 @@ describe("ui: table frame, a staked Белот", function()
   end
 end)
 
+describe("ui: table frame, a staked Сантасе that fills up again", function()
+  it("a full table that waits for the break says so", function()
+    local w = Wow.new{ ui = true }
+    Play.staked(w.ns, "santase")
+    w.inGuild = true
+    w.roster = { { name = ME .. "-Forever", online = true, guid = Wow.GUID } }
+    w:boot()
+    w:firstRunDone()
+    w:fire("GUILD_ROSTER_UPDATE")
+    w:fire("PLAYER_LOGIN")
+    w:advance(w.ns.Const.LEDGER_ADOPT_WAIT + 1)
+    local client, TF, L = w.ns.client, w.ns.TableFrame, w.ns.L
+    eq(L("table.holdStart", 25), "Новата игра започва след 25 сек.")
+    local tid = assert(client:openTable{ game = "santase", access = "guild", turn = 45, stake = 10000 })
+    w:advance(0)
+    local function sit(name)
+      w:member(name)
+      w:deliver("GUILD", name, { v = 1, t = "HI", ver = "0.1.0", cls = "PRIEST", id = "Player-1-" .. name })
+      w:deliver("WHISPER", name, { v = 1, t = "SIT", tid = tid, seat = 2, sk = 10000 })
+      w:advance(0)
+    end
+    sit(B)
+    local s, v = client.session, TF.view
+    eq(s.status, "live")
+    -- The match ends on my client as its last event ends it: the result, then the stakes hook.
+    s.state.phase, s.state.winner = "match", 1
+    s:noteResult()
+    s.seq = s.seq + 1
+    w.ns.Ext.stakes.applied(s, 0, { k = "end" })
+    w:advance(5)
+    w:deliver("WHISPER", B, { v = 1, t = "STD", tid = tid }); w:advance(0)
+    sit("Тодор Ангелов") -- the table is full again 5 s into the break: its start waits
+    ok(s.holdTimer, "no held start"); ok(s.status ~= "live", "the match began inside the break")
+    ok(v.banner:IsVisible(), "no banner"); eq(v.bannerText:GetText(), L("table.holdStart", 25))
+    w:advance(1.5)
+    eq(v.bannerText:GetText(), L("table.holdStart", 24))
+    w:advance(w.ns.Stakes.gap(s) - 6.5 + 0.1)
+    eq(s.status, "live"); eq(s.holdTimer, nil)
+    w:advance(0)
+    eq(v.banner:IsVisible(), false)
+  end)
+end)
+
 describe("ui: Морски шах view", function()
   local E
 

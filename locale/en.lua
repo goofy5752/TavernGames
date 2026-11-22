@@ -573,6 +573,14 @@ T["bill.idle"] = "%s did not roll for 3 minutes and loses by forfeit."
 T["bill.more"] = "… and %d more"
 T["bill.rematch"] = "Rematch at the same table"
 T["invite.stake"] = "Stake: %s"
+-- The stake of Santase, Belot and Tabla (ui/StakePanels.lua, ui/TablePanels.lua, ui/TableFrame.lua)
+T["stake.ask.team"] = "The stake is %s. If your team loses, you pay %s to one of the opponents. If you leave the game, you pay %s to each of them, %s in all. Your partner owes nothing."
+T["stake.ask.cards"] = "The dealer's addon knows the deck of the hand it deals. Play cards for gold with people you trust."
+T["stand.stake.team"] = "If you stand up now, your team loses. You owe %s to each of the two opponents, %s in all. Your partner owes nothing."
+T["bill.left.team"] = "%s left the game and pays both opponents. Their partner owes nothing."
+T["bill.again.wait"] = "The host may start a new game at the same stake in %d s. If you don't want to play, press “To the hall”."
+T["bill.again.ready"] = "The host may start a new game at the same stake. If you don't want to play, press “To the hall”."
+T["table.holdStart"] = "The new game starts in %d s."
 
 -- Accounts and payment (ui/Accounts.lua, ui/PayDialog.lua)
 T["accounts.title"] = "Accounts"

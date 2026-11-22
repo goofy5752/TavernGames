@@ -334,9 +334,10 @@ local function drawSide(f, st, m)
   end
 end
 
+-- The line of text; the match's end line hides under the bill of a staked match (ns.StakePanels.shown).
 local function drawText(f, st, m)
   local t = m.text
-  if not t then
+  if not t or (E.over(st) and ns.StakePanels.shown) then
     f.text:SetText("")
     f.text:Hide()
     return
