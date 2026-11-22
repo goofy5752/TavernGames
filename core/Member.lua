@@ -98,10 +98,14 @@ function Member.adopt(client, sender, m)
   -- At the staked table I accepted my clock runs on the turn length I
   -- accepted (my note's tn; a note without one takes this snapshot's): a
   -- snapshot with another never changes it, and is forged (core/StakesWatch.lua).
-  local note, tn = client.env.db.stakeSat, t.tn
+  -- So with the options of a cash game I accepted (my note's o; a note without
+  -- them takes this snapshot's): a snapshot with others keeps mine (how.o).
+  local note, tn, opt, otherOpt = client.env.db.stakeSat, t.tn, ns.Games.resolve(t.g, t.o, t.sk ~= nil), false
   if type(note) == "table" and note.tid == m.tid and note.sk ~= nil and note.sk == t.sk then
     if type(note.tn) ~= "number" and type(tn) == "number" then note.tn = tn end
     tn = note.tn
+    if type(note.o) ~= "table" then note.o = ns.Stake.options(t.g, opt) end
+    if type(note.o) == "table" then otherOpt, opt = not ns.Util.same(note.o, opt), copy(note.o) end
   end
   -- How this snapshot came, for the extensions: fresh, from a host new to me
   -- (changed), answering a request of mine (asked: SYN, WAT or SIT), with a
@@ -113,12 +117,13 @@ function Member.adopt(client, sender, m)
     asked = s.asked == true, sat = seat ~= nil and s.mySeat == nil, q = s.seq,
     req = fresh and client.pending ~= nil and client.pending.tid == m.tid, sit = seat ~= nil and s.sitAsked ~= nil,
     tn = tn ~= t.tn, -- another turn length than the one I accepted
+    o = otherOpt,    -- other table options than the ones I accepted
   }
   if s.role == "host" then Succession.demote(s) end
   s.tid, s.role, s.mySeat, s.host = m.tid, seat and "player" or "watcher", seat, sender
   s.epoch, s.seq, s.seats = m.e, m.q, copy(t.s)
   s.game, s.access, s.turn, s.watchers, s.stake = t.g, t.ac, tn, t.w or 0, t.sk
-  s.opt = ns.Games.resolve(t.g, t.o)
+  s.opt = opt
   local engine = ns.Games.engine(t.g)
   s.state = type(m.st) == "table" and engine.restore(m.st) or nil
   -- The stake I accepted decides whether the game is staked, never the host's

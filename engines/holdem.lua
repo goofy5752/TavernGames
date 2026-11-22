@@ -133,10 +133,9 @@ end
 E.options = {
   { id = "betting", choices = { "nl", "pl" }, default = "nl" },        -- No Limit / Pot Limit
   { id = "blinds", choices = { 10, 20, 50, 100, 200 }, default = 10 }, -- big blind; small blind = half
-  { id = "stack", choices = { 50, 100, 200 }, default = 100 },         -- starting stack in big blinds
+  { id = "stack", choices = { 50, 100, 200 }, default = 100, at = "fun" }, -- starting stack in big blinds
+  { id = "rebuy", choices = { "none", "bust", "top" }, default = "bust", at = "stake" }, -- rule 20
 }
--- rule 20, a staked table's option (Task 4 adds it to E.options with the field `at`)
-local REBUY = { id = "rebuy", choices = { "none", "bust", "top" }, default = "bust", at = "stake" }
 
 local function copy(v)
   if type(v) ~= "table" then return v end
@@ -148,7 +147,7 @@ end
 local function isInt(x) return type(x) == "number" and x % 1 == 0 end
 
 local function choice(id, v)
-  for _, o in ipairs({ E.options[1], E.options[2], E.options[3], REBUY }) do
+  for _, o in ipairs(E.options) do
     if o.id == id then
       for _, c in ipairs(o.choices) do if c == v then return v end end
       return o.default

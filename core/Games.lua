@@ -50,13 +50,25 @@ local function offers(choices, value)
   return false
 end
 
--- `opt` checked against the engine's options -> a new table with every option
--- set (the given value or the default), or nil when the engine is unknown,
--- `opt` is not a table, or a key or value is not one the engine offers.
-function Games.resolve(id, opt)
+-- The options of `engine` a table takes: one with `at = "stake"` only at a
+-- staked table, one with `at = "fun"` only at a table for fun (Холдем: the
+-- rebuy mode, the starting stack), every other always.
+local function offered(engine, staked)
+  local out = {}
+  for _, o in ipairs(engine.options or {}) do
+    if o.at == nil or (o.at == "stake") == (staked == true) then out[#out + 1] = o end
+  end
+  return out
+end
+
+-- `opt` checked against the engine's options for a table staked or not ->
+-- a new table with every option of that table set (the given value or the
+-- default), or nil when the engine is unknown, `opt` is not a table, or a key
+-- or value is not one that table offers.
+function Games.resolve(id, opt, staked)
   local engine = Games.engine(id)
   if not engine or (opt ~= nil and type(opt) ~= "table") then return nil end
-  local options = engine.options or {}
+  local options = offered(engine, staked)
   for k, v in pairs(opt or {}) do
     local o = option(options, k)
     if not o or not offers(o.choices, v) then return nil end

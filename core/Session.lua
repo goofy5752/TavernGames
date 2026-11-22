@@ -377,19 +377,19 @@ function Session.open(client, opts)
   if client.session then return nil, "busy" end
   local engine = ns.Games.engine(opts.game)
   if not engine then return nil, "game" end
-  if opts.stake ~= nil and not ns.Stake.allowed(opts.game, opts.stake) then return nil, "stake" end
   if not ACCESS[opts.access] then return nil, "access" end
   local turn = opts.turn == nil and C.TURN_DEFAULT or opts.turn
   if not contains(C.TURN_CHOICES, turn) then return nil, "turn" end
-  local opt = ns.Games.resolve(opts.game, opts.opt)
+  local opt = ns.Games.resolve(opts.game, opts.opt, opts.stake ~= nil)
   if not opt then return nil, "opt" end
+  if opts.stake ~= nil and not ns.Stake.allowed(opts.game, opts.stake, opt) then return nil, "stake" end
 
   local env = client.env
   local tid = env.me .. "#" .. env.epoch()
   local seats = {}
   for i = 1, engine.maxSeats do seats[i] = false end
   seats[1] = env.me
-  client.pending = nil; ns.Stake.note(client, tid, opts.stake, turn) -- the opener accepts its own stake
+  client.pending = nil; ns.Stake.note(client, tid, opts.stake, turn, opts.stake and ns.Stake.options(opts.game, opt)) -- the opener accepts its own stake
   client.session = setmetatable({
     client = client,
     tid = tid, role = "host", mySeat = 1, host = env.me, epoch = 1, seq = 0,
@@ -405,12 +405,12 @@ function Session.open(client, opts)
   return tid
 end
 
--- kind "SIT" (with seat and my stake sk, noted in db.stakeSat with the table's turn length as I see it:
+-- kind "SIT" (with seat and my stake sk, noted in db.stakeSat with the table's turn length and options as I see them:
 -- Member.adopt) or "WAT"; the answer is an SNP or the event "refused". Unanswered for PENDING_SECONDS: given up ("gone"), so a late SNP is refused.
 function Session.request(client, kind, tid, seat, sk)
   local s = client.session
   if s and (s.tid ~= tid or s.role == "host") then return refuse(client, tid, "busy") end
-  local host, was, tn = s and s.host, client.pending, s and s.turn -- was: a SIT of mine still unanswered keeps its note
+  local host, was, tn, o = s and s.host, client.pending, s and s.turn, s and ns.Stake.options(s.game, s.opt) -- was: a SIT of mine still unanswered keeps its note
   client.gaveUp = nil
   if s then s.sitAsked, s.asked = kind == "SIT" and client.env.now() or nil, true end -- see Party.inviteFrom, Member.adopt
   if not host then
@@ -418,7 +418,7 @@ function Session.request(client, kind, tid, seat, sk)
     if not rec then return refuse(client, tid, "gone") end
     -- A game I do not have: nothing to ask for.
     if not ns.Games.engine(rec.game) then return refuse(client, tid, "version") end
-    host, tn = rec.host, rec.turn
+    host, tn, o = rec.host, rec.turn, ns.Stake.options(rec.game, rec.opt)
     local p = { tid = tid, host = host, kind = kind }
     client.pending = p
     client:after(C.PENDING_SECONDS, function()
@@ -428,7 +428,7 @@ function Session.request(client, kind, tid, seat, sk)
     end)
   end
   local m = kind == "SIT" and { tid = tid, seat = seat, sk = sk } or { tid = tid }
-  if kind == "SIT" and not (s and s.mySeat or was and was.tid == tid and was.kind == "SIT") then ns.Stake.note(client, tid, sk, tn) end
+  if kind == "SIT" and not (s and s.mySeat or was and was.tid == tid and was.kind == "SIT") then ns.Stake.note(client, tid, sk, tn, sk and o) end
   client:send("WHISPER", host, message(kind, m))
 end
 

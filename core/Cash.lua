@@ -5,7 +5,7 @@ local _, ns = ...
 -- core/Deal.lua's, the book core/Book.lua's; this file plays the table around
 -- them:
 -- - a player sits down in a running game: the engine seats it on every client
---   ({k="join", seat}), with chips at once and cards from the next hand (on a
+--   ({k="join", seat, who}: its name at a staked table), with chips at once (a staked one's by its buy) and cards from the next hand (on a
 --   chair whose player stood up during this hand the engine marks the
 --   leaver's hand gone: the newcomer owes no face of it and asks for none);
 -- - the dealer deals every street (rule 4 of the sealed deal): on a view the
@@ -212,7 +212,7 @@ ns.Ext.cash = {
       ns.Book.of(s)
       s.forgedNext, s.lapseOut = nil, nil
     elseif k == "sit" and s.status == "live" and s.state then
-      engine.apply(s.state, 0, { k = "join", seat = a.seat })
+      engine.apply(s.state, 0, { k = "join", seat = a.seat, who = s.stake and a.name or nil }) -- a staked seat's name
       ns.Book.of(s).given[a.seat] = nil
       if s.lapseOut then s.lapseOut[a.seat] = nil end -- a newcomer is not the seat a lapse named
       -- A sit does not re-arm the timers, and two players may now be enough for a hand.

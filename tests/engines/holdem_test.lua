@@ -122,7 +122,7 @@ describe("holdem setup", function()
     eq({ E.id, E.minSeats, E.maxSeats, E.start }, { "holdem", 2, 6, "host" })
     eq(E.options, { { id = "betting", choices = { "nl", "pl" }, default = "nl" },
       { id = "blinds", choices = { 10, 20, 50, 100, 200 }, default = 10 },
-      { id = "stack", choices = { 50, 100, 200 }, default = 100 } })
+      { id = "stack", choices = { 50, 100, 200 }, default = 100, at = "fun" }, { id = "rebuy", choices = { "none", "bust", "top" }, default = "bust", at = "stake" } })
     eq(#E.DECK, 52); local seen = {}
     for _, f in ipairs(E.DECK) do ok(H.valid(f)); ok(not seen[f]); seen[f] = true end
     local s = mk({ 1, 2 }); eq(E.result(s), nil); eq(E.over(s), false)

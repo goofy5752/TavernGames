@@ -22,7 +22,9 @@ end
 -- Shape check of a TBL record (the fields only; `v`/`t` are the client's job).
 -- A game whose engine I have must fit it: its seat count and its options. A
 -- game I do not have stays valid (it is listed, not joinable). A stake `sk`
--- only on a game whose engine takes stakes (`stakes = true`, ns.Stake.allowed).
+-- only on a game whose engine takes stakes (`stakes = true`, ns.Stake.allowed;
+-- a cash game's only at its own options), whose options are those of a
+-- staked table (ns.Games.resolve: Холдем's rebuy mode, not its stack).
 function Lobby.valid(m)
   if type(m) ~= "table" then return false end
   if type(m.tid) ~= "string" or type(m.h) ~= "string" or type(m.e) ~= "number" then return false end
@@ -35,9 +37,10 @@ function Lobby.valid(m)
     if type(m.s[i]) ~= "string" and m.s[i] ~= false then return false end
   end
   if m.o ~= nil and type(m.o) ~= "table" then return false end
-  if m.sk ~= nil and not ns.Stake.allowed(m.g, m.sk) then return false end
   local engine = ns.Games.engine(m.g)
-  if engine and (#m.s ~= engine.maxSeats or ns.Games.resolve(m.g, m.o) == nil) then return false end
+  local opt = engine and ns.Games.resolve(m.g, m.o, m.sk ~= nil)
+  if m.sk ~= nil and not ns.Stake.allowed(m.g, m.sk, opt) then return false end
+  if engine and (#m.s ~= engine.maxSeats or not opt) then return false end
   return true
 end
 

@@ -110,7 +110,8 @@ end
 function Session:newGame(first)
   local seats, lowest = occupied(self.seats)
   local engine = self:engine()
-  local state = engine.new({ first = seats[first] and first or lowest, seats = seats, opt = copy(self.opt), staked = self.stake ~= nil })
+  local state = engine.new({ first = seats[first] and first or lowest, seats = seats, opt = copy(self.opt), staked = self.stake ~= nil,
+    names = self.stake ~= nil and copy(self.seats) or nil }) -- a staked engine's own roster (Холдем: who bought what)
   if engine.view then return engine.view(state, self.mySeat or 0) end
   return state
 end

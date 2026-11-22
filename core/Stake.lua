@@ -18,10 +18,12 @@ function Stake.valid(c)
   return whole(c) and c % 100 == 0 and c >= Stake.MIN and c <= Stake.MAX
 end
 
--- Does game `id` take a stake `c` -> bool.
-function Stake.allowed(id, c)
+-- Does game `id` take a stake `c` -> bool. A cash game (engine.stakeOf:
+-- Холдем) at the table options `opt`, when given, only its own stake of them.
+function Stake.allowed(id, c, opt)
   local engine = ns.Games.engine(id)
-  return Stake.valid(c) and engine ~= nil and engine.stakes == true
+  if not (Stake.valid(c) and engine ~= nil and engine.stakes == true) then return false end
+  return opt == nil or not engine.stakeOf or c == engine.stakeOf(opt)
 end
 
 -- Gold and silver -> copper, or nil when it is not a stake.
@@ -33,10 +35,13 @@ end
 
 -- The most a player of game `id` can lose at a table of stake `copper`:
 -- Death Roll pays everyone else, a team game (engine.teams) two stakes (a
--- leaver pays both opponents), every other game one stake.
+-- leaver pays both opponents), a cash game (engine.cashGame, whose stake is
+-- its big blind) one full buy-in of 100 big blinds (more only by buying
+-- again: the question says so), every other game one stake.
 function Stake.worst(id, copper)
   if id == "deathroll" then return copper * (ns.Engines.deathroll.maxSeats - 1) end
   local engine = ns.Games.engine(id)
+  if engine and engine.cashGame then return copper * 100 end
   if engine and engine.teams then return copper * 2 end
   return copper
 end
@@ -45,9 +50,10 @@ end
 -- The stake I accepted (Member.adopt checks every snapshot that seats me)
 ---------------------------------------------------------------------------
 
--- A staked seat is mine only through my own note {tid, sk, tn} in db.stakeSat
+-- A staked seat is mine only through my own note {tid, sk, tn, o} in db.stakeSat
 -- (sk nil: for fun; tn: the turn length of the table I accepted, kept by
--- Member.adopt). It is written when I send a SIT with that sk to that
+-- Member.adopt; o: at a cash game the table options I accepted, resolved for a
+-- staked table (Stake.options), kept by Member.adopt the same way). It is written when I send a SIT with that sk to that
 -- table (Session.request) or open it (Session.open), and by Stake.accept;
 -- Stake.ask writes {tid} with no stake ("asked here, nothing accepted": a
 -- /reload while asked finds it and gives the seat up);
@@ -57,9 +63,18 @@ end
 -- client.stakeNoted: the note was written or cleared in this run of the
 -- client, so no note for a table means I accepted no stake there (only the
 -- note loaded at login can be missing or stale, after a crash).
-function Stake.note(client, tid, sk, tn)
-  client.env.db.stakeSat = { tid = tid, sk = sk, tn = tn }
+function Stake.note(client, tid, sk, tn, o)
+  client.env.db.stakeSat = { tid = tid, sk = sk, tn = tn, o = ns.Util.copy(o) }
   client.stakeNoted = true
+end
+
+-- The options `o` of a staked table of game `id` as my note keeps them -> a
+-- new table with every default filled in (never a lobby record's raw `o`,
+-- which may lack one), or nil: a game that is no cash game (engine.stakeOf)
+-- keeps none, and options no staked table of it offers.
+function Stake.options(id, o)
+  local engine = ns.Games.engine(id)
+  return engine and engine.stakeOf and ns.Games.resolve(id, o, true) or nil
 end
 
 function Stake.clear(client)
@@ -108,7 +123,7 @@ function Stake.accept(client)
   local s = client.session
   if not (s and s.stakeAsk and seated(client, s)) then return nil end
   s.stakeAsk = nil
-  Stake.note(client, s.tid, s.stake, s.turn)
+  Stake.note(client, s.tid, s.stake, s.turn, Stake.options(s.game, s.opt))
   return true
 end
 
