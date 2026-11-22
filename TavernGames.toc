@@ -38,6 +38,7 @@ core/LedgerQueue.lua
 core/LedgerSync.lua
 core/LedgerSyncPage.lua
 core/Pay.lua
+core/PaySubject.lua
 core/Presence.lua
 core/Lobby.lua
 core/Succession.lua
