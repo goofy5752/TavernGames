@@ -234,8 +234,8 @@ end
 -- db.stakeSat) db.stakeLeft[tid] = {at, sk, names, q, used} (else inert: {at, q, names}), before my STD
 -- (q: the stand's predicted event number; its claims, core/StakesClaims.lua);
 -- a member, whose client never applies its stand, also notes the forfeit
--- ("unseen" for an asked seat, which has no stake note) and tells it
--- ("forfeit"). A host's handoff plays it here.
+-- (Book:quit folds the rolls' audit in; "unseen" for an asked seat, which has
+-- no stake note) and tells it ("forfeit"). A host's handoff plays it here.
 local function quit(s)
   local env, roster, sat = s.client.env, s.stakeRoster, s.client.env.db.stakeSat
   if not (s.client.stakes and s.stakeLive and roster and s.mySeat and roster[s.mySeat] == env.me) then return end
@@ -246,8 +246,8 @@ local function quit(s)
   env.db.stakeLeft[s.tid] = mine and { at = at, sk = s.stake, names = to, q = q, used = {} } or { at = at, q = q, names = to }
   if s.role == "host" then return end
   s.client.events:emit("forfeit", { tid = s.tid, game = s.game, q = q, seat = s.mySeat, name = env.me, to = to, why = "left", sk = s.stake, at = at })
-  s.client.stakes:seen(true)[s.tid .. "/" .. q] = { at = at, g = s.game, sk = s.stake, pairs = Stakes.pairs({ env.me }, to, s.stake), why = "left",
-    foul = mine and s.stakeFoul or "unseen", tid = s.tid, q = q }
+  s.client.stakes:quit(s, s.tid .. "/" .. q, { at = at, g = s.game, sk = s.stake, pairs = Stakes.pairs({ env.me }, to, s.stake), why = "left",
+    foul = not mine and "unseen" or s.stakeFoul, tid = s.tid, q = q })
 end
 
 -- What I judged of my running game, past my session: db.stakeSeen[tid .. "/"

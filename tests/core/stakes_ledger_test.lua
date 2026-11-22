@@ -412,7 +412,7 @@ describe("stakes: from a game to the ledger", function()
     eq(#n, 1); eq(n[1].why, "amount"); eq(#sentOf(sim, B, mark, "C"), 0)
   end)
 
-  it("„Стани“ is confirmed from the leave note also in a game my client did not see whole", function()
+  it("„Стани“ in a game my client did not see whole is put to me, never confirmed by the leave note (final review C1)", function()
     local sim, cl = setup()
     ttt(sim, cl, SK)
     ok(cl[A]:act({ k = "mark", c = 1 })); sim:run(0)
@@ -420,7 +420,74 @@ describe("stakes: from a game to the ledger", function()
     eq(b.session.stakeFoul, "unseen")
     local mark, asked = #sim.sent, record(b, "debtAsk")
     b:stand(); sim:run(10)
-    eq(#sentOf(sim, A, mark, "D"), 1); eq(#sentOf(sim, B, mark, "C"), 1); eq(asked, {})
+    eq(#sentOf(sim, A, mark, "D"), 1); eq(#sentOf(sim, B, mark, "C"), 0); eq(#sentOf(sim, B, mark, "N"), 0)
+    eq(#asked, 1); eq(#b.stakes:asks(), 1); eq(b.stakes:asks()[1].t, A)
+    eq(View.net(view(cl[P]), B, A), 0)
+  end)
+
+  it("my „Стани“ after a move forged for my seat is put to me, not confirmed (final review C1)", function()
+    local sim, cl = setup()
+    local tid = ttt(sim, cl, SK)
+    ok(cl[A]:act({ k = "mark", c = 1 })); sim:run(0)
+    -- Иван's modified client plays another cell than the one Мария sent.
+    sim.bus.filter = function(from, _, _, m)
+      if from == B and m.t == "ACT" then m.a = { k = "mark", c = 9 } end
+      return { m }
+    end
+    ok(cl[B]:act({ k = "mark", c = 5 })); sim:run(1)
+    sim.bus.filter = nil
+    eq(cl[B].session.stakeFoul, "forged")
+    local mark = #sim.sent
+    cl[B]:stand(); sim:run(10)
+    local gid = tid .. "/" .. cl[B].env.db.stakeLeft[tid].q
+    eq(cl[B].env.db.stakeSeen[gid].foul, "forged")
+    local d = sentOf(sim, A, mark, "D")
+    eq(#d, 1); eq({ d[1].gid, d[1].why }, { gid, "left" })
+    eq(#sentOf(sim, B, mark, "C"), 0)
+    eq(#cl[B].stakes:asks(), 1); eq(cl[B].stakes:asks()[1].gid, gid)
+    eq(debtOf(cl[P], gid .. "|" .. B .. "|" .. A).status, "pending"); eq(View.net(view(cl[P]), B, A), 0)
+  end)
+
+  it("Death Roll: my „Стани“ after a roll recorded with another number than I saw is put to me (final review C1)", function()
+    local sim, cl = setup()
+    local tid = dr(sim, cl, { B }, SK)
+    -- Мария sees Иван roll 41; his client records 40.
+    sim.canSee = function(from, to) return not (from == A and to == B) end
+    cl[B]:rollSeen("Иван", 41, 1, 100); roll(sim, cl[A], 40)
+    sim.canSee = function() return true end
+    sim:run(C.ROLL_VERIFY_WAIT)
+    eq(ns.Rolls.audit(cl[B].session), "roll"); eq(cl[B].session.stakeFoul, nil)
+    local mark = #sim.sent
+    cl[B]:stand(); sim:run(C.ROLL_FINAL_WAIT + 10)
+    local gid = tid .. "/" .. cl[B].env.db.stakeLeft[tid].q
+    eq(cl[B].env.db.stakeSeen[gid].foul, "roll")
+    eq(#sentOf(sim, A, mark, "D"), 1); eq(#sentOf(sim, B, mark, "C"), 0)
+    eq(#cl[B].stakes:asks(), 1); eq(View.net(view(cl[P]), B, A), 0)
+  end)
+
+  it("Death Roll: a clean „Стани“ waits for the last roll verdict, then confirms", function()
+    local sim, cl = setup()
+    local tid = dr(sim, cl, { B }, SK)
+    roll(sim, cl[A], 40) -- its verdict on Мария's client is still pending when she stands
+    local mark = #sim.sent
+    cl[B]:stand(); sim:run(1)
+    local gid = tid .. "/" .. cl[B].env.db.stakeLeft[tid].q
+    eq(cl[B].env.db.stakeSeen[gid].wait, true); eq(#sentOf(sim, B, mark, "C"), 0); eq(cl[B].stakes:asks(), {})
+    sim:run(C.ROLL_FINAL_WAIT + 5)
+    eq(cl[B].env.db.stakeSeen[gid].foul, nil); eq(#sentOf(sim, B, mark, "C"), 1)
+    eq(View.net(view(cl[P]), B, A), SK)
+  end)
+
+  it("a host that stands up from a game its client did not see whole is asked too (final review C1)", function()
+    local sim, cl = setup()
+    local tid = ttt(sim, cl, SK)
+    ok(cl[A]:act({ k = "mark", c = 1 })); sim:run(0)
+    ns.Stakes.foul(cl[A].session, "unseen")
+    local mark = #sim.sent
+    cl[A]:stand(); sim:run(10)
+    local gid = tid .. "/" .. cl[A].env.db.stakeLeft[tid].q
+    eq(cl[A].env.db.stakeSeen[gid].foul, "unseen")
+    eq(#sentOf(sim, B, mark, "D"), 1); eq(#sentOf(sim, A, mark, "C"), 0); eq(#cl[A].stakes:asks(), 1)
   end)
 
   it("a claim whose id holds a claim of another game as well gets my own D, not a C", function()

@@ -99,7 +99,10 @@ end
 -- The claim put to me: who, how much, which game and day, and why I am asked.
 local function debtText(client, d, note)
   local s = L("ask.debt", who(client, d.t), money(d.c), W.gameName(d.g), ddmm(client, d.at))
-  if d.why ~= "lost" then return s .. " " .. L("ask.debt.left") end
+  local foul = type(note) == "table" and note.foul
+  if d.why ~= "lost" then -- my own „Стани“ is put to me only when my client holds a foul of that game
+    return s .. " " .. L("ask.debt.left") .. (foul and " " .. L(foul == "unseen" and "ask.debt.unseen" or "ask.debt.foul") or "")
+  end
   if type(note) ~= "table" or note.foul == "unseen" then return s .. " " .. L("ask.debt.unseen") end
   return s
 end

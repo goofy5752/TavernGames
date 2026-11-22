@@ -3,7 +3,8 @@ local _, ns = ...
 -- What my client says to a claim against me (core/StakesBook.lua's review):
 --   my „Стани“ (db.stakeLeft, core/Stakes.lua): the one claim of that stand
 --   (its gid, why "left", the table's stake, within STAKE_LEFT_WINDOW of it,
---   a creditor I left behind) -> C, once per creditor; another amount there
+--   a creditor I left behind) -> C, once per creditor, unless my note of that
+--   game holds any foul (then put to me; its roll part pending -> wait); another amount there
 --   -> N "amount", any other claim at that gid -> put to me; a "left" claim
 --   at that table more than LEAVE_SLACK events after it, with no note of mine
 --   for its gid: a game I was not in (N "forged") once that creditor's claim
@@ -38,6 +39,8 @@ function Book:judge(b, taken)
     local used = (type(left.used) == "table" and left.used[b.t]) or taken[b.t]
     if b.why == "left" and left.sk == b.c and near(b.at, left.at) and (not used or used == b.h)
         and Util.contains(type(left.names) == "table" and left.names or {}, b.t) then
+      -- Never from a game my client holds any foul of (forged, roll, stand, unseen): that is put to me.
+      if type(note) == "table" and (note.wait or note.foul) then return note.wait and "wait" or "ask" end
       taken[b.t] = b.h
       return "C", nil, left
     end

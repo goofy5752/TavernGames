@@ -134,6 +134,20 @@ function Book:outcome(s, gid, pairs, why, noted)
   self:review()
 end
 
+-- The note of my „Стани“ as a member (core/Stakes.lua's quit): the foul my client
+-- holds of that game with the rolls' audit folded in, as in Book:outcome (wait:
+-- final ROLL_FINAL_WAIT later), so a claim of that stand is judged with it.
+function Book:quit(s, gid, note)
+  local rec, base = rolls(s) and s, note.foul
+  note.foul, note.wait = worse(base, rec and ns.Rolls.audit(rec) or nil), rec and true or nil
+  self:seen(true)[gid] = note
+  if not rec then return end
+  self.client:after(C.ROLL_FINAL_WAIT, function()
+    note.foul, note.wait = worse(base, ns.Rolls.audit(rec)), nil
+    self:review()
+  end)
+end
+
 -- No claim of a creditor STAKE_OWE_WAIT after my clean loss: my own D. Done once (note.owe goes).
 function Book:owe(gid)
   local note, L, me = self:seen()[gid], self.client.ledger, self.env.me

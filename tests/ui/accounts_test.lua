@@ -234,6 +234,18 @@ describe("ui: the questions of „Сметки“", function()
                                           foul = "unseen", tid = tid, q = tonumber(q) }
     local c2 = lev(w2, D, "D", { gid = g, g = "ttt", f = ME, t = D, c = 30000, why = "lost" })
     eq(shown(w2)[1].text, "Дара Колева казва, че му дължиш 3g от Морски шах (" .. ddmm(c2.at) .. "). Не видях цялата игра.")
+
+    -- My own „Стани“ in a game my client holds a foul of is put to me, and the line says why (final review C1).
+    for foul, tail in pairs({ forged = " Аддонът ти видя нередност в тази игра.", unseen = " Не видях цялата игра." }) do
+      local w3 = readyWow()
+      local g3, now3 = gid(), w3.G.GetServerTime()
+      local tid3, q3 = g3:match("^(.*)/(%d+)$")
+      w3.ns.client.stakes:seen(true)[g3] = { at = now3, g = "ttt", sk = 30000, pairs = { { f = ME, t = D, c = 30000 } }, why = "left",
+                                             foul = foul, tid = tid3, q = tonumber(q3) }
+      w3.ns.client.env.db.stakeLeft = { [tid3] = { at = now3, sk = 30000, names = { D }, q = tonumber(q3), used = {} } }
+      local c3 = lev(w3, D, "D", { gid = g3, g = "ttt", f = ME, t = D, c = 30000, why = "left" })
+      eq(shown(w3)[1].text, "Дара Колева казва, че му дължиш 3g от Морски шах (" .. ddmm(c3.at) .. "). Напуснал си масата и губиш служебно." .. tail)
+    end
   end)
 
   it("the own-entries question: one „Мои са“ / „Не са мои“ per entry, each answering its own body", function()
