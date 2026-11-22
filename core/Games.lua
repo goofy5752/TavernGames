@@ -56,6 +56,7 @@ end
 local function offered(engine, staked)
   local out = {}
   for _, o in ipairs(engine.options or {}) do
+    assert(o.at == nil or o.at == "fun" or o.at == "stake", "option at: fun, stake or nothing")
     if o.at == nil or (o.at == "stake") == (staked == true) then out[#out + 1] = o end
   end
   return out

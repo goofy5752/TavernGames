@@ -206,7 +206,7 @@ end
 -- is "unseen". Its Death Roll state must say staked (Member.adopt set mine).
 -- The foul of a game that was running here stays, whatever the snapshot (the
 -- host can make me ask for one at will: a TCK or a gap); Rolls' adopted
--- judged the rolls it brought in my name. The clock of my turn is my own (a; how.tn), and so are the options of a cash table (how.o).
+-- judged the rolls it brought in my name. The clock of my turn is my own (a; how.tn), and so are the options of my staked table (how.o).
 ns.Ext.stakes.adopted = function(s, prev, m, how)
   local st, was, on, me = s.state, s.stakeLive, running(s), s.client.env.me
   if how.fresh then Stakes.restore(s) end -- a login back to my table: what I sent there before

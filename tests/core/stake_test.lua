@@ -689,7 +689,7 @@ describe("stake", function()
     sim.bus.filter = function(from, _, _, m) return (from == P and m.t == "SIT") and {} or { m } end
     c:sit(tid, 2, 50000); sim:run(0)
     sim.bus.filter = nil
-    eq(c.env.db.stakeSat, { tid = tid, sk = 50000, tn = 45 })
+    eq(c.env.db.stakeSat, { tid = tid, sk = 50000, tn = 45, o = { start = 1000 } })
     a.session.watcherSet[P], a.session.watchers = nil, 0
     a.session:event(0, { k = "sit", seat = 2, name = P }); sim:run(1)
     eq(c.session.seats[2], P); eq(c.session.seq, a.session.seq); eq(refused, {})

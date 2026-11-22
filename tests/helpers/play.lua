@@ -27,7 +27,7 @@ end
 
 -- Play.staked([ns,] id, ...): the engines `id` take a stake in `ns` (default
 -- Sim.ns; a UI test passes its w.ns) -> a restore that puts the old flags back
--- and runs Play.restore(); Play.restore() runs it too. Until stage F3 lets
+-- and runs Play.restore() (so it also undoes every pending Play.short); Play.restore() runs it too. Until stage F3 lets
 -- Холдем take a stake, a test file of a staked Холдем begins with it.
 function Play.staked(ns, ...)
   local ids = { ... }

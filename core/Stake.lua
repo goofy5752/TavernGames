@@ -52,9 +52,10 @@ end
 
 -- A staked seat is mine only through my own note {tid, sk, tn, o} in db.stakeSat
 -- (sk nil: for fun; tn: the turn length of the table I accepted, kept by
--- Member.adopt; o: at a cash game the table options I accepted, resolved for a
--- staked table (Stake.options), kept by Member.adopt the same way). It is written when I send a SIT with that sk to that
--- table (Session.request) or open it (Session.open), and by Stake.accept;
+-- Member.adopt; o: at a game with options the table options I accepted,
+-- resolved for a staked table (Stake.options), kept by Member.adopt the same
+-- way). It is written when I send a SIT with that sk to that table
+-- (Session.request) or open it (Session.open), and by Stake.accept;
 -- Stake.ask writes {tid} with no stake ("asked here, nothing accepted": a
 -- /reload while asked finds it and gives the seat up);
 -- it is cleared when I stand (Client:stand), when a SIT of mine is refused
@@ -70,11 +71,11 @@ end
 
 -- The options `o` of a staked table of game `id` as my note keeps them -> a
 -- new table with every default filled in (never a lobby record's raw `o`,
--- which may lack one), or nil: a game that is no cash game (engine.stakeOf)
--- keeps none, and options no staked table of it offers.
+-- which may lack one), or nil: a game without options (Морски шах; Сантасе,
+-- Белот and Табла have `options = {}`) keeps none.
 function Stake.options(id, o)
   local engine = ns.Games.engine(id)
-  return engine and engine.stakeOf and ns.Games.resolve(id, o, true) or nil
+  return engine and engine.options and #engine.options > 0 and ns.Games.resolve(id, o, true) or nil
 end
 
 function Stake.clear(client)

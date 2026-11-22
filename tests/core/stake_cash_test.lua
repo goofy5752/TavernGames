@@ -151,6 +151,28 @@ describe("the table I accepted: blinds, betting, rebuy", function()
     eq(hows[1].o, true); eq(cl[B].session.opt.rebuy, "bust")
   end)
 
+  it("a relog keeps my pinned options, and host succession keeps them (M2)", function()
+    local sim, cl, tid = opened(SK)
+    cl[B]:sit(tid, 2, SK); sim:run(1)
+    cl[P]:sit(tid, 3, SK); sim:run(1)
+    ok(cl[A]:startGame()); sim:run(1)
+    cl[A].session.opt.rebuy = "top"
+    local b = sim:relog(B); sim:run(3)
+    cl[A].session:snapshotTo(B); sim:run(1)
+    eq(b.session.opt.rebuy, "bust"); eq(b.env.db.stakeSat.o.rebuy, "bust")
+    eq(b.session.stakeFoul, "forged")
+    -- The host goes: a member who claims hosts with the options it accepted.
+    cl[A].session.opt.rebuy = "bust"
+    cl[A]:stop(); sim:run(200)
+    local host
+    for _, c in ipairs({ b, cl[P] }) do
+      if c.session and c.session.role == "host" then host = c end
+    end
+    ok(host, "a member hosts")
+    eq(host.session.opt, { betting = "nl", blinds = 10, rebuy = "bust" })
+    eq(host.env.db.stakeSat.o.rebuy, "bust")
+  end)
+
   it("an accepted ask notes the table's options", function()
     local sim, cl, tid = opened(SK)
     cl[B]:sit(tid, 2, SK); sim:run(1)
@@ -217,6 +239,56 @@ describe("the table I accepted: blinds, betting, rebuy", function()
     eq({ cl[K]:act{ k = "buy", n = 400 } }, { nil, "amount" })
     ok(cl[K]:act{ k = "buy", n = math.min(left, 1000) }); sim:run(1)
     eq(host.session.state.seats[3].bought, math.min(left, 1000))
+  end)
+
+  it("a Death Roll note holds its start; a snapshot with another keeps mine, says so and is forged (I1)", function()
+    local sim, cl = Play.guild(3)
+    local tid = assert(cl[A]:openTable{ game = "deathroll", access = "guild", turn = 45, stake = 50000 }); sim:run(3)
+    eq(cl[A].env.db.stakeSat, { tid = tid, sk = 50000, tn = 45, o = { start = 1000 } })
+    cl[B]:sit(tid, 2, 50000); sim:run(1)
+    eq(cl[B].env.db.stakeSat, { tid = tid, sk = 50000, tn = 45, o = { start = 1000 } })
+    eq(cl[B].session.opt, { start = 1000 })
+    cl[A].session.opt.start = 100
+    local hows = spyHow(cl[B], function() cl[A].session:snapshotTo(B); sim:run(1) end)
+    eq(#hows, 1); eq(hows[1].o, true)
+    eq(cl[B].session.opt.start, 1000); eq(cl[B].env.db.stakeSat.o.start, 1000)
+    eq(cl[B].session.stakeFoul, "forged")
+    -- Opened with another start: the note holds that one.
+    local sim2, cl2 = Play.guild(2)
+    assert(cl2[A]:openTable{ game = "deathroll", access = "guild", turn = 45, stake = 50000, opt = { start = 100 } })
+    sim2:run(3)
+    eq(cl2[A].env.db.stakeSat.o, { start = 100 })
+  end)
+
+  it("an older Death Roll note without options takes the snapshot's, once (I1)", function()
+    local sim, cl = Play.guild(3)
+    local tid = assert(cl[A]:openTable{ game = "deathroll", access = "guild", turn = 45, stake = 50000 }); sim:run(3)
+    cl[B]:sit(tid, 2, 50000); sim:run(1)
+    cl[B].env.db.stakeSat.o = nil -- an F1/F2 note
+    local hows = spyHow(cl[B], function() cl[A].session:snapshotTo(B); sim:run(1) end)
+    eq(hows[1].o, false); eq(cl[B].env.db.stakeSat.o, { start = 1000 })
+    cl[A].session.opt.start = 100
+    hows = spyHow(cl[B], function() cl[A].session:snapshotTo(B); sim:run(1) end)
+    eq(hows[1].o, true); eq(cl[B].session.opt.start, 1000)
+  end)
+
+  it("a note missing a newly added option's default does not make honest snapshots forged (M1)", function()
+    local sim, cl, tid = opened(SK)
+    cl[B]:sit(tid, 2, SK); sim:run(1)
+    cl[B].env.db.stakeSat.o.rebuy = nil -- written by a build without that option
+    local hows = spyHow(cl[B], function() cl[A].session:snapshotTo(B); sim:run(1) end)
+    eq(hows[1].o, false); eq(cl[B].session.stakeFoul, nil)
+    eq(cl[B].session.opt, { betting = "nl", blinds = 10, rebuy = "bust" })
+  end)
+
+  it("an option's `at` is fun, stake or nothing; anything else is an error (M3)", function()
+    local o = ns.Games.engine("holdem").options[1]
+    local old = o.at
+    o.at = "stakes"
+    local fine = pcall(Games.resolve, "holdem", nil, true)
+    o.at = old
+    eq(fine, false)
+    eq(Games.resolve("holdem", nil, true), { betting = "nl", blinds = 10, rebuy = "bust" })
   end)
 
   it("Play.staked takes a namespace and is undone by Play.restore", function()

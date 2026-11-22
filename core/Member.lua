@@ -98,14 +98,15 @@ function Member.adopt(client, sender, m)
   -- At the staked table I accepted my clock runs on the turn length I
   -- accepted (my note's tn; a note without one takes this snapshot's): a
   -- snapshot with another never changes it, and is forged (core/StakesWatch.lua).
-  -- So with the options of a cash game I accepted (my note's o; a note without
+  -- So with the options of the staked table I accepted (my note's o; a note without
   -- them takes this snapshot's): a snapshot with others keeps mine (how.o).
   local note, tn, opt, otherOpt = client.env.db.stakeSat, t.tn, ns.Games.resolve(t.g, t.o, t.sk ~= nil), false
   if type(note) == "table" and note.tid == m.tid and note.sk ~= nil and note.sk == t.sk then
     if type(note.tn) ~= "number" and type(tn) == "number" then note.tn = tn end
     tn = note.tn
-    if type(note.o) ~= "table" then note.o = ns.Stake.options(t.g, opt) end
-    if type(note.o) == "table" then otherOpt, opt = not ns.Util.same(note.o, opt), copy(note.o) end
+    note.o = type(note.o) == "table" and ns.Games.resolve(t.g, note.o, true) or nil -- a note from another build: defaults filled in
+    if not note.o then note.o = ns.Stake.options(t.g, opt) end
+    if note.o then otherOpt, opt = not ns.Util.same(note.o, opt), copy(note.o) end
   end
   -- How this snapshot came, for the extensions: fresh, from a host new to me
   -- (changed), answering a request of mine (asked: SYN, WAT or SIT), with a
