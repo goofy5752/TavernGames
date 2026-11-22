@@ -168,7 +168,8 @@ describe("locale and help", function()
     eq(H.get("stakes").title, "help.stakes.title"); eq(T.bg["help.stakes.title"], "Залози")
     eq(keys("stakes"), { "p help.stakes.p1", "p help.stakes.accept", "example help.stakes.example", "p help.stakes.deathroll",
       "example help.stakes.belot", "p help.stakes.leave", "p help.stakes.again", "p help.stakes.honest", "p help.stakes.cards",
-      "p help.stakes.tabla" })
+      "p help.stakes.tabla", "p help.stakes.holdem", "example help.stakes.holdem.example", "p help.stakes.holdem.rebuy",
+      "p help.stakes.holdem.stand", "p help.stakes.holdem.dealer" })
     eq(H.get("ledger").title, "tab.ledger")
     eq(keys("ledger"), { "p help.ledger.p1", "p help.ledger.pay.trade", "p help.ledger.pay.mail", "p help.ledger.settle",
       "example help.ledger.net", "p help.ledger.alts", "p help.ledger.holds", "p help.ledger.mine" })
@@ -251,18 +252,45 @@ describe("locale and help", function()
     for _, g in ipairs({ "Tic-tac-toe", "Death Roll", "Santase", "Belot", "Backgammon" }) do ok(T.en["help.stakes.p1"]:find(g, 1, true), "p1 lacks " .. g .. " (en)") end
   end)
 
+  it("stage F3 in the stakes topic: the five Холдем blocks, bg and en, used verbatim", function()
+    local BG = {
+      ["help.stakes.holdem"] = "В Холдем със залог всеки сяда с вход между 40 и 100 големи блайнда. Един чип е един силвър. Докато играете, не се мести голд: аддонът помни за всеки пот от кого е дошъл всеки силвър.",
+      ["help.stakes.holdem.example"] = "Иван, Мария и Kiro играят на 10s/20s. Kiro печели пот от 1g 20s: 40s са от Иван и 80s от Мария. По-късно Иван взима 30s от Kiro. Kiro става: Иван му дължи 10s, Мария му дължи 80s. Сборът по двойки е точно печалбата на Kiro.",
+      ["help.stakes.holdem.rebuy"] = "Докупуването се избира при отваряне на масата: „Без“, „Когато свършат чиповете“ или „Винаги до входа“. Станеш ли и седнеш ли пак в същата игра, не получаваш нови чипове даром: носиш поне това, с което си станал.",
+      ["help.stakes.holdem.stand"] = "„Стани“ записва сметката ти след края на ръката. Изчезнеш ли за 3 минути, аддонът те вдига сам и записва сметката. Дълговете се потвърждават сами, когато домакинът натисне „Приключи“ и ръцете се проверят с ключовете. Станеш ли по-рано, аддонът те пита за всеки твой дълг.",
+      ["help.stakes.holdem.dealer"] = "Аддонът на раздаващия знае тестето на ръката, която раздава. В Холдем това са картите на всички. Играй Холдем за голд само с хора, на които вярваш. Раздаващият може и да анулира ръка, като замълчи, когато е негов ред: чиповете се връщат, а анулирането се брои по име.",
+    }
+    for k, v in pairs(BG) do
+      eq(T.bg[k], v)
+      ok(type(T.en[k]) == "string" and T.en[k] ~= "", "en lacks " .. k)
+    end
+    -- The labels they quote are the texts of their UI keys; the S1 warning and the C9 void are said.
+    for lang, q in pairs({ bg = { "„", "“" }, en = { "“", "”" } }) do
+      for _, p in ipairs({ { "help.stakes.holdem.rebuy", "optv.holdem.rebuy.none" }, { "help.stakes.holdem.rebuy", "optv.holdem.rebuy.bust" },
+        { "help.stakes.holdem.rebuy", "optv.holdem.rebuy.top" }, { "help.stakes.holdem.stand", "table.stand" }, { "help.stakes.holdem.stand", "holdem.close" },
+        { "help.holdem.stake", "cash.panel" }, { "help.holdem.stake", "cash.rebuy" }, { "help.holdem.stake", "cash.standNow" } }) do
+        ok(T[lang][p[1]]:find(q[1] .. T[lang][p[2]] .. q[2], 1, true), lang .. ": " .. p[1] .. " does not quote " .. p[2])
+      end
+    end
+    ok(T.bg["help.stakes.holdem.dealer"]:find("картите на всички", 1, true) and T.bg["help.stakes.holdem.dealer"]:find("брои по име", 1, true), "S1 and C9")
+    ok(T.en["help.stakes.holdem.dealer"]:find("everybody's cards", 1, true) and T.en["help.stakes.holdem.dealer"]:find("counted by name", 1, true), "S1 and C9 (en)")
+    ok(T.bg["help.stakes.p1"]:find("Холдем", 1, true) and T.en["help.stakes.p1"]:find("Hold'em", 1, true), "p1 names Холдем")
+  end)
+
   it("pinned texts are used verbatim", function()
     eq(T.bg["help.ttt.example"], "Иван е Х, Мария е О. Редуват се. Иван нарежда три Х в редица и печели играта. Който пръв спечели 3 игри, печели мача.")
     eq(T.bg["help.hall.example"], "Виждаш маса с празен стол с пунктир. Кликаш на стола и вече седиш. Ако масата е пълна, кликни на нея, за да гледаш.")
-    -- Stage F2: five games take a stake; only Холдем is still for fun.
-    eq(T.bg["help.soon.p"], "Залози има на Морски шах, Death Roll, Сантасе, Белот и Табла. Тексас Холдем за злато идва скоро.")
-    eq(T.bg["help.soon.example"], "Искаш да играеш Холдем за злато? Още не може. Засега Тексас Холдем е само за удоволствие.")
+    -- Stage F3: every game takes a stake; no game is named as coming (H18d).
+    eq(T.bg["help.soon.p"], "Залози има на всички игри в механата.")
+    eq(T.bg["help.soon.example"], "Искаш да играеш Холдем за злато? Отвори маса „Със залог“ и избери блайндовете.")
     ok(not T.bg["help.soon.example"]:find("всички игри", 1, true) and not T.en["help.soon.example"]:find("all the games", 1, true), "„soon“ still says every game is for fun")
     for _, g in ipairs({ "Морски шах", "Death Roll", "Сантасе", "Белот", "Табла" }) do
       ok(not T.bg["help.soon.example"]:find(g, 1, true), "„soon“ lists a game that takes a stake: " .. g)
     end
-    eq(T.en["help.soon.p"], "There are stakes on Tic-tac-toe, Death Roll, Santase, Belot and Backgammon. Texas Hold'em for gold is coming soon.")
-    eq(T.en["help.soon.example"], "Want to play Hold'em for gold? Not yet. For now Texas Hold'em is just for fun.")
+    for _, w in ipairs({ "скоро", "Още не може", "Засега" }) do ok(not T.bg["help.soon.p"]:find(w, 1, true) and not T.bg["help.soon.example"]:find(w, 1, true), "„soon“ still says coming: " .. w) end
+    eq(T.en["help.soon.p"], "There are stakes on all the games in the tavern.")
+    eq(T.en["help.soon.example"], "Want to play Hold'em for gold? Open a table “For a stake” and choose the blinds.")
+    for _, w in ipairs({ "soon", "Not yet", "For now" }) do ok(not T.en["help.soon.p"]:find(w, 1, true) and not T.en["help.soon.example"]:find(w, 1, true), "„soon“ still says coming (en): " .. w) end
     eq(T.bg["help.holdem.limits"], "„Без лимит“: можеш да заложиш всичките си чипове по всяко време, с бутона за ва банк. „Пот лимит“: най-много колкото е потът, след като платиш. Пример при блайндове 5/10: пръв си на ход, потът е 15, плащаш 10 и може да вдигнеш до 35. Бутонът „Пот“ слага точно толкова.")
     eq(T.bg["help.holdem.sidepot"], "Иван влиза ва банк със 100 чипа. Мария има 300, Киро 600. Основният пот е 300: по 100 от тримата. За него играят и тримата. Мария и Киро залагат още по 200 помежду си. Това е страничен пот от 400 и е само за тях двамата. Иван може да спечели най-много основния пот.")
     ok(T.bg["help.holdem.fair"]:find("надписът под масата в златно казва кой.", 1, true), "the gold note")
@@ -277,7 +305,7 @@ describe("locale and help", function()
       if b.kind == "cards" then hc[#hc + 1] = b.cards end
     end
     eq(hb, { "help.holdem.p1", "help.holdem.example", "help.holdem.blinds", "help.holdem.rounds", "help.holdem.hands", "help.holdem.sidepot",
-      "help.holdem.limits", "help.holdem.seats", "help.holdem.time", "help.holdem.fair" })
+      "help.holdem.limits", "help.holdem.seats", "help.holdem.time", "help.holdem.fair", "help.holdem.stake" })
     eq(hc, { { "AH", "JH", "7C", "QS", "2D" }, { "TS", "JS", "QS", "KS", "AS" } })
     eq(ns.Help.get("holdem").title, "game.holdem")
     eq(T.bg["help.tabla.tapa"], "На „Тапа“ всичките 15 пула тръгват от едно поле и не се бие. Поле с два или повече чужди пула е затворено за теб. Стъпиш ли върху сам чужд пул, го затискаш: той не мърда, докато всичките ти пулове не си тръгнат оттам. Върху затиснатия пул можеш да слагаш и други свои. Мария затиска последния пул на Иван, останал на началното му поле. Това е майката. Играта свършва веднага и Мария взима 2 точки.")

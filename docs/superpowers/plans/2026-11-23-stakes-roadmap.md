@@ -67,12 +67,12 @@ Residuals F3 must close or re-accept (rulings log, "Stage E" 1–10):
 
 | Residual | Expected ruling (to be confirmed in the F3 plan) |
 |---|---|
-| E1 host-initiated stands | The F1 rule (contest by the stood seat) plus: a `STAND` settlement needs the stood player's confirmation like a forfeit. |
-| E2 hold-then-void, E3 the hold keyed by seat, E4 a provoked seed lapse, E5 early away | Must be **closed or priced**: a void returns every chip (no money moves), so the price is tempo, not gold; the plan must show that no void or away can move chips between players, then re-accept. |
-| E6 key withholding | Must be ruled: an `open` (unverified) hand on a staked table makes the settlement of the players in it `unseen` (manual confirmation). |
-| E8 key draw (the host reads one live hand per victim per game) | Must be **closed** before gold rides on it (the residual itself names the cure: keys released only against the other participants' signed word that the hand ended), or Hold'em stakes ship with the settlement of that hand contested by the victim's client (it flags the forged end red already). The F3 plan decides; this is the hardest item of the stage. |
-| E9 the dealer's stand-void refund; a player vanishing without a key | The refund moves no chips between players: re-accept. A vanished key: as E6. |
-| E10 six seats | Kept (user decision). |
+| E1 host-initiated stands | **Built:** re-accepted with a contest (the F1 rule). A stand of my seat while my client runs and I did not ask is the foul `stand`; while my client is away every claim of it is put to me at my login. No separate confirmation of the stood player is needed beyond that. |
+| E2 hold-then-void, E3 the hold keyed by seat, E4 a provoked seed lapse, E5 early away | **Built:** a void returns every chip and writes nothing into the matrix, so no void moves gold. E2 closed where it can be told (a dealer's two counted asks make the void `forged`), E3 and E4 re-accepted, E5 closed by voiding before any away (cost C4: a lapse can skip a big blind). New residual C9: a silent dealer can void a lost all-in. |
+| E6 key withholding | **Built:** a hand that stays `open` makes every waiting note of its players `unseen`: put to them, naming the missing key. |
+| E8 key draw (the host reads one live hand per victim per game) | **Built:** shipped with a contest, not closed (the cure was weighed and not taken: it needs member-to-member whispers and changes nothing against a host and its accomplices). The settlement is `forged` when the same host pushes the snapshot and asked when it makes me ask or hands over; flagged to the user. |
+| E9 the dealer's stand-void refund; a player vanishing without a key | **Built:** re-accepted (no chip moves between players); a vanished key as E6; a player back from a dropped connection publishes his key late. |
+| E10 six seats | **Built:** kept (user decision). |
 
 ### F4 — Класация, История, housekeeping
 

@@ -1,0 +1,35 @@
+# Stage F3: in-game checks
+
+Run these in the game client on Forever with `/console scriptErrors 1` on throughout.
+Nothing here is marked passed on the strength of the unit tests: every row stays `not yet measured` until the result is written in by hand.
+Rows 1–7, 13–17 and 23 need three or more characters (row 7 six, to see the side pots); rows 12, 18, 21 and 22 need a second account or a second machine, so that one side's connection can be cut.
+
+Scope of this stage: Холдем with a stake (the buy-in of 40–100 big blinds, the three rebuy modes, „Сметка на масата“, „Стани“ as a cash-out, the stand after three minutes offline, the settlement into pair debts, the late table key) and the Stage E residuals 1–10 as ruled in Addendum 10 of `docs/superpowers/notes/engine-contract.md`.
+Rows 2–5 and 29–32 of the F1 list (`docs/superpowers/notes/2026-11-stageF1-ingame-checks.md`) and rows 11, 12 and 20 of the F2 list should be measured first: they decide how trade and mail behave on Forever and what a normal evening costs in questions.
+**Before staked Холдем is announced, the user confirms residuals S1 (the dealer's client knows the deck of the hand it deals: every hole card) and C9 (a dealer that goes silent voids a lost all-in).** Row 22 measures C9.
+
+| # | Check | What to look for | Result |
+|---|---|---|---|
+| 1 | open a staked Холдем table at each blind level (5s/10s … 1g/2g) | the dialog shows the blinds as the stake, no „Начални чипове“ field, a rebuy line; the hall's line of the table reads the blinds; a character of the F2 version does not list the table | not yet measured |
+| 2 | the question before sitting, and the buy-in stepper | it says the blinds, the range of the buy-in in gold (e.g. 8g–20g at 10s/20s) and the S1 warning; the stepper stays in the range, „Потвърди“ buys, a refusal is said in words; the question grows with its text and ends above its buttons | not yet measured |
+| 3 | the buy-in at the chair | one buy, no second one from a double click; the seat shows its chips and plays from the next hand; no hand starts before a second seat has bought | not yet measured |
+| 4 | rebuy „Без“: bust a seat, try to buy again, stand and sit again | no second buy in that game; a name that left with chips brings at least what it left with | not yet measured |
+| 5 | rebuy „Когато свършат чиповете“: bust a seat, buy again; try to buy with chips | the button „Докупи“ shows only at 0 chips; a buy of 40–100 BB goes through; not inside my own hand | not yet measured |
+| 6 | rebuy „Винаги до входа“: top up with chips on the table; leave with more than 100 BB and sit again | a buy that would leave more than 100 BB is refused with the range; a returner brings 100 BB at most | not yet measured |
+| 7 | a hand with a side pot (three all-ins of different sizes, six characters), against the panel „Сметка на масата“ | the three views (against each, everyone, the hands) agree with the pot as it was played; the odd chip is where the line says; the sum by pairs is the player's chips less the buy-ins; the panel's lines of the last hands name where each silver came from | not yet measured |
+| 8 | „Стани“ between hands | the table says the account is being recorded; the seat is out, the bill lists the pairs and says it waits for the keys; no forfeit question is asked | not yet measured |
+| 9 | „Стани“ inside a hand | the player is not stood up mid-hand and folds nothing; the seat goes at the hand's end with one amount on every client; „Стани веднага“ stands at once and the debts become questions | not yet measured |
+| 10 | „Стани веднага“ when the host never plays the cash-out (the host's addon stopped or lagging) | the stand runs after about 30 s; the note says it was not seen whole (C5) | not yet measured |
+| 11 | a `/reload` mid-game, in a hand and between hands | the seat and the chips come back from the snapshot; a pending „Стани“ and a half-made buy are gone (press again); every earlier waiting debt of that game comes back as a question (H16b) | not yet measured |
+| 12 | a disconnect of 180 s of a player with chips (second account) | the seat is stood up by the host after 3 minutes plus the silence, its debts are `pending`; at its login each debt is a question; the others are not troubled | not yet measured |
+| 13 | the host leaves mid-game | the host's own cash-out is played first; its `S` exists; the table plays on under the next host; nothing is settled twice | not yet measured |
+| 14 | „Приключи“, then 30 s of the keys | the bill turns from „чака потвърждение“ to confirmed on every client without a question for the clean debtors; a hand with a missing key asks only its players | not yet measured |
+| 15 | a player who walks to the hall before the keys | its debts of that sitting are questions; the others confirm by themselves | not yet measured |
+| 16 | pay a cash debt by trade, and one by mail | the debt is written off against the confirmed debt; a debt that was only asked is not paid by a click that was not given | not yet measured |
+| 17 | a character of the F2 version beside a staked table | it lists no table; in the ledger the debts of the evening stay „чака потвърждение“ and in no balance (C3); no resend loop in the sync (watch the message count for a minute) | not yet measured |
+| 18 | the time of a staked hand at six seats on a real link | the length of an ordinary hand and of a full ring; the message count against the budget (the ordinary hand measured at 22.9–23.3 KB, +0 to 1 % over fun); the close of a six-seat game (19 messages in all) with no throttle in the log | not yet measured |
+| 19 | a lapse at a staked table (a player lets its shuffle time out) | the hand is voided before any away, every chip returns, **the blind comes back**; the lapse is counted by name against the dealer; at the second the name turns red | not yet measured |
+| 20 | the owing question („Да запиша ли дълга?“) | a loser whose note is questionable gets it about a minute after the close, once per creditor, and not before; „Да“ writes the debt, „Не“ leaves none; it does not come again in this run | not yet measured |
+| 21 | the late table key after a reconnect (second account) | a player whose connection dropped and who comes back publishes his key late, and the other clients' waiting debts of that game confirm without a question; a player who never returns leaves the debts as questions, asked once per creditor | not yet measured |
+| 22 | the dealer disconnects at the river of an all-in (C9) | the hand is voided and every chip goes back, even for the dealer who would have lost; the other players see that the void is counted by name (`fair.voidMany` at two); the rules book says it (`help.stakes.holdem.dealer`) | not yet measured |
+| 23 | frame heights: the question with the stepper, the panel, the bill, the stand frame, at the default and a low UI scale | nothing clipped; the stepper line is not covered by the buttons; a bill with six pairs and a reason line that wraps stays above its buttons; the panel's three tabs fit | not yet measured |

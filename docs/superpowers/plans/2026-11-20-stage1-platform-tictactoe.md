@@ -401,6 +401,31 @@ Copied from the stage F2 plan (`docs/superpowers/plans/2026-11-24-stageF2-card-d
 
 **Message budget (measured, Task 10, `tests/core/stakes_f2_flow_test.lua`):** GUILD `LEV`s of one finished staked match in the whole guild: Белот 4 (cap 7: `R`, two `D`, two `C`, two spare; at most 3 a client, measured 1), Сантасе 2 and Табла 2 (cap 4). A fun-only evening of the three games sends exactly the message log of `88a48e7` (pinned chunk by chunk).
 
+#### Stage F3 additions
+
+Brought up to what was built from the stage F3 plan (`docs/superpowers/plans/2026-11-25-stageF3-holdem-cash.md`, Global Constraints). Where the two differ, this section and Addendum 10 of `docs/superpowers/notes/engine-contract.md` win, together with the rulings log, section "Stage F3".
+
+**Engine, optional (`engines/holdem.lua`, staked tables only):** `E.stakes = true`. `E.cashGame` (a staked Холдем keeps a matrix), `E.stakeOf(opt) -> opt.blinds × 100` (copper), `E.buyRange(state, seat) -> lo, hi` (chips, or nil with a reason). The option field `at = "fun" | "stake"` (`Games.resolve`; `stack` is a fun option, `rebuy` a staked one). New actions `{k="buy", n}` and `{k="cashout"}`; `join` carries the name as `who`.
+
+**Extension `stakes` at a cash table** (`core/StakesCash.lua`): no forfeit, `s.cashNames`, the snapshot checks, the book's verdict for a note, the debtor's own `D` (`why = "cash"`), one `S` per out record.
+
+**Session and client fields** (local, never sent): `s.cashNames`, `s.stepAsks = {k, n}`, `s.hostHeard`, `client.cashGoing = {tid, at}`, `Client:wantBuy`, `db.stakeSat.o` (the options I sat down to). **Client events:** `"cashout"` (my seat was settled) and `"cashGoing"` (my „Стани“ waits for it; `nil` ends the wait); `buyLow` (a floor above my pick).
+
+**Protocol additions:**
+
+| where | change | meaning |
+|---|---|---|
+| `TBL.sk`, `SNP.tbl.sk`, `SIT.sk`, `INV.sk` | accepted for `holdem`: the big blind in copper | as in F1 |
+| `TBL.o`, `SNP.tbl.o` | `rebuy` present, `stack` absent at a staked table | the rebuy mode |
+| `ACT.a`, `EV.a` | `{k="buy", n}`, `{k="cashout"}` | my buy-in; my seat is settled |
+| `SNP.st` of a staked game | `cash`, the seats' `who`, `bought`, `cleared`, `back`; `last.took`; `pots[i].from` | the matrix and buy-ins |
+| `EV` order at a lapse | `void` before every `away` of a lapsed shuffle | no blind is lost |
+| ledger | kind `S`; `D.why = "cash"` | a claim for История; the debtor's own word. A client of the F1 or F2 version refuses both and keeps the debt pending |
+
+**Constants:** `CASH_BOOK_WAIT = 86400` (s: a cash note waits at most this long for the book), `CASH_OUT_WAIT = 30` (s: my `cashout`, not applied this long with no hand holding me, I stand without it). A buy-in is `MIN_BB = 40` to `MAX_BB = 100` big blinds and `CHIP = 100` copper (`ns.HoldemCash`).
+
+**Message budget (measured, Task 12):** an ordinary staked hand at six seats +0 to 1 % over a fun one; the six-seat close 19 GUILD messages in 22 parts. A fun-only Холдем evening sends exactly the log of `e62ddc6`.
+
 ---
 
 ### Task 1: Tooling, test runner, TOC skeleton

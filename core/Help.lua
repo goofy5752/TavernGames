@@ -91,6 +91,7 @@ Help.topics = {
     { kind = "p", key = "help.holdem.seats" },
     { kind = "p", key = "help.holdem.time" },
     { kind = "p", key = "help.holdem.fair" },
+    { kind = "p", key = "help.holdem.stake" },
   } },
   -- Why the card deal (and the Табла dice) is fair; the table's fairness line opens it.
   { id = "fair", title = "help.fair.title", blocks = {
@@ -104,7 +105,7 @@ Help.topics = {
     { kind = "p", key = "help.fair.dice" },
     { kind = "p", key = "help.fair.sealed" },
   } },
-  -- Playing for gold (Морски шах, Death Roll, Сантасе, Белот, Табла): the stake, its acceptance, who owes
+  -- Playing for gold (Морски шах, Death Roll, Сантасе, Белот, Табла, Холдем): the stake, its acceptance, who owes
   -- whom (Белот's two transfers), the forfeit, the next match, the confirmation, what a hand or a throw means for it.
   { id = "stakes", title = "help.stakes.title", blocks = {
     { kind = "p", key = "help.stakes.p1" },
@@ -117,6 +118,11 @@ Help.topics = {
     { kind = "p", key = "help.stakes.honest" },
     { kind = "p", key = "help.stakes.cards" },
     { kind = "p", key = "help.stakes.tabla" },
+    { kind = "p", key = "help.stakes.holdem" },
+    { kind = "example", key = "help.stakes.holdem.example" },
+    { kind = "p", key = "help.stakes.holdem.rebuy" },
+    { kind = "p", key = "help.stakes.holdem.stand" },
+    { kind = "p", key = "help.stakes.holdem.dealer" },
   } },
   -- The guild's ledger and paying a debt; the ⓘ of „Сметки“, „Плащане“ and „Тефтер“ opens it.
   { id = "ledger", title = "tab.ledger", blocks = {
