@@ -11,7 +11,8 @@ local _, ns = ...
 -- caption and at most one line about the group. At the bottom: on my turn
 -- „Хвърли“ with the range (the only place a server roll is started; disabled
 -- while it is under way, with the /roll hint above it when it never showed up
--- in chat), else „Изчакай <Име>…“; once over, who lost, or that nobody did.
+-- in chat), else „Изчакай <Име>…“; once over, who lost, or that nobody did
+-- (not while the bill of a staked game covers it: ns.StakePanels.shown).
 local Theme, W, L = ns.Theme, ns.W, ns.L
 local Rolls, Party = ns.Rolls, ns.Party
 local E = ns.Engines.deathroll
@@ -278,7 +279,7 @@ function View.update(f, s)
   local text, color = statusLine(s, myTurn, client)
   f.status:SetText(text or "")
   if color then f.status:SetTextColor(color[1], color[2], color[3]) end
-  f.status:SetShown(text ~= nil)
+  f.status:SetShown(text ~= nil and not ns.StakePanels.shown)
 end
 
 ns.TableFrame.registerView(E.id, View)

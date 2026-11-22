@@ -101,6 +101,7 @@ ui/Hall.lua
 ui/Minimap.lua
 ui/TableFrame.lua
 ui/TablePanels.lua
+ui/StakePanels.lua
 ui/games/TicTacToeView.lua
 ui/games/DeathRollView.lua
 ui/games/SantaseView.lua

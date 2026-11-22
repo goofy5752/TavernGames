@@ -191,10 +191,42 @@ function ScrollFrame:GetVerticalScrollRange()
   return math.max(0, self.child:GetHeight() - self:GetHeight())
 end
 
-local KINDS = { Frame = Frame, Button = Button, ScrollFrame = ScrollFrame }
+-- Edit boxes: the text, the font, and the keyboard focus (one box of the
+-- sandbox at a time); a test runs OnTabPressed / OnEnterPressed by hand.
+local EditBox = setmetatable({}, { __index = Frame })
+EditBox.__index = EditBox
+function EditBox:SetText(text)
+  assert(text == nil or type(text) == "string" or type(text) == "number", "SetText takes a string")
+  self.text = text and tostring(text) or ""
+end
+function EditBox:GetText() return self.text or "" end
+function EditBox:SetFont(path, size, flags)
+  assert(type(path) == "string" and type(size) == "number", "SetFont(path, size)")
+  self.font = { path, size, flags }
+  return true
+end
+function EditBox:SetTextColor(r, g, b, a) self.textColor = { r, g, b, a or 1 } end
+function EditBox:SetJustifyH(j) self.justifyH = j end
+function EditBox:SetTextInsets(...) self.insets = { ... } end
+function EditBox:SetAutoFocus(on) self.autoFocus = on end
+function EditBox:SetNumeric(on) self.numeric = on end
+function EditBox:SetMaxLetters(n) self.maxLetters = n end
+function EditBox:SetFocus()
+  local f = self.focus
+  if f.box and f.box ~= self then f.box.focused = false end
+  f.box, self.focused = self, true
+end
+function EditBox:ClearFocus()
+  if self.focus.box == self then self.focus.box = nil end
+  self.focused = false
+end
+function EditBox:HasFocus() return self.focused == true end
+
+local KINDS = { Frame = Frame, Button = Button, ScrollFrame = ScrollFrame, EditBox = EditBox }
 
 -- CreateFrame for the sandbox. `onCreate(frame)` records every frame (for events).
 function Frames.factory(G, onCreate)
+  local focus = {} -- the edit box with the keyboard focus
   return function(kind, name, parent, template)
     local mt = KINDS[kind or "Frame"]
     assert(mt, "fake CreateFrame: unsupported frame type " .. tostring(kind))
@@ -203,6 +235,7 @@ function Frames.factory(G, onCreate)
       shown = true, alpha = 1, points = {}, width = 0, height = 0,
       events = {}, scripts = {}, regions = {}, children = {}, enabled = true,
     }, mt)
+    if kind == "EditBox" then f.focus = focus end
     if parent and parent.children then parent.children[#parent.children + 1] = f end
     if name then G[name] = f end
     onCreate(f)

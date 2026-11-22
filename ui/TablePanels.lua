@@ -1,7 +1,8 @@
 local _, ns = ...
 
 -- The panels of the table frame, split out of ui/TableFrame.lua: the „Покани“
--- list, the „Стани“ question, and the fairness line under the felt (its text and
+-- list, the „Стани“ question (a team game: my partner loses with me; a staked
+-- game: what I would owe), and the fairness line under the felt (its text and
 -- its tooltip): a card table's (ns.Deal), else a dice table's (ns.Dice), else a
 -- sealed table's book (ns.Book.status for the line, ns.Book.tip for the
 -- tooltip), each read at call time. TableFrame.panels is what the frame calls.
@@ -186,7 +187,28 @@ local function buildPicker(v, f)
   v.picker = picker
 end
 
--- The question before „Стани“ costs my team the match: above the button.
+-- What „Стани“ costs me now at a staked table: the stake for every other
+-- player of the running game I play in (its roster, core/Stakes.lua) -> copper | nil.
+local function forfeitCost(s)
+  local roster = s.stakeRoster
+  if s.stake == nil or not roster or not s.mySeat then return nil end
+  local me = s.client.env.me
+  if roster[s.mySeat] ~= me then return nil end
+  local others = 0
+  for _, name in pairs(roster) do
+    if name ~= me then others = others + 1 end
+  end
+  return others > 0 and s.stake * others or nil
+end
+
+-- The question before „Стани“, with its text for my table s.
+local function confirm(v, s)
+  local cost = s and forfeitCost(s)
+  v.confirm.text:SetText(cost and L("stand.stake", ns.Util.money(cost)) or L("table.standWarn"))
+  v.confirm:Show()
+end
+
+-- The question before „Стани“ costs my team the match or a stake: above the button.
 local function buildConfirm(v, f)
   local panel = W.Panel(f)
   panel.fill:SetColorTexture(20 / 255, 10 / 255, 5 / 255, 0.95)
@@ -215,4 +237,6 @@ TableFrame.panels = {
   renderPicker = renderPicker,
   renderFair = renderFair,
   fairTooltip = fairTooltip,
+  forfeitCost = forfeitCost,
+  confirm = confirm,
 }

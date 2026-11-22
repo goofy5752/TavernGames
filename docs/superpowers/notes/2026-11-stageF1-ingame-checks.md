@@ -31,3 +31,6 @@ Later tasks of the stage append their rows below.
 | 18 | the receiver takes the money | the debt is struck through on both | not yet measured |
 | 19 | a trade for an item with the same player | a question appears, nothing is recorded | not yet measured |
 | 20 | the recipient form the mail frame accepts for „Име Фамилия“ (full name, with a realm, first name only), and which body box (`SendMailBodyEditBox` / `MailEditBox`) is filled | which form reaches the right player; that the body text shows in the letter | not yet measured |
+| 21 | the new-table dialog with „Със залог“ | nothing clipped at the default and at a low UI scale; Tab moves between the two boxes | not yet measured |
+| 22 | the acceptance question for Death Roll | reads naturally with 2 and with 5 seats | not yet measured |
+| 23 | the bill at the end of a staked Морски шах and Death Roll | the bill does not cover the winning line or the last rolls | not yet measured |

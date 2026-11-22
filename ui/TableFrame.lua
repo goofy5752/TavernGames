@@ -27,13 +27,16 @@ local _, ns = ...
 -- under way or the last one's verdict; at a sealed table (ns.Book.status when
 -- neither has one, the tooltip ns.Book.tip) the book's count of hands; it
 -- opens the rules book on "fair".
--- Title bar: the game, the access, turn time and table options, the watcher
+-- Title bar: the game, the access, turn time and table options, the stake
+-- („Залог: 5g“, a staked table only), the watcher
 -- count and ⓘ (topic = game id). Bottom: „Стани“
--- (watchers: „Към залата“; in a running match of a team game it first asks
--- in a small panel above the button, since my partner loses with me), „Покани“ for the host while a seat is free (a list
+-- (watchers: „Към залата“; in a running match of a team game, or a running
+-- staked game I play in, it first asks in a small panel above the button,
+-- since my partner loses with me, or I lose by forfeit and owe the stake), „Покани“ for the host while a seat is free (a list
 -- of who is in the tavern), „Започни“ / „Нова игра“ for the host of a
 -- host-started game while none runs and of a game with `again` once it is
--- over, and one line of news for SAY_SECONDS.
+-- over, and one line of news for SAY_SECONDS. Once a staked game I played is
+-- over, the bill „Сметката“ over the lower felt (ui/StakePanels.lua).
 --
 -- A view is { build(parent) -> frame, update(frame, session) } and may add
 -- seatNote(session, seat) -> text for the plates, `ring = true` and `size`. Client
@@ -85,34 +88,36 @@ function TableFrame.say(text)
   return true
 end
 
--- Would standing up now lose a running match for my partner too -> bool: I
--- am seated in a live match of a team game (engine.teams) that is not over.
+-- Would standing up now cost something -> bool: I am seated in a live game
+-- that is not over, of a team game (engine.teams: my partner loses with me),
+-- or staked and I play in it (I lose by forfeit: TableFrame.panels.forfeitCost).
 function TableFrame.standCosts(s)
-  return s ~= nil and s.status == "live" and s.mySeat ~= nil and s:engine().teams == true and not s:gameOver()
+  if s == nil or s.status ~= "live" or s.mySeat == nil or s:gameOver() then return false end
+  return s:engine().teams == true or TableFrame.panels.forfeitCost(s) ~= nil
 end
 
 -- „Стани“ / „Към залата“: leave the table and go back to the hall. While
 -- standCosts, the first click only opens the question („Отборът ви губи
--- мача…“); its „Стани“ calls this with sure = true.
+-- мача…“, at a staked table „Ако станеш сега…“); its „Стани“ calls this with sure = true.
 function TableFrame.stand(sure)
   local client = ns.client
   if not client then return end
   local v = TableFrame.view
-  if v and sure ~= true and TableFrame.standCosts(client.session) then return v.confirm:Show() end
+  if v and sure ~= true and TableFrame.standCosts(client.session) then return TableFrame.panels.confirm(v, client.session) end
   if v then v.confirm:Hide() end
   client:stand()
   ns.MainWindow.show("hall")
 end
 
 -- „Започни“ / „Нова игра“: the host starts the next game; a refusal (a click
--- that lost a race with a player standing up, say) is said on the news line.
+-- that lost a race with a player standing up, say; at a staked table a player
+-- outside my group, or the break after a game) is said on the news line.
+local START_WHY = { short = "start.short", live = "start.live", group = "start.group", ["break"] = "start.break" }
 function TableFrame.startGame()
   local client = ns.client
   if not client then return end
   local started, code = client:startGame()
-  if not started then
-    TableFrame.say(L(code == "short" and "start.short" or code == "live" and "start.live" or "start.failed"))
-  end
+  if not started then TableFrame.say(L(START_WHY[code] or "start.failed")) end
 end
 
 function TableFrame.invite(name)
@@ -252,8 +257,10 @@ local function bannerKey(s, engine)
 end
 
 -- „Започни“ / „Нова игра“: the host of a host-started table while no game
--- runs, and of a game with `again` once Session:gameOver; enabled exactly when
--- Session.startable (the check of startGame) says so; right of „Покани“, or
+-- runs, and of a game with `again` once Session:gameOver; bright exactly when
+-- Session.startable (the check of startGame) says so, and enabled then and
+-- while a staked table waits for the group or the break (a click says why);
+-- redrawn when the break ends; right of „Покани“, or
 -- of „Стани“ while „Покани“ is hidden. The news line sits right of it while it
 -- is shown, else right of „Покани“.
 local function renderStart(v, s, engine, client)
@@ -262,9 +269,16 @@ local function renderStart(v, s, engine, client)
     and (engine.start == "host" or engine.again and s:gameOver())
   local b = v.startButton
   b:SetShown(shown)
+  if shown and code == "break" and not TableFrame.breakTimer then
+    local left = s.stakeEndedAt + ns.Const.STAKE_BREAK - client.env.now()
+    TableFrame.breakTimer = C_Timer.NewTimer(math.max(0, left) + 0.05, function()
+      TableFrame.breakTimer = nil
+      TableFrame.refresh()
+    end)
+  end
   if shown then
     b.text:SetText(L(s.state and "table.again" or "table.start"))
-    b:SetEnabled(can == true)
+    b:SetEnabled(can == true or code == "group" or code == "break")
     b:SetAlpha(can and 1 or 0.5)
     b:ClearAllPoints()
     b:SetPoint("LEFT", v.inviteButton:IsShown() and v.inviteButton or v.standButton, "RIGHT", 8, 0)
@@ -333,6 +347,9 @@ function TableFrame.render()
   local watchers = s.watchers or 0
   v.watchers:SetText(L("table.watchers", watchers))
   v.watchers:SetShown(watchers > 0)
+  v.stake:SetText(s.stake and L("table.stake", ns.Util.money(s.stake)) or "")
+  v.stake:SetShown(s.stake ~= nil)
+  ns.StakePanels.bill(v, s) -- before the board: its view hides its own result line under the bill
   renderBoard(v, s, renderPlates(v, s, client))
   local key = bannerKey(s, engine)
   if key then v.bannerText:SetText(L(key)) end
@@ -410,6 +427,9 @@ function TableFrame.build()
   v.title:SetPoint("LEFT", bar, "LEFT", 8, 0)
   v.meta = W.Label(bar, "dim", "", 12)
   v.meta:SetPoint("LEFT", v.title, "RIGHT", 12, 0)
+  v.stake = W.Label(bar, "ui", "", 12)
+  v.stake:SetTextColor(Theme.rgb("gold"))
+  v.stake:SetPoint("LEFT", v.meta, "RIGHT", 10, 0)
   v.info = W.Info(f, "ttt")
   v.info:SetFrameLevel(bar:GetFrameLevel() + 2)
   v.info:SetPoint("RIGHT", bar, "RIGHT", -6, 0)

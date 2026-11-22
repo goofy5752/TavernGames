@@ -7,6 +7,9 @@ local _, ns = ...
 -- name lookup, empty hall). Right: „В кръчмата сега“ (ui/HallPeers.lua), where
 -- a click on a name offers „Покани“ while I host a table with a free seat.
 -- Footer: a refusal for 5 s; the "newer version" note once it is known.
+-- A staked table shows its stake in its tooltips and its list row (a fun
+-- row says „За удоволствие“), and a click that would sit there asks first
+-- (ns.StakePanels.ask).
 --
 -- Client events only schedule a redraw for the next frame (Hall.refresh), so a
 -- burst of events draws once and a drawing error never breaks the protocol code
@@ -72,6 +75,17 @@ end
 
 local function color(fs, token) fs:SetTextColor(Theme.rgb(token)) end
 
+-- „Залог: 5g“ of a staked table, nil for fun.
+local function stakeText(rec)
+  return rec.stake ~= nil and L("table.stake", ns.Util.money(rec.stake)) or nil
+end
+
+-- Sits in `seat` of table rec; a staked table asks first.
+local function sit(client, rec, seat)
+  if rec.stake ~= nil then return ns.StakePanels.ask(rec, seat) end
+  client:sit(rec.tid, seat)
+end
+
 ---------------------------------------------------------------------------
 -- Footer
 ---------------------------------------------------------------------------
@@ -95,7 +109,7 @@ end
 
 function Hall.clickChair(t, seat)
   local client = ns.client
-  if client and t.rec then client:sit(t.rec.tid, seat) end
+  if client and t.rec then sit(client, t.rec, seat) end
 end
 
 function Hall.clickTable(t)
@@ -108,7 +122,7 @@ function Hall.clickRow(r)
   local client, rec = ns.client, r.rec
   if not client or not rec then return end
   if r.act == "sit" then
-    client:sit(rec.tid, firstFree(rec.seats))
+    sit(client, rec, firstFree(rec.seats))
   elseif r.act == "watch" then
     client:watch(rec.tid)
   end
@@ -144,6 +158,7 @@ function Hall.tableTooltip(tip, rec)
     if name then tip:AddLine(name, nameColor(client, name)) end
   end
   tip:AddLine(L("access." .. tostring(rec.access)) .. " · " .. L("hall.turn", rec.turn), Theme.rgb("inkDim"))
+  if stakeText(rec) then tip:AddLine(stakeText(rec), Theme.rgb("gold")) end
   if here(client, rec) then return end
   if firstFree(rec.seats) then
     tip:AddLine(L("hall.tip.sit"), Theme.rgb("good"))
@@ -160,6 +175,7 @@ function Hall.chairTooltip(tip, rec, seat)
     tip:SetText(name, nameColor(client, name))
   else
     tip:SetText(L("hall.tip.sit"), Theme.rgb("good"))
+    if stakeText(rec) then tip:AddLine(stakeText(rec), Theme.rgb("gold")) end
   end
 end
 
@@ -328,7 +344,7 @@ end
 local function fillRow(r, rec, client)
   r.rec, r.tid = rec, rec.tid
   r.title:SetText(L("hall.host", gameName(rec.game), colored(client, rec.host)))
-  r.sub:SetText(L("access." .. tostring(rec.access)) .. " · " .. L("hall.turn", rec.turn))
+  r.sub:SetText(L("access." .. tostring(rec.access)) .. " · " .. L("hall.turn", rec.turn) .. " · " .. (stakeText(rec) or L("table.stake.none")))
   r.seats:SetText(seatedCount(rec.seats) .. "/" .. #rec.seats)
   r.state:SetText(L(rec.state == "live" and "hall.live" or "hall.waiting"))
   local mine = here(client, rec)

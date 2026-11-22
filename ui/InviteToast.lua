@@ -3,7 +3,8 @@ local _, ns = ...
 -- The invite toast (mockup 02), top centre of the screen: „Покана за <игра>“,
 -- „<домакин> те кани на <игра>“ (the host in class color), „Приемам“ /
 -- „Не сега“ / „Не ме безпокой 30 мин“ and a bar running down to the
--- invitation's `expires`. A soft sound on show; hidden on "inviteGone". Only
+-- invitation's `expires`; for a staked table a line „Залог: 5g“ under the
+-- text (the toast STAKE_H taller). A soft sound on show; hidden on "inviteGone". Only
 -- invitations that need an answer reach it: core/Invites declines the others
 -- by itself (combat, instance, busy, snooze).
 --
@@ -15,7 +16,7 @@ local _, ns = ...
 local Theme, W, L, C = ns.Theme, ns.W, ns.L, ns.Const
 
 local InviteToast = {
-  WIDTH = 350, HEIGHT = 124,
+  WIDTH = 350, HEIGHT = 124, STAKE_H = 18,
   frame = nil,     -- built on the first invitation
   tid = nil,       -- the invitation shown
   accepting = nil, -- { tid, untilTime }: a „Приемам“ whose refusal is still shown here
@@ -61,6 +62,11 @@ local function build()
   text:SetWordWrap(true)
   text:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -6)
   InviteToast.text = text
+  local stake = W.Label(f, "ui", "", 13)
+  stake:SetTextColor(Theme.rgb("gold"))
+  stake:SetPoint("TOPLEFT", text, "BOTTOMLEFT", 0, -4)
+  stake:Hide()
+  InviteToast.stake = stake
 
   local accept = W.Button(f, L("invite.accept"), function() InviteToast.answer("yes") end, true)
   accept:SetSize(84, 22)
@@ -102,7 +108,7 @@ function InviteToast.hide()
   if t.frame then t.frame:Hide() end
 end
 
--- inv: the "invite" event's table {tid, game, host, seats, expires}.
+-- inv: the "invite" event's table {tid, game, host, seats, expires, stake}.
 function InviteToast.show(inv)
   if not InviteToast.frame then build() end
   InviteToast.hide()
@@ -110,6 +116,9 @@ function InviteToast.show(inv)
   t.tid, t.expires, t.game = inv.tid, inv.expires, game
   t.title:SetText(L("invite.title", game))
   t.text:SetText(L("invite.text", W.colored(ns.client, inv.host), game))
+  t.stake:SetText(inv.stake ~= nil and L("invite.stake", ns.Util.money(inv.stake)) or "")
+  t.stake:SetShown(inv.stake ~= nil)
+  t.frame:SetHeight(t.HEIGHT + (inv.stake ~= nil and t.STAKE_H or 0))
   setButtons(true)
   t.tick()
   t.frame:Show()
@@ -125,6 +134,7 @@ local function notice(text)
   t.hide()
   t.title:SetText(L("invite.title", t.game or ""))
   t.text:SetText(text)
+  t.stake:Hide()
   setButtons(false)
   t.frame:Show()
   t.noticeTimer = C_Timer.NewTimer(NOTICE_SECONDS, function()

@@ -6,7 +6,8 @@ local _, ns = ...
 -- my turn, or I only watch, the cells are dimmed and not clickable. The cells
 -- of `state.line` glow gold. Above the board: „до 3 победи“ and the score
 -- (seat 1 : seat 2). In phase "match": the winner and „Реванш“, then „Чакаме
--- <Име>…“ once I asked for it (watchers see only the winner).
+-- <Име>…“ once I asked for it (watchers see only the winner); none of these
+-- while the bill of a staked match covers them (ns.StakePanels.shown).
 local Theme, W, L = ns.Theme, ns.W, ns.L
 local E = ns.Engines.ttt
 
@@ -120,7 +121,7 @@ function View.update(f, s)
   end
   f.score:SetText(L("ttt.score", st.score[1], st.score[2]))
 
-  local match = live and st.phase == "match"
+  local match = live and st.phase == "match" and not ns.StakePanels.shown
   local winner = match and s.seats[st.winner]
   f.result:SetText(winner and L("ttt.winner", W.colored(client, winner)) or "")
   f.result:SetShown(winner and true or false)

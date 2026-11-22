@@ -387,7 +387,7 @@ describe("ui: new-table dialog", function()
     local D = w.ns.NewTableDialog
     D.open("ttt")
     eq(D.game:GetText(), "Морски шах")
-    eq(#D.stake.options, 1); eq(D.stake.options[1].text:GetText(), "Само за удоволствие"); eq(D.stake.value, "none")
+    eq(#D.stake.options, 2); eq(D.stake.options[1].text:GetText(), "Само за удоволствие"); eq(D.stake.value, "none")
     local labels = {}
     for i, o in ipairs(D.access.options) do labels[i] = o.text:GetText() end
     eq(labels, { "Всеки от гилдията", "Само поканени", "Групата ми" }); eq(D.access.value, "guild")
