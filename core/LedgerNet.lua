@@ -12,8 +12,10 @@ local _, ns = ...
 --   entries of its sender, else dropped whole. "ledger" is emitted once a moment.
 -- * An entry under my name that I did not hold moves my counter above it, and:
 --   in the adoption window (a store without my record at load, closed with the
---   login queue) it is kept as mine, unless it is too far above my counter
---   (then denied once the window closes). Else, at an id I made in this run
+--   login queue) it is put to me like a crash's (below), never counted unasked
+--   (so is every body under my name such a store holds at my first login),
+--   unless it is too far above my counter (then denied once the window closes).
+--   Else, at an id I made in this run
 --   (a collision: a crash, another computer) it is put to me, and my own body,
 --   if it has not left yet, is made again under a fresh id. Else when its
 --   number is at most my saved seq (the store's at login), I held its id or it
@@ -56,6 +58,9 @@ function Net:start()
   local L = self.L
   self.running = true
   L.adopting = L.fresh and not self.began -- a new store: once per client
+  if L.adopting then -- what it holds under my name already (a shared store, a copy) is asked about as well
+    for _, b in ipairs(L:above(L.me, 0)) do if not b.un then self:ask(b) end end
+  end
   self.began = true
   self.saved = L:record().seq
   self.waiting = true
@@ -129,8 +134,8 @@ function Net:ask(b) b.un, self.L.rev, self.asked = true, self.L.rev + 1, true en
 function Net:own(b, n, held)
   local L = self.L
   local near, mine = L:bump(n), self.made[n] -- my counter is above it already (L:add), unless n is too far
-  if L.adopting then
-    if not near then self:deny(b) end -- waits in the login queue until the window has closed
+  if L.adopting then -- a new store: nothing is mine unasked; too far: denied once the window has closed (the login queue)
+    if near then self:ask(b) else self:deny(b) end
   elseif mine and L:has(mine.i, mine.h) then
     self:ask(b)
     self:collide(mine)
