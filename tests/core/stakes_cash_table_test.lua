@@ -162,6 +162,31 @@ describe("stakes at a cash table", function()
     for _, name in ipairs({ A, B }) do eq(cl[name].session.stakeFoul, nil, name) end
   end)
 
+  it("a relog that clicks its own table before the host's snapshot is unseen, not forged (task 5 review, m3)", function()
+    for _, kind in ipairs({ "watch", "sit" }) do
+      local sim, cl, tid = cash({ 1, 2, 3 })
+      local host = cl[A]
+      inHand(sim, host)
+      Play.hand(sim, host)
+      sim.bus.filter = function(from, to, _, m) -- the host's snapshot for my login is lost
+        if from == A and to == M and m.t == "SNP" then return {} end
+        return { m }
+      end
+      local m = sim:relog(M); sim:run(3)
+      sim.bus.filter = nil
+      ok(m.session == nil and m.lobby:get(tid), "no table yet, but the lobby lists it")
+      if kind == "watch" then m:watch(tid) else m:sit(tid, 5, SK) end
+      sim:run(1) -- the host's "already here" snapshot
+      eq(m.session.mySeat, 3, kind)
+      eq(m.session.stakeFoul, "unseen", kind)
+    end
+    -- A newcomer's second click before the answer is still his own sit.
+    local sim, cl, tid = cash({ 1, 2, 3 })
+    inHand(sim, cl[A])
+    cl[G]:sit(tid, 4, SK); cl[G]:sit(tid, 4, SK); sim:run(1)
+    eq({ cl[G].session.mySeat, cl[G].session.stakeFoul }, { 4, nil })
+  end)
+
   it("a snapshot of my very state that renames a seat is forged from my host, unseen from a new one", function()
     local sim, cl = cash({ 1, 2, 3 })
     local host = cl[A]
@@ -217,6 +242,7 @@ describe("stakes at a cash table", function()
       function(st) st.seats[4].chips, st.seats[4].bought, st.seats[4].out = 500, 500, false end,
       function(st) st.seats[4].chips = 500 end,
       function(st) st.cash.took[4] = { [1] = 50 } end,
+      function(st) st.seats[4].cleared = 50 end, -- a forged `cleared` (task 5 review, m1)
     }
     for i, mutate in ipairs(cases) do
       local sim, cl, tid = cash({ 1, 2, 3 })
@@ -249,6 +275,49 @@ describe("stakes at a cash table", function()
     eq(cl[G].session.stakeFoul, nil)
     ok(cl[G]:act{ k = "buy", n = 1000 }); sim:run(1)
     eq(cl[G].session.stakeFoul, nil)
+  end)
+
+  it("a re-sit while my leaving record is in the hand is not clean (task 5 review, C1)", function()
+    for _, forge in ipairs({ false, true }) do
+      local sim, cl, tid = cash({ 1, 2, 3, 4 })
+      local host = cl[A]
+      inHand(sim, host)
+      Play.hand(sim, host)
+      inHand(sim, host)
+      local hst = host.session.state
+      ok(ns.Util.contains(E.players(hst), 4) and hst.seats[4].bought == 1000, "Гошо is dealt in with 1000 bought")
+      cl[G]:stand(); sim:run(1)
+      ok(E.inHand(host.session.state) and host.session.state.seats[4].leaving, "his record still leaves")
+      if forge then -- the host adds 900 to the matrix of his old record
+        sim.bus.filter = function(from, to, _, m)
+          if from == A and to == G and m.t == "SNP" and type(m.st) == "table" then
+            m.st.cash.took[1] = m.st.cash.took[1] or {}
+            m.st.cash.took[1][4] = (m.st.cash.took[1][4] or 0) + 900
+          end
+          return { m }
+        end
+      end
+      cl[G]:sit(tid, 5, SK); sim:run(1)
+      sim.bus.filter = nil
+      local gs, why = cl[G].session, forge and "forged matrix" or "honest"
+      eq(gs.mySeat, 5)
+      eq({ gs.state.seats[4].who, gs.state.seats[4].leaving }, { G, true })
+      eq(gs.stakeFoul, "unseen", why)
+      Play.hand(sim, host)
+      eq(gs.state.cash.outs[#gs.state.cash.outs].who, G) -- his old record settled from the snapshot's matrix
+      eq(gs.stakeFoul, "unseen", why)
+    end
+  end)
+
+  it("a seated player's repeated SIT is no foul (task 5 review, I1)", function()
+    local sim, cl, tid = cash({ 1, 2, 3 })
+    local host = cl[A]
+    inHand(sim, host)
+    Play.hand(sim, host)
+    eq(cl[B].session.stakeFoul, nil)
+    cl[B]:sit(tid, 5, SK); sim:run(1) -- a click on a free chair: the host's "already here" snapshot
+    eq({ cl[B].session.mySeat, host.session.seats[5] }, { 2, false })
+    eq(cl[B].session.stakeFoul, nil)
   end)
 
   it("cashout, stand, a sit I missed, an asked snapshot: unseen, not forged (H2)", function()
@@ -292,7 +361,9 @@ describe("stakes at a cash table", function()
     eq(cl[B].session.stakeFoul, "unseen")
   end)
 
-  it("a buy during my turn leaves my clock; the host's timeout after my lost ACT is no foul (H4)", function()
+  it("a buy during my turn leaves my clock; the host's timeout of my silent turn is no foul (H4)", function()
+    -- Pins the clock restore: Борис sends no move (mute drops only his own timeout ACT).
+    -- A move he sent and lost before the deadline is still forged by F1's rule (core/Member.lua).
     local sim, cl, tid = cash({ 1, 2, 3 })
     local host = cl[A]
     inHand(sim, host)

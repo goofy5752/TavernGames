@@ -23,12 +23,17 @@ local _, ns = ...
 --     names that it shows under another name is forged from my host, a
 --     question ("unseen") from a host new to me (how.moved); my name stays.
 --   My own sit starts my sitting (after the original): when my own SIT took
---     me in, my seat is the record whose `who` is me (not leaving), or a chair
---     still leaving whose `takenWho` is me (no record of mine yet: the record
---     there is the leaver's). No chips, no buy, no pair in cash.took and not
---     dealt into the running hand (or such a taken chair): s.stakeFoul is only
---     what this snapshot's own checks above raised. With chips, a buy or a
---     pair in my name there: forged.
+--     me in (a seat I did not hold: a repeated SIT of a seated player is
+--     answered with the snapshot again, and a relog's SIT or WAT at the table
+--     my note already named is a login back), my seat is the record whose
+--     `who` is me (not leaving), or a chair still leaving whose `takenWho` is
+--     me (no record of mine yet: the record there is the leaver's). No chips,
+--     no buy, no `cleared`, no pair in cash.took and not dealt into the
+--     running hand (or such a taken chair): s.stakeFoul is only what this
+--     snapshot's own checks above raised. With chips, a buy, a `cleared` or a
+--     pair in my name there: forged. A record of an earlier sitting of mine
+--     still leaving the hand keeps the snapshot's verdict (its settlement
+--     rests on a history this session did not see).
 --   The clock: another seat's `buy` or `cashout` is `still` (the host keeps
 --     the turn timer; with no seat on turn it arms its timers, two seats with
 --     chips may now be enough for a hand), and my client keeps s.stakeTurn and
@@ -70,18 +75,39 @@ local function paired(cash, i)
 end
 
 -- My own sit in state st -> true (clean: my record has nothing yet, or a
--- chair still leaving is taken for me), false (chips, a buy, a pair or a hand
--- in my name), nil (no seat of mine in the state).
+-- chair still leaving is taken for me), false (chips, a buy, a pair, a
+-- `cleared` or a hand in my name), nil (no seat of mine in the state, or a
+-- record of an earlier sitting of mine still leaving: its settlement rests on
+-- a history this session took from the snapshot, so the snapshot's verdict
+-- stands).
 local function sitting(s, st, me)
-  local engine, taken = s:engine(), nil
+  local engine, clean, taken, old = s:engine(), nil, nil, false
   for i, r in ipairs(type(st.seats) == "table" and st.seats or {}) do
-    if type(r) == "table" and r.who == me and not r.leaving then
+    if type(r) == "table" and r.who == me and r.leaving then old = true
+    elseif type(r) == "table" and r.who == me and clean == nil then
       local p = engine.inHand(st) and type(st.p) == "table" and st.p[i]
-      return r.chips == 0 and r.bought == 0 and not paired(st.cash, i) and not (p and not p.gone)
+      clean = r.chips == 0 and r.bought == 0 and r.cleared == 0 and not paired(st.cash, i) and not (p and not p.gone)
     end
     if type(r) == "table" and r.leaving and r.takenWho == me then taken = true end
   end
+  if clean == false then return false end
+  if old then return nil end
+  if clean then return true end
   return taken
+end
+
+-- A SIT or WAT with no table of mine, while my note (db.stakeSat, kept across a
+-- logout while I am seated) already names that table: a relog that clicks its
+-- own table before the host's snapshot. The host answers "already here", so
+-- that snapshot is a login back, not my own sit (client.cashBack, read by the
+-- hook `adopted`). A second click of one request keeps the first one's word.
+local request = ns.Session.request
+function ns.Session.request(client, kind, tid, seat, sk)
+  local p, note = client.pending, client.env.db.stakeSat
+  if not (p and p.tid == tid) then
+    client.cashBack = client.session == nil and type(note) == "table" and note.tid == tid or nil
+  end
+  return request(client, kind, tid, seat, sk)
 end
 
 local ext = ns.Ext.stakes
@@ -121,11 +147,14 @@ ext.adopted = function(s, prev, m, how)
       if type(s.seats[seat]) == "string" and s.seats[seat] ~= name and st.seats[seat] then raise(how.moved and "unseen" or "forged") end
     end
   end
+  local held = s.stakeSeat -- my seat before this snapshot (core/StakesWatch.lua's guard)
   s.stakeRoster = nil
   adopted(s, prev, m, how)
   s.stakeRoster = nil
   if not identical or how.fresh then takeNames(s) end
-  if s.mySeat and type(st) == "table" and (how.req or how.sit or (how.sat and not how.fresh)) then
+  local back = s.client.cashBack -- my request was a login back (Session.request below)
+  s.client.cashBack = nil
+  if s.mySeat and type(st) == "table" and ((how.req and not back) or (not how.fresh and (how.sat or (how.sit and not held)))) then
     local clean = sitting(s, st, s.client.env.me)
     if clean then s.stakeFoul = raised elseif clean == false then Stakes.foul(s, "forged") end
   end
