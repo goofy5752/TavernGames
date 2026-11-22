@@ -579,6 +579,25 @@ describe("ledger net: my name", function()
     eq(#i.ledgerNet:asks(), 2)
   end)
 
+  it("asks() walks my entries only when the store has changed (final review Minor 3)", function()
+    local sim, i = setup()
+    for n = 1, 30 do i.ledgerNet:make("P", { f = M, c = n, how = "hand" }) end
+    sim:run(3)
+    local walks, above = 0, i.ledger.above
+    i.ledger.above = function(...) walks = walks + 1; return above(...) end
+    eq(#i.ledgerNet:asks(), 0)
+    local first = walks
+    for _ = 1, 50 do eq(#i.ledgerNet:asks(), 0) end -- every redraw of the hall
+    eq(walks, first)
+    -- a change shows at once
+    i.ledger.above = above
+    local held = i.ledger:get(I .. ":7")
+    i.ledgerNet:ask(held)
+    local asks, more = i.ledgerNet:asks()
+    eq(#asks, 1); ok(asks[1] == held, "the asked body"); eq(more, 0)
+    eq(i.ledgerNet:answer(held, true), true); eq(#i.ledgerNet:asks(), 0)
+  end)
+
   it("denials go out batched and rate-limited", function()
     local sim, _, m = setup()
     local i = veteran(sim, I, 100)

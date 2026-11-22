@@ -45,6 +45,8 @@ end
 -- A staked seat is mine only through my own note {tid, sk} in db.stakeSat
 -- (sk nil: for fun). It is written when I send a SIT with that sk to that
 -- table (Session.request) or open it (Session.open), and by Stake.accept;
+-- Stake.ask writes {tid} with no stake ("asked here, nothing accepted": a
+-- /reload while asked finds it and gives the seat up);
 -- it is cleared when I stand (Client:stand), when a SIT of mine is refused
 -- and when I leave the table (Stake.watch). A logout keeps it (Session.stop
 -- leaves nobody), so it outlives a /reload only while I am seated.

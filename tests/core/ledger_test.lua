@@ -456,6 +456,10 @@ describe("ledger hardening, round 2", function()
     ok(l.visits <= 3000, "visits " .. l.visits)
     l:add(paid(3001), M); l.visits = 0
     eq(l:denied(l:get(M .. ":3000")), true); ok(l.visits <= 3000, "the cache is renewed on add")
+    -- One more X denies the head of the chain: every node flips. A stale cache would keep the old parity.
+    eq(l:add({ i = M .. ":3002", k = "X", at = NOW, r = M .. ":1", h = string.format("%016x", 1) }, M), "new")
+    eq(l:denied(l:get(M .. ":1")), true); eq(l:denied(l:get(M .. ":2")), false)
+    eq(l:denied(l:get(M .. ":2999")), true); eq(l:denied(l:get(M .. ":3000")), false)
   end)
   it("the far-id bound is measured from the counter saved at login (two steps)", function()
     local l = settled(0)

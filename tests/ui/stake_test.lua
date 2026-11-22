@@ -620,6 +620,26 @@ describe("ui: the stake, the minors of fix round 1", function()
     eq(accepted, 0); eq(P.askFrame:IsShown(), false)
   end)
 
+  it("a staked invitation accepted while my asked seat's question is open is asked right after it (Task 11 M-a)", function()
+    local w = readyWow()
+    w.ns.MainWindow.show()
+    local P, client = w.ns.StakePanels, w.ns.client
+    local accepted, answers = 0, {}
+    client.acceptStake = function() accepted = accepted + 1; return true end
+    w.ns.InviteToast.acceptStaked = function(tid, sk, yes) answers[#answers + 1] = { tid, sk, yes } end
+    local tid, s = host(w, "deathroll", 20000)
+    s.stakeAsk = true
+    client.events:emit("stakeAsk", tid, 20000); w:advance(0)
+    P.askInvite({ tid = C .. "#1", game = "ttt", stake = 50000 }) -- the toast's „Приемам“
+    eq(P.question.kind, "keep"); ok(has(P.askText:GetText(), "2g"), "the keep question was replaced")
+    w:click(P.askYes)
+    eq(accepted, 1)
+    ok(P.askFrame:IsShown(), "the invitation's question is not asked"); eq(P.question.kind, "invite")
+    ok(has(P.askText:GetText(), "5g"), "not the invitation's stake")
+    w:click(P.askYes)
+    eq(answers, { { C .. "#1", 50000, true } }); eq(P.askFrame:IsShown(), false)
+  end)
+
   it("a client without a ledger is told why it cannot sit (M2)", function()
     local w = guildWow()
     w.ns.MainWindow.show()

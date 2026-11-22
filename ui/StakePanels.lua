@@ -11,7 +11,8 @@ local _, ns = ...
 --   „Отказ“ declines it. The same question keeps a seat my client was asked about
 --   after a crash or a fresh login ("stakeAsk"): its yes is client:acceptStake;
 --   unanswered, the game's end stands me up (core/Stake.lua) and the question
---   goes. No other question replaces that one while it is open.
+--   goes. No other question replaces that one while it is open; an
+--   invitation's waits and is asked right after it.
 -- * The bill „Сметката“ (StakePanels.bill, from the table frame's render), a
 --   strip at the bottom of the felt (BILL_W wide, BILL_TOP + BILL_ROW per line,
 --   BILL_Y above the felt's bottom, at most BILL_LINES lines, the last of them
@@ -30,6 +31,7 @@ local money = ns.Util.money
 local P = {
   shown = false,  -- the bill is up (read by the game views)
   question = nil, -- {kind = "sit" | "invite" | "keep", tid, seat, sk, game}: the question shown
+  queued = nil,   -- an invitation's question waiting for the asked seat's ("keep") to be answered
 }
 ns.StakePanels = P
 
@@ -86,7 +88,10 @@ end
 local function showAsk(q)
   if not P.askFrame then buildAsk() end
   local open = P.question
-  if open and open.kind == "keep" and q.kind ~= "keep" and P.askFrame:IsShown() then return end -- the asked seat first
+  if open and open.kind == "keep" and q.kind ~= "keep" and P.askFrame:IsShown() then -- the asked seat first
+    if q.kind == "invite" then P.queued = q end
+    return
+  end
   P.question = q
   P.askText:SetText(askText(q.game, q.sk))
   P.askFrame:Show()
@@ -96,6 +101,9 @@ end
 local function hideAsk()
   P.question = nil
   if P.askFrame then P.askFrame:Hide() end
+  local q = P.queued
+  P.queued = nil
+  if q then showAsk(q) end
 end
 
 -- The question before sitting in seat `seat` of the staked table `rec` (a lobby record).

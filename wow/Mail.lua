@@ -87,7 +87,8 @@ end
 -- money, returned} or false (unreadable); `bags` = my money at that update.
 local rows, bags = {}, nil
 local taken = {} -- {row, at}: the letters whose money the player took, not yet seen without it
-local hooked = false
+local hooked = false -- a take function is hooked: the hook, not my bags, tells what was taken
+local hooks = {}     -- name -> true: that game function is hooked (each by itself, one defined late at a later try)
 
 local function inbox()
   local count, header = fn("GetInboxNumItems"), fn("GetInboxHeaderInfo", "C_Mail.GetInboxHeaderInfo")
@@ -129,9 +130,9 @@ end
 local function hook()
   local secure = fn("hooksecurefunc")
   if secure and not sendHooked and fn("SendMail") and pcall(secure, "SendMail", sent) then sendHooked = true end
-  if hooked or not secure then return end
+  if not secure then return end
   for _, name in ipairs({ "TakeInboxMoney", "AutoLootMailItem" }) do
-    if fn(name) and pcall(secure, name, took) then hooked = true end
+    if not hooks[name] and fn(name) and pcall(secure, name, took) then hooks[name], hooked = true, true end
   end
 end
 

@@ -863,15 +863,18 @@ describe("ledger sync: fix round 2", function()
     eq(entries(whispers(sim, BOR, "LEV", mark, VERA)), 60); eq(b.ledger:digest(), c[VERA].ledger:digest())
   end)
 
-  it("I1: a page within the item cap but above the byte cap is refused", function()
+  it("I1: a page within the item cap but above the byte cap is refused; its sender then waits a peer gap", function()
     local sim, c = world(ANA, BOR)
     local b = c[BOR]
     local msg = { v = 1, t = "LVC", a = cells(C.LEDGER_PAGE_ITEMS, 64) }
     ok(packed(msg) > 1500, "above 1 500: " .. packed(msg))
     b.ledgerSync:receive(ANA, msg)
     eq(b.ledgerSync.serve, nil); eq(#b.ledgerSync.out, 0)
-    b.ledgerSync:receive(ANA, { v = 1, t = "LVC", a = cells(C.LEDGER_PAGE_ITEMS) }) -- within both, but within the gap
+    b.ledgerSync:receive(ANA, { v = 1, t = "LVC", a = cells(C.LEDGER_PAGE_ITEMS) }) -- within both caps, but within the gap
     eq(b.ledgerSync.serve, nil)
+    sim:run(C.LEDGER_PEER_GAP)
+    b.ledgerSync:receive(ANA, { v = 1, t = "LVC", a = cells(C.LEDGER_PAGE_ITEMS) }) -- the same page after the gap: served
+    ok(b.ledgerSync.serve, "a page within both caps is taken")
   end)
 
   it("I1: my pages hold at most LEDGER_PAGE_ITEMS items, and a partner takes them", function()

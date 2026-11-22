@@ -272,6 +272,19 @@ describe("stakes: from a game to the ledger", function()
     eq(cl[A].session.status, "aborted")
   end)
 
+  it("a stand with a reason the ledger does not know is recorded as left: the creditors' claims stay valid (final review Minor 1)", function()
+    local sim, cl = setup()
+    local tid = dr(sim, cl, { B, P }, SK)
+    local seen, mark = record(cl[P], "forfeit"), #sim.sent
+    cl[A].session:event(0, { k = "stand", seat = 2, why = "x" }); sim:run(10) -- a modified host stands Мария up
+    eq(#seen, 1); eq(seen[1][1].why, "left")
+    local ds = sentOf(sim, nil, mark, "D")
+    eq(#ds, 2)
+    for _, d in ipairs(ds) do eq({ d.gid, d.f, d.c, d.why }, { tid .. "/" .. seen[1][1].q, B, SK, "left" }) end
+    local r = sentOf(sim, A, mark, "R")
+    eq(#r, 1); eq(r[1].why, "left")
+  end)
+
   it("other left claims at a table I left: one just after my stand is put to me, one of a game I was not in is contested", function()
     local sim, cl = setup()
     local tid = ttt(sim, cl, SK)

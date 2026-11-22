@@ -281,6 +281,18 @@ describe("wow mail: money taken from a letter", function()
     eq(#got, 1)
   end)
 
+  it("each take function is hooked by itself: one the client defines late is hooked at the next mailbox (Task 10 N1)", function()
+    local w = guildWow({ late = { "AutoLootMailItem" } }) -- not there when the addon loads
+    local got = mailedLog(w)
+    w.G.AutoLootMailItem = w.late.AutoLootMailItem -- the mail UI loads on demand
+    atMailbox(w, { { sender = "Мария", subject = SUBJECT, money = 50000 }, { sender = "Петър", subject = "Здрасти", money = 700 } })
+    w:playerCalls("AutoLootMailItem", 1)
+    w.money = w.money + 50000; w.inbox[1].money = 0 -- another letter is returned meanwhile: the bags alone would not tell
+    w.inbox[2].money = 0
+    w:fireMail("MAIL_INBOX_UPDATE")
+    eq(got, { { shown = "Мария", subject = SUBJECT, c = 50000 } })
+  end)
+
   it("the hooks are set when the file loads: a take through a copy made before the mailbox opened is seen", function()
     local w = guildWow()
     local take = w.G.TakeInboxMoney -- another mail addon keeps its own copy of the function

@@ -183,12 +183,17 @@ end
 -- My entries the guild holds that my store had lost (a crash, a collision),
 -- one question each: {body, ...} (the first LEDGER_MINE_ASK, by id), and how
 -- many more wait unshown (uncounted, not denied) until a question is answered.
+-- The walk over my entries is done once per change of the store (L.rev: every
+-- question asked or answered moves it); the hall asks at every redraw.
 function Net:asks()
+  local c = self.asksAt
+  if c and c.rev == self.L.rev then return { unpack(c.out) }, c.more end
   local out, more = {}, 0
   for _, b in ipairs(self.L:above(self.L.me, 0)) do
     if b.un and #out < C.LEDGER_MINE_ASK then out[#out + 1] = b elseif b.un then more = more + 1 end
   end
-  return out, more
+  self.asksAt = { rev = self.L.rev, out = out, more = more }
+  return { unpack(out) }, more
 end
 
 -- The answer for one shown asked entry (a body of net:asks, or an id: its asked

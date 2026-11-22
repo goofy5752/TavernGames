@@ -69,6 +69,8 @@ end
 
 -- opts.saved: a TavernGamesDB table from an earlier session (a /reload).
 -- opts.noHooks: a client without hooksecurefunc.
+-- opts.late: names of game functions the client defines only later (nil while the
+-- addon loads; the test puts self.late[name] back into self.G when it wants them).
 -- opts.ui: also run the ui/ files.
 function Wow.new(opts)
   opts = opts or {}
@@ -223,6 +225,8 @@ function Wow.new(opts)
     end
   end
   if opts.noHooks then G.hooksecurefunc = nil end
+  self.late = {}
+  for _, name in ipairs(opts.late or {}) do self.late[name], G[name] = G[name], nil end
   if opts.saved then G.TavernGamesDB = opts.saved end
 
   for _, path in ipairs(LIBS) do run(path, G, "TavernGames") end

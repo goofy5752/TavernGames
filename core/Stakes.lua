@@ -217,17 +217,18 @@ end
 -- (s.stakeR, hostChanged). The players' outcome: core/StakesBook.lua.
 local function forfeit(s, a, roster)
   local env, book, name, to, w = s.client.env, s.client.stakes, roster[a.seat], {}, {}
+  local why = (a.why == "offline" or a.why == "idle") and a.why or "left" -- a reason the ledger knows, whatever the host sent
   for i = 1, #s.seats do
     if i ~= a.seat and roster[i] then to[#to + 1], w[#w + 1] = roster[i], i end
   end
   roster[a.seat] = nil
-  s.client.events:emit("forfeit", { tid = s.tid, game = s.game, q = s.seq, seat = a.seat, name = name, to = to, why = a.why, sk = s.stake, at = env.epoch() })
+  s.client.events:emit("forfeit", { tid = s.tid, game = s.game, q = s.seq, seat = a.seat, name = name, to = to, why = why, sk = s.stake, at = env.epoch() })
   if not book or #to == 0 or book:bot(s.tid) then return end
   local gid, n = s.tid .. "/" .. s.seq, ns.Util.copy(s.seats)
   n[a.seat] = name
-  local r = { gid = gid, g = s.game, n = n, w = w, l = { a.seat }, sk = s.stake, why = a.why }
+  local r = { gid = gid, g = s.game, n = n, w = w, l = { a.seat }, sk = s.stake, why = why }
   if s.role == "host" and name ~= env.me then book:make("R" .. gid, "R", r) elseif name == s.host and name ~= env.me then s.stakeR = { by = name, r = r } end
-  book:outcome(s, gid, Stakes.pairs({ name }, to, s.stake), a.why, name == env.me and s.stakeIdle and "idle" or nil)
+  book:outcome(s, gid, Stakes.pairs({ name }, to, s.stake), why, name == env.me and s.stakeIdle and "idle" or nil)
 end
 
 -- „Стани“ in the running game I play: at the stake I accepted (my note
