@@ -275,20 +275,34 @@ end
 --   hand earlier than FAIR_WAIT after its step became due (fair.openedAt,
 --   s.dueAt), unless the dealer's seat has left the hand's dealer (a stand
 --   mid-hand, a new host's takeover).
+-- At a staked table (core/Cash.lua's `lapsed` voids before any away, E5):
+-- - an away of my dealt-in, unfolded seat while the hand runs, in any stage;
+-- - a void in stage commit only earlier than FAIR_WAIT after the open;
+-- - a void of the hand I deal, while I hold its deck, also when my client
+--   asked for the step due at least twice with the host heard
+--   (s.stepAsks, Stakes.stepAsked: E2). Any other void of my dealt hand is
+--   the honest one (a step that never reached the host) and counts as one I
+--   asked for (round.voidAsked: core/DealHooks.lua does not call it forged).
 function Member.unasked(s, seat, a)
   local engine, st = s:engine(), s.state
   if seat ~= 0 or type(a) ~= "table" or not (engine.sealed and st and engine.inHand(st)) then return false end
-  local fair = s.fair
+  local fair, staked = s.fair, s.stake ~= nil
   local round = fair and fair.stage ~= "done" and fair or nil
   if a.k == "away" then
     local p = s.mySeat and a.seat == s.mySeat and st.p and st.p[s.mySeat]
     if not p or p.folded then return false end
-    if round and (round.stage == "commit" or round.stage == "seed") then return not waited(s, round.openedAt) end
+    if not staked and round and (round.stage == "commit" or round.stage == "seed") then return not waited(s, round.openedAt) end
     return true
   elseif a.k == "void" then
-    if not round or round.stage == "commit" then return true end
+    if not round then return true end
+    if round.stage == "commit" then return not (staked and waited(s, round.openedAt)) end
     if round.stage == "seed" then return not waited(s, round.openedAt) end
-    return s.seats[round.d] == round.dealer and not (s.dueKey and waited(s, s.dueAt))
+    if s.seats[round.d] == round.dealer and not (s.dueKey and waited(s, s.dueAt)) then return true end
+    if not (staked and round.d == s.mySeat and round.deck) then return false end
+    local asks = s.stepAsks
+    if asks and asks.k == s.dueKey and asks.n >= 2 then return true end
+    round.voidAsked = true
+    return false
   end
   return false
 end

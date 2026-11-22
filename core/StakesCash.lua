@@ -40,7 +40,12 @@ local _, ns = ...
 --     s.turnAt across it, so an honest timeout after my lost ACT is no foul.
 --   No break between games (Stakes.gap 0, core/StakesStart.lua): a new game
 --     gives nobody chips, so staying seated accepts nothing.
-local Stakes = ns.Stakes
+--   The dealer's step (E2, H14): s.hostHeard is my env.now() at the last EV,
+--     SNP or TCK of my host that my client took; s.stepAsks = {k = the dueKey,
+--     n} counts my asks for the step due (core/Cash.lua's `ask`), an ask only
+--     while my client heard the host within FAIR_ASK_GAP before it (a dead
+--     link loses the asks and the host's words alike). Member.unasked reads it.
+local Stakes, C = ns.Stakes, ns.Const
 
 local RANK, pend, same = Stakes.RANK, Stakes.pend, ns.Util.same
 
@@ -96,6 +101,22 @@ local function sitting(s, st, me)
   return taken
 end
 
+-- Dealer: my ask for the step due now has gone to my host (core/Cash.lua's `ask`).
+function Stakes.stepAsked(s)
+  if s.role == "host" then return end -- my own step goes to no other client
+  local asks = s.stepAsks
+  if not (asks and asks.k == s.dueKey) then asks = { k = s.dueKey, n = 0 }; s.stepAsks = asks end
+  if s.hostHeard and s.client.env.now() - s.hostHeard <= C.FAIR_ASK_GAP then asks.n = asks.n + 1 end
+end
+
+-- My host's heartbeat (Member's TCK at my epoch) is heard.
+local tick = ns.Member.handlers.TCK
+ns.Member.handlers.TCK = function(client, sender, m)
+  local s = client.session
+  if s and s.tid == m.tid and s.host == sender and m.e == s.epoch and Stakes.cash(s) then s.hostHeard = client.env.now() end
+  return tick(client, sender, m)
+end
+
 -- A SIT or WAT with no table of mine, while my note (db.stakeSat, kept across a
 -- logout while I am seated) already names that table: a relog that clicks its
 -- own table before the host's snapshot. The host answers "already here", so
@@ -117,7 +138,7 @@ ext.applied = function(s, seat, a)
   if not Stakes.cash(s) then return applied(s, seat, a) end
   local t, at = s.stakeTurn, s.turnAt
   local money = seat ~= 0 and (a.k == "buy" or a.k == "cashout")
-  s.stakeRoster = nil
+  s.stakeRoster, s.hostHeard = nil, s.client.env.now()
   applied(s, seat, a)
   s.stakeRoster = nil
   if money and t and t.seat ~= seat and s.stakeTurn and s.stakeTurn.seat == t.seat then s.stakeTurn, s.turnAt = t, at end
@@ -148,7 +169,7 @@ ext.adopted = function(s, prev, m, how)
     end
   end
   local held = s.stakeSeat -- my seat before this snapshot (core/StakesWatch.lua's guard)
-  s.stakeRoster = nil
+  s.stakeRoster, s.hostHeard = nil, s.client.env.now()
   adopted(s, prev, m, how)
   s.stakeRoster = nil
   if not identical or how.fresh then takeNames(s) end

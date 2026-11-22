@@ -12,7 +12,7 @@ local _, ns = ...
 --   engine's next step needs its faces (E.system: {k, need = "faces"}), so
 --   the dealer, which holds the deck, asks the host for it (ACT {k="book",
 --   op="step", h, a = {k, cards}}) E.STREET_DELAY after it is due and again
---   every FAIR_ASK_GAP while the table stands there (s.stepTimer); the host
+--   every FAIR_ASK_GAP while the table stands there (s.stepTimer; staked: s.stepAsks); the host
 --   plays `a` at seat 0 when it is the step the engine waits for, it carries
 --   every face the step deals (a street without them is refused) and it
 --   publishes only faces a watcher may then see (allPublic). One event a
@@ -24,7 +24,7 @@ local _, ns = ...
 --   saw a hand end emits "hand" once (Book.told);
 -- - silence (host): a shuffle not dealt in FAIR_WAIT (hook `lapsed`) sits out
 --   the participants whose commit is missing, or in stage seed its dealer and
---   the seats it named as missing, the hand void first ({k="away", seat});
+--   the seats it named as missing, the hand void first (staked: always) ({k="away", seat});
 --   the step and the book actions: Book.request; a step not come FAIR_WAIT
 --   after it was due voids the hand and sits the dealer out. A seat that sees
 --   itself away asks {k="back"} once its hand is over (Member.comeBack); a
@@ -61,7 +61,7 @@ local function ask(s, fair, seq)
   if s.client.session ~= s or s.fair ~= fair or s.seq ~= seq or fair.stage ~= "dealt" then return end
   local due = s:engine().system(ns.Fair.full(s.state, fair.deck))
   if due and not due.need and due.cards then
-    Cash.submit(s, { k = "book", op = "step", h = fair.h, a = { k = due.k, cards = copy(due.cards) } })
+    Cash.submit(s, { k = "book", op = "step", h = fair.h, a = { k = due.k, cards = copy(due.cards) } }); if s.stake then ns.Stakes.stepAsked(s) end
   end
   if s.fair == fair and s.seq == seq then
     s.stepTimer = s.client:after(C.FAIR_ASK_GAP, function() ask(s, fair, seq) end)
@@ -130,9 +130,9 @@ end
 
 -- Host: the shuffle was not dealt in FAIR_WAIT (hook `lapsed`, before it is
 -- opened again). In stage commit every participant whose commit is missing
--- sits out (its blind stays in the pot); in stage seed the dealer does, and
--- when it named seats as missing (op "missing") the hand is void first and
--- they sit out with it: naming seats takes nobody's blind.
+-- sits out (its blind stays in the pot; staked: the hand is void first); in
+-- stage seed the dealer does, and when it named seats as missing (op "missing";
+-- staked: always) the hand is void first: naming seats takes nobody's blind (E5).
 local function lapsed(s)
   local fair = s.fair
   if s.role ~= "host" or not fair then return end
@@ -140,12 +140,12 @@ local function lapsed(s)
     -- A round I took over as the new host has no fair.pend (its commits went
     -- to the old one): nobody is known to be silent. My own seat is here.
     for _, q in ipairs(fair.pend and fair.p or {}) do
-      if not fair.pend[q] and q ~= s.mySeat then s:play(0, { k = "away", seat = q }) end
+      if not fair.pend[q] and q ~= s.mySeat then if s.stake and s:engine().inHand(s.state) then s:play(0, { k = "void" }) end; s:play(0, { k = "away", seat = q }) end
     end
   elseif fair.stage == "seed" then
     local named = fair.missing or {}
     s.lapseOut = s.lapseOut or {}
-    if #named > 0 then s:play(0, { k = "void" }) end
+    if #named > 0 or s.stake then s:play(0, { k = "void" }) end
     s:play(0, { k = "away", seat = fair.d })
     for _, q in ipairs(named) do
       -- Back only once a hand has been dealt without it (the act hook holds its back).
