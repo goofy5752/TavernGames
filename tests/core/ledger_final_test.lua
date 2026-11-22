@@ -221,6 +221,20 @@ describe("ledger F2: the author's sorted list is kept and first built in slices 
     eq(l.sorted, sorted, "the kept list was never sorted again")
   end)
 
+  it("a body that comes mid-build (collect, sort, merge) is in the list that settles", function()
+    for _, k in ipairs({ 1, 2, 5, 10, 15, 16, 20, 27 }) do
+      local l = big(2000)
+      for _ = 1, k do l:work(N) end
+      ok(l:hashing(), "k = " .. k .. ": still building")
+      eq(l:add(pay(ZH, 2001), BOR), "new")
+      eq(l.il[ZH], nil, "k = " .. k .. ": no half-built list is published")
+      frames(l, N)
+      local x, items = byHand(l, ZH)
+      eq(#items, 2001); eq(l.il[ZH], items, "k = " .. k)
+      eq(l.xc[ZH], x, "k = " .. k); eq(l.xc[ZH], oneGo(l, ZH))
+    end
+  end)
+
   it("runs merge in byte order, not number order", function()
     for _, n in ipairs({ 1, 2 }) do
       local l = Ledger.new({}, ANA, clock)
