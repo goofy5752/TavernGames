@@ -1,0 +1,210 @@
+local Wow = require("wow")
+
+local ME, M = "Иван Петров", "Мария Колева"
+local M_GUID = "Player-1-00000002"
+local SUBJECT = "Tavern Games: Морски шах 14.11"
+
+local function guildWow()
+  local w = Wow.new()
+  w.inGuild = true
+  w.roster = {
+    { name = ME .. "-Forever", online = true, guid = Wow.GUID },
+    { name = M .. "-Forever", online = true, guid = M_GUID },
+  }
+  w:boot()
+  w:fire("GUILD_ROSTER_UPDATE")
+  return w
+end
+
+-- What client.pay:mailed was given.
+local function mailedLog(w)
+  local got = {}
+  w.ns.client.pay.mailed = function(_, m) got[#got + 1] = m end
+  return got
+end
+
+-- At the mailbox with these inbox rows, seen by one MAIL_INBOX_UPDATE.
+local function atMailbox(w, inbox)
+  w.inbox = inbox
+  w:fireMail("MAIL_SHOW")
+  w:fireMail("MAIL_INBOX_UPDATE")
+end
+
+-- The game's answer to a take: the row loses its money and my bags gain it.
+local function moneyTaken(w, i)
+  w.money = w.money + w.inbox[i].money
+  w.inbox[i].money = 0
+  w:fireMail("MAIL_INBOX_UPDATE")
+end
+
+describe("wow mail: the send frame", function()
+  it("state follows MAIL_SHOW and MAIL_CLOSED", function()
+    local w = guildWow()
+    local Mail = w.ns.Mail
+    eq(Mail.state(), "closed")
+    w:fireMail("MAIL_SHOW"); eq(Mail.state(), "open")
+    w:fireMail("MAIL_CLOSED"); eq(Mail.state(), "closed")
+    eq(w.ns.client.pay:options(M).mail, "closed")
+    w.G.SetSendMailMoney, w.G.MoneyInputFrame_SetCopper = nil, nil
+    eq(Mail.state(), "off")
+  end)
+
+  it("fill writes recipient, subject, body and money and sends nothing", function()
+    local w = guildWow()
+    local G = w.G
+    G.SendMailSendMoneyButton:SetChecked(false); G.SendMailCODButton:SetChecked(true) -- COD was chosen last time
+    w:fireMail("MAIL_SHOW")
+    eq(w.ns.Mail.fill(M, SUBJECT, "Наздраве!", 50000), true)
+    eq(w:called("MailFrameTab_OnClick"), 1); eq(w:argsOf("MailFrameTab_OnClick"), { [2] = 2 })
+    eq(G.SendMailNameEditBox:GetText(), M); eq(G.SendMailSubjectEditBox:GetText(), SUBJECT)
+    eq(G.SendMailBodyEditBox:GetText(), "Наздраве!")
+    eq(w:argsOf("SetSendMailMoney"), { 50000 }); eq(G.SendMailMoney.copper, 50000)
+    eq(G.SendMailSendMoneyButton:GetChecked(), true); eq(G.SendMailCODButton:GetChecked(), false)
+    eq(w:called("SendMail"), 0); eq(w:called("SetSendMailCOD"), 0)
+    for name in pairs(w.forbidden) do eq(w:called(name), 0, name) end
+  end)
+
+  it("fill uses whichever body box exists", function()
+    local w = guildWow()
+    w:fireMail("MAIL_SHOW")
+    eq(w.ns.Mail.fill(M, SUBJECT, "тяло", 100), true)
+    eq(w.G.SendMailBodyEditBox:GetText(), "тяло")
+    local w2 = guildWow()
+    w2.G.SendMailBodyEditBox, w2.G.MailEditBox = nil, Wow.editBox()
+    w2:fireMail("MAIL_SHOW")
+    eq(w2.ns.Mail.fill(M, SUBJECT, "тяло", 100), true)
+    eq(w2.G.MailEditBox:GetText(), "тяло")
+    -- Without a recipient box nothing can be filled.
+    local w3 = guildWow()
+    w3.G.SendMailNameEditBox = nil
+    w3:fireMail("MAIL_SHOW")
+    eq(w3.ns.Mail.fill(M, SUBJECT, "тяло", 100), nil)
+  end)
+
+  it("fee is the game's price, 30 without it", function()
+    local w = guildWow()
+    eq(w.ns.Mail.fee(), 30)
+    w.mailPrice = 45
+    eq(w.ns.Mail.fee(), 45); eq(w.ns.client.pay:options(M).fee, 45)
+    w.G.GetSendMailPrice = function() error("no mailbox") end
+    eq(w.ns.Mail.fee(), 30)
+    w.G.GetSendMailPrice = function() return nil end
+    eq(w.ns.Mail.fee(), 30)
+    w.G.GetSendMailPrice = nil
+    eq(w.ns.Mail.fee(), 30)
+  end)
+end)
+
+describe("wow mail: money taken from a letter", function()
+  it("taking the money of a letter reports it once", function()
+    local w = guildWow()
+    local got = mailedLog(w)
+    atMailbox(w, { { sender = "Мария", subject = SUBJECT, money = 50000 } })
+    w:playerCalls("TakeInboxMoney", 1)
+    eq(#got, 0)
+    w:fireMail("MAIL_INBOX_UPDATE") -- the server has not answered yet: the money is still there
+    eq(#got, 0)
+    moneyTaken(w, 1)
+    eq(got, { { shown = "Мария", subject = SUBJECT, c = 50000 } })
+    w:fireMail("MAIL_INBOX_UPDATE")
+    eq(#got, 1)
+  end)
+
+  it("auto-loot of a letter with money reports it too", function()
+    local w = guildWow()
+    local got = mailedLog(w)
+    atMailbox(w, { { sender = "Мария", subject = SUBJECT, money = 50000 }, { sender = "Мария", subject = SUBJECT, money = 50000 } })
+    w:playerCalls("AutoLootMailItem", 1)
+    table.remove(w.inbox, 1) -- the emptied letter is gone; the other one moves up
+    w.money = w.money + 50000
+    w:fireMail("MAIL_INBOX_UPDATE")
+    eq(got, { { shown = "Мария", subject = SUBJECT, c = 50000 } })
+  end)
+
+  it("a letter deleted with its money untaken reports nothing", function()
+    local w = guildWow()
+    local got = mailedLog(w)
+    atMailbox(w, { { sender = "Мария", subject = SUBJECT, money = 50000 } })
+    w.inbox = {} -- returned to its sender
+    w:fireMail("MAIL_INBOX_UPDATE")
+    eq(got, {})
+  end)
+
+  it("a letter without money reports nothing", function()
+    local w = guildWow()
+    local got = mailedLog(w)
+    atMailbox(w, { { sender = "Мария", subject = SUBJECT, money = 0 } })
+    w:playerCalls("TakeInboxMoney", 1)
+    w:playerCalls("AutoLootMailItem", 1)
+    w.inbox = {}
+    w:fireMail("MAIL_INBOX_UPDATE")
+    eq(got, {})
+  end)
+
+  it("a take the game refused is forgotten after a while", function()
+    local w = guildWow()
+    local got = mailedLog(w)
+    atMailbox(w, { { sender = "Мария", subject = SUBJECT, money = 50000 } })
+    w:playerCalls("TakeInboxMoney", 1)
+    w:fireMail("MAIL_INBOX_UPDATE") -- still there: the take failed (gold cap)
+    w:advance(11)
+    w.inbox = {} -- later returned to its sender
+    w:fireMail("MAIL_INBOX_UPDATE")
+    eq(got, {})
+  end)
+
+  it("a returned letter of my own is not a payment", function()
+    local w = guildWow()
+    local got = mailedLog(w)
+    atMailbox(w, { { sender = "Мария", subject = SUBJECT, money = 50000, returned = true } })
+    w:playerCalls("TakeInboxMoney", 1)
+    moneyTaken(w, 1)
+    eq(got, {})
+  end)
+
+  it("without hooksecurefunc the bag money decides", function()
+    local w = guildWow()
+    w.G.hooksecurefunc = nil
+    local got = mailedLog(w)
+    atMailbox(w, { { sender = "Мария", subject = SUBJECT, money = 50000 }, { sender = "Петър", subject = "Здрасти", money = 700 } })
+    w:playerCalls("TakeInboxMoney", 1)
+    moneyTaken(w, 1)
+    eq(got, { { shown = "Мария", subject = SUBJECT, c = 50000 } })
+    w:fireMail("MAIL_INBOX_UPDATE")
+    eq(#got, 1)
+    -- A letter that loses its money while my bags do not gain it: returned, not taken.
+    w.inbox[2].money = 0
+    w:fireMail("MAIL_INBOX_UPDATE")
+    eq(#got, 1)
+  end)
+
+  it("the hooks are set once however often the mailbox opens", function()
+    local w = guildWow()
+    local got = mailedLog(w)
+    atMailbox(w, { { sender = "Мария", subject = SUBJECT, money = 50000 }, { sender = "Мария", subject = SUBJECT, money = 50000 } })
+    w:fireMail("MAIL_CLOSED")
+    atMailbox(w, w.inbox)
+    w:playerCalls("TakeInboxMoney", 1)
+    moneyTaken(w, 1)
+    eq(#got, 1)
+    table.remove(w.inbox, 2) -- the other letter is returned to its sender
+    w:fireMail("MAIL_INBOX_UPDATE")
+    eq(#got, 1)
+  end)
+
+  it("the addon never takes the money itself", function()
+    local w = guildWow()
+    local got = mailedLog(w)
+    atMailbox(w, { { sender = "Мария", subject = SUBJECT, money = 50000 } })
+    w:fireMail("MAIL_CLOSED")
+    w:fireMail("MAIL_SHOW")
+    w:playerCalls("TakeInboxMoney", 1)
+    moneyTaken(w, 1)
+    eq(#got, 1)
+    eq(w:called("TakeInboxMoney"), 0); eq(w:called("AutoLootMailItem"), 0)
+    for name in pairs(w.forbidden) do eq(w:called(name), 0, name) end
+    local player = 0
+    for _, c in ipairs(w.calls) do if c.player then player = player + 1 end end
+    eq(player, 1) -- the player's own click only
+  end)
+end)

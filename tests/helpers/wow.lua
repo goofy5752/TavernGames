@@ -30,12 +30,24 @@ local FORBIDDEN = { "AcceptTrade", "SendMail", "TakeInboxMoney", "AutoLootMailIt
 
 -- A logged payment API: every call goes to self.calls as {name = ..., args = {...}};
 -- a name in self.forbidden fails the test. `fn(...)` gives the result, if any.
+-- A call the player makes (Wow:playerCalls) is logged with player = true and
+-- may be a forbidden one: the player presses the game's own buttons.
 local function api(self, name, fn)
   return function(...)
-    self.calls[#self.calls + 1] = { name = name, args = { ... } }
-    if self.forbidden[name] then error("called " .. name, 2) end
+    local player = self.byPlayer or nil
+    self.calls[#self.calls + 1] = { name = name, args = { ... }, player = player }
+    if self.forbidden[name] and not player then error("called " .. name, 2) end
     if fn then return fn(...) end
   end
+end
+
+-- An edit box of the send-mail frame, and a check button.
+function Wow.editBox()
+  return { text = "", SetText = function(b, t) b.text = t end, GetText = function(b) return b.text end }
+end
+
+local function checkButton(on)
+  return { on = on, SetChecked = function(b, v) b.on = v and true or false end, GetChecked = function(b) return b.on end }
 end
 
 local function run(path, G, ...)
@@ -71,6 +83,8 @@ function Wow.new(opts)
     -- the inbox rows {sender, subject, money}, whether the mailbox is open.
     tradeMoney = { player = 0, target = 0 }, npc = {}, inbox = {}, mailOpen = false, mailPrice = 30,
     calls = {}, forbidden = {},
+    -- Units: unit id ("target", "party1", "raid7") -> GUID; near[unit]: CheckInteractDistance says in range.
+    units = {}, near = {},
   }, Wow)
   for _, name in ipairs(FORBIDDEN) do self.forbidden[name] = true end
   local G = {}
@@ -103,6 +117,13 @@ function Wow.new(opts)
   G.UnitGUID = function(unit)
     if unit == "player" then return Wow.GUID end
     if unit == "NPC" then return self.npc.guid end
+    return self.units[unit]
+  end
+  G.CheckInteractDistance = function(unit) return self.near[unit] == true end
+  -- date("*t", t), in UTC so that a test never depends on the machine's zone.
+  G.date = function(fmt, t)
+    assert(fmt == "*t", "the fake date knows *t only")
+    return os.date("!*t", t)
   end
   G.UnitClass = function() return "Маг", "MAGE", 8 end
   G.UnitRace = function() return "Човек", "Human", 1 end
@@ -162,16 +183,23 @@ function Wow.new(opts)
   G.GetTargetTradeMoney = function() return self.tradeMoney.target end
   G.ERR_TRADE_COMPLETE = "Trade complete."
   G.ERR_TRADE_CANCELLED = "Trade cancelled."
+  -- The money box of the trade frame and of the send-mail frame: {copper}.
+  G.TradePlayerInputMoneyFrame, G.SendMailMoney = { copper = 0 }, { copper = 0 }
+  G.MoneyInputFrame_SetCopper = api(self, "MoneyInputFrame_SetCopper", function(frame, c) frame.copper = c end)
   G.SetSendMailMoney = api(self, "SetSendMailMoney")
   G.SetSendMailCOD = api(self, "SetSendMailCOD")
   G.SendMail = api(self, "SendMail")
   G.GetSendMailPrice = function() return self.mailPrice end
   G.MailFrame = { IsShown = function() return self.mailOpen end }
+  G.MailFrameTab_OnClick = api(self, "MailFrameTab_OnClick")
+  -- The classic send-mail frame: SendMailBodyEditBox (a test may swap it for MailEditBox).
+  G.SendMailNameEditBox, G.SendMailSubjectEditBox, G.SendMailBodyEditBox = Wow.editBox(), Wow.editBox(), Wow.editBox()
+  G.SendMailSendMoneyButton, G.SendMailCODButton = checkButton(true), checkButton(false)
   G.GetInboxNumItems = function() return #self.inbox, #self.inbox end
-  -- packageIcon, stationeryIcon, sender, subject, money, CODAmount, daysLeft, hasItem, wasRead
+  -- packageIcon, stationeryIcon, sender, subject, money, CODAmount, daysLeft, hasItem, wasRead, wasReturned
   G.GetInboxHeaderInfo = function(i)
     local m = self.inbox[i]
-    if m then return nil, nil, m.sender, m.subject, m.money, 0, 30, nil, false end
+    if m then return nil, nil, m.sender, m.subject, m.money, m.cod or 0, 30, nil, false, m.returned or false end
   end
   G.TakeInboxMoney = api(self, "TakeInboxMoney")
   G.AutoLootMailItem = api(self, "AutoLootMailItem")
@@ -329,13 +357,46 @@ end
 
 function Wow:slash(text) self.G.SlashCmdList.TAVERNGAMES(text) end
 
--- How many times the logged payment API `name` was called.
+-- How many times the addon called the logged payment API `name` (the player's own calls do not count).
 function Wow:called(name)
   local n = 0
   for _, c in ipairs(self.calls) do
-    if c.name == name then n = n + 1 end
+    if c.name == name and not c.player then n = n + 1 end
   end
   return n
+end
+
+-- The arguments of the addon's last call of the logged API `name`, or nil.
+function Wow:argsOf(name)
+  for i = #self.calls, 1, -1 do
+    local c = self.calls[i]
+    if c.name == name and not c.player then return c.args end
+  end
+end
+
+-- The player calls the game function `name` (a click on the game's own button):
+-- the hooks of hooksecurefunc run, and a forbidden function is allowed.
+function Wow:playerCalls(name, ...)
+  self.byPlayer = true
+  local okCall, err = pcall(self.G[name], ...)
+  self.byPlayer = false
+  if not okCall then error(err, 0) end
+end
+
+-- A trade event. TRADE_CLOSED and TRADE_REQUEST_CANCEL end the trade, as in the
+-- game: afterwards there is no partner and both money values read 0.
+function Wow:fireTrade(event, ...)
+  self:fire(event, ...)
+  if event == "TRADE_CLOSED" or event == "TRADE_REQUEST_CANCEL" then
+    self.npc, self.tradeMoney = {}, { player = 0, target = 0 }
+  end
+end
+
+-- A mail event; MAIL_SHOW and MAIL_CLOSED open and close the mailbox (MailFrame).
+function Wow:fireMail(event, ...)
+  if event == "MAIL_SHOW" then self.mailOpen = true end
+  if event == "MAIL_CLOSED" then self.mailOpen = false end
+  self:fire(event, ...)
 end
 
 -- Sent records whose message type is t.

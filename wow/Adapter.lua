@@ -93,6 +93,32 @@ local function match(pattern, text)
   return captured and nameIn(captured)
 end
 
+-- The game value at a dotted `path` ("C_TradeInfo.SetTradeMoney"), looked up at
+-- call time with rawget: an absent API reads as nil, never through a metatable of _G.
+function Adapter.lookup(path)
+  local v = _G
+  for part in path:gmatch("[^%.]+") do
+    if type(v) ~= "table" then return nil end
+    v = rawget(v, part)
+  end
+  return v
+end
+
+-- The first of the paths that holds a function, or nil.
+function Adapter.fn(...)
+  for i = 1, select("#", ...) do
+    local f = Adapter.lookup((select(i, ...)))
+    if type(f) == "function" then return f end
+  end
+  return nil
+end
+
+-- A copper value the game gave that can be used: a number from 0, not a secret value.
+function Adapter.plain(v)
+  local secret = Adapter.fn("issecretvalue")
+  return type(v) == "number" and v >= 0 and not (secret and secret(v))
+end
+
 function Adapter.say(text)
   DEFAULT_CHAT_FRAME:AddMessage("|cffb0813f" .. L("addon.title") .. "|r: " .. text)
 end
@@ -218,14 +244,45 @@ function ns.ready(fn)
   readyQueue[#readyQueue + 1] = fn
 end
 
+-- The day number of the civil date y-m-d (1970-01-01 is day 0).
+local function civilDay(y, m, d)
+  y = m <= 2 and y - 1 or y
+  local era = math.floor(y / 400)
+  local yoe = y - era * 400
+  local doy = math.floor((153 * (m > 2 and m - 3 or m + 9) + 2) / 5) + d - 1
+  return era * 146097 + yoe * 365 + math.floor(yoe / 4) - math.floor(yoe / 100) + doy - 719468
+end
+
+-- env.date(t): {d, m, day} of epoch t in my own zone, from WoW's date("*t", t)
+-- (day: the local day number); core/Pay.lua's UTC arithmetic without it.
+local function localDate(t)
+  local date = Adapter.fn("date")
+  local okDate, tm = false, nil
+  if date then okDate, tm = pcall(date, "*t", t) end
+  if not (okDate and type(tm) == "table" and tm.year and tm.month and tm.day) then return ns.Pay.utc(t) end
+  return { d = tm.day, m = tm.month, day = civilDay(tm.year, tm.month, tm.day) }
+end
+
+-- env.money(): the copper in my bags, nil when the client cannot say.
+local function money()
+  local f = Adapter.fn("GetMoney")
+  local okMoney, c = false, nil
+  if f then okMoney, c = pcall(f) end
+  if okMoney and Adapter.plain(c) then return c end
+  return nil
+end
+Adapter.money = money
+
 -- The human Client under `name`; ready callbacks run before it starts. Its
 -- ledger store is ns.db.ledger[guild .. "-" .. realm]; without a guild name
--- now there is none (core/Client.lua logs it).
+-- now there is none (core/Client.lua logs it). Payment goes through env.money,
+-- env.trade (wow/Trade.lua), env.mail (wow/Mail.lua) and env.date.
 function Adapter.createClient(name, send)
   local _, cls = UnitClass("player")
   local env = baseEnv(name, UnitGUID("player"), cls)
   env.send, env.status, env.inGroup, env.db, env.log = send, status, inGroup, ns.db, Adapter.log
   env.groupedWith = groupedWith
+  env.money, env.trade, env.mail, env.date = money, ns.Trade, ns.Mail, localDate
   local guild = GetGuildInfo("player")
   env.guild = guild and guild .. "-" .. GetRealmName() or nil
   env.member = Adapter.isMember
@@ -297,7 +354,14 @@ local lastOnline
 -- client answers my own HI.
 Adapter.members = {} -- normalized name -> true, from the latest roster scan
 Adapter.guids = {}   -- normalized name -> GUID, from the same scan (env.groupedWith)
+Adapter.byGUID = {}  -- GUID -> normalized name, from the same scan (Adapter.nameOfGUID)
 local lastRosterAsk
+
+-- The guild member's full name (normalized) of a GUID, from the latest roster scan, or nil.
+function Adapter.nameOfGUID(guid)
+  if guid == nil then return nil end
+  return Adapter.byGUID[guid]
+end
 
 function Adapter.isMember(name)
   if Adapter.members[name] then return true end
@@ -313,7 +377,7 @@ end
 
 local function scanRoster()
   local myGuid = UnitGUID("player")
-  local online, members, guids = {}, {}, {}
+  local online, members, guids, byGUID = {}, {}, {}, {}
   for i = 1, (GetNumGuildMembers()) do
     local raw, _, _, _, _, _, _, _, isOnline, _, _, _, _, _, _, _, guid = GetGuildRosterInfo(i)
     local name = Names.normalize(raw)
@@ -321,9 +385,10 @@ local function scanRoster()
       if guid == myGuid then found(name) end
       online[name] = isOnline and true or false
       members[name], guids[name] = true, guid
+      if guid then byGUID[guid] = name end
     end
   end
-  Adapter.members, Adapter.guids = members, guids
+  Adapter.members, Adapter.guids, Adapter.byGUID = members, guids, byGUID
   local client = ns.client
   if client and lastOnline then
     for name, was in pairs(lastOnline) do

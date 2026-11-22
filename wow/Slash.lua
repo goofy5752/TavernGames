@@ -35,15 +35,7 @@ local TRADE_EVENTS = {
 local GAME_ALIAS = { dr = "deathroll" }
 local ALPHABET = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 
--- rawget: an absent API reads as nil, never through a metatable of _G.
-local function lookup(path)
-  local v = _G
-  for part in path:gmatch("[^%.]+") do
-    if type(v) ~= "table" then return nil end
-    v = rawget(v, part)
-  end
-  return v
-end
+local lookup = Adapter.lookup
 
 -- The values as text, joined by spaces.
 local function joined(...)

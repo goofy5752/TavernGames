@@ -25,3 +25,9 @@ Later tasks of the stage append their rows below.
 | 12 | two characters, staked Морски шах | both see the same bill; a third character sees the debt in „Тефтер“ within a few seconds | not yet measured |
 | 13 | the loser alt-F4s on the last move | the debt waits, and is confirmed without a question when it logs in | not yet measured |
 | 14 | the loser goes offline mid-game for three minutes, then logs in | the question appears once, with the game and the amount | not yet measured |
+| 15 | „Плати“ → „Трейд“ next to the creditor | the trade opens with the amount filled in; no "action blocked"; in and out of combat (when the amount stays empty, the dialog's line tells the amount to type) | not yet measured |
+| 16 | after the trade | both clients show the debt struck through within seconds | not yet measured |
+| 17 | at a mailbox: „Плати“ → „Поща“ | the letter is filled, the money box shows the amount (sent as money, not COD), „Send“ is the game's own button | not yet measured |
+| 18 | the receiver takes the money | the debt is struck through on both | not yet measured |
+| 19 | a trade for an item with the same player | a question appears, nothing is recorded | not yet measured |
+| 20 | the recipient form the mail frame accepts for „Име Фамилия“ (full name, with a realm, first name only), and which body box (`SendMailBodyEditBox` / `MailEditBox`) is filled | which form reaches the right player; that the body text shows in the letter | not yet measured |

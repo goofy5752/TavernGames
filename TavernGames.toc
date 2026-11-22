@@ -85,6 +85,8 @@ locale/en.lua
 
 # WoW
 wow/Adapter.lua
+wow/Trade.lua
+wow/Mail.lua
 wow/Rolls.lua
 wow/Slash.lua
 
