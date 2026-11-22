@@ -5,7 +5,6 @@ local C, E, U = ns.Const, ns.Engines.holdem, ns.Util
 
 -- Stage F3, Task 8: the buy-in follows my sit; „Стани“ is a cashout, then the
 -- stand; three minutes offline settle the seat (core/CashOut.lua).
-local restore = Play.staked("holdem")
 local A, B, M, G = Play.NAMES[1], Play.NAMES[2], Play.NAMES[3], Play.NAMES[4]
 local K, N6 = Play.MORE[1], Play.MORE[2]
 local ALL = { A, B, M, G, K, N6 } -- the name of chair i
@@ -529,5 +528,3 @@ describe("three minutes offline", function()
     eq(rec.chips, chips)
   end)
 end)
-
-restore()

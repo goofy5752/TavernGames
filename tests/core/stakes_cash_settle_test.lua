@@ -5,7 +5,6 @@ local C, E, Stakes, U = ns.Const, ns.Engines.holdem, ns.Stakes, ns.Util
 
 -- Stage F3, Task 7: a seat's settlement becomes pair debts that wait for the
 -- book (core/StakesCashOwe.lua).
-local restore = Play.staked("holdem")
 local A, B, M, G = Play.NAMES[1], Play.NAMES[2], Play.NAMES[3], Play.NAMES[4]
 local K, N6 = Play.MORE[1], Play.MORE[2]
 local ALL = { A, B, M, G, K, N6 } -- the name of chair i
@@ -717,5 +716,3 @@ describe("a cash settlement becomes pair debts", function()
     eq(Stakes.cashPairs(rec), { { f = A, t = B, c = 500 }, { f = B, t = M, c = 700 } })
   end)
 end)
-
-restore()

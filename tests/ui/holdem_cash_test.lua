@@ -1,5 +1,4 @@
 local Wow = require("wow")
-local Play = require("play")
 
 -- Stage F3, Task 11: the UI of a cash Холдем: the model's `cash`, the panel „Сметка на масата“
 -- (ui/games/HoldemCashView.lua), „Вход“ / „Докупи“, „Стани“ at a cash table, the bill, the headers.
@@ -237,7 +236,6 @@ describe("ui: „Стани“ at a cash table", function()
   -- My own staked table (an open session), my cash-out pending: the real client's flow is Task 8's.
   local function world()
     local w = guildWow()
-    local restore = Play.staked(w.ns, "holdem")
     w.ns.MainWindow.show()
     local client = w.ns.client
     assert(client:openTable{ game = "holdem", access = "guild", turn = 45, stake = 1000, opt = { blinds = 10 } })
@@ -245,11 +243,11 @@ describe("ui: „Стани“ at a cash table", function()
     local shown, realShow = {}, w.ns.MainWindow.show
     w.ns.MainWindow.show = function(tab) shown[#shown + 1] = tab or false; return realShow(tab) end
     w.ns.CashOut.owes = function() return true end
-    return w, client, shown, restore
+    return w, client, shown
   end
 
   it("„Стани“ at a cash table keeps the table open until the cashout, then goes to the hall", function()
-    local w, client, shown, restore = world()
+    local w, client, shown = world()
     local TF, s = w.ns.TableFrame, client.session
     local real, calls = client.stand, {}
     client.stand = function(_, now) -- the real client waits for the cash-out: it says cashGoing and keeps my table
@@ -266,11 +264,10 @@ describe("ui: „Стани“ at a cash table", function()
     client.cashGoing = nil
     real(client, true); client.events:emit("cashGoing", nil); w:advance(0)
     eq(client.session, nil); eq(shown[#shown], "hall")
-    restore()
   end)
 
   it("when the host never applies my cash-out „Стани веднага“ stands at once", function()
-    local w, client, shown, restore = world()
+    local w, client, shown = world()
     local TF, s = w.ns.TableFrame, client.session
     local real, calls = client.stand, {}
     client.stand = function(self, now) calls[#calls + 1] = now == true; return real(self, now) end
@@ -278,23 +275,20 @@ describe("ui: „Стани“ at a cash table", function()
     eq(TF.view.standButton.text:GetText(), "Стани веднага")
     TF.stand(); w:advance(0)
     eq(calls, { true }); eq(client.session, nil); eq(shown[#shown], "hall")
-    restore()
   end)
 
   it("standing up at a cash table asks no forfeit question", function()
-    local w, client, _, restore = world()
+    local w, client = world()
     local s = client.session
     s.status = "live"
     ok(w.ns.Engines.holdem.cashGame, "the engine says cash")
     eq(w.ns.TableFrame.standCosts(s), false)
-    restore()
   end)
 end)
 
 describe("ui: the stake of a cash table in the headers", function()
   it("the table frame writes the blinds, the invitation too; the rebuy line of an unlisted table is not empty", function()
     local w = guildWow()
-    local restore = Play.staked(w.ns, "holdem")
     local client = w.ns.client
     assert(client:openTable{ game = "holdem", access = "guild", turn = 45, stake = 2000, opt = { blinds = 20 } })
     w:advance(0)
@@ -311,7 +305,6 @@ describe("ui: the stake of a cash table in the headers", function()
     ok(P.askFrame:IsShown(), "no question")
     ok(P.askLeave:GetText() ~= "", "the rebuy line is empty")
     eq(P.askLeave:GetText(), w.ns.L("stake.ask.rebuy.unknown"))
-    restore()
   end)
 end)
 
@@ -406,10 +399,9 @@ end)
 
 describe("ui: the end of my own cash-out", function()
   it("a window I closed stays closed; my own bill is said once from my own note", function()
-    local w, client, shown, restore
+    local w, client
     do
       w = guildWow()
-      restore = Play.staked(w.ns, "holdem")
       w.ns.MainWindow.show()
       client = w.ns.client
       assert(client:openTable{ game = "holdem", access = "guild", turn = 45, stake = 1000, opt = { blinds = 10 } })
@@ -433,7 +425,6 @@ describe("ui: the end of my own cash-out", function()
     ok(said[1]:find("Сметката ти: ", 1, true) == 1 and said[1]:find("15s", 1, true), said[1])
     client.events:emit("cashGoing", nil)
     eq(#said, 1) -- once
-    restore()
   end)
 
   it("the hands of a table that ended are freed", function()

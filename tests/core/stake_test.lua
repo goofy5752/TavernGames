@@ -1,4 +1,5 @@
 local Sim = require("sim")
+require("fake_engine") -- the test engine "fake" takes no stake: every game of the addon does since stage F3
 local ns = Sim.ns
 local Stake, Bots = ns.Stake, ns.Bots
 
@@ -122,16 +123,15 @@ describe("stake", function()
   end)
 
   it("a stake is refused for a game that is not ready", function()
+    eq(ns.Engines.fake.stakes, nil)
     local sim, a, b, c = setup()
-    for _, game in ipairs({ "holdem" }) do
-      local tid, why = a:openTable{ game = game, access = "guild", turn = 45, stake = 50000 }
-      eq(tid, nil); eq(why, "stake"); eq(a.session, nil)
-    end
-    local tid = fakeTBL(sim, c, "holdem", { P, false, false, false, false, false }, 50000)
+    local tid, why = a:openTable{ game = "fake", access = "guild", turn = 45, stake = 50000 }
+    eq(tid, nil); eq(why, "stake"); eq(a.session, nil)
+    tid = fakeTBL(sim, c, "fake", { P, false, false }, 50000)
     eq(b.lobby:get(tid), nil)
     -- The same table for fun is listed; a staked Death Roll opens.
-    tid = fakeTBL(sim, c, "holdem", { P, false, false, false, false, false }, nil)
-    ok(b.lobby:get(tid), "a fun holdem TBL is listed")
+    tid = fakeTBL(sim, c, "fake", { P, false, false }, nil)
+    ok(b.lobby:get(tid), "a fun fake TBL is listed")
     tid = a:openTable{ game = "deathroll", access = "guild", turn = 45, stake = 50000 }; sim:run(3)
     ok(tid, "a staked deathroll opens"); eq(b.lobby:get(tid).stake, 50000)
   end)
@@ -413,7 +413,7 @@ describe("stake", function()
   it("an INV with a stake for a game that takes none is dropped (M2)", function()
     local sim, _, b, c = setup()
     local invites = record(b, "invite")
-    c:send("WHISPER", B, { v = 1, t = "INV", tid = P .. "#1", g = "holdem", h = P, s = { P, false, false, false, false, false }, sk = 50000 }); sim:run(1)
+    c:send("WHISPER", B, { v = 1, t = "INV", tid = P .. "#1", g = "fake", h = P, s = { P, false, false }, sk = 50000 }); sim:run(1)
     eq(invites, {})
     c:send("WHISPER", B, { v = 1, t = "INV", tid = P .. "#2", g = "ttt", h = P, s = { P, false }, sk = 50000 }); sim:run(1)
     eq(#invites, 1); eq(invites[1][1].stake, 50000)

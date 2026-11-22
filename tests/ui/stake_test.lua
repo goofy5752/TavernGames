@@ -103,22 +103,16 @@ describe("ui: the stake in the new-table dialog", function()
     eq(lastSent(w, "TBL").msg.sk, nil)
   end)
 
-  it("„Със залог“ is offered only for the five games that take a stake", function()
+  it("„Със залог“ is offered for every game: all six take a stake", function()
     local w = guildWow()
     w.ns.MainWindow.show()
     local Dlg, L = w.ns.NewTableDialog, w.ns.L
     eq(L("dialog.stake.gold"), "Със залог")
-    for _, id in ipairs({ "ttt", "deathroll", "santase", "belot", "tabla" }) do
+    for _, id in ipairs({ "ttt", "deathroll", "santase", "belot", "tabla", "holdem" }) do
       Dlg.open(id)
       eq(#Dlg.stake.options, 2)
       eq({ Dlg.stake.options[1].text:GetText(), Dlg.stake.options[2].text:GetText() }, { "Само за удоволствие", "Със залог" })
       ok(Dlg.stake.options[2].frame:IsVisible(), "no „Със залог“ for " .. id)
-    end
-    for _, id in ipairs({ "holdem" }) do
-      Dlg.open(id)
-      eq(#Dlg.stake.options, 1)
-      eq(Dlg.stake.options[1].text:GetText(), "Само за удоволствие")
-      eq(#w:texts("Със залог"), 0)
     end
   end)
 
@@ -890,17 +884,13 @@ end)
 
 -- Stage F3, Task 10: a cash table (staked Холдем) in the dialog, the question with the buy-in, the hall.
 describe("ui: a cash table in the dialog and the question", function()
-  local Play = require("play")
   local SEATS = 6
 
-  -- A guild world where Холдем takes a stake (Play.staked, undone after the test).
+  -- A guild world with its main window shown.
   local function cash(fn)
     local w = guildWow()
-    Play.staked(w.ns, "holdem")
     w.ns.MainWindow.show()
-    local ok_, err = pcall(fn, w)
-    Play.restore()
-    if not ok_ then error(err, 0) end
+    fn(w)
   end
 
   local function cashTable(w, hostName, o)

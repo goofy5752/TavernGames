@@ -10,7 +10,7 @@ Play.NAMES = { "Иван Петров", "Петър Колев", "Мария С�
 -- Seats 5 and 6 of a cash table (Play.cash).
 Play.MORE = { "Kiro Barley", "Нади Колева" }
 
-local pending = {} -- the restores of Play.short and Play.staked not run yet, in the order made
+local pending = {} -- the restores of Play.short not run yet, in the order made
 
 -- Records `f` as pending -> a restore that runs it once and drops it from pending.
 local function pend(f)
@@ -23,21 +23,6 @@ local function pend(f)
   end
   pending[#pending + 1] = back
   return back
-end
-
--- Play.staked([ns,] id, ...): the engines `id` take a stake in `ns` (default
--- Sim.ns; a UI test passes its w.ns) -> a restore that puts the old flags back
--- and runs Play.restore() (so it also undoes every pending Play.short); Play.restore() runs it too. Until stage F3 lets
--- Холдем take a stake, a test file of a staked Холдем begins with it.
-function Play.staked(ns, ...)
-  local ids = { ... }
-  if type(ns) ~= "table" then table.insert(ids, 1, ns); ns = Sim.ns end
-  local old = {}
-  for i, id in ipairs(ids) do old[i] = ns.Engines[id].stakes; ns.Engines[id].stakes = true end
-  local back = pend(function()
-    for i, id in ipairs(ids) do ns.Engines[id].stakes = old[i] end
-  end)
-  return function() back(); Play.restore() end
 end
 
 -- The first n of NAMES and the names in `more`, past their login queues -> sim, cl (cl[name]).
@@ -100,7 +85,7 @@ function Play.short(id)
   return pend(function() E[key] = was end)
 end
 
--- Runs every restore of Play.short and Play.staked still pending.
+-- Runs every restore of Play.short still pending.
 function Play.restore()
   while #pending > 0 do pending[#pending]() end
 end

@@ -119,7 +119,7 @@ local HC = ns.HoldemCash
 -- engine itself plays any seats it is given on its 9 chairs.
 local E = { id = "holdem", minSeats = 2, maxSeats = 6, start = "host",
   ext = { "fair", "cash" }, again = true, sealed = true, publicAuto = true, watchers = 1, botFill = 6,
-  HAND_DELAY = 4, IDLE_DELAY = 2, STREET_DELAY = 1 }
+  HAND_DELAY = 4, IDLE_DELAY = 2, STREET_DELAY = 1, stakes = true }
 ns.Engines.holdem = E
 
 local CHAIRS = 9

@@ -135,11 +135,12 @@ describe("stakes F2: the switch", function()
     for _, id in ipairs({ "ttt", "deathroll", "santase", "belot", "tabla" }) do
       eq(ns.Stake.allowed(id, 50000), true, id)
     end
-    eq(ns.Stake.allowed("holdem", 50000), false)
+    -- Since stage F3 Холдем takes a stake too: its big blind in copper, never another sum.
+    eq(ns.Stake.allowed("holdem", 1000, { blinds = 10 }), true); eq(ns.Stake.allowed("holdem", 50000, { blinds = 10 }), false)
     for _, id in ipairs({ "santase", "belot", "tabla" }) do eq(ns.Engines[id].stakes, true, id) end
     -- A staked table of each of the five, each opened by another member, is listed by every other.
     local sim, cl = guild(4)
-    -- Холдем takes none.
+    -- 5g is no big blind of Холдем.
     local tid, why = cl[A]:openTable{ game = "holdem", access = "guild", turn = 45, stake = 50000 }
     eq({ tid, why }, { nil, "stake" }); eq(cl[A].session, nil)
     local hosts, tids = { A, B, V, G, D }, {}

@@ -8,7 +8,6 @@ local C, E, copy = ns.Const, ns.Engines.holdem, ns.Util.copy
 
 -- Stage F3, Task 6: no void and no away moves a chip at a cash table (E2, E4,
 -- E5, C9; core/Cash.lua `lapsed`, Member.unasked, s.stepAsks, s.hostHeard).
-local restore = Play.staked("holdem")
 local A, B, M = Play.NAMES[1], Play.NAMES[2], Play.NAMES[3]
 local ALL = { A, B, M }
 
@@ -366,5 +365,3 @@ describe("the dealer's step (E2, H14)", function()
     eq(host.session.fairLapses[dn], 1)
   end)
 end)
-
-restore()

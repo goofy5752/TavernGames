@@ -5,7 +5,6 @@ local Games, E = ns.Games, ns.Engines.holdem
 
 -- Stage F3, Task 4: a staked Холдем table's options, its stake (the big blind
 -- in copper), the options my note pins, and the names the engine gets.
-local restore = Play.staked("holdem")
 local A, B, P = Play.NAMES[1], Play.NAMES[2], Play.NAMES[3]
 local SK = 1000 -- the stake of blinds 10: 10 chips of one silver
 
@@ -290,20 +289,4 @@ describe("the table I accepted: blinds, betting, rebuy", function()
     eq(fine, false)
     eq(Games.resolve("holdem", nil, true), { betting = "nl", blinds = 10, rebuy = "bust" })
   end)
-
-  it("Play.staked takes a namespace and is undone by Play.restore", function()
-    local fake = { Engines = { holdem = { stakes = nil } } }
-    local back = Play.staked(fake, "holdem")
-    eq(fake.Engines.holdem.stakes, true)
-    back()
-    eq(fake.Engines.holdem.stakes, nil)
-    Play.staked(fake, "holdem")
-    eq(fake.Engines.holdem.stakes, true)
-    Play.restore()
-    eq(fake.Engines.holdem.stakes, nil)
-    eq(ns.Engines.holdem.stakes, nil) -- Play.restore also undid this file's own
-    restore = Play.staked("holdem")
-  end)
 end)
-
-restore()

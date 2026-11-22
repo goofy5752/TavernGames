@@ -7,7 +7,6 @@ local ns = Sim.ns
 local C, E, Stakes = ns.Const, ns.Engines.holdem, ns.Stakes
 
 -- Stage F3, Task 5: the extension `stakes` at a cash table (core/StakesCash.lua).
-local restore = Play.staked("holdem")
 local A, B, M, G = Play.NAMES[1], Play.NAMES[2], Play.NAMES[3], Play.NAMES[4]
 local K, N6 = Play.MORE[1], Play.MORE[2]
 local ALL = { A, B, M, G, K, N6 } -- the name of chair i, for the tables of this file
@@ -545,5 +544,3 @@ describe("stakes at a cash table", function()
     eq(back.st.cash.took, took)
   end)
 end)
-
-restore()
