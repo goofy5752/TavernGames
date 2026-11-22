@@ -122,6 +122,7 @@ Help.topics = {
     { kind = "example", key = "help.ledger.net" },
     { kind = "p", key = "help.ledger.alts" },
     { kind = "p", key = "help.ledger.holds" },
+    { kind = "p", key = "help.ledger.mine" },
   } },
   { id = "soon", title = "games.soon", blocks = {
     { kind = "p", key = "help.soon.p" },

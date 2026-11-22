@@ -310,8 +310,8 @@ Copied from the stage F1 plan (`docs/superpowers/plans/2026-11-23-stageF1-ledger
 | `SNO.why` | `"stake"` | the `sk` of the `SIT` is not the table's |
 | `HI` | `ld` | 8 hex: the digest of my ledger (SHA-256 over the sorted `"<author>:<x>"`); absent on a client without a guild ledger (a bot). `HI` grows by at most 20 packed bytes (measured +13..+18) |
 | `EV` seat 0 | `{k="stand", seat, why="idle"}` | staked Death Roll: 180 s on turn without a roll. At a staked table the host also whispers a seat-0 stand (any `why` but `"left"`) to the player it stood up, with the same fields |
-| new `LEV` | G: `ev` (1-4 entries, at most 760 packed bytes, **all authored by the sender**); W: `ev` (1-`LEDGER_BATCH` = 6 entries, at most 1 140 packed bytes, any author, but an entry of another author than the sender is taken only inside an open exchange with the sender), `f = true` on a side's last batch | ledger entries |
-| new `LVC` | W: `a = {[author] = {n, x}}` (`n`: the highest k with 1..k all held; `x`: 12 hex, SHA-256 over the byte-sorted `"<id>:<h>"` of the author's bodies), `r = true` when it answers one, `m = true` when more pages follow | my per-author vector, in pages of at most 1 500 packed bytes and `LEDGER_PAGE_ITEMS = 120` authors |
+| new `LEV` | G: `ev` (1-4 entries, at most 760 packed bytes, **all authored by the sender**); W: `ev` (0-`LEDGER_BATCH` = 6 entries, none only with `f`, at most 1 140 packed bytes, any author, but an entry of another author than the sender is taken only inside an open exchange with the sender), `f = true` on a side's last batch | ledger entries |
+| new `LVC` | W: `a = {[author] = {n, x}}` (`n`: the highest k with 1..k all held; `x`: 12 hex, SHA-256 over the byte-sorted `"<id>:<h>"` of the author's bodies), `r = true` when it answers one, `m = true` when more pages follow, `p = true` on an asking vector that is only a part of mine (it would not fit `LEDGER_EX_PAGES = 10` pages: the responder must not take an author it does not list for one I lack). A body I refused and still remember counts as held in `n` and `x` | my per-author vector, in pages of at most 1 500 packed bytes and `LEDGER_PAGE_ITEMS = 120` authors, at most 10 pages |
 | new `LID` | W: `au`, `l = {"<n>.<h>", ...}` (`h` the full 16 hex), `r`, `m` | the bodies I hold of one author above the common `n`, at the ids I hold twins for and at the ids the other list names; when the lists are equal and `x` still differs, my whole list once; paged as `LVC` |
 | new `PAY` | W: `c` (copper), `how` = `"trade"`, `"mail"` or `"nudge"` | payer -> creditor: "I am paying you `c` now"; creditor -> debtor with `"nudge"`: a reminder (at most one per `NUDGE_GAP = 3600` s) |
 
@@ -335,11 +335,13 @@ Copied from the stage F1 plan (`docs/superpowers/plans/2026-11-23-stageF1-ledger
 | field | meaning |
 |---|---|
 | `guild` | the key of the ledger store, `guild .. "-" .. GetRealmName()` (local only, never sent); read when the client is created |
-| `db.ledger` | `{[guild] = store}`, account-wide (AceDB `global`); a store holds `ev`, `tw` (twins), `me[name] = {seq, born}` and `pending` (the login queue, each row naming its owner character) |
+| `db.ledger` | `{[guild] = store}`, account-wide (AceDB `global`); a store holds `ev`, `tw` (twins), `me[name] = {seq, born}`, `pending` (the login queue, each row naming its owner character) and `rf` (the entries I refused, `[author]["<n>.<h>"]` = when forgotten) |
 | `db.stakeSeen`, `db.stakeLeft` | my outcome notes and my „Стани“ notes, per character (`STAKE_SEEN_KEEP` = 14 days) |
 | `db.stakeSat` | `{tid, sk}`: the stake of the table I sit at, per character; my staked seat exists only through it |
 | `db.stakeLog` | `{tid, no, log, st}`: what I sent at that table and the game state it was saved at, per character, dropped with `stakeSat` |
+| `db.paySent` | `{[creditor] = {at, c, paid, how}}`: gold that left me and no `P` has answered yet, per character (`PAY_GUARD` = 24 h); the payer's guard against paying twice |
 | `member(name)` | true when the name is a guild member (the adapter's roster); absent = every name (the sim) |
+| `after(0, fn)` | the next frame: the client hashes `LEDGER_HASH_ITEMS = 300` items of a stale author `x` per call (the sim runs it within the same instant) |
 | `groupedWith(name)` | my own roster says that full name is in my party or raid (the staked Death Roll grouping checks) |
 | `date(t)` | `{d, m, day}` of epoch `t` in my zone (`day` = a local day number); the sim and the fallback use UTC (`Pay.utc`); core never calls `os.date` |
 | `noLedger(tid)` | true for a table `Bots:tableKind` calls a bot table; installed by `Bots.enable` |

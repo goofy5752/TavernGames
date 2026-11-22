@@ -170,11 +170,12 @@ describe("locale and help", function()
       "p help.stakes.leave", "p help.stakes.honest" })
     eq(H.get("ledger").title, "tab.ledger")
     eq(keys("ledger"), { "p help.ledger.p1", "p help.ledger.pay.trade", "p help.ledger.pay.mail", "p help.ledger.settle",
-      "example help.ledger.net", "p help.ledger.alts", "p help.ledger.holds" })
+      "example help.ledger.net", "p help.ledger.alts", "p help.ledger.holds", "p help.ledger.mine" })
     eq(T.bg["help.stakes.example"], "Иван и Мария играят Морски шах за 1g. Мария печели. Иван вижда в „Сметки“: „Дължиш на Мария Колева 1g“ и натиска „Плати“.")
     -- Each label below is the whole text of a UI key and is quoted in the two topics, in both languages.
     local LABELS = { "accounts.title", "accounts.pay", "accounts.settle", "accounts.nudge", "table.stand", "dialog.stake.gold",
-      "dialog.stake.none", "stake.ask.yes", "ask.yes", "ask.no", "pay.trade", "pay.mail", "tab.ledger" }
+      "dialog.stake.none", "stake.ask.yes", "ask.yes", "ask.no", "pay.trade", "pay.mail", "tab.ledger",
+      "ask.mine.yes", "ask.mine.no", "ledger.denied" } -- the final review: the own-entries question and the mark „отречено“
     eq(T.bg["accounts.title"] .. " " .. T.bg["dialog.stake.none"] .. " " .. T.bg["stake.ask.yes"], "Сметки Само за удоволствие Приемам и сядам")
     for lang, q in pairs({ bg = { "„", "“" }, en = { "“", "”" } }) do
       local text = {}
@@ -186,6 +187,9 @@ describe("locale and help", function()
         ok(text:find(q[1] .. T[lang][k] .. q[2], 1, true), lang .. ": the stakes and ledger help never quote " .. k)
       end
     end
+    -- What the final review changed, said where a player will look for it.
+    ok(T.bg["help.ledger.pay.mail"]:find("остава в „Сметки“", 1, true), "the letter on its way is not said")
+    ok(T.bg["help.stakes.honest"]:find("станеш сам", 1, true), "my own stand after a foul is not said")
     local fb = {}
     for i, b in ipairs(H.get("fair").blocks) do fb[i] = b.key end
     eq(fb, { "help.fair.p1", "help.fair.example", "help.fair.how", "help.fair.verify", "help.fair.dealer", "help.fair.bad",
