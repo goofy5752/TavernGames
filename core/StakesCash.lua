@@ -45,6 +45,15 @@ local _, ns = ...
 --     n} counts my asks for the step due (core/Cash.lua's `ask`), an ask only
 --     while my client heard the host within FAIR_ASK_GAP before it (a dead
 --     link loses the asks and the host's words alike). Member.unasked reads it.
+--   The key draw (E8): the book's forged mark (rule 6a of core/Book.lua: my key
+--     left at the end and the same game runs on) is my foul too, at the end of
+--     every event and snapshot: "forged", "unseen" when my own key stayed
+--     (book.held). And when my game was over on my client, a snapshot of that
+--     game over with another end (another hand count or other out records)
+--     says the host told me an end its table never had: before the book takes
+--     the snapshot's keys, it is forged (from another host or epoch than the
+--     one I followed, how.changed: held, a question), so my notes of that end,
+--     still waiting, read it.
 local Stakes, C = ns.Stakes, ns.Const
 
 local RANK, pend, same = Stakes.RANK, Stakes.pend, ns.Util.same
@@ -131,6 +140,24 @@ function ns.Session.request(client, kind, tid, seat, sk)
   return request(client, kind, tid, seat, sk)
 end
 
+-- The book's forged mark is my foul (E8).
+local function marked(s)
+  local book = s.book
+  if book and book.forged then Stakes.foul(s, book.held and "unseen" or "forged") end
+end
+
+-- Before the book takes a snapshot's keys (ns.Ext.cash.adopted): my game over, the same game over with another end.
+local cashAdopted = ns.Ext.cash.adopted
+ns.Ext.cash.adopted = function(s, prev, m, how)
+  local st, book, e = s.state, s.book, s:engine()
+  if Stakes.cash(s) and book and not book.forged and type(prev) == "table" and type(st) == "table" and prev.g == book.g and st.g == book.g
+      and e.over(prev) and e.over(st) and not (prev.hand == st.hand and same(prev.cash and prev.cash.outs, st.cash and st.cash.outs)) then
+    ns.Book.forge(book)
+    if how.changed then book.held = true end
+  end
+  return cashAdopted(s, prev, m, how)
+end
+
 local ext = ns.Ext.stakes
 local applied, adopted, leaving, gone, still = ext.applied, ext.adopted, ext.leaving, ext.gone, ext.still
 
@@ -152,6 +179,7 @@ ext.applied = function(s, seat, a)
     s.cashNames[a.seat] = nil
   end
   if money and s.role == "host" and s.state and not s.state.turn then s:armTimers() end
+  marked(s)
 end
 
 ext.adopted = function(s, prev, m, how)
@@ -179,6 +207,7 @@ ext.adopted = function(s, prev, m, how)
     local clean = sitting(s, st, s.client.env.me)
     if clean then s.stakeFoul = raised elseif clean == false then Stakes.foul(s, "forged") end
   end
+  marked(s)
 end
 
 ext.leaving = function(s)
