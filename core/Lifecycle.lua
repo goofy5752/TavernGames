@@ -198,8 +198,9 @@ end
 -- not published its keys yet: the check of every hand would be lost; an aborted
 -- table's book is closed and waits for nothing); at a staked table "group" (a
 -- seated player outside my group, for an engine that needs one: Stakes.grouped)
--- and "break" (Stakes.gap has not passed by my clock since the last game
--- ended: s.stakeEndedAt, core/Stakes.lua). The checks of startGame, no effect.
+-- and "break" (Stakes.held: the break since the last game ended, s.stakeEndedAt
+-- or s.stakeHoldFrom, and a silent seat at an `again` table: core/StakesStart.lua).
+-- The checks of startGame, no effect.
 function Session:canStart()
   if self.role ~= "host" then return nil, "nothost" end
   local engine, over = self:engine(), self:gameOver()
@@ -208,7 +209,7 @@ function Session:canStart()
   if self.status == "live" and not over then return nil, "live" end
   if engine.sealed and over and self.status == "live" and not (self.book and self.book.published) then return nil, "book" end
   if self.stake ~= nil and engine.needsGroup and not ns.Stakes.grouped(self) then return nil, "group" end
-  if self.stake ~= nil and self.stakeEndedAt and self.client.env.now() < self.stakeEndedAt + ns.Stakes.gap(self) then return nil, "break" end
+  if self.stake ~= nil and ns.Stakes.held(self) > 0 then return nil, "break" end
   return true
 end
 

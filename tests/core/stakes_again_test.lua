@@ -218,7 +218,7 @@ describe("stakes: the next match of a staked table", function()
   end
 
   it("belot: the held start survives a host change, and never seats a silent player", function()
-    local sim, _, _, new = silentHost()
+    local sim, cl, _, new = silentHost()
     local s = new.session
     eq(s.status, "aborted")
     sim:run(20); eq(s.status, "aborted") -- no start while the old host is silent
@@ -229,6 +229,17 @@ describe("stakes: the next match of a staked table", function()
     end
     eq(new.session, s); eq(s.role, "host"); eq(s.status, "live"); eq(s.stakeLive, true)
     eq(s.seats[1], I)
+    for _, name in ipairs({ P, G, T }) do if cl[name] ~= new then eq(cl[name].session.stakeFoul, nil, name) end end
+  end)
+
+  it("belot: the successor's „Нова игра“ never seats the silent old host", function()
+    local sim, _, _, new = silentHost()
+    local s = new.session
+    for _ = 1, 20 do
+      eq({ s:canStart() }, { nil, "break" }); eq({ new:startGame() }, { nil, "break" })
+      sim:run(1)
+    end
+    eq(s.status, "aborted"); ok(not s.stakeLive, "no match began")
   end)
 
   it("belot: a host that never comes back is stood up, the table is short, and nothing is owed", function()
@@ -263,6 +274,59 @@ describe("stakes: the next match of a staked table", function()
     runTo(sim, from + Stakes.gap(p) - 1); eq(p.status, "aborted")
     sim:run(1); eq(p.status, "live")
     eq(cl[T].session.stakeLive, true); eq(cl[T].session.stakeFoul, nil)
+    Play.restore()
+  end)
+
+  -- A takeover of a table whose game is over: `prep(sim, cl, t)` before the old host
+  -- goes offline at t + 2 -> sim, cl, t, the new host's client.
+  local function claimed(game, n, more, prep)
+    local sim, cl, _, _, t = ended(game, n, more)
+    if prep then prep(sim, cl, t) end
+    runTo(sim, t + 2)
+    sim:offline(I)
+    local new
+    for _ = 1, C.SILENT_AFTER + 60 do
+      sim:run(1)
+      for name, c in pairs(cl) do
+        if name ~= I and c.session and c.session.role == "host" then new = c end
+      end
+      if new then break end
+    end
+    ok(new, "nobody took over")
+    return sim, cl, t, new
+  end
+
+  it("belot: a match over by play, the host gone silent: the successor's „Нова игра“ bills it nothing", function()
+    local sim, _, _, new = claimed("belot", 4)
+    local s = new.session
+    eq(s.status, "live"); ok(s:gameOver()); eq(s.seats[1], I)
+    sim.envs[I].dead = true
+    for _ = 1, C.OFFLINE_STAND_SECONDS + 10 do
+      local can, code = new:startGame()
+      ok(not can and (code == "break" or code == "short"), tostring(code))
+      sim:run(1)
+    end
+    eq(s.seats[1], false); ok(not s.stakeLive, "no match began")
+    for _, d in ipairs(Play.entries(sim, nil, "D")) do ok(not (d.f == I and d.why == "offline"), "an offline D against the old host") end
+    Play.restore()
+  end)
+
+  it("santase: a host made by a snapshot of a game over holds its „Нова игра“ a full break", function()
+    local sim, cl, _, new = claimed("santase", 2, nil, function(sim, cl, t)
+      runTo(sim, t + 1)
+      cl[P] = sim:relog(P); sim:settle(); runTo(sim, t + 2)
+    end)
+    local s = new.session
+    eq(new, cl[P]); eq(s.stakeEndedAt, nil); ok(s:gameOver())
+    local from = s.stakeHoldFrom
+    eq(from, sim.clock)
+    sim:online(I)
+    runTo(sim, from + Stakes.gap(s) - 1)
+    eq({ new:startGame() }, { nil, "break" })
+    sim:run(1)
+    eq(new:startGame(), true); sim:run(0)
+    eq(s.stakeLive, true); eq(s.seats[1], I)
+    eq(cl[I].session.stakeLive, true); eq(cl[I].session.stakeFoul, nil)
     Play.restore()
   end)
 

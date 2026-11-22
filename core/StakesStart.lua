@@ -69,21 +69,30 @@ local function arm(s, wait)
   end)
 end
 
--- Host (Session:startIfFull at a staked table) -> true: the start of an
--- `again` table waits, for the rest of the break (from my end of the last game,
--- or from s.stakeHoldFrom), and while a seated player other than me has been
--- silent for SILENT_AFTER (Succession's sweep stands it up in time: the table
--- is then short, and the old host of a takeover is never seated in a match it
--- does not hear begin).
-function ns.Ext.stakes.hold(s)
-  local engine, env = s:engine(), s.client.env
-  if not engine.again then return end
+-- The hold of s's next start -> seconds left (> 0: no start of any kind, the
+-- host's „Нова игра“ (Session:canStart's "break") nor the held one): the rest
+-- of the break (from my end of the last game, or from s.stakeHoldFrom); at an
+-- `again` table at least HOLD_RECHECK while a seated player other than me has
+-- been silent for SILENT_AFTER (Succession's sweep stands it up in time: the
+-- table is then short, and the old host of a takeover is never seated in a
+-- match it does not hear begin).
+function Stakes.held(s)
+  local env = s.client.env
   local now, wait = env.now(), 0
   local from = s.stakeEndedAt or s.stakeHoldFrom
   if from then wait = from + Stakes.gap(s) - now end
+  if not s:engine().again then return wait end
   for name, at in pairs(s.lastHeard or {}) do
     if name ~= env.me and ns.Util.contains(s.seats, name) and now - at >= C.SILENT_AFTER then wait = math.max(wait, HOLD_RECHECK) end
   end
+  return wait
+end
+
+-- Host (Session:startIfFull at a staked table) -> true: the start of an
+-- `again` table waits while Stakes.held, and is tried again then.
+function ns.Ext.stakes.hold(s)
+  if not s:engine().again then return end
+  local wait = Stakes.held(s)
   if wait <= 0 then return end
   arm(s, wait)
   return true
