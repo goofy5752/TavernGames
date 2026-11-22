@@ -13,10 +13,16 @@ table.
    of the pot's contributors. So each winner takes exactly what finish pays it less its own chips, the odd
    chips to the same winners, and for every seat the sum of its pair nets is won - contributed.
  - A voided hand is never attributed (it moves no chip).
+ - A seat sits with 0 chips and sits out (seat(who, back)) until it buys; range(s, seat) is what buy takes and
+   names what it refuses ("seat", "phase", "hand", "rebuy", "full"); see engines/holdem.lua rule 20.
+ - settle(s, seat) writes the seat's out record: every pair of it with another occupied seat, its row and
+   column taken out of took, the other seat's `cleared` moved by that pair, so that for every occupied seat
+   sum over occupied j of net(i, j) == chips - bought - cleared. The names are the engine's own `who`.
 ]==]
 local _, ns = ...
 
 local HC = { CHIP = 100, MIN_BB = 40, MAX_BB = 100 }
+local CHAIRS = 9
 ns.HoldemCash = HC
 
 function HC.new(rebuy)
@@ -63,4 +69,94 @@ end
 function HC.net(cash, a, b)
   local t = cash.took
   return (t[a] and t[a][b] or 0) - (t[b] and t[b][a] or 0)
+end
+
+-- ------------------------------------------------------------------ the seats of a staked table
+
+-- a staked seat: no chips, sitting out until its own buy; back = the chips `who` left this game with
+function HC.seat(who, back)
+  return { chips = 0, out = true, leaving = false, who = who, bought = 0, cleared = 0, back = back }
+end
+
+local function running(s)
+  local ph = s.phase
+  return ph == "deal" or ph == "bet" or ph == "street" or ph == "showdown"
+end
+
+-- the seat is dealt into the running hand (a leaving chair is the leaver's until the hand ends)
+local function dealtIn(s, seat)
+  local p = s.p[seat]
+  return running(s) and (s.seats[seat].leaving or (p ~= nil and not p.gone))
+end
+
+-- the chips the seat may buy now: lo, hi | nil, code
+function HC.range(s, seat)
+  local st = s.seats[seat]
+  if not st then return nil, "seat" end
+  if s.closing then return nil, "phase" end
+  if dealtIn(s, seat) then return nil, "hand" end
+  local mode, c = s.cash.rebuy, st.chips
+  local min, max = HC.MIN_BB * s.bb, HC.MAX_BB * s.bb
+  if st.bought == 0 then
+    if st.back == 0 and mode == "none" then return nil, "rebuy" end
+    return math.max(min, math.min(st.back or 0, max)), max
+  end
+  if mode == "none" or (mode == "bust" and c > 0) then return nil, "rebuy" end
+  if c == 0 then return min, max end
+  if c < max then return 1, max - c end
+  return nil, "full"
+end
+
+function HC.buy(s, seat, n)
+  local lo, hi = HC.range(s, seat)
+  if not lo then return nil, hi end
+  if type(n) ~= "number" or n % 1 ~= 0 or n < lo or n > hi then return nil, "amount" end
+  local st = s.seats[seat]
+  st.chips, st.bought, st.out = st.chips + n, st.bought + n, false
+  return true
+end
+
+-- the out record of a seat with bought > 0, before its chair empties or changes hands
+function HC.settle(s, seat)
+  local cash, st = s.cash, s.seats[seat]
+  local net, names = {}, {}
+  for j = 1, CHAIRS do
+    local o = s.seats[j]
+    local n = j ~= seat and o and HC.net(cash, seat, j) or 0
+    if n ~= 0 then net[j], names[j], o.cleared = n, o.who, o.cleared - n end
+  end
+  cash.took[seat] = nil
+  for w, row in pairs(cash.took) do
+    row[seat] = nil
+    if next(row) == nil then cash.took[w] = nil end
+  end
+  if st.who then cash.left[st.who] = st.chips end
+  cash.outN = cash.outN + 1
+  local rec = { n = cash.outN, seat = seat, who = st.who, chips = st.chips, bought = st.bought, net = net, names = names }
+  cash.outs[#cash.outs + 1] = rec
+  return rec
+end
+
+-- settled, and seated on: its chips go back to its name
+local function out(s, seat)
+  local st = s.seats[seat]
+  HC.settle(s, seat)
+  st.back, st.chips, st.out, st.bought, st.cleared = st.chips, 0, true, 0, 0
+end
+
+function HC.cashout(s, seat)
+  local st = s.seats[seat]
+  if not st then return nil, "seat" end
+  if dealtIn(s, seat) then return nil, "hand" end
+  if st.bought == 0 then return nil, "seat" end
+  out(s, seat)
+  return true
+end
+
+-- the game is closed: every seat that bought, ascending, as a cashout
+function HC.close(s)
+  for i = 1, CHAIRS do
+    local st = s.seats[i]
+    if st and st.bought > 0 then out(s, i) end
+  end
 end

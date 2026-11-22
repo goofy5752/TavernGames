@@ -71,7 +71,7 @@ local function optionSet(id)
   local engine = ns.Games.engine(id)
   local frame = CreateFrame("Frame", nil, D.body)
   frame:SetAllPoints(D.body)
-  local options = engine and engine.options or {}
+  local options = {} for _, o in ipairs(engine and engine.options or {}) do if o.at ~= "stake" then options[#options + 1] = o end end
   local set = { frame = frame, groups = {}, width = WIDTH, count = #options }
   for i, o in ipairs(options) do
     local y = D.optionsY - (i - 1) * OPTION_H

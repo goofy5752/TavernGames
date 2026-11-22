@@ -83,7 +83,12 @@ RULES
     clockwise after it (nil without a button).
 19. A street or the showdown on a state that lacks one of its faces (a view): E.system returns
     {k="street"/"showdown", need="faces"}, 0; the faces come from whoever holds the deck.
-20. A staked table (opts.staked): see engines/holdem_cash.lua.
+20. A staked table (opts.staked; engines/holdem_cash.lua): option rebuy = "none" / "bust" / "top" (default "bust")
+    instead of stack. A seat sits with 0 chips and sits out until its own {k="buy", n} (40-100 BB; a name that left
+    this game with c chips buys at least min(c, 100 BB)); "none": no later buy, nor a first one after leaving with 0;
+    "bust": a new 40-100 BB only at 0 chips; "top": up to 100 BB. No buy and no {k="cashout"} while dealt in.
+    A seat is settled (an out record in state.cash.outs, emptied by the next hand) at its cashout (it stays seated),
+    its removal (a stand between hands, or the end of the hand it left), and for every seat when the game closes.
 
 HAND HANDSHAKE (the deck comes from the fairness layer, so the engine cannot deal on its own)
  - phase "idle"/"done": E.system returns {k="hand"} once 2+ seats can play. The host applies it: the button
@@ -130,6 +135,8 @@ E.options = {
   { id = "blinds", choices = { 10, 20, 50, 100, 200 }, default = 10 }, -- big blind; small blind = half
   { id = "stack", choices = { 50, 100, 200 }, default = 100 },         -- starting stack in big blinds
 }
+-- rule 20, a staked table's option (Task 4 adds it to E.options with the field `at`)
+local REBUY = { id = "rebuy", choices = { "none", "bust", "top" }, default = "bust", at = "stake" }
 
 local function copy(v)
   if type(v) ~= "table" then return v end
@@ -141,7 +148,7 @@ end
 local function isInt(x) return type(x) == "number" and x % 1 == 0 end
 
 local function choice(id, v)
-  for _, o in ipairs(E.options) do
+  for _, o in ipairs({ E.options[1], E.options[2], E.options[3], REBUY }) do
     if o.id == id then
       for _, c in ipairs(o.choices) do if c == v then return v end end
       return o.default
@@ -187,10 +194,12 @@ function E.new(opts)
     order = {}, p = {}, deck = {}, board = {}, shown = {}, ptr = 0, street = 0,
     bet = 0, minRaise = bb, turn = nil, aggr = nil, last = nil,
   }
+  local staked, names = opts.staked == true, type(opts.names) == "table" and opts.names or {}
   for i = 1, CHAIRS do
-    s.seats[i] = (type(opts.seats) == "table" and opts.seats[i]) and { chips = stack, out = false, leaving = false } or false
+    s.seats[i] = (type(opts.seats) == "table" and opts.seats[i])
+      and (staked and HC.seat(names[i] or nil) or { chips = stack, out = false, leaving = false }) or false
   end
-  if opts.staked == true then s.cash = HC.new((o.rebuy == "none" or o.rebuy == "top") and o.rebuy or "bust") end
+  if staked then s.cash = HC.new(choice("rebuy", o.rebuy)) end
   return s
 end
 
@@ -245,19 +254,24 @@ local function sameSet(a, b)
 end
 
 -- The end of a hand once the chips are paid out and s.last is written: leavers go with their chips
--- (a taken chair gets the newcomer's fresh stack), a seat with 0 chips sits out.
+-- (a taken chair gets the newcomer's fresh stack), a seat with 0 chips sits out. Staked: a leaver is
+-- settled before its chair empties or changes hands, the newcomer sits as a staked seat; a close settles all.
 local function settle(s)
+  local cash = s.cash
   for i = 1, CHAIRS do
     local st = s.seats[i]
     if st and st.leaving then
       s.last.left[i] = st.chips
-      s.seats[i] = st.taken and { chips = s.stack, out = false, leaving = false } or false
+      if cash and st.bought > 0 then HC.settle(s, i) end
+      s.seats[i] = st.taken and (cash and HC.seat(st.takenWho, cash.left[st.takenWho or ""])
+        or { chips = s.stack, out = false, leaving = false }) or false
       s.p[i].gone = true          -- kept for the table display, no longer anyone's own hand
     elseif st then
       st.out = st.chips == 0
     end
   end
   s.phase, s.turn = s.closing and "closed" or "done", nil
+  if cash and s.closing then HC.close(s) end
 end
 
 -- scores: nil when everyone else folded; else {[seat] = score} for every live seat
@@ -371,6 +385,7 @@ local function startHand(s)
     order[#order + 1] = i
   until i == button
   s.button, s.order, s.p = button, order, {}
+  if s.cash then s.cash.outs = {} end           -- rule 20: the records of the last hand go
   for _, seat in ipairs(order) do
     s.p[seat] = { bet = 0, total = 0, folded = false, allin = false, acted = false, at = 0, cards = {} }
   end
@@ -466,13 +481,14 @@ local function leave(s, seat)
   if not isInt(seat) or seat < 1 or seat > CHAIRS or not s.seats[seat] then return nil, "seat" end
   local st, p = s.seats[seat], s.p[seat]
   if inHand(s) and p then
-    if st.leaving then st.taken = nil; return true end   -- a newcomer on the chair stands up again
+    if st.leaving then st.taken, st.takenWho = nil, nil; return true end   -- a newcomer on the chair stands up again
     st.leaving = true
     if not p.folded then
       p.folded = true
       progress(s, s.turn == seat and seat or nil)
     end
   else
+    if s.cash and st.bought > 0 then HC.settle(s, seat) end
     s.seats[seat] = false
     if p then p.gone = true end   -- last hand's record of this chair belongs to nobody now
   end
@@ -480,16 +496,19 @@ local function leave(s, seat)
 end
 
 -- rule 2: an empty chair, or one whose player stood up during this hand (the leaver's hand is gone at once)
-local function join(s, seat)
+-- (staked: the seat of `who`, without chips, back = what that name left this game with)
+local function join(s, seat, who)
   if s.closing then return nil, "phase" end
   if not isInt(seat) or seat < 1 or seat > CHAIRS then return nil, "seat" end
   local st = s.seats[seat]
+  who = type(who) == "string" and who or nil
   if not st then
-    s.seats[seat] = { chips = s.stack, out = false, leaving = false }
+    s.seats[seat] = s.cash and HC.seat(who, s.cash.left[who or ""]) or { chips = s.stack, out = false, leaving = false }
     return true
   end
   if not (inHand(s) and st.leaving and not st.taken) then return nil, "seat" end
   st.taken, s.p[seat].gone = true, true
+  if s.cash then st.takenWho = who end
   return true
 end
 
@@ -524,7 +543,10 @@ end
 local function close(s)
   if s.closing then return nil, "phase" end
   s.closing = true
-  if not inHand(s) then s.phase, s.turn = "closed", nil end
+  if not inHand(s) then
+    s.phase, s.turn = "closed", nil
+    if s.cash then HC.close(s) end
+  end
   return true
 end
 
@@ -617,7 +639,12 @@ function E.apply(s, seat, a)
     if k == "void" then return void(s) end
     if k == "away" then return away(s, a.seat) end
     if k == "close" then return close(s) end
-    return join(s, a.seat)
+    return join(s, a.seat, a.who)
+  end
+  if s.cash and (k == "buy" or k == "cashout") then   -- rule 20, by the seat itself
+    if not isInt(seat) or seat < 1 or seat > CHAIRS then return nil, "seat" end
+    if k == "buy" then return HC.buy(s, seat, a.n) end
+    return HC.cashout(s, seat)
   end
   if k == "back" then                -- rule 16: in any phase, before the turn check
     local st = isInt(seat) and s.seats[seat]
@@ -719,6 +746,16 @@ function E.system(s)
 end
 
 E.inHand = inHand
+
+-- rule 20: a staked table's chip is HC.CHIP copper; its stake (TBL.sk) is the big blind in copper
+E.cashGame, E.CHIP = true, HC.CHIP
+function E.stakeOf(opt) return opt.blinds * HC.CHIP end
+
+-- what the seat may buy now: lo, hi | nil, code (the code buy refuses with)
+function E.buyRange(s, seat)
+  if not s.cash or not isInt(seat) or seat < 1 or seat > CHAIRS then return nil, "seat" end
+  return HC.range(s, seat)
+end
 
 -- rule 18: who shuffles: the hand's seats still seated and not away, ascending (a gone record is
 -- nobody's: its chair was vacated, whoever sits there now was not dealt in)
