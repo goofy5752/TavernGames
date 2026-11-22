@@ -660,7 +660,7 @@ describe("stakes: play, fix round 1", function()
     eq(#b.session.state.rolls, 0); eq(b.session.stakeFoul, "unseen"); eq(Rolls.audit(b.session), "roll")
   end)
 
-  it("the break leaves AUTO_GRACE for the transport; a snapshot dates no end", function()
+  it("the break leaves AUTO_GRACE for the transport; a snapshot dates its end by its arrival", function()
     -- Иван's final roll reaches Мария a second late; he starts the next game at once when allowed.
     local sim, a, b, _, tid = drTable({ B }, SK)
     local held = {}
@@ -674,7 +674,8 @@ describe("stakes: play, fix round 1", function()
     sim:run(0); ok(b.session:gameOver())
     sim:run(C.STAKE_BREAK - 1); ok(a:startGame()); sim:run(0)
     eq(b.session.stakeLive, true); eq(b.session.stakeFoul, nil)
-    -- The end comes by an asked snapshot: no end time of mine.
+    -- The end comes by an asked snapshot: dated when it reached me; a start inside my
+    -- break from then is a question, never forged (the host's own break may be over: Ruling F2-F, C2).
     sim, a, b, _, tid = drTable({ B }, SK)
     sim.bus.filter = function(from, to, _, m)
       if from == A and to == B and m.t == "EV" then return {} end
@@ -682,7 +683,10 @@ describe("stakes: play, fix round 1", function()
     end
     roll(sim, a, 1); sim.bus.filter = nil
     a:send("WHISPER", B, { v = 1, t = "TCK", tid = tid, e = a.session.epoch, q = a.session.seq }); sim:run(1)
-    ok(b.session:gameOver()); eq(b.session.stakeLive, false); eq(b.session.stakeEndedAt, nil)
+    ok(b.session:gameOver()); eq(b.session.stakeLive, false)
+    ok(b.session.stakeEndedAt and b.session.stakeEndedAt > sim.clock - 1.5, "dated at the snapshot's arrival"); eq(b.session.stakeEndSnap, true)
+    a.session:event(0, { k = "start", first = 1 }); sim:run(0)
+    eq(b.session.stakeLive, true); eq(b.session.stakeFoul, "unseen")
   end)
 
   it("death roll: my roll outside the host's group is no foul; another host drops my roll and says roll again", function()

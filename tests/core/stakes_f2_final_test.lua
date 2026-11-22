@@ -79,4 +79,65 @@ describe("stakes: the final review of F2", function()
       eq(Play.debt(cl[P], gid, partner, owedBy[partner]).status, "pending")
     end
   end)
+
+  -- Сантасе at Иван's table: the event that ends match 1 never reaches the guest Петър; a snapshot
+  -- of the game over does ("pushed" by the host, or "asked" for by the guest's own tick) -> sim, cl, tid, host, guest.
+  local function endedBySnapshot(mode)
+    Play.short("santase")
+    local sim, cl = Play.guild(2)
+    local tid = Play.open(sim, cl, "santase", SK, 2)
+    local host, guest = cl[I], cl[P]
+    sim.bus.filter = function(_, to, _, m)
+      if to == P and m.t == "EV" and host.session and host.session:gameOver() then return {} end
+      return { m }
+    end
+    Play.finish(sim, host)
+    sim.bus.filter = nil
+    eq(guest.session:gameOver(), false)
+    if mode == "pushed" then host.session:snapshotTo(P); sim:run(0) end
+    for _ = 1, 40 do
+      if guest.session:gameOver() then break end
+      sim:run(1) -- the guest's own tick asks for it
+    end
+    ok(guest.session:gameOver(), "the snapshot brought the end")
+    return sim, cl, tid, host, guest
+  end
+  local function start(sim, host, first)
+    host.session:event(0, { k = "start", first = first }); host.session:recordChanged(); sim:run(0)
+  end
+
+  it("a match that a snapshot ended for me: a start inside the break by my clock is a question (C2)", function()
+    local lost = 0
+    for _, mode in ipairs({ "pushed", "asked" }) do
+      for first = 1, 2 do
+        local sim, cl, tid, host, guest = endedBySnapshot(mode)
+        ok(guest.session.stakeEndedAt > sim.clock - 1, "dated by my clock, at the snapshot's arrival"); eq(guest.session.stakeEndSnap, true)
+        sim:run(1)
+        start(sim, host, first)
+        eq({ guest.session.stakeLive, guest.session.stakeFoul }, { true, "unseen" })
+        local r2 = Play.finish(sim, host)
+        Play.restore()
+        sim:run(C.STAKE_FAIR_WAIT + C.STAKE_OWE_WAIT + 10)
+        if host.session.seats[r2.losers[1]] == P then
+          local gid = tid .. "/" .. r2.q
+          lost = lost + 1
+          eq(#wordsAt(sim, P, "C", gid), 0); eq(#wordsAt(sim, P, "N", gid), 0)
+          ok(asked(guest, gid, P, I), "the second match's debt is put to the guest")
+          eq(Play.debt(host, gid, P, I).status, "pending")
+        end
+      end
+    end
+    ok(lost > 0, "the guest never lost the second match")
+  end)
+
+  it("a match that a snapshot ended for me: a start after the break by my clock is clean (C2)", function()
+    for _, late in ipairs({ 0, -1 }) do
+      local sim, _, _, host, guest = endedBySnapshot("asked")
+      local from = guest.session.stakeEndedAt
+      sim:run(from + C.STAKE_BREAK_MATCH - C.AUTO_GRACE + late - sim.clock)
+      start(sim, host, 1)
+      eq({ guest.session.stakeLive, guest.session.stakeFoul }, { true, late ~= 0 and "unseen" or nil })
+      Play.restore()
+    end
+  end)
 end)

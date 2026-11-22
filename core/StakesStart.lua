@@ -7,12 +7,14 @@ local _, ns = ...
 -- Session:startIfFull asks at a staked table). The next match of Сантасе,
 -- Белот and Табла waits STAKE_BREAK_MATCH: staying seated through it is the
 -- acceptance of that match; a start earlier than that by my clock (AUTO_GRACE
--- left for the transport) is forged against it.
+-- left for the transport) is forged against it. An end that a snapshot brought
+-- me is dated by its arrival: the host's own break may be over by then, so a
+-- start earlier than mine is a question ("unseen"), never clean.
 -- Session fields (local, never sent):
 --   holdTimer      host: the held start, tried again when it fires
 --   stakeHoldFrom  env.now() when my client took up (by a snapshot, or by
 --                  becoming its host) a table whose game was over and whose end
---                  my clock never dated (stakeEndedAt nil): the break runs from then
+--                  my client never held live (stakeEndedAt nil): the break runs from then
 local Stakes = ns.Stakes
 
 local C = ns.Const
@@ -45,14 +47,16 @@ end
 -- refresh): a game ran; at a live table one the host does not start (Морски
 -- шах; an `again` table's start after a leave, before my client saw the seat
 -- filled again by a sit); a host-started game, or any match of an `again`
--- table, inside the break by my clock.
+-- table, inside the break by my clock -> "forged" | "unseen" (that break is
+-- dated by a snapshot's arrival, s.stakeEndSnap) | nil.
 function Stakes.badStart(s)
   local engine = s:engine()
-  if s.stakeLive then return true end
+  if s.stakeLive then return "forged" end
   local hosted = engine.start == "host" or (engine.again and s.stakeStatus == "live") -- the host's start
-  if not hosted and (s.stakeStatus == "live" or (s.stakeHad and s.stakeRefill ~= "filled")) then return true end
-  if not (hosted or engine.again) then return false end
-  return s.stakeEndedAt ~= nil and s.client.env.now() < s.stakeEndedAt + Stakes.gap(s) - C.AUTO_GRACE
+  if not hosted and (s.stakeStatus == "live" or (s.stakeHad and s.stakeRefill ~= "filled")) then return "forged" end
+  if not (hosted or engine.again) then return nil end
+  local early = s.stakeEndedAt ~= nil and s.client.env.now() < s.stakeEndedAt + Stakes.gap(s) - C.AUTO_GRACE
+  return early and (s.stakeEndSnap and "unseen" or "forged") or nil
 end
 
 -- Host: the held start is tried again in `wait` s (replacing the one armed),
@@ -100,7 +104,7 @@ function ns.Ext.stakes.hold(s)
   return true
 end
 
--- A snapshot showed me a game over that my clock did not see end: the break runs from now.
+-- A snapshot showed me a game over that my client never held live: the break runs from now.
 local adopted = ns.Ext.stakes.adopted
 ns.Ext.stakes.adopted = function(s, prev, m, how)
   adopted(s, prev, m, how)

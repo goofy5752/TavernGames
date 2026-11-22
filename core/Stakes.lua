@@ -65,8 +65,8 @@ local _, ns = ...
 --   stakeSeat    my seat after the last hook (nil: not seated)
 --   stakeHost    the host of my table to Stakes
 --   stakeStatus  s.status after the last hook (the status before the event being handled)
---   stakeEndedAt my env.now() when an event ended the last game (Session:canStart's
---                "break"); nil when a snapshot ended it
+--   stakeEndedAt my env.now() when the last game ended on my client (Session:canStart's "break");
+--                stakeEndSnap: a snapshot ended it, so its date is the snapshot's arrival (Stakes.badStart)
 --   stakeIdle    my client stands up as host after its own idle turn (the note's why "idle")
 --   idleTimer    the host's idle stand: OFFLINE_STAND_SECONDS after the seat came on turn
 --   stakeResult  the "result" of the event being handled, for core/StakesBook.lua after its hooks
@@ -175,8 +175,8 @@ end
 -- start, or a snapshot of another game) the roster is taken and the foul
 -- cleared (Stakes.began judges it first); then the foul of the event; the
 -- turn (`moved`: a game action, or a snapshot at another turn, restarts it)
--- and the idle timer. `snap`: a snapshot (it dates no end; snap.fresh: a login
--- brought it, so no clock of mine saw its turn begin).
+-- and the idle timer. `snap`: a snapshot (the end it brings is dated by its
+-- arrival; snap.fresh: a login brought it, so no clock of mine saw its turn begin).
 local function refresh(s, fresh, moved, snap)
   local now, on = s.client.env.now(), running(s)
   if on and (fresh or not s.stakeLive) then
@@ -185,7 +185,7 @@ local function refresh(s, fresh, moved, snap)
     s.stakeNo = (s.stakeNo or 0) + 1
     Stakes.save(s)
   elseif not on then
-    if s.stakeLive then s.stakeEndedAt = not snap and now or nil end
+    if s.stakeLive then s.stakeEndedAt, s.stakeEndSnap = now, snap and true or nil end
     s.stakeRoster, s.stakeTurn = nil, nil
   end
   s.stakeLive, s.stakeStatus, s.stakeHad = on, s.status, s.state ~= nil
@@ -267,8 +267,9 @@ ns.Ext.stakes = {
     -- My own move as host; as a member what my client took for mine (my own ACT, or my timeout
     -- due by my clock): the log holds every action in my name that was not forged.
     if seat ~= 0 and seat == s.mySeat and (s.role == "host" or (not s:engine().idle and s.stakePend ~= "forged")) then Stakes.sent(s, a) end
-    if start and s.role ~= "host" and Stakes.badStart(s) then
-      pend(s, "forged")
+    local bad = start and s.role ~= "host" and Stakes.badStart(s)
+    if bad then
+      pend(s, bad)
     elseif seat == 0 and a.k == "stand" and s.role == "host" then
       tellStood(s, a)
     elseif seat == 0 and a.k == "stand" and a.seat == s.mySeat then
