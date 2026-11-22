@@ -4,8 +4,9 @@ local _, ns = ...
 -- registry (ns.Games.list: a game with an engine opens the new-table dialog,
 -- the others are dimmed with „Скоро“). Centre: the floor plan of the guild's
 -- tables (HallLayout), a scroll list above 8 tables, or a message (no guild,
--- name lookup, empty hall). Right: „В кръчмата сега“ (ui/HallPeers.lua), where
--- a click on a name offers „Покани“ while I host a table with a free seat.
+-- name lookup, empty hall). Right: „Сметки“ (ui/Accounts.lua), ACCOUNTS_H high,
+-- over „В кръчмата сега“ (ui/HallPeers.lua), where a click on a name offers
+-- „Покани“ while I host a table with a free seat.
 -- Footer: a refusal for 5 s; the "newer version" note once it is known.
 -- A staked table shows its stake in its tooltips and its list row (a fun
 -- row says „За удоволствие“), and a click that would sit there asks first
@@ -26,7 +27,8 @@ ns.Hall = Hall
 
 local FOOTER_SECONDS = 5
 local LEFT_W, GAP = 190, 10
-Hall.RIGHT_W = 250 -- the peers column (ui/HallPeers.lua)
+Hall.RIGHT_W = 250 -- the right column: „Сметки“ (ui/Accounts.lua) over the peers (ui/HallPeers.lua)
+Hall.ACCOUNTS_H = 190
 local FOOTER_H, HEADER_H = 22, 28
 local TABLE_SIZE, TOP_SIZE, CHAIR_R, LABEL_R = 150, 94, 60, 80
 local GAME_H, ROW_H = 40, 40
@@ -413,6 +415,7 @@ function Hall.render()
   elseif mode == "list" then
     renderList(v, recs, client)
   end
+  ns.Accounts.render(v, client)
   ns.HallPeers.render(v, client)
   v.note:SetShown(Hall.updateAvailable)
 end
@@ -539,7 +542,9 @@ function Hall.build(page)
   local centreW = bodyW - LEFT_W - Hall.RIGHT_W - 2 * GAP
   buildLeft(v, page, colH)
   buildCentre(v, page, LEFT_W + GAP, centreW, colH)
-  ns.HallPeers.build(v, page, LEFT_W + GAP + centreW + GAP, colH)
+  local rightX = LEFT_W + GAP + centreW + GAP
+  ns.Accounts.build(v, page, rightX, 0, Hall.RIGHT_W, Hall.ACCOUNTS_H)
+  ns.HallPeers.build(v, page, rightX, Hall.ACCOUNTS_H + GAP, colH - Hall.ACCOUNTS_H - GAP)
 
   local footer = W.Label(page, "ui", "", 13)
   color(footer, "gold")

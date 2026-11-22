@@ -34,3 +34,6 @@ Later tasks of the stage append their rows below.
 | 21 | the new-table dialog with „Със залог“ | nothing clipped at the default and at a low UI scale; Tab moves between the two boxes | not yet measured |
 | 22 | the acceptance question for Death Roll | reads naturally with 2 and with 5 seats | not yet measured |
 | 23 | the bill at the end of a staked Морски шах and Death Roll | the bill does not cover the winning line or the last rolls | not yet measured |
+| 24 | the hall's right column with six accounts and two questions | nothing overlaps „В кръчмата сега“; the column scrolls; long names and the question texts wrap inside it | not yet measured |
+| 25 | „Плащане“ next to the creditor, far from it, at a mailbox, away from one | the right lines and buttons: „Трейд“ only next to the creditor, „Поща“ only at an open mailbox, the fee and the hold warning always; after „Трейд“ the amount to type stays shown | not yet measured |
+| 26 | kill the client process after a payment and relog | the question „Тези записи на твое име не са запазени на този компютър. Твои ли са?“ appears among the questions of „Сметки“, and „Мои са“ clears the debt | not yet measured |

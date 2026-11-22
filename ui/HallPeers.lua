@@ -1,6 +1,7 @@
 local _, ns = ...
 
--- The hall's right column, „В кръчмата сега“: every guild member with the
+-- The lower part of the hall's right column (below „Сметки“, ui/Accounts.lua),
+-- „В кръчмата сега“: every guild member with the
 -- addon, in class color, and where they are (in the hall, at a table, watching).
 -- A click on a name offers „Покани“ while I host a table with a free seat
 -- (Hall.clickPeer, Hall.invite). Hall is looked up at call time: this file
@@ -91,12 +92,13 @@ function HallPeers.render(v, client)
   v.peerEmpty:SetShown(#peers == 0)
 end
 
--- The column's panel at `x` on `page`, `colH` high (Hall.RIGHT_W wide).
-function HallPeers.build(v, page, x, colH)
+-- The column's panel at (x, y below the top: under „Сметки“) on `page`, h high (Hall.RIGHT_W wide).
+function HallPeers.build(v, page, x, y, h)
   local width = ns.Hall.RIGHT_W
   local right = W.Panel(page)
-  right:SetPoint("TOPLEFT", page, "TOPLEFT", x, 0)
-  right:SetSize(width, colH)
+  right:SetPoint("TOPLEFT", page, "TOPLEFT", x, -y)
+  right:SetSize(width, h)
+  v.peerPanel = right
   W.Label(right, "heading", L("peers.title")):SetPoint("TOPLEFT", right, "TOPLEFT", 10, -10)
   local scroll = W.Scroll(right)
   scroll:SetPoint("TOPLEFT", right, "TOPLEFT", 8, -32)

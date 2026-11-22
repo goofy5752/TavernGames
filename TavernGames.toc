@@ -97,6 +97,8 @@ ui/Cards.lua
 ui/MainWindow.lua
 ui/NewTableDialog.lua
 ui/HallPeers.lua
+ui/PayDialog.lua
+ui/Accounts.lua
 ui/Hall.lua
 ui/Minimap.lua
 ui/TableFrame.lua
