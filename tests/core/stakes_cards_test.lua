@@ -115,8 +115,11 @@ describe("stakes: a staked card table plays", function()
     local log = db.stakeLog
     eq({ type(log), log.tid, log.st }, { "table", tid, nil })
     local n = 0
-    for _, e in ipairs(log.log) do if e.k == "play" then n = n + 1 end end
-    ok(n >= 3, "my plays are in the log")
+    for _, e in ipairs(log.log) do
+      if e.k == "play" then n = n + 1 end
+      eq(e.c, nil, "no face in the entry " .. tostring(e.k))
+    end
+    ok(n >= 1, "my plays are in the log")
     -- Морски шах keeps its board beside the log.
     local sim2, cl2 = Play.guild(2)
     local tid2 = assert(cl2[I]:openTable{ game = "ttt", access = "guild", turn = 45, stake = SK }); sim2:run(3)
@@ -195,7 +198,8 @@ describe("stakes: a staked card table plays", function()
     eq(new, P)
     for _, name in ipairs({ M, G }) do eq(cl[name].session.host, P, name); eq(cl[name].session.stakeFoul, "unseen", name) end
     ok(cl[P].session.stakeFoul ~= "forged", "the new host")
-    ok(comesBack(sim, cl, new) ~= "forged", "the old host") -- asked: "unseen" unless the table stands where it left it
+    Play.step(sim, cl[new]) -- the table moves on: the snapshot the old host asks for differs from its state
+    eq(comesBack(sim, cl, new), "unseen", "the old host")
   end)
 
   it("belot: a new host whose snapshot is my very state changes nothing", function()
@@ -277,6 +281,21 @@ describe("stakes: a staked card table plays", function()
     local n = wordsAt(sim, P, "N", gid)
     eq(#n, 1); eq(n[1].why, "forged"); eq(#wordsAt(sim, P, "C", gid), 0)
     eq(Play.debt(cl[I], gid, P, I).status, "contested")
+  end)
+
+  -- A higher epoch from the same host is no new host (Stakes.hostChanged): still forged, not "unseen".
+  it("the same host pushes an unasked snapshot at epoch + 1 that plays my card: forged", function()
+    local sim, cl = santase(1)
+    ok(stepUntil(sim, cl[I], function() return cl[I].session.state.turn == 2 end), "the turn of seat 2")
+    local hs, x = cl[I].session, ns.Util.copy(cl[P].session.state)
+    ok(Santase.apply(x, 2, Santase.auto(x, 2)))
+    cl[P]:receive("WHISPER", I, ns.Session.message("SNP", {
+      tid = hs.tid, e = hs.epoch + 1, q = hs.seq, tbl = hs:record(), st = Santase.snapshot(x),
+      left = hs:left(), inv = hs:invitedList(), fr = hs:hook("snap"),
+    }))
+    sim:run(0)
+    eq(cl[P].session.host, I)
+    eq(cl[P].session.stakeFoul, "forged")
   end)
 
   it("the host plays my card for me: contested as forged", function()

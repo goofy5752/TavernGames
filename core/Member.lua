@@ -101,7 +101,7 @@ function Member.adopt(client, sender, m)
   -- my own SIT or WAT (a newcomer, not a login back to a seat I held); sit:
   -- it seats me while a SIT of mine at this table is unanswered.
   local how = {
-    fresh = fresh, changed = not fresh and (prevHost ~= sender or s.epoch ~= m.e or s.stale == true),
+    fresh = fresh, moved = not fresh and prevHost ~= sender, changed = not fresh and (prevHost ~= sender or s.epoch ~= m.e or s.stale == true),
     asked = s.asked == true, sat = seat ~= nil and s.mySeat == nil, q = s.seq,
     req = fresh and client.pending ~= nil and client.pending.tid == m.tid, sit = seat ~= nil and s.sitAsked ~= nil,
   }

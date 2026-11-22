@@ -31,10 +31,11 @@ local _, ns = ...
 -- match (diceSeen.bad > 0) or diceRobbed > 0 -> dice; diceSeen.unseen > 0 or
 -- diceAway > 0 -> unseen.
 local Stakes = ns.Stakes
+local NONE = {}
 
 -- Does s's engine have a fairness layer that judges its snapshots -> bool.
 function Stakes.judged(s)
-  local ext = s:engine().ext or {}
+  local ext = s:engine().ext or NONE
   for _, x in ipairs(ext) do
     if x == "fair" or x == "dice" then return true end
   end
