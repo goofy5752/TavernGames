@@ -337,4 +337,23 @@ describe("stakes: the final review of F2", function()
     eq(Play.debt(cl[G], gid, M, G).status, "pending")
     sim.bus.filter = nil
   end)
+
+  it("a login to a finished match: a start inside the break from it is a question; one after it is clean (concern 1)", function()
+    for _, late in ipairs({ -1, 0 }) do
+      Play.short("santase")
+      local sim, cl = Play.guild(2)
+      Play.open(sim, cl, "santase", SK, 2)
+      local host = cl[I]
+      Play.finish(sim, host); sim:run(2)
+      cl[P] = sim:relog(P); sim:settle(); sim:run(3)
+      local g = cl[P].session
+      ok(g:gameOver(), "the login brought the finished match")
+      local from = g.stakeEndedAt or g.stakeHoldFrom
+      ok(from ~= nil, "the login dates the end")
+      sim:run(from + C.STAKE_BREAK_MATCH - C.AUTO_GRACE + late - sim.clock)
+      host.session:event(0, { k = "start", first = 1 }); host.session:recordChanged(); sim:run(0)
+      eq({ g.stakeLive, g.stakeFoul }, { true, late < 0 and "unseen" or nil })
+      Play.restore()
+    end
+  end)
 end)

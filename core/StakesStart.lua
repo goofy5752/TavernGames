@@ -55,8 +55,9 @@ function Stakes.badStart(s)
   local hosted = engine.start == "host" or (engine.again and s.stakeStatus == "live") -- the host's start
   if not hosted and (s.stakeStatus == "live" or (s.stakeHad and s.stakeRefill ~= "filled")) then return "forged" end
   if not (hosted or engine.again) then return nil end
-  local early = s.stakeEndedAt ~= nil and s.client.env.now() < s.stakeEndedAt + Stakes.gap(s) - C.AUTO_GRACE
-  return early and (s.stakeEndSnap and "unseen" or "forged") or nil
+  local from = s.stakeEndedAt or (s.stakeLogin and s.stakeHoldFrom) -- my login or a snapshot dates the end it brought
+  if not (from and s.client.env.now() < from + Stakes.gap(s) - C.AUTO_GRACE) then return nil end
+  return (s.stakeEndSnap or not s.stakeEndedAt) and "unseen" or "forged"
 end
 
 -- Host: the held start is tried again in `wait` s (replacing the one armed),
@@ -117,7 +118,7 @@ ns.Ext.stakes.adopted = function(s, prev, m, how)
     end
   end
   adopted(s, prev, m, how)
-  if s:engine().again and s.stakeEndedAt == nil and s:gameOver() then s.stakeHoldFrom = s.client.env.now() end
+  if s:engine().again and s.stakeEndedAt == nil and s:gameOver() then s.stakeHoldFrom, s.stakeLogin = s.client.env.now(), how.fresh and not how.req or nil end
 end
 
 -- I became the host of an `again` table: a game over whose end my clock did
@@ -129,7 +130,7 @@ ns.Ext.stakes.hostChanged = function(s)
   hostChanged(s)
   if not (changed and s.role == "host" and s:engine().again) then return end
   local now = s.client.env.now()
-  if s.stakeEndedAt == nil and s:gameOver() then s.stakeHoldFrom = now end
+  if s.stakeEndedAt == nil and s:gameOver() then s.stakeHoldFrom, s.stakeLogin = now, nil end
   local from = s.stakeEndedAt or s.stakeHoldFrom
   if s.status ~= "live" then arm(s, from and from + Stakes.gap(s) - now or 0) end
 end
