@@ -6,18 +6,16 @@ local _, ns = ...
 -- foul, tid, q, wait}: the foul after the event's hooks, Rolls.audit folded
 -- in (pending reads "unseen"; wait: final ROLL_FINAL_WAIT later). Then the
 -- host writes R (a fun table: nothing else), each creditor a D per pair, a
--- debtor with a clean final note and no claim in STAKE_OWE_WAIT its own D;
--- nothing at a bot table (env.noLedger). A claim against me (stakes:review):
--- my „Стани“ there (db.stakeLeft, once per creditor) -> C; my note: pending
--- -> wait, foul forged/roll/stand -> N, another amount -> N "amount", my pair
--- clean -> C (own D when its id holds another debt too); an event of my table
--- not applied yet -> wait; the newest open note there with a foul -> N; else
--- it is put to me (asks, answer, "debtAsk"). Not while my login queue is open.
+-- debtor with a clean final note and no claim by its `owe` (STAKE_OWE_WAIT
+-- later; kept in the note, so a /reload or login resumes it) its own D;
+-- nothing at a bot table (env.noLedger). A claim against me (stakes:review,
+-- judged in core/StakesClaims.lua) is decided or put to me (asks, answer,
+-- "debtAsk"); nothing is written while my login queue is open.
 local Stakes, C = ns.Stakes, ns.Const
 local View, copy = ns.LedgerView, ns.Util.copy
 
 local Book = {}; Book.__index = Book
-local BAD = { forged = true, roll = true, stand = true }
+Stakes.Book = Book -- the judgment of a claim: core/StakesClaims.lua
 
 -- Every loser owes every winner c -> {{f, t, c}} (names).
 function Stakes.pairs(losers, winners, c)
@@ -53,9 +51,14 @@ end
 function Book:bot(tid) return self.env.noLedger ~= nil and self.env.noLedger(tid) == true end
 
 -- After a login: notes past STAKE_SEEN_KEEP go; a roll verdict my last
--- session did not live to see stays as the note has it (pending: "unseen").
+-- session did not live to see stays as the note has it (pending: "unseen");
+-- a debtor's `owe` still due resumes, not before the sync could bring the claim.
 function Book:start()
-  local old = self.env.epoch() - C.STAKE_SEEN_KEEP
+  local now = self.env.epoch()
+  local old, resume = now - C.STAKE_SEEN_KEEP, C.LEDGER_ADOPT_WAIT + C.LEDGER_JITTER_MAX + C.LEDGER_SYNC_TIMEOUT
+  for gid, n in pairs(self:seen()) do
+    if type(n) == "table" and type(n.owe) == "number" then self.client:after(math.max(resume, n.owe - now), function() self:owe(gid) end) end
+  end
   for _, list in ipairs({ self:seen(), self:left() }) do
     for k, n in pairs(list) do
       if type(n) == "table" and (type(n.at) ~= "number" or n.at < old) then list[k] = nil elseif type(n) == "table" then n.wait = nil end
@@ -121,7 +124,7 @@ function Book:outcome(s, gid, pairs, why, noted)
   for _, p in ipairs(pairs) do
     if p.t == me then self:make("D" .. gid .. "|" .. p.f .. "|" .. me, "D", { gid = gid, g = s.game, f = p.f, t = me, c = p.c, why = why }) end
   end
-  if owes then self.client:after(C.STAKE_OWE_WAIT, function() self:owe(gid) end) end
+  if owes then note.owe = note.at + C.STAKE_OWE_WAIT; self.client:after(C.STAKE_OWE_WAIT, function() self:owe(gid) end) end
   if rec then
     self.client:after(C.ROLL_FINAL_WAIT, function()
       note.foul, note.wait = worse(base, ns.Rolls.audit(rec)), nil
@@ -131,70 +134,18 @@ function Book:outcome(s, gid, pairs, why, noted)
   self:review()
 end
 
--- No claim of a creditor STAKE_OWE_WAIT after my clean loss: my own D.
+-- No claim of a creditor STAKE_OWE_WAIT after my clean loss: my own D. Done once (note.owe goes).
 function Book:owe(gid)
   local note, L, me = self:seen()[gid], self.client.ledger, self.env.me
-  if type(note) ~= "table" or not L or note.wait or note.foul or note.open or type(note.pairs) ~= "table" then return end
+  if type(note) ~= "table" or not L or note.wait then return end
+  note.owe = nil
+  if note.foul or note.open or type(note.pairs) ~= "table" then return end
   local have = {}
   for _, d in ipairs(View.of(L).debts) do have[d.key] = true end
   for _, p in ipairs(note.pairs) do
     local key = gid .. "|" .. me .. "|" .. p.t
     if p.f == me and not have[key] then self:make("O" .. key, "D", { gid = gid, g = note.g, f = me, t = p.t, c = p.c, why = note.why }) end
   end
-end
-
--- What my client says to claim body b -> "C" | "N", why | "wait" | "ask" (and the leave
--- it used; `taken`: creditor -> the body a leave was used for in this scan).
-function Book:judge(b, taken)
-  local me, tid, q = self.env.me, b.gid:match("^(.*)/(%d+)$")
-  q = tonumber(q)
-  local left, note = self:left()[tid], self:seen()[b.gid]
-  local used = type(left) == "table" and ((type(left.used) == "table" and left.used[b.t]) or taken[b.t])
-  if type(left) == "table" and b.why == "left" and left.sk == b.c and math.abs(b.at - (left.at or 0)) <= C.STAKE_LEFT_WINDOW
-      and ns.Util.contains(type(left.names) == "table" and left.names or {}, b.t) and (not used or used == b.h) then
-    taken[b.t] = b.h
-    return "C", nil, left
-  end
-  if type(note) == "table" and not note.open then
-    if note.wait then return "wait" end
-    if BAD[note.foul] then return "N", note.foul end
-    local p
-    for _, x in ipairs(note.pairs or {}) do if x.f == me and x.t == b.t then p = x end end
-    if b.c ~= (p and p.c or note.sk) then return "N", "amount" end
-    return (p and not note.foul) and "C" or "ask"
-  end
-  local s = self.client.session
-  if s and s.tid == tid and q > s.seq then self.held = true; return "wait" end -- again at each change of my table
-  local open
-  for _, n in pairs(self:seen()) do
-    if type(n) == "table" and n.open and n.tid == tid and (n.q or 0) <= q and (not open or n.at > open.at) then open = n end
-  end
-  if open and BAD[open.foul] then return "N", open.foul end
-  local sk = (open and open.sk) or (type(left) == "table" and left.sk)
-  if sk and b.c ~= sk then return "N", "amount" end
-  return "ask"
-end
-
--- The claim bodies of debt d (its creditor's D entries), and whether an id of
--- them holds bodies of another debt as well (then my word is my own D).
-function Book:claims(d)
-  local L, out, wide = self.client.ledger, {}, false
-  for _, id in ipairs(d.ids) do
-    local a, n = ns.Ledger.author(id)
-    for _, b in ipairs(L:bodies(a, n)) do
-      if b.k == "D" and b.gid == d.gid and b.f == d.f and b.t == d.t and a == d.t and not b.un and not L:denied(b) then
-        out[#out + 1] = b
-      elseif b.k == "D" and b.gid .. "|" .. tostring(b.f) .. "|" .. tostring(b.t) ~= d.key then wide = true end
-    end
-  end
-  return out, wide
-end
-
--- My word on body b of debt d: C (my own D, `wide`), or N why.
-function Book:word(d, b, wide, kind, why)
-  if kind == "N" then return self:make("W" .. b.h, "N", { r = b.i, dh = b.h, why = why }) end
-  if wide then return self:make("O" .. d.key, "D", { gid = d.gid, g = b.g, f = d.f, t = d.t, c = b.c, why = b.why }) end
-  return self:make("W" .. b.h, "C", { r = b.i, dh = b.h })
 end
 
 -- Every pending claim against me: decided (acts) or put to me (asks) -> asks, acts.

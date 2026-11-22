@@ -47,6 +47,7 @@ core/Party.lua
 core/Lifecycle.lua
 core/Stakes.lua
 core/StakesBook.lua
+core/StakesClaims.lua
 core/StakesWatch.lua
 core/Deal.lua
 core/DealLine.lua

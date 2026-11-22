@@ -272,16 +272,70 @@ describe("stakes: from a game to the ledger", function()
     eq(cl[A].session.status, "aborted")
   end)
 
-  it("a second claim for the same leave from the same creditor is not confirmed by the leave note", function()
+  it("other left claims at a table I left: one just after my stand is put to me, one of a game I was not in is contested", function()
     local sim, cl = setup()
     local tid = ttt(sim, cl, SK)
     ok(cl[A]:act({ k = "mark", c = 1 })); sim:run(0)
     cl[B]:stand(); sim:run(10)
-    local mark = #sim.sent
+    local lq, mark = cl[B].env.db.stakeLeft[tid].q, #sim.sent
+    cl[A].ledgerNet:make("D", { gid = tid .. "/" .. (lq + 1), g = "ttt", f = B, t = A, c = SK, why = "left" })
     cl[A].ledgerNet:make("D", { gid = tid .. "/" .. 999, g = "ttt", f = B, t = A, c = SK, why = "left" }); sim:run(10)
-    eq(#sentOf(sim, B, mark), 0)
+    local n = sentOf(sim, B, mark)
+    eq(#n, 1); eq({ n[1].k, n[1].why }, { "N", "forged" })
     local asks = cl[B].stakes:asks()
-    eq(#asks, 1); eq(asks[1].gid, tid .. "/999")
+    eq(#asks, 1); eq(asks[1].gid, tid .. "/" .. (lq + 1))
+    eq(View.net(view(cl[P]), B, A), SK)
+  end)
+
+  it("my „Стани“ confirms only its own claim, whatever comes first (review probe A)", function()
+    local sim, cl = setup()
+    local tid = ttt(sim, cl, SK)
+    ok(cl[A]:act({ k = "mark", c = 1 })); sim:run(0)
+    local held = {}
+    sim.bus.filter = function(from, to, _, m)
+      if from == A and to == B and m.t == "LEV" then held[#held + 1] = m; return {} end
+      return { m }
+    end
+    local mark = #sim.sent
+    cl[B]:stand(); sim:run(10)
+    sim.bus.filter = nil
+    ok(#held > 0, "the real claim is held")
+    cl[A].ledgerNet:make("D", { gid = tid .. "/999", g = "ttt", f = B, t = A, c = SK, why = "left" }); sim:run(10)
+    for _, m in ipairs(held) do cl[B]:receive("GUILD", A, m) end
+    sim:run(10)
+    local c, n = sentOf(sim, B, mark, "C"), sentOf(sim, B, mark, "N")
+    eq(#c, 1); eq(bodyOf(cl[B], c[1].r).gid, tid .. "/" .. cl[B].env.db.stakeLeft[tid].q)
+    eq(#n, 1); eq(n[1].why, "forged"); eq(cl[B].stakes:asks(), {})
+    eq(View.net(view(cl[P]), B, A), SK)
+  end)
+
+  it("my „Стани“ never confirms an earlier game of that table I lost unfairly (review probe B)", function()
+    local sim, cl = setup()
+    local tid = ttt(sim, cl, SK)
+    ok(cl[A]:act({ k = "mark", c = 1 })); sim:run(0)
+    sim.bus.filter = function(from, _, _, m)
+      if from == B and m.t == "ACT" then m.a = { k = "mark", c = 9 } end
+      return { m }
+    end
+    ok(cl[B]:act({ k = "mark", c = 5 })); sim:run(1)
+    sim.bus.filter = nil
+    local gid1
+    match(sim, { cl[A], cl[B] }, 1, function()
+      gid1 = tid .. "/" .. (cl[A].session.seq + 1)
+      cl[A].stakes.did["D" .. gid1 .. "|" .. B .. "|" .. A] = true -- this creditor withholds its normal claim
+    end)
+    sim:run(10)
+    eq(cl[B].env.db.stakeSeen[gid1].foul, "forged")
+    ok(cl[A]:act({ k = "rematch" })); ok(cl[B]:act({ k = "rematch" })); sim:run(1)
+    if cl[A].session.state.turn == 1 then ok(cl[A]:act({ k = "mark", c = 1 })) end
+    sim:run(0)
+    local mark = #sim.sent
+    cl[B]:stand() -- and the claim for game 1 reaches her before the one for her stand
+    eq(cl[B].ledgerNet:take(cl[A].ledgerNet:make("D", { gid = gid1, g = "ttt", f = B, t = A, c = SK, why = "left" }), A, true), "new")
+    sim:run(20)
+    local n = sentOf(sim, B, mark, "N")
+    eq(#n, 1); eq(n[1].why, "forged"); eq(#sentOf(sim, B, mark, "C"), 1)
+    eq(debtOf(cl[P], gid1 .. "|" .. B .. "|" .. A).status, "contested"); eq(View.net(view(cl[P]), B, A), SK)
   end)
 
   it("„Стани“ confirms only the table's stake", function()
@@ -447,13 +501,16 @@ describe("stakes: from a game to the ledger", function()
 
   it("an asked seat that stands up mid-game is asked about the host's claim, never confirmed by itself", function()
     local sim, cl = setup()
-    dr(sim, cl, { B }, SK)
+    local tid = dr(sim, cl, { B }, SK)
     sim.envs[B].db.stakeSat = nil -- a crash: no note of the stake I accepted
     local b = sim:relog(B); sim:run(3); sim:settle()
     eq(b.session.stakeAsk, true)
+    -- An earlier „Стани“ of mine at this table, a little before: it never confirms this stand.
+    local left = { at = EPOCH0 + sim.clock, sk = SK, names = { A }, q = b.session.seq - 1, used = {} }
+    b.env.db.stakeLeft = { [tid] = left }
     local mark = #sim.sent
     ns.Stake.standUp(b, b.session); sim:run(10) -- as at a snapshot of another game (Member.adopt)
-    eq(b.env.db.stakeLeft, nil)
+    eq(b.env.db.stakeLeft, { [tid] = left }); eq(left.used, {}) -- no new leave of mine, nothing used
     local d = sentOf(sim, A, mark, "D")
     eq(#d, 1); eq(d[1].why, "left")
     sim:run(30)
@@ -609,7 +666,7 @@ describe("stakes: from a game to the ledger", function()
       if from == A and to == B and m.t == "LEV" then return {} end
       return { m }
     end
-    local q = match(sim, { cl[A], cl[B] }, 1); sim:run(5)
+    local q = match(sim, { cl[A], cl[B] }, 1); sim:run(C.STAKE_OWE_WAIT - 5) -- she logs out just before her own debt would be due
     local gid = tid .. "/" .. q
     ok(cl[B].env.db.stakeSeen[gid], "her note"); eq(debtOf(cl[B], gid .. "|" .. B .. "|" .. A), nil)
     cl[B]:stop(); sim.bus.filter = nil
@@ -647,6 +704,99 @@ describe("stakes: from a game to the ledger", function()
     local n = 0
     for _, x in ipairs(view(cl[B]).debts) do if x.gid == gid then n = n + 1 end end
     eq(n, 1); eq(debtOf(cl[B], key).c, SK); eq(View.net(view(cl[B]), B, A), SK)
+  end)
+
+  it("no claim, and the loser reloads within 60 s: its own debt is still written, once", function()
+    local sim, cl = setup()
+    local tid = ttt(sim, cl, SK)
+    local mark = #sim.sent
+    local q = match(sim, { cl[A], cl[B] }, 1, function()
+      sim.bus.filter = function(from, _, _, m)
+        if from == A and m.t ~= "EV" then return {} end
+        return { m }
+      end
+    end)
+    sim.envs[A].dead = true; sim:offline(A)
+    local gid, key = tid .. "/" .. q, tid .. "/" .. q .. "|" .. B .. "|" .. A
+    sim:run(20)
+    ok(cl[B].env.db.stakeSeen[gid].owe, "the due time is in the note")
+    cl[B]:stop()
+    local b = sim:relog(B); sim:run(C.LEDGER_ADOPT_WAIT + C.LEDGER_JITTER_MAX + C.LEDGER_SYNC_TIMEOUT + 5)
+    local d = sentOf(sim, B, mark, "D")
+    eq(#d, 1); eq({ Ledger.author(d[1].i), d[1].gid, d[1].f, d[1].t, d[1].c }, { B, gid, B, A, SK })
+    eq(debtOf(cl[P], key).status, "confirmed"); eq(b.env.db.stakeSeen[gid].owe, nil)
+    -- Once: another /reload writes nothing more.
+    b:stop(); sim:relog(B); sim:run(200)
+    eq(#sentOf(sim, B, mark, "D"), 1); eq(View.net(view(cl[P]), B, A), SK)
+  end)
+
+  it("nothing is written while my login queue is open, so two /reloads in it make one C", function()
+    local sim, cl = setup()
+    local tid = ttt(sim, cl, SK)
+    sim.bus.filter = function(from, to, _, m)
+      if from == A and to == B and m.t == "LEV" then return {} end
+      return { m }
+    end
+    match(sim, { cl[A], cl[B] }, 1); sim:run(5)
+    sim.bus.filter = nil
+    local d = sentOf(sim, A, 0, "D")[1]
+    local mark = #sim.sent
+    for _ = 1, 2 do -- the claim comes inside the login queue, then a /reload
+      cl[B]:stop()
+      local b = sim:relog(B); sim:run(1)
+      ok(b.ledgerNet.waiting, "the login queue is open")
+      b.ledgerNet:take(d, A, true); sim:run(5)
+      cl[B] = b
+    end
+    sim:run(C.LEDGER_ADOPT_WAIT + 5)
+    eq(#sentOf(sim, B, mark, "C"), 1); eq(#sentOf(sim, B, mark), 1)
+    eq(debtOf(cl[P], d.gid .. "|" .. B .. "|" .. A).status, "confirmed")
+  end)
+
+  it("an entry is made once per key in a run, even while it only waits in the login queue", function()
+    local _, cl = setup()
+    local net, calls = cl[B].ledgerNet, 0
+    local made = net.make
+    net.make = function() calls = calls + 1; return "queued" end
+    cl[B].stakes:make("Wabc", "C", { r = A .. ":1", dh = "0123456789abcdef" })
+    cl[B].stakes:make("Wabc", "C", { r = A .. ":1", dh = "0123456789abcdef" })
+    net.make = made
+    eq(calls, 1)
+  end)
+
+  it("a claim written long after my note of that game is put to me, not confirmed (Task 4 re-review)", function()
+    local sim, cl = setup()
+    local tid = ttt(sim, cl, SK)
+    sim.bus.filter = function(from, to, _, m)
+      if from == A and to == B and m.t == "LEV" then return {} end
+      return { m }
+    end
+    local q = match(sim, { cl[A], cl[B] }, 1); sim:run(5)
+    sim.bus.filter = nil
+    local gid = tid .. "/" .. q
+    local late = { i = Ledger.id(A, 50), k = "D", at = cl[B].env.db.stakeSeen[gid].at + C.STAKE_LEFT_WINDOW + 60, gid = gid, g = "ttt",
+      f = B, t = A, c = SK, why = "lost" }
+    local mark = #sim.sent
+    eq(cl[B].ledgerNet:take(late, A, true), "new"); sim:run(5)
+    eq(#sentOf(sim, B, mark), 0); eq(#cl[B].stakes:asks(), 1)
+  end)
+
+  it("an old open note of a table does not answer a claim long after it", function()
+    local sim, cl = setup()
+    local tid = dr(sim, cl, { B }, SK)
+    roll(sim, cl[A], 50)
+    local q = cl[B].session.seq
+    cl[A]:send("WHISPER", B, { v = 1, t = "END", tid = tid, e = cl[A].session.epoch }); sim:run(0)
+    local note = cl[B].env.db.stakeSeen[tid .. "/" .. q]
+    eq({ note.open, note.foul }, { true, "forged" })
+    local mark = #sim.sent
+    local function claim(n, at)
+      return { i = Ledger.id(A, n), k = "D", at = at, gid = tid .. "/" .. (q + n), g = "deathroll", f = B, t = A, c = SK, why = "offline" }
+    end
+    eq(cl[B].ledgerNet:take(claim(40, note.at + 200), A, true), "new")
+    eq(cl[B].ledgerNet:take(claim(41, note.at + C.STAKE_LEFT_WINDOW + 60), A, true), "new"); sim:run(5)
+    local n = sentOf(sim, B, mark, "N")
+    eq(#n, 1); eq({ n[1].why, n[1].r }, { "forged", A .. ":40" }); eq(#cl[B].stakes:asks(), 1)
   end)
 
   it("the host hands over mid-game and the debts still come", function()

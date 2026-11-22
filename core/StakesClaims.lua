@@ -1,0 +1,84 @@
+local _, ns = ...
+
+-- What my client says to a claim against me (core/StakesBook.lua's review):
+--   my „Стани“ (db.stakeLeft, core/Stakes.lua): the one claim of that stand
+--   (its gid, why "left", the table's stake, within STAKE_LEFT_WINDOW of it,
+--   a creditor I left behind) -> C, once per creditor; another amount there
+--   -> N "amount", any other claim at that gid -> put to me; a "left" claim
+--   at that table more than LEAVE_SLACK events after it (a game I was not
+--   in), with no note of mine for its gid -> N "forged";
+--   my note of its gid: roll part pending -> wait, a foul forged/roll/stand
+--   -> N with it, another amount -> N "amount", my pair clean and the claim
+--   written within STAKE_LEFT_WINDOW of my note -> C (my own D when its id
+--   holds bodies of more than one debt);
+--   an event of my running table I have not applied yet -> wait;
+--   the newest open note of that table at or before its q, written within
+--   STAKE_LEFT_WINDOW of the claim: a foul -> N with it, another amount -> N
+--   "amount"; anything else is put to me. A C or N names the body (dh).
+local C, Util = ns.Const, ns.Util
+local Book = ns.Stakes.Book
+
+local BAD = { forged = true, roll = true, stand = true }
+local LEAVE_SLACK = 4 -- events my host may order between my „Стани“ and its stand
+
+local function near(a, b) return type(a) == "number" and type(b) == "number" and math.abs(a - b) <= C.STAKE_LEFT_WINDOW end
+
+-- Claim body b -> "C" | "N", why | "wait" | "ask" (and the leave it used;
+-- `taken`: creditor -> the body a leave was used for in this scan).
+function Book:judge(b, taken)
+  local me, tid, q = self.env.me, b.gid:match("^(.*)/(%d+)$")
+  q = tonumber(q)
+  local left, note = self:left()[tid], self:seen()[b.gid]
+  local lq = type(left) == "table" and tonumber(left.q) or nil
+  if q == lq then
+    local used = (type(left.used) == "table" and left.used[b.t]) or taken[b.t]
+    if b.why == "left" and left.sk == b.c and near(b.at, left.at) and (not used or used == b.h)
+        and Util.contains(type(left.names) == "table" and left.names or {}, b.t) then
+      taken[b.t] = b.h
+      return "C", nil, left
+    end
+    return b.c ~= left.sk and "N" or "ask", "amount"
+  end
+  if type(note) == "table" and not note.open then
+    if note.wait then return "wait" end
+    if BAD[note.foul] then return "N", note.foul end
+    local p
+    for _, x in ipairs(note.pairs or {}) do if x.f == me and x.t == b.t then p = x end end
+    if b.c ~= (p and p.c or note.sk) then return "N", "amount" end
+    return (p and not note.foul and near(b.at, note.at)) and "C" or "ask"
+  end
+  if lq and b.why == "left" and q > lq + LEAVE_SLACK then return "N", "forged" end
+  local s = self.client.session
+  if s and s.tid == tid and q > s.seq then self.held = true; return "wait" end -- again at each change of my table
+  local open
+  for _, n in pairs(self:seen()) do
+    if type(n) == "table" and n.open and n.tid == tid and (n.q or 0) <= q and near(b.at, n.at) and (not open or n.at > open.at) then open = n end
+  end
+  if open and BAD[open.foul] then return "N", open.foul end
+  local sk = (open and open.sk) or (type(left) == "table" and left.sk)
+  if sk and b.c ~= sk then return "N", "amount" end
+  return "ask"
+end
+
+-- The claim bodies of debt d (its creditor's D entries), and whether an id of
+-- them holds bodies of another debt as well (then my word is my own D).
+function Book:claims(d)
+  local L, out, wide = self.client.ledger, {}, false
+  for _, id in ipairs(d.ids) do
+    local a, n = ns.Ledger.author(id)
+    for _, b in ipairs(L:bodies(a, n)) do
+      if b.k == "D" and b.gid == d.gid and b.f == d.f and b.t == d.t and a == d.t and not b.un and not L:denied(b) then
+        out[#out + 1] = b
+      elseif b.k == "D" and b.gid .. "|" .. tostring(b.f) .. "|" .. tostring(b.t) ~= d.key then wide = true end
+    end
+  end
+  return out, wide
+end
+
+-- My word on body b of debt d: C (my own D, `wide`), or N why.
+function Book:word(d, b, wide, kind, why)
+  if kind == "N" then return self:make("W" .. b.h, "N", { r = b.i, dh = b.h, why = why }) end
+  if wide then return self:make("O" .. d.key, "D", { gid = d.gid, g = b.g, f = d.f, t = d.t, c = b.c, why = b.why }) end
+  return self:make("W" .. b.h, "C", { r = b.i, dh = b.h })
+end
+

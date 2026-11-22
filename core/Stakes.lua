@@ -230,21 +230,26 @@ local function forfeit(s, a, roster)
   book:outcome(s, gid, Stakes.pairs({ name }, to, s.stake), a.why, name == env.me and s.stakeIdle and "idle" or nil)
 end
 
--- „Стани“ in the running game I play at the stake I accepted (my note
--- db.stakeSat; an asked seat has none): db.stakeLeft[tid] = {at, sk, names,
--- used}, before my STD; a member, whose client never applies its stand, also
--- notes the forfeit and tells it ("forfeit"). A host's handoff plays it here.
+-- „Стани“ in the running game I play: at the stake I accepted (my note
+-- db.stakeSat) db.stakeLeft[tid] = {at, sk, names, q, used}, before my STD
+-- (q: the stand's predicted event number; its claims, core/StakesClaims.lua);
+-- a member, whose client never applies its stand, also notes the forfeit
+-- ("unseen" for an asked seat, which has no stake note) and tells it
+-- ("forfeit"). A host's handoff plays it here.
 local function quit(s)
   local env, roster, sat = s.client.env, s.stakeRoster, s.client.env.db.stakeSat
   if not (s.client.stakes and s.stakeLive and roster and s.mySeat and roster[s.mySeat] == env.me) then return end
-  if not (type(sat) == "table" and sat.tid == s.tid and sat.sk == s.stake) then return end
+  local mine = type(sat) == "table" and sat.tid == s.tid and sat.sk == s.stake
   local to, q, at = {}, s.seq + 1, env.epoch()
   for i = 1, #s.seats do if i ~= s.mySeat and roster[i] then to[#to + 1] = roster[i] end end
-  env.db.stakeLeft = env.db.stakeLeft or {}
-  env.db.stakeLeft[s.tid] = { at = at, sk = s.stake, names = to, used = {} }
+  if mine then
+    env.db.stakeLeft = env.db.stakeLeft or {}
+    env.db.stakeLeft[s.tid] = { at = at, sk = s.stake, names = to, q = q, used = {} }
+  end
   if s.role == "host" then return end
   s.client.events:emit("forfeit", { tid = s.tid, game = s.game, q = q, seat = s.mySeat, name = env.me, to = to, why = "left", sk = s.stake, at = at })
-  s.client.stakes:seen(true)[s.tid .. "/" .. q] = { at = at, g = s.game, sk = s.stake, pairs = Stakes.pairs({ env.me }, to, s.stake), why = "left", foul = s.stakeFoul, tid = s.tid, q = q }
+  s.client.stakes:seen(true)[s.tid .. "/" .. q] = { at = at, g = s.game, sk = s.stake, pairs = Stakes.pairs({ env.me }, to, s.stake), why = "left",
+    foul = mine and s.stakeFoul or "unseen", tid = s.tid, q = q }
 end
 
 -- What I judged of my running game, past my session: db.stakeSeen[tid .. "/"
