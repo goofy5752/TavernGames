@@ -82,7 +82,7 @@ function Store:bodies(a, n)
 end
 -- The derived counts of a body that comes (d = 1) or goes (d = -1).
 function Store:index(a, n, b, d)
-  if b.k == "R" then self.rc[a] = (self.rc[a] or 0) + d end
+  if b.k == "R" or b.k == "S" then self.rc[a] = (self.rc[a] or 0) + d end
   if b.k == "X" then
     local key = b.r .. "|" .. b.rh
     self.deny[key] = self.deny[key] or {}
@@ -143,7 +143,7 @@ function Store:add(e, from)
     if from == a and not old.dr then old.dr, old.rl, self.rev = true, nil, self.rev + 1 end
     return "dup", old
   end
-  if b.k == "R" and (self.rc[a] or 0) >= C.LEDGER_AUTHOR_MAX then return nil, "full" end
+  if (b.k == "R" or b.k == "S") and (self.rc[a] or 0) >= C.LEDGER_AUTHOR_MAX then return nil, "full" end
   if from == a then b.dr = true elseif from ~= nil then b.rl = true end
   if #held >= BODIES_MAX then
     -- Over the cap: a body its author denied goes first, else the highest h; never one I made.

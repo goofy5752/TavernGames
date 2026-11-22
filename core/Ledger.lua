@@ -1,11 +1,12 @@
 local _, ns = ...
 
 -- The guild's gold ledger: append-only entries `i = "<author>:<n>"` of the
--- kinds R (result), D (debt), C (confirm), N (contest), P (paid) and X (deny),
--- their canonical form, hash (16 hex) and validation. The per-guild store is
--- core/LedgerStore.lua. A stored entry keeps its own hash in `h`, plus `dr`
--- (got from its author) or `rl` (relayed). An X's own field `h` (the denied
--- entry's hash) is kept as `rh` in the store; `wire` and `canon` give it back as `h`.
+-- kinds R (result), S (stand: the settlement of a cash seat), D (debt), C (confirm),
+-- N (contest), P (paid) and X (deny), their canonical form, hash (16 hex) and
+-- validation. The per-guild store is core/LedgerStore.lua. A stored entry keeps
+-- its own hash in `h`, plus `dr` (got from its author) or `rl` (relayed). An X's
+-- own field `h` (the denied entry's hash) is kept as `rh` in the store; `wire`
+-- and `canon` give it back as `h`.
 -- A C or N names the exact D it attests or contests: `r` its id, `dh` its 16-hex hash.
 local Ledger = {}
 ns.Ledger = Ledger
@@ -22,11 +23,12 @@ local function set(...) local s = {} for _, v in ipairs({ ... }) do s[v] = true 
 -- The fields of each kind: true = required, false = optional.
 local KINDS = {
   R = { gid = true, g = true, n = true, w = true, l = true, sk = false, why = false },
+  S = { gid = true, g = true, f = true, c = true, sk = true, n = true, w = true, l = true, why = false },
   D = { gid = true, g = true, f = true, t = true, c = true, why = true },
   C = { r = true, dh = true }, N = { r = true, dh = true, why = true }, P = { f = true, c = true, how = true }, X = { r = true, h = true },
 }
-local WHY = { D = set("lost", "left", "offline", "idle"), N = set("forged", "roll", "deal", "dice", "stand", "amount", "no"),
-  R = set("left", "offline", "idle") }
+local WHY = { D = set("lost", "left", "offline", "idle", "cash"), N = set("forged", "roll", "deal", "dice", "stand", "amount", "no"),
+  R = set("left", "offline", "idle"), S = set("left", "offline", "close") }
 local HOW = set("trade", "mail", "hand")
 
 local function whole(v) return type(v) == "number" and v == floor(v) end
