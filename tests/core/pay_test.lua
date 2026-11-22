@@ -385,8 +385,8 @@ describe("pay: by mail", function()
     local _, i = setup(nil, { P })
     i.pay:mailed({ shown = "Мария", subject = "Подарък", c = G5 })
     eq(#ps(i), 0); eq(asks(i), { { name = M, c = G5, how = "mail" } })
-    i.pay:mailed({ shown = P, subject = TAGGED, c = G5 })
-    i.pay:mailed({ shown = "Петър", subject = "Подарък", c = G5 })
+    i.pay:mailed({ shown = P, subject = "Подарък", c = G5 })
+    i.pay:mailed({ shown = "Петър", subject = TAGGED, c = G5 }) -- no full name the guild knows
     i.pay:mailed({ shown = "Аукционна къща", subject = TAGGED, c = G5 })
     i.pay:mailed({ shown = "Мария", subject = TAGGED, c = 0 })
     eq(#ps(i), 0); eq(#i.pay:asks(), 1)
@@ -428,6 +428,108 @@ describe("pay: by mail", function()
     eq(#ps(i), 1); eq(ps(i)[1].c, G5)
     i.pay:mailed({ shown = M, subject = TAGGED, c = 80000 }) -- nothing is due any more
     eq(#ps(i), 1); eq(i.pay:asks(), {})
+  end)
+end)
+
+describe("pay: gold that comes before the debt is confirmed on my client (final review I1)", function()
+  -- И's claim against М is pending on И's client: М's C is held back on its way.
+  local function pending(mo)
+    ns.Locale.set("bg")
+    local sim = Sim.new()
+    local i, m = sim:add(I), sim:add(M, mo or { near = { I }, mailbox = true })
+    sim:add(P)
+    sim:run(1); sim:settle()
+    local held = {}
+    sim.bus.filter = function(from, _, _, msg)
+      if from == M and msg.t == "LEV" then held[#held + 1] = msg; return {} end
+      return { msg }
+    end
+    local d = i.ledgerNet:make("D", { gid = "T#7/7", g = "ttt", f = M, t = I, c = G5, why = "offline" })
+    sim:run(3)
+    eq(m.stakes:answer(m.stakes:asks()[1].key, true), true) -- М confirms; И does not hear it yet
+    sim:run(3)
+    eq(m.pay:owed(I), G5); eq(i.pay:due(M), 0); eq(View.of(i.ledger).debts[1].status, "pending")
+    local function sync() -- the C arrives
+      sim.bus.filter = nil
+      for _, msg in ipairs(held) do i:receive("GUILD", M, msg) end
+      sim:run(3)
+    end
+    return sim, i, m, sync, d, held
+  end
+
+  it("a tagged letter taken before the C has synced is recorded; the balance is right once the C syncs", function()
+    local sim, i, m, sync = pending()
+    local seen = record(i, "payAsk")
+    i.pay:mailed({ shown = "Мария", subject = TAGGED, c = G5 })
+    eq(#ps(i), 1); eq({ ps(i)[1].f, ps(i)[1].c, ps(i)[1].how }, { M, G5, "mail" }); eq(#seen, 0)
+    eq(i.pay:due(M), 0); eq(net(i, M, I), 0)
+    sim:run(3)
+    eq(net(m, M, I), 0) -- М holds its C and И's P
+    sync()
+    eq(View.of(i.ledger).debts[1].status, "confirmed")
+    eq(net(i, M, I), 0); eq(net(m, M, I), 0); eq(i.pay:due(M), 0); eq(m.pay:owed(I), 0)
+    eq(View.rows(View.of(i.ledger))[1].open, 0)
+    -- a second letter: nothing is left to pay
+    i.pay:mailed({ shown = "Мария", subject = TAGGED, c = G5 })
+    eq(#ps(i), 1); eq(i.pay:asks(), {})
+  end)
+
+  it("a trade announced by PAY before the C has synced is recorded; more than the claim records only the claim", function()
+    local sim, i, m, sync = pending()
+    eq(m.pay:byTrade(I), true); sim:run(0)
+    i.pay:traded({ name = M, gave = 0, got = 80000, items = false })
+    eq(#ps(i), 1); eq({ ps(i)[1].f, ps(i)[1].c, ps(i)[1].how }, { M, G5, "trade" })
+    sync()
+    eq(net(i, M, I), 0); eq(net(m, M, I), 0)
+  end)
+
+  it("the credit clears that debtor's debts oldest first as they are confirmed", function()
+    local sim, i, m, sync, _, held = pending()
+    owe(sim, M, I, 30000) -- a later debt, confirmed at once
+    i:receive("GUILD", M, table.remove(held)); sim:run(1)
+    eq(i.pay:due(M), 30000)
+    i.pay:mailed({ shown = M, subject = TAGGED, c = G5 }) -- 5g: the room is the pending 5g and the confirmed 3g
+    eq(#ps(i), 1); eq(ps(i)[1].c, G5); eq(i.pay:due(M), 0)
+    sync()
+    eq(i.pay:due(M), 30000); eq(net(m, M, I), 30000)
+    local rows = View.rows(View.of(i.ledger))
+    eq({ rows[1].debt.gid, rows[1].open }, { "T#7/7", 0 }); eq(rows[2].open, 30000) -- first in, first out
+  end)
+
+  it("untagged or unannounced gold from a name with only a pending claim is put to me, never dropped", function()
+    local _, i = pending()
+    i.pay:mailed({ shown = "Мария", subject = "Подарък", c = G5 })
+    i.pay:traded({ name = M, gave = 0, got = G5, items = false })
+    eq(#ps(i), 0)
+    eq(asks(i), { { name = M, c = G5, how = "mail" }, { name = M, c = G5, how = "trade" } })
+    eq(i.pay:answer(i.pay:asks()[1].id, M), true)
+    eq(#ps(i), 1); eq(ps(i)[1].c, G5)
+    eq(i.pay:answer(i.pay:asks()[1].id, M), true) -- nothing is left of that claim
+    eq(#ps(i), 1)
+  end)
+
+  it("with no debt row at all a tagged letter or an announced trade is a question; yes records the whole as credit", function()
+    ns.Locale.set("bg")
+    local sim = Sim.new()
+    local i, m = sim:add(I), sim:add(M)
+    sim:run(1); sim:settle()
+    i.pay:mailed({ shown = M, subject = TAGGED, c = G5 })
+    eq(#ps(i), 0); eq(asks(i), { { name = M, c = G5, how = "mail", credit = true } })
+    m:send("WHISPER", I, { v = 1, t = "PAY", c = 20000, how = "trade" }); sim:run(0)
+    i.pay:traded({ name = M, gave = 0, got = 20000, items = false })
+    eq(#i.pay:asks(), 2); eq(asks(i)[2], { name = M, c = 20000, how = "trade", credit = true })
+    -- neither a letter that is not tagged, nor a name the guild does not know, nor a trade nobody announced
+    i.pay:mailed({ shown = M, subject = "Подарък", c = G5 })
+    i.pay:mailed({ shown = "Мария", subject = TAGGED, c = G5 })
+    i.pay:mailed({ shown = "Аукционна къща", subject = TAGGED, c = G5 })
+    i.pay:traded({ name = M, gave = 0, got = 20000, items = false })
+    eq(#i.pay:asks(), 2)
+    eq(i.pay:answer(i.pay:asks()[2].id, false), true)
+    eq(i.pay:answer(i.pay:asks()[1].id, M), true)
+    eq(#ps(i), 1); eq({ ps(i)[1].f, ps(i)[1].c, ps(i)[1].how }, { M, G5, "mail" })
+    -- М's own D (its creditor never claimed) arrives later: the credit has paid it
+    owe(sim, M, I, G5)
+    eq(net(i, M, I), 0); eq(net(m, M, I), 0)
   end)
 end)
 

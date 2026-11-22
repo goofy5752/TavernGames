@@ -3,14 +3,20 @@ local _, ns = ...
 -- Payment (spec 5.4): client.pay. The addon never moves gold: it opens a trade
 -- or fills a letter (env.trade, env.mail); the player presses the game's button.
 -- Amounts are the pair's net (View.net): owed (I owe) or due (owed to me, less my
--- P waiting in my login queue). Only the creditor's client writes a P, min(gold, due):
--- a completed trade with my debtor, no item on either side, within PAY_WINDOW s
--- of its whispered PAY "trade" (one PAY, one trade) -> P "trade"; money taken
--- from a letter tagged Pay.TAG whose sender fits exactly one name I have any debt
--- with, a debtor (Names.matches) -> P "mail"; other gold from a debtor is put to me (asks,
--- answer, "payAsk"), from anybody else ignored. „Уредено“ (settle): P "hand"
--- for the whole due; over the gold cap a P splits. „Напомни“ (nudge): PAY
--- "nudge", once per NUDGE_GAP s. Nothing here is saved (the login queue keeps a P).
+-- P waiting in my login queue). Only the creditor's client writes a P, min(gold, room):
+-- room is what that name may still pay me, its debts to me in any state (a pending
+-- one too: its C may not have reached me yet) less what I recorded and what I owe
+-- it. A P ahead of the C is credit of that pair: it clears that debtor's debts
+-- oldest first as they are confirmed (core/LedgerView.lua). With room:
+-- a completed trade, no item on either side, within PAY_WINDOW s of the payer's
+-- whispered PAY "trade" (one PAY, one trade) -> P "trade"; money taken from a
+-- letter tagged Pay.TAG whose sender fits exactly one name I have any debt with
+-- (Names.matches) -> P "mail"; other gold from such a name is put to me (asks,
+-- answer, "payAsk"). With no debt row at all, an announced trade or a tagged
+-- letter of a full name the guild knows is put to me as well (credit: yes records
+-- the whole amount); anything else is ignored. „Уредено“ (settle): P "hand" for
+-- the whole due; over the gold cap a P splits. „Напомни“ (nudge): PAY "nudge",
+-- once per NUDGE_GAP s. The login queue keeps a P.
 local C, Names, View, Util = ns.Const, ns.Names, ns.LedgerView, ns.Util
 local floor, min, max = math.floor, math.min, math.max
 
@@ -43,6 +49,23 @@ end
 -- What I owe `name`, and what `name` owes me (copper, never below 0).
 function Pay:owed(name) return max(0, View.net(self:view(), self.env.me, name)) end
 function Pay:due(name) return max(0, View.net(self:view(), name, self.env.me) - self:queued(name)) end
+
+-- What `name` may still pay me (see the header), and whether I have any debt row with it, either way.
+function Pay:room(name)
+  local v, me, all, any = self:view(), self.env.me, 0, false
+  for _, d in ipairs(v.debts) do
+    if d.f == name and d.t == me then all = all + d.c end
+    any = any or (d.f == name and d.t == me) or (d.f == me and d.t == name)
+  end
+  return max(0, all - View.paid(v, name, me) - View.gross(v, me, name) - self:queued(name)), any
+end
+
+-- Is `name` a full name the guild knows (env.member; without it, a peer presence lists)?
+function Pay:member(name)
+  local member = self.env.member
+  if member then return member(name) == true end
+  return self.client.presence:get(name) ~= nil
+end
 
 -- The ways to pay `name`: {trade = "ok" | "far" | "none" | "off", mail = "open" |
 -- "closed" | "off", fee, short} ("off": the client lacks the API; short: the
@@ -99,9 +122,10 @@ function Pay:waiting(name)
   return self.said[name] ~= nil and View.paid(self:view(), self.env.me, name) == self.said[name]
 end
 
--- My P for debtor `name`: min(gold, due), split at the gold cap -> {entry | "queued", ...} | nil.
-function Pay:record(name, gold, how)
-  local left, out = min(gold, self:due(name)), {}
+-- My P for debtor `name`: min(gold, room) (whole: all of it, credit), split at the gold cap
+-- -> {entry | "queued", ...} | nil.
+function Pay:record(name, gold, how, whole)
+  local left, out = whole and gold or min(gold, (self:room(name))), {}
   while left > 0 do
     local c = min(left, PAID_MAX)
     local e = self.client.ledgerNet:make("P", { f = name, c = c, how = how })
@@ -124,26 +148,32 @@ end
 function Pay:traded(t)
   if type(t) ~= "table" or type(t.name) ~= "string" or type(t.got) ~= "number" or type(t.gave) ~= "number" then return end
   local name, gold = t.name, t.got - t.gave
-  if not copper(gold) or self:due(name) == 0 then return end
-  local heard = self.heard[name]
+  if not copper(gold) then return end
+  local heard, room, any = self.heard[name], self:room(name)
   self.heard[name] = nil
-  if t.items == false and heard and self.env.now() - heard <= C.PAY_WINDOW then return self:record(name, gold, "trade") end
+  local told = t.items == false and heard ~= nil and self.env.now() - heard <= C.PAY_WINDOW
+  if room == 0 then -- nothing it may pay me: ignored, unless it announced the payment of a debt I do not hold yet
+    if told and not any then self:ask({ name = name, c = gold, how = "trade", credit = true }) end
+    return
+  end
+  if told then return self:record(name, gold, "trade") end
   self:ask({ name = name, c = gold, how = "trade" })
 end
 
 -- Money m.c taken from a letter of m.shown (the sender as the inbox shows it):
 -- it may be any name I have a debt with, either way and in any state (pending,
--- contested, confirmed or paid); ignored when none of them owes me.
+-- contested, confirmed or paid); ignored when none of them may still pay me.
 function Pay:mailed(m)
   if type(m) ~= "table" or not copper(m.c) then return end
   local me, shown, fit, owing = self.env.me, Names.normalize(m.shown), {}, false
   for _, d in ipairs(self:view().debts) do
     local who = d.f == me and d.t or d.t == me and d.f
-    if who and not Util.contains(fit, who) and Names.matches(who, shown) then fit[#fit + 1], owing = who, owing or self:due(who) > 0 end
+    if who and not Util.contains(fit, who) and Names.matches(who, shown) then fit[#fit + 1], owing = who, owing or self:room(who) > 0 end
   end
+  local tagged = type(m.subject) == "string" and m.subject:sub(1, #Pay.TAG) == Pay.TAG
+  if #fit == 0 and tagged and shown and self:member(shown) then return self:ask({ name = shown, c = m.c, how = "mail", credit = true }) end
   if not owing then return end
   table.sort(fit, Util.byteLess)
-  local tagged = type(m.subject) == "string" and m.subject:sub(1, #Pay.TAG) == Pay.TAG
   if tagged and #fit == 1 then return self:record(fit[1], m.c, "mail") end
   self:ask(#fit == 1 and { name = fit[1], c = m.c, how = "mail" } or { names = fit, c = m.c, how = "mail" })
 end
@@ -158,7 +188,7 @@ function Pay:answer(id, name)
     if q.id == id then
       if name ~= false and not (name == q.name or (q.names and Util.contains(q.names, name))) then return nil end
       table.remove(self.questions, j)
-      if name then self:record(name, q.c, q.how) end
+      if name then self:record(name, q.c, q.how, q.credit and not select(2, self:room(name))) end
       self.client.events:emit("payAsk")
       return true
     end
