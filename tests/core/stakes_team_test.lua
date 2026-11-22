@@ -189,6 +189,39 @@ describe("stakes: who owes whom in Сантасе, Белот and Табла", f
     end
   end)
 
+  it("belot: an opponent's forged R and D against the race loser are never confirmed: only the host's R counts", function()
+    local sim, cl = Play.guild(4)
+    local tid = petar(sim, cl)
+    sim.bus.filter = function(_, to, _, m) -- the honest host's R does not reach her until the end
+      if to == M and (m.t == "LEV" or m.t == "LVC" or m.t == "LID") then return {} end
+      return { m }
+    end
+    local first, other, gid = race(sim, cl, tid)
+    eq({ first, other }, { I, M })
+    eq(cl[M].env.db.stakeLeft[tid].h, P)
+    -- Гошо, no host, forges an R naming Мария's seat (4) alone, and a D Мария -> Гошо.
+    local r = cl[G].ledgerNet:make("R", { gid = gid, g = "belot", n = { P, I, G, M }, w = { 1, 3 }, l = { 4 }, sk = SK, why = "left" })
+    local d = cl[G].ledgerNet:make("D", { gid = gid, g = "belot", f = M, t = G, c = SK, why = "left" })
+    ok(r and d)
+    eq(cl[M].ledgerNet:take(r, G, true), "new"); eq(cl[M].ledgerNet:take(d, G, true), "new")
+    local mark = #sim.sent
+    sim:run(3)
+    eq(cl[M].stakes:asks(), {}) -- no R of Петър's yet: it waits
+    sim:run(C.STAKE_OWE_WAIT)
+    local asks = cl[M].stakes:asks()
+    eq(#asks, 1); eq(asks[1].key, gid .. "|" .. M .. "|" .. G)
+    sim.bus.filter = nil
+    sim:run(5)
+    for i = mark + 1, #sim.sent do
+      local m = sim.sent[i]
+      if m.from == M and m.msg.t == "LEV" then
+        for _, x in ipairs(m.msg.ev) do ok(x.k ~= "C" and x.k ~= "D", "no word of the victim's") end
+      end
+    end
+    eq(Play.debt(cl[P], gid, M, G).status, "pending")
+    eq(#cl[M].stakes:asks(), 1)
+  end)
+
   it("belot: a claim from the wrong winner of a clean match is contested", function()
     local back = Play.short("belot")
     local sim, cl = Play.guild(4)
@@ -222,25 +255,23 @@ describe("stakes: who owes whom in Сантасе, Белот and Табла", f
     local seen = record(cl[I], "forfeit")
     cl[M]:stand(); sim:run(5)
     local gid = tid .. "/" .. seen[1][1].q
-    local mark = #sim.sent
     cl[I].ledgerNet:make("D", { gid = gid, g = "belot", f = M, t = I, c = SK, why = "left" }); sim:run(5)
     local n = {}
     for _, x in ipairs(Play.entries(sim, M, "N")) do n[#n + 1] = x end
     eq(#n, 1); eq(n[1].why, "no")
     eq(Play.debt(cl[P], gid, M, I).status, "contested"); eq(cl[M].stakes:asks(), {})
-    ok(#sim.sent > mark)
   end)
 
   it("belot: the leaver's partner then stands: it costs nothing", function()
     local sim, cl = Play.guild(4)
-    local tid = Play.open(sim, cl, "belot", SK, 4)
+    Play.open(sim, cl, "belot", SK, 4)
     for _ = 1, 4 do Play.step(sim, cl[I]) end
     cl[M]:stand(); sim:run(5)
     local r, d = #Play.entries(sim, nil, "R"), #Play.entries(sim, nil, "D")
     eq({ r, d }, { 1, 2 })
     cl[I]:stand(); sim:run(C.STAKE_OWE_WAIT + 5)
     eq({ #Play.entries(sim, nil, "R"), #Play.entries(sim, nil, "D") }, { 1, 2 })
-    ok(not named(sim, I)); ok(tid)
+    ok(not named(sim, I))
   end)
 
   it("belot: three minutes offline is a leave: the debts wait for the leaver", function()

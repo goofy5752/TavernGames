@@ -15,6 +15,7 @@ local _, ns = ...
 -- net(a, b) = gross(a, b) - gross(b, a); a P beyond the gross stays as credit of
 -- that pair. A row's open part is what is left of a confirmed debt once the paid
 -- and netted copper of its pair has cleared that pair's debts oldest first.
+-- The R entries are indexed by gid (View.results).
 -- View.of(L) is cached per store until L.rev changes; a rebuild is linear in the
 -- whole ledger (tens of ms on a large one), so callers ask for it once per batch
 -- of entries (a LEV) or behind a short debounce, never per entry or per frame.
@@ -82,7 +83,7 @@ local function settle(d)
 end
 
 local function build(L)
-  local v = { rev = L.rev, debts = {}, sum = {}, pay = {}, peers = {}, denials = {}, rows = {} }
+  local v = { rev = L.rev, debts = {}, sum = {}, pay = {}, peers = {}, denials = {}, rows = {}, results = {} }
   local byKey, byId, words = {}, {}, {}
   L:each(function(e)
     if e.un then return end -- an own entry put to me after a crash (core/LedgerNet.lua) counts for nothing
@@ -103,6 +104,9 @@ local function build(L)
       if a == e.f then say(d, n, "D", e.c, e.i) end
     elseif (e.k == "C" or e.k == "N") and str(e.r) and str(e.dh) then
       words[#words + 1] = { e, a, n }
+    elseif e.k == "R" and str(e.gid) then
+      local r = cell(v.results, e.gid)
+      r[#r + 1] = e
     elseif e.k == "P" and str(e.f) and copper(e.c) then
       add(v.pay, a, e.f, e.c)
       cell(v.peers, a)[e.f], cell(v.peers, e.f)[a] = true, true
@@ -191,6 +195,9 @@ function View.totals(v)
   end
   return out
 end
+
+-- The R entries of gid that are neither denied nor put to me, in the order of L:each.
+function View.results(v, gid) return v.results[gid] or {} end
 
 -- The denied entries, in the order of L:each.
 function View.denied(v) return v.denials end

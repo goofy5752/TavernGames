@@ -16,8 +16,8 @@ local _, ns = ...
 --           table is live, before my client saw a seat empty and filled again
 --           by a sit, or seating me without my own sit or „Реванш“; one of a
 --           host-started game (engine.start "host", the one Session:canStart
---           gates) earlier than STAKE_BREAK after the last ended by my clock,
---           AUTO_GRACE left for the transport; a snapshot, of my game or
+--           gates) or any match of an `again` table inside the break (Stakes.gap)
+--           by my clock, AUTO_GRACE left (core/StakesStart.lua); a snapshot, of my game or
 --           another, that does for my seat what I did not (a mark or a roll in
 --           my name, my seat gone without my stand or a stand for idleness my
 --           clock agrees with); my host's END, or its snapshot at another
@@ -230,7 +230,7 @@ local function forfeit(s, a, roster)
 end
 
 -- „Стани“ in the running game I play: at the stake I accepted (my note
--- db.stakeSat) db.stakeLeft[tid] = {at, sk, names, q, used} (else inert: {at, q, names}), before my STD
+-- db.stakeSat) db.stakeLeft[tid] = {at, sk, names, q, used, g, h: my host} (else inert: {at, q, names}), before my STD
 -- (q: the stand's predicted event number; its claims, core/StakesClaims.lua);
 -- a member, whose client never applies its stand, also notes the forfeit
 -- (Book:quit folds the rolls' audit in; "unseen" for an asked seat, which has
@@ -241,7 +241,7 @@ local function quit(s)
   local mine = type(sat) == "table" and sat.tid == s.tid and sat.sk == s.stake
   local to, q, at = Stakes.owed(s, roster, s.mySeat), s.seq + 1, env.epoch()
   env.db.stakeLeft = env.db.stakeLeft or {} -- an asked seat's leave is inert: no stake, nothing to use
-  env.db.stakeLeft[s.tid] = mine and { at = at, sk = s.stake, names = to, q = q, used = {}, g = s.game } or { at = at, q = q, names = to, g = s.game }
+  env.db.stakeLeft[s.tid] = mine and { at = at, sk = s.stake, names = to, q = q, used = {}, g = s.game, h = s.host } or { at = at, q = q, names = to, g = s.game }
   if s.role == "host" then return end
   s.client.events:emit("forfeit", { tid = s.tid, game = s.game, q = q, seat = s.mySeat, name = env.me, to = to, why = "left", sk = s.stake, at = at })
   s.client.stakes:quit(s, s.tid .. "/" .. q, { at = at, g = s.game, sk = s.stake, pairs = Stakes.pairs({ env.me }, to, s.stake), why = "left",

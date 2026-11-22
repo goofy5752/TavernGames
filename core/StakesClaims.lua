@@ -6,8 +6,8 @@ local _, ns = ...
 --   a creditor I left behind) -> C, once per creditor, unless my note of that
 --   game holds any foul (then put to me; its roll part pending -> wait); another amount there
 --   -> N "amount", any other claim at that gid -> put to me; in a team game (engine.partner) a
---   creditor who is no opponent -> N "no", and the C waits for the one R of that game naming my
---   seat (my partner's stand may have come first), put to me STAKE_OWE_WAIT after my stand
+--   creditor who is no opponent -> N "no", and the C waits for the one R of that game by my host
+--   at my stand (left.h) naming my seat (my partner's stand may have come first), put to me STAKE_OWE_WAIT after my stand
 --   without it or at once with another; a "left" claim at that table more than
 --   LEAVE_SLACK events after it, with no note of mine for its gid: a game I was
 --   not in (N "forged") once that creditor's claim of my stand was taken and the
@@ -46,7 +46,7 @@ function Book:judge(b, taken)
       -- Never from a game my client holds any foul of (forged, roll, stand, unseen): that is put to me.
       if type(note) == "table" and (note.wait or note.foul) then return note.wait and "wait" or "ask" end
       if E and E.partner then -- my partner's stand may have come first: only the one R of it naming me confirms
-        local n, named = self:results(b.gid)
+        local n, named = self:results(b.gid, left.h)
         local due = (left.at or 0) + C.STAKE_OWE_WAIT - self.env.epoch()
         if not named and (n > 0 or due <= 0) then return "ask" end
         if not named then self.wake = self.wake or self.client:after(due + 1, function() self.wake = nil; self:review() end); return "wait" end
@@ -81,16 +81,11 @@ function Book:judge(b, taken)
   return "ask"
 end
 
--- The R bodies of gid in my ledger (neither denied nor put to me; indexed once per ledger
--- revision) -> how many, and whether there is one and it names my seat alone as the loser.
-function Book:results(gid)
-  local L = self.client.ledger
-  if not (self.rs and self.rs.rev == L.rev) then
-    local by = {}
-    L:each(function(e) if e.k == "R" and type(e.gid) == "string" and not e.un and not L:denied(e) then by[e.gid] = by[e.gid] or {}; table.insert(by[e.gid], e) end end)
-    self.rs = { rev = L.rev, by = by }
-  end
-  local rs = self.rs.by[gid] or {}
+-- The R bodies of gid by author h in my ledger (neither denied nor put to me; LedgerView's
+-- index) -> how many, and whether there is one and it names my seat alone as the loser.
+function Book:results(gid, h)
+  local View, rs = ns.LedgerView, {}
+  for _, e in ipairs(View.results(View.of(self.client.ledger), gid)) do if ns.Ledger.author(e.i) == h then rs[#rs + 1] = e end end
   return #rs, #rs == 1 and type(rs[1].l) == "table" and #rs[1].l == 1 and type(rs[1].n) == "table" and rs[1].n[rs[1].l[1]] == self.env.me
 end
 
