@@ -355,8 +355,34 @@ describe("holdem cash: buy-in, rebuy, table stakes, cash-out", function()
     end
     apply(s, 0, { k = "join", seat = 3, who = "D" })       -- sat down during the hand: not dealt in
     eq({ E.buyRange(s, 3) }, { 400, 1000 }); buy(s, 3, 400)
-    eq(E.apply(s, 3, { k = "cashout" }), true); eq(s.seats[3].back, 400)
+    eq(codes(E.apply(s, 3, { k = "cashout" })), { nil, "early" }) -- not dealt a hand yet (F3-F I1)
     checkdown(s); identity(s)
+  end)
+  -- F3-F I1: a cashout and a buy straight after it, without end, would write a record each round.
+  it("no cashout before the seat was dealt a hand since its buy (\"early\"); a stand still settles it", function()
+    local s = T(); buy(s, 1, 1000)
+    eq(s.seats[1].fresh, true)
+    eq(codes(E.apply(s, 1, { k = "cashout" })), { nil, "early" }); eq(s.cash.outN, 0)
+    buy(s, 2, 1000)
+    apply(s, 0, { k = "hand" }); apply(s, 0, { k = "deal", deck = deckFor(s, {}) })
+    eq({ s.seats[1].fresh, s.seats[2].fresh }, { nil, nil })  -- dealt in
+    checkdown(s)
+    eq(E.apply(s, 1, { k = "cashout" }), true)
+    eq(codes(E.apply(s, 1, { k = "cashout" })), { nil, "seat" })
+    buy(s, 1, 1000)                                           -- back at once: not again before the next hand
+    eq(codes(E.apply(s, 1, { k = "cashout" })), { nil, "early" })
+    buy(s, 3, 400)
+    apply(s, 0, { k = "leave", seat = 3 })                    -- the stand of a seat never dealt in: settled, an empty record
+    local rec = s.cash.outs[#s.cash.outs]
+    eq(rec, { n = 2, seat = 3, who = "C", chips = 400, bought = 400, net = {}, names = {} })
+    eq(s.seats[3], false); identity(s)
+    local f = E.new({ seats = { true, true } })               -- a fun table has no such field
+    apply(f, 0, { k = "hand" }); eq(f.seats[1].fresh, nil)
+  end)
+  it("a top-up before the next hand keeps a seat that was dealt in free to cash out", function()
+    local s = twoHands({ rebuy = "top" })
+    buy(s, 2, 100)
+    eq(s.seats[2].fresh, nil); eq(E.apply(s, 2, { k = "cashout" }), true)
   end)
   it("a cashout settles my pairs and keeps my chair", function()
     local s = twoHands()

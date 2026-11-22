@@ -395,6 +395,22 @@ describe("ui: the buy-in asks again, and says why it did not go", function()
     w:click(f.cash.buy); w:click(f.cash.confirm)
     eq(plain(said[2]), "Покупката не мина („zzz“).")
   end)
+
+  -- F3-F Minor 13 / I1: no engine code of a buy or a cash-out is shown raw.
+  it("every refusal code of the engine's buy and cashout has its own words", function()
+    local w, View, f = setup()
+    local said = {}
+    w.ns.TableFrame.say = function(text) said[#said + 1] = text; return true end
+    View.update(f, sess(table3({ [1] = 400 }), 1))
+    local seen = {}
+    for i, code in ipairs({ "hand", "phase", "rebuy", "full", "amount", "early", "seat", "live", "none", "stake" }) do
+      w.ns.client.buy = function() return nil, code end
+      w:click(f.cash.buy); w:click(f.cash.confirm)
+      local text = plain(said[i])
+      ok(not text:find(code, 1, true) and not text:find("Покупката не мина", 1, true), code .. ": " .. text)
+      ok(not seen[text], code .. " repeats another code's words"); seen[text] = true
+    end
+  end)
 end)
 
 describe("ui: the end of my own cash-out", function()

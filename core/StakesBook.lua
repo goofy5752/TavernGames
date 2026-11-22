@@ -103,7 +103,6 @@ function Book:note(gid, note)
   self:review()
 end
 -- The newest note of table tid that has a pair -> note | nil (the bill reads it; a cash note that owes nothing is skipped).
--- The newest note of table tid -> note | nil (the bill reads it).
 function Book:last(tid)
   local best
   for _, n in pairs(self:seen()) do
@@ -171,17 +170,19 @@ function Book:quit(s, gid, note)
 end
 
 -- Note of gid: its foul the worse of base and the verdict a (Stakes.audit) reads now; with a,
--- note.wait until it is final (a.wait later, or Book:final sooner: once), then judged again.
+-- note.wait until it is final (a.wait later, or Book:final sooner: once, its timer cancelled), then judged again.
 function Book:pending(gid, note, base, a)
   note.foul, note.wait = worse(base, a and a.read() or nil), a and true or nil
   if not a then return end
+  local timer
   local function final()
     if self.finals[gid] ~= final then return end
     self.finals[gid], note.foul, note.wait = nil, worse(base, a.read()), nil
+    timer.cancel()
     self:review()
   end
   self.finals[gid] = final
-  self.client:after(a.wait, final)
+  timer = self.client:after(a.wait, final)
 end
 function Book:final(gid) if self.finals[gid] then self.finals[gid]() end end
 

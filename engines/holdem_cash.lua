@@ -15,6 +15,9 @@ table.
  - A voided hand is never attributed (it moves no chip).
  - A seat sits with 0 chips and sits out (seat(who, back)) until it buys; range(s, seat) is what buy takes and
    names what it refuses ("seat", "phase", "hand", "rebuy", "full"); see engines/holdem.lua rule 20.
+ - A seat's first buy of a sitting marks it `fresh` until a hand deals it in (HC.dealt); a fresh seat cannot
+   cash out ("early"): a cashout and a buy straight after it would otherwise write a record each round, for
+   nothing. Its stand still settles it (an empty record: no pair, chips == bought).
  - settle(s, seat) writes the seat's out record: every pair of it with another occupied seat, its row and
    column taken out of took, the other seat's `cleared` moved by that pair, so that for every occupied seat
    sum over occupied j of net(i, j) == chips - bought - cleared. The names are the engine's own `who`.
@@ -117,7 +120,23 @@ function HC.buy(s, seat, n)
   if not lo then return nil, hi end
   if type(n) ~= "number" or n % 1 ~= 0 or n < lo or n > hi then return nil, "amount" end
   local st = s.seats[seat]
+  if st.bought == 0 then st.fresh = true end
   st.chips, st.bought, st.out = st.chips + n, st.bought + n, false
+  return true
+end
+
+-- a hand deals the seats of `order` in: none of them is fresh any more
+function HC.dealt(s, order)
+  for _, seat in ipairs(order) do s.seats[seat].fresh = nil end
+end
+
+-- may the seat cash out now: true | nil, code
+function HC.mayCashout(s, seat)
+  local st = s.seats[seat]
+  if not st then return nil, "seat" end
+  if dealtIn(s, seat) then return nil, "hand" end
+  if st.bought == 0 then return nil, "seat" end
+  if st.fresh then return nil, "early" end
   return true
 end
 
@@ -150,10 +169,8 @@ local function out(s, seat)
 end
 
 function HC.cashout(s, seat)
-  local st = s.seats[seat]
-  if not st then return nil, "seat" end
-  if dealtIn(s, seat) then return nil, "hand" end
-  if st.bought == 0 then return nil, "seat" end
+  local may, code = HC.mayCashout(s, seat)
+  if not may then return nil, code end
   out(s, seat)
   return true
 end

@@ -522,6 +522,8 @@ describe("a cash settlement becomes pair debts", function()
     eq(cl[K].stakes:seen()[gid].pairs, {}) -- Kiro applied it: a note that owes nobody (I1)
     for _, e in ipairs(Play.entries(sim, K, "D")) do ok(e.gid ~= gid, "Kiro writes no D for Гошо's hand") end
     ok(cl[K]:act{ k = "buy", n = 1000 }); sim:run(1)
+    eq({ cl[K]:act{ k = "cashout" } }, { nil, "early" }) -- not before a hand dealt him in (F3-F I1)
+    for _ = 1, 3 do if not hs.state.seats[4].fresh then break end; calm(sim, host) end
     setTook(cl, { [1] = { [4] = 5 } }) -- Kiro owes Иван 5 chips
     ok(cl[K]:act{ k = "cashout" }); sim:run(1)
     local mine = got[K][#got[K]]

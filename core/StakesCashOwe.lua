@@ -11,7 +11,10 @@ local _, ns = ...
 --     bought, pairs, why, at} (why: nil for the seat's own cashout, the
 --     stand's "left"/"offline" (s.cashWhy[seat], kept until the hand the stand
 --     folded ends), "close" at the close); the seat leaves s.cashNames; the
---     host at that event writes the STAND record S, one per record. My pairs
+--     host at that event writes the STAND record S, one per record. A record
+--     that moved nothing (no pair, chips == bought: Stakes.cashIdle) is shown
+--     by the event and written nowhere: no S, and no note for it (F3-F I1: a
+--     seat that sits, buys and stands without end costs the guild nothing). My pairs
 --     of all the event's records go into one Book:outcome (why "lost" for the
 --     creditor's D, "cash" for the note). A snapshot only moves the counter:
 --     a settlement my client did not apply itself has no note (its claims are
@@ -60,6 +63,12 @@ function Stakes.cashPairs(rec)
     end
   end
   return out
+end
+
+-- Did out record rec move nothing: no pair of it, and it left with what it bought -> bool.
+function Stakes.cashIdle(rec)
+  for _, n in pairs(type(rec.net) == "table" and rec.net or {}) do if n ~= 0 then return false end end
+  return rec.chips == rec.bought
 end
 
 -- The verdict of the book on a note of mine written at event h -> foul | nil.
@@ -122,7 +131,8 @@ local function settled(s, seat, a)
   local gid, mine, bot, any = s.tid .. "/" .. s.seq, {}, not book or book:bot(s.tid), false
   for _, rec in ipairs(cash.outs) do
     if type(rec) == "table" and type(rec.n) == "number" and rec.n > seen then
-      any = true
+      local idle = Stakes.cashIdle(rec)
+      any = any or not idle
       s.cashOutSeen = math.max(s.cashOutSeen, rec.n)
       local why = s.cashWhy and s.cashWhy[rec.seat] or (st.closing and "close") or "left"
       if seat ~= 0 and seat == rec.seat and a.k == "cashout" then why = nil end
@@ -131,7 +141,7 @@ local function settled(s, seat, a)
       if s.cashNames and s.cashNames[rec.seat] == rec.who then s.cashNames[rec.seat] = nil end -- H2: a settled seat leaves my names
       client.events:emit("cashout", { tid = s.tid, gid = gid, seat = rec.seat, name = rec.who, chips = rec.chips,
         bought = rec.bought, pairs = copy(list), why = why, at = env.epoch() })
-      if not bot then
+      if not bot and not idle then
         if s.role == "host" then stand(s, book, gid, rec, why) end
         for _, p in ipairs(list) do if p.f == env.me or p.t == env.me then mine[#mine + 1] = p end end
       end

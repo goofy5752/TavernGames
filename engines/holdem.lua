@@ -87,7 +87,7 @@ RULES
     instead of stack. A seat sits with 0 chips and sits out until its own {k="buy", n} (40-100 BB; a name that left
     this game with c chips buys at least min(c, 100 BB)); "none": no later buy, nor a first one after leaving with 0;
     "bust": 40-100 BB only at 0 chips; "top": up to 100 BB. No buy, no {k="cashout"} while dealt in or my name
-    leaves another chair. Settled (an out record in state.cash.outs, emptied by the next hand) at a cashout (it stays
+    leaves another chair; no cashout ("early") before a hand dealt the seat in since its first buy. Settled (an out record in state.cash.outs, emptied by the next hand) at a cashout (it stays
     seated), a removal (a stand between hands; a hand's end: every leaver, then the newcomers sit), and a close.
 
 HAND HANDSHAKE (the deck comes from the fairness layer, so the engine cannot deal on its own)
@@ -392,7 +392,7 @@ local function startHand(s)
     order[#order + 1] = i
   until i == button
   s.button, s.order, s.p = button, order, {}
-  if s.cash then s.cash.outs = {} end           -- rule 20: the records of the last hand go
+  if s.cash then s.cash.outs = {}; HC.dealt(s, order) end   -- rule 20: the records of the last hand go
   for _, seat in ipairs(order) do
     s.p[seat] = { bet = 0, total = 0, folded = false, allin = false, acted = false, at = 0, cards = {} }
   end

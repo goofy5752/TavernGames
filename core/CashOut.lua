@@ -16,7 +16,7 @@ local _, ns = ...
 --     runs, "cashGoing"(nil). CASH_OUT_WAIT after a cashout I played with no
 --     hand holding me, still not applied: the stand runs without it (C5). A
 --     hand that deals me in cancels that wait; my next cashout arms it (H15a).
---   Client:stand(true), and any stand while CashOut.owes is false: as before.
+--   Client:stand(true), any stand while CashOut.owes is false, or of a seat no hand dealt in since its buy (`fresh`): as before.
 local CashOut = {}
 ns.CashOut = CashOut
 
@@ -130,7 +130,7 @@ end
 -- „Стани“ (see the header); now = true: at once, as before.
 function Client:stand(now)
   local s = self.session
-  if now or not CashOut.owes(s) then return leave(self) end
+  if now or not CashOut.owes(s) or mine(s).fresh then return leave(self) end
   if not (self.cashGoing and self.cashGoing.tid == s.tid) then
     self.cashGoing = { tid = s.tid, at = self.env.now() }
     self.events:emit("cashGoing", s.tid)
