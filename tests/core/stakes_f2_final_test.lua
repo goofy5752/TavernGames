@@ -281,4 +281,25 @@ describe("stakes: the final review of F2", function()
     local pairs_ = notePairs(cl[M], tid .. "/" .. seen[1].q)
     eq(#pairs_, 1); ok(not pairs_[1]:find(T, 1, true), pairs_[1])
   end)
+
+  it("belot: the host leaves: both opponents are confirmed (I1)", function()
+    local sim, cl = Play.guild(4)
+    local tid = Play.open(sim, cl, "belot", SK, 4)
+    for _ = 1, 4 do Play.step(sim, cl[I]) end
+    local seen = {}
+    cl[P]:on("forfeit", function(f) seen[#seen + 1] = f end)
+    cl[I]:stand(); sim:run(5)
+    eq(#seen, 1); eq({ seen[1].name, seen[1].to }, { I, { P, G } })
+    local gid = tid .. "/" .. seen[1].q
+    eq(cl[I].env.db.stakeLeft[tid].h, I) -- I hosted when I stood: my own client ordered that stand
+    for _, name in ipairs({ P, G }) do
+      local d = Play.debt(cl[name], gid, I, name)
+      ok(d, "a debt to " .. name); eq({ d.c, d.status }, { SK, "confirmed" })
+    end
+    eq(cl[I].stakes:asks(), {})
+    eq(Play.debt(cl[P], gid, I, M), nil) -- the partner is owed nothing
+    local rs = {}
+    for _, e in ipairs(Play.entries(sim, nil, "R")) do if e.gid == gid then rs[#rs + 1] = e end end
+    eq(#rs, 1); ok(rs[1].i:find(P, 1, true) == 1, "the successor wrote the R") -- none by the leaver itself
+  end)
 end)

@@ -7,8 +7,8 @@ local _, ns = ...
 --   game holds any foul (then put to me; its verdict pending -> wait); another amount there
 --   -> N "amount", any other claim at that gid -> put to me; in a team game (engine.partner) a
 --   creditor who is no opponent -> N "no", and the C waits for the one R of that game by my host
---   at my stand (left.h) naming my seat (my partner's stand may have come first), put to me STAKE_OWE_WAIT after my stand
---   without it or at once with another; a "left" claim at that table more than
+--   at my stand (left.h; no wait when that host was me) naming my seat (my partner's stand may have come first), put
+--   to me STAKE_OWE_WAIT after my stand without it or at once with another; a "left" claim at that table more than
 --   LEAVE_SLACK events after it, with no note of mine for its gid: a game I was
 --   not in (N "forged") once that creditor's claim of my stand was taken and the
 --   claim came within LEAVE_AT_SLACK of the leave, else put to me (in-flight
@@ -45,7 +45,9 @@ function Book:judge(b, taken)
     if b.why == "left" and left.sk == b.c and near(b.at, left.at) and (not used or used == b.h) and owed then
       -- Never from a game my client holds any foul of (forged, roll, stand, unseen): that is put to me.
       if type(note) == "table" and (note.wait or note.foul) then return note.wait and "wait" or "ask" end
-      if E and E.partner then -- my partner's stand may have come first: only the one R of it naming me confirms
+      -- My partner's stand may have come first: only the one R of it naming me confirms. Not when
+      -- I hosted at my stand (left.h is me): my own client ordered it, and that R is my successor's.
+      if E and E.partner and left.h ~= me then
         local n, named = self:results(b.gid, left.h)
         local due = (left.at or 0) + C.STAKE_OWE_WAIT - self.env.epoch()
         if not named and (n > 0 or due <= 0) then return "ask" end
