@@ -3,8 +3,8 @@ local _, ns = ...
 -- The money half of a staked table (core/Stakes.lua plays it, finds forfeits):
 -- client.stakes, for a client with a ledger. An outcome of mine (gid = tid
 -- .. "/" .. q) is noted first, db.stakeSeen[gid] = {at, g, sk, pairs, why,
--- foul, tid, q, wait}: the foul after the event's hooks, Rolls.audit folded
--- in (pending reads "unseen"; wait: final ROLL_FINAL_WAIT later). Then the
+-- foul, tid, q, wait}: the foul after the event's hooks, the verdict still
+-- out folded in (Stakes.audit: pending reads "unseen"; wait: until final). Then the
 -- host writes R (a fun table: nothing else), each creditor a D per pair, a
 -- debtor with a clean final note and no claim by its `owe` (STAKE_OWE_WAIT
 -- later; kept in the note, so a /reload or login resumes it) its own D;
@@ -44,7 +44,6 @@ function Stakes.owed(s, roster, seat)
 end
 
 local function worse(a, b) return (not a or (b and Stakes.RANK[b] > Stakes.RANK[a])) and b or a end
-local function rolls(s) return ns.Util.contains(s:engine().ext or {}, "rolls") end
 local function names(seats, list)
   local out = {}
   for _, seat in ipairs(list or {}) do if type(seats[seat]) == "string" then out[#out + 1] = seats[seat] end end
@@ -52,7 +51,8 @@ local function names(seats, list)
 end
 
 function Stakes.new(client)
-  local self = setmetatable({ client = client, env = client.env, did = {}, answered = {}, sig = "" }, Book)
+  local self = setmetatable({ client = client, env = client.env, did = {}, answered = {}, sig = "", finals = {} }, Book)
+  client:on("fair", function(v) Stakes.fairHeard(client, v) end) -- a hand or throw closed (core/StakesFair.lua)
   client:on("result", function(r) self:result(r) end)
   client:on("ledger", function() self:review() end)
   client:on("session", function() if self.held then self:review() end end) -- a claim waits for my table
@@ -143,41 +143,43 @@ function Book:settle(s, quits)
 end
 
 -- My note of an outcome and my entries for it: my claims, the owe timer, the
--- final roll verdict. `why`: the D's; `noted`: the note's, when another.
+-- verdict still out (a forfeit's: none but the rolls'). `why`: the D's; `noted`: the note's, when another.
 function Book:outcome(s, gid, pairs, why, noted)
   local me, mine, owes = self.env.me, false, false
   for _, p in ipairs(pairs) do mine, owes = mine or p.f == me or p.t == me, owes or p.f == me end
   if not mine then return end
-  local rec, base = rolls(s) and (ns.Rolls.auditOf(self.client, gid) or s), s.stakeFoul
   local note = { at = self.env.epoch(), g = s.game, sk = s.stake, pairs = pairs, why = noted or why, tid = s.tid,
-    q = tonumber(gid:match("/(%d+)$")), foul = worse(base, rec and ns.Rolls.audit(rec) or nil), wait = rec and true or nil }
+    q = tonumber(gid:match("/(%d+)$")) }
   self:seen(true)[gid] = note
+  self:pending(gid, note, s.stakeFoul, Stakes.audit(s, gid, why ~= "lost"))
   for _, p in ipairs(pairs) do
     if p.t == me then self:make("D" .. gid .. "|" .. p.f .. "|" .. me, "D", { gid = gid, g = s.game, f = p.f, t = me, c = p.c, why = why }) end
   end
   if owes then note.owe = note.at + C.STAKE_OWE_WAIT; self.client:after(C.STAKE_OWE_WAIT, function() self:owe(gid) end) end
-  if rec then
-    self.client:after(C.ROLL_FINAL_WAIT, function()
-      note.foul, note.wait = worse(base, ns.Rolls.audit(rec)), nil
-      self:review()
-    end)
-  end
   self:review()
 end
 
 -- The note of my „Стани“ as a member (core/Stakes.lua's quit): the foul my client
--- holds of that game with the rolls' audit folded in, as in Book:outcome (wait:
--- final ROLL_FINAL_WAIT later), so a claim of that stand is judged with it.
+-- holds of that game with the rolls' audit folded in, as in Book:outcome, so a claim of that stand is judged with it.
 function Book:quit(s, gid, note)
-  local rec, base = rolls(s) and s, note.foul
-  note.foul, note.wait = worse(base, rec and ns.Rolls.audit(rec) or nil), rec and true or nil
   self:seen(true)[gid] = note
-  if not rec then return end
-  self.client:after(C.ROLL_FINAL_WAIT, function()
-    note.foul, note.wait = worse(base, ns.Rolls.audit(rec)), nil
-    self:review()
-  end)
+  self:pending(gid, note, note.foul, Stakes.audit(s, gid, true))
 end
+
+-- Note of gid: its foul the worse of base and the verdict a (Stakes.audit) reads now; with a,
+-- note.wait until it is final (a.wait later, or Book:final sooner: once), then judged again.
+function Book:pending(gid, note, base, a)
+  note.foul, note.wait = worse(base, a and a.read() or nil), a and true or nil
+  if not a then return end
+  local function final()
+    if self.finals[gid] ~= final then return end
+    self.finals[gid], note.foul, note.wait = nil, worse(base, a.read()), nil
+    self:review()
+  end
+  self.finals[gid] = final
+  self.client:after(a.wait, final)
+end
+function Book:final(gid) if self.finals[gid] then self.finals[gid]() end end
 
 -- No claim of a creditor STAKE_OWE_WAIT after my clean loss: my own D. Done once (note.owe goes).
 function Book:owe(gid)

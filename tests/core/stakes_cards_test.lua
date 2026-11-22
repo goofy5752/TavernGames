@@ -1,7 +1,7 @@
 local Sim = require("sim")
 local Play = require("play")
 local ns = Sim.ns
-local C, View = ns.Const, ns.LedgerView
+local C, View, Stakes = ns.Const, ns.LedgerView, ns.Stakes
 local Santase = ns.Engines.santase
 
 local restore = Play.staked("santase", "belot")
@@ -61,7 +61,7 @@ end
 -- Steps until host's match is over -> the gid of it, the seat names of its losers and winners.
 local function finish(sim, host, limit)
   local r = Play.finish(sim, host, limit)
-  local names, L, W = host.session.seats, {}, {}
+  local names, L, W = r.names or host.session.seats, {}, {} -- by the result: a seat may be empty since
   for i, seat in ipairs(r.losers) do L[i] = names[seat] end
   for i, seat in ipairs(r.winners) do W[i] = names[seat] end
   return host.session.tid .. "/" .. r.q, L, W
@@ -359,6 +359,405 @@ describe("stakes: a staked card table plays", function()
       end
     end
     eq(seen, { lost = true, won = true })
+  end)
+end)
+
+describe("stakes: the verdict feeds the confirmation", function()
+  local Belot = ns.Engines.belot
+
+  -- A stand-in for a session at a table of `game` (what Stakes.fairFoul reads).
+  local function fakeSession(o)
+    return { client = { env = { me = o.me } }, mySeat = o.seat, seats = o.seats, game = o.game,
+      engine = function(self) return ns.Games.engine(self.game) end }
+  end
+
+  -- Runs fn with the match target of `id` at 1 (Play.short), put back whether it passes or fails.
+  local function shortly(id, fn)
+    local back = Play.short(id)
+    local fine, err = pcall(fn)
+    back()
+    if not fine then error(err, 0) end
+  end
+
+  -- Сантасе under Иван, every client drawing from lcg(seed) -> sim, cl, tid, the stream.
+  local function santase(seed, more)
+    local sim, cl = Play.guild(more and 3 or 2)
+    local rnd = seeded(cl, seed)
+    return sim, cl, Play.open(sim, cl, "santase", SK, 2), rnd
+  end
+
+  local function belot(seed)
+    local sim, cl = Play.guild(4)
+    local rnd = seeded(cl, seed)
+    return sim, cl, Play.open(sim, cl, "belot", SK, 4), rnd
+  end
+
+  local function isReveal(m)
+    local a = type(m.a) == "table" and m.a
+    return a and a.k == "fair" and a.op == "reveal"
+  end
+
+  -- Once host's match is over, the dealer's reveal (its ACT to the host; the host's EV when it deals) is
+  -- held back (drop: lost) -> the held {from, to, channel, m}.
+  local function holdReveals(sim, host, drop)
+    local held = {}
+    sim.bus.filter = function(from, to, channel, m)
+      if isReveal(m) and host.session and host.session:gameOver() then
+        if not drop then held[#held + 1] = { from = from, to = to, channel = channel, m = m } end
+        return {}
+      end
+      return { m }
+    end
+    return held
+  end
+
+  -- The held messages reach their clients now.
+  local function release(sim, held)
+    sim.bus.filter = nil
+    for _, x in ipairs(held) do sim.clients[x.to]:receive(x.channel, x.from, x.m) end
+    sim:run(0)
+  end
+
+  local function noteOf(client, gid) return client.env.db.stakeSeen[gid] end
+  local function words(sim, from, gid) return #wordsAt(sim, from, "C", gid) + #wordsAt(sim, from, "N", gid) end
+
+  -- The creditor of loser `name` of a team match (losers and winners by seat, the i-th owes the i-th).
+  local function creditorOf(name, L, W)
+    for i, f in ipairs(L) do if f == name then return W[i] end end
+  end
+
+  it("Stakes.fairFoul: the table of the plan", function()
+    local s = fakeSession{ me = "Иван Петров", seat = 1, seats = { "Иван Петров", "Петър Колев", "Мария Стоянова", "Гошо Тодоров" }, game = "belot" }
+    local function f(v) return Stakes.fairFoul(s, v) end
+    eq(f{ verdict = "ok" }, nil); eq(f{ verdict = "unseen" }, "unseen")
+    eq(f{ verdict = "bad", why = "announce", dealer = "Петър Колев" }, nil)
+    eq(f{ verdict = "bad", why = "play", dealer = "Мария Стоянова" }, "deal")
+    eq(f{ verdict = "bad", why = "noreveal", dealer = "Петър Колев" }, "deal")
+    eq(f{ verdict = "bad", why = "noreveal", dealer = "Мария Стоянова" }, "unseen")
+    s.fairVoids = { ["Петър Колев"] = 1 }
+    eq(f{ verdict = "void", dealer = "Петър Колев" }, "unseen")
+    eq(f{ verdict = "bad", why = "nodeal", dealer = "Петър Колев" }, "unseen")
+    s.fairVoids = { ["Петър Колев"] = 1 }; s.fairLapses = { ["Петър Колев"] = 1 }
+    eq(f{ verdict = "void", dealer = "Петър Колев" }, "deal")
+    s.fairVoids = { ["Мария Стоянова"] = 3 }
+    eq(f{ verdict = "void", dealer = "Мария Стоянова" }, nil); eq(f{ verdict = "void", dealer = "Иван Петров" }, nil)
+    -- Сантасе has no partner: my side is me alone; a throw of Табла is judged by its own verdict.
+    local s2 = fakeSession{ me = "Иван Петров", seat = 1, seats = { "Иван Петров", "Петър Колев" }, game = "santase" }
+    eq(Stakes.fairFoul(s2, { verdict = "bad", why = "noreveal", dealer = "Петър Колев" }), "deal")
+    eq(Stakes.fairFoul(s2, { verdict = "bad", why = "noreveal", dealer = "Иван Петров" }), "unseen")
+    local s3 = fakeSession{ me = "Иван Петров", seat = 1, seats = { "Иван Петров", "Петър Колев" }, game = "tabla" }
+    eq({ Stakes.fairFoul(s3, { verdict = "bad", why = "seed" }), Stakes.fairFoul(s3, { verdict = "unseen" }), Stakes.fairFoul(s3, { verdict = "ok" }) },
+      { "dice", "unseen", nil })
+  end)
+
+  local X = ("ab"):rep(16)
+
+  -- Hand 2 at Иван's Сантасе table: Иван deals it from seeds of its own (Петър's commit replaced by
+  -- one of X, X fed to it as Петър's seed): the hand closes "bad" ("mine") on Петър
+  -- (the scaffolding of tests/core/santase_table_test.lua's cheating host, G10).
+  local function hostDealsOwnSeeds(sim, cl)
+    local F, host = ns.Ext.fair, cl[I]
+    local realAct = F.act
+    F.act = function(s, seat, x)
+      if s.client == host and x.k == "fair" and x.op == "commit" and seat == 2 and s.fair and s.fair.d == 1 then
+        x = { k = "fair", op = "commit", h = x.h, c = ns.Fair.commit(X) }
+      end
+      return realAct(s, seat, x)
+    end
+    local fine, err = pcall(function()
+      ok(stepUntil(sim, host, function() local r = host.session.fair; return r and r.d == 1 and r.stage == "seed" end), "the shuffle of hand 2")
+      local r = host.session.fair
+      ns.Member.handlers.SED(host, P, { tid = host.session.tid, h = r.h, s = X }); sim:run(1)
+      eq(host.session.fair.stage, "dealt")
+    end)
+    F.act = realAct
+    if not fine then error(err, 0) end
+    local h = host.session.fair.h
+    ok(stepUntil(sim, host, function() local s = cl[P].session; return s:gameOver() or (s.fairLast and s.fairLast.h == h) end), "the end of hand 2")
+    sim:run(1)
+    eq({ cl[P].session.fairLast.verdict, cl[P].session.fairLast.why }, { "bad", "mine" })
+  end
+
+  it("a hand that closed bad on my client contests the match", function()
+    for seed = 1, 40 do
+      local sim, cl = santase(seed, true)
+      hostDealsOwnSeeds(sim, cl)
+      eq(cl[P].session.stakeFoul, "deal"); eq(cl[I].session.stakeFoul, nil)
+      local gid, L = finish(sim, cl[I])
+      sim:run(C.STAKE_FAIR_WAIT + 5)
+      if L[1] == P then
+        local n = wordsAt(sim, P, "N", gid)
+        eq(#n, 1); eq(n[1].why, "deal"); eq(#wordsAt(sim, P, "C", gid), 0)
+        eq(Play.debt(cl[M], gid, P, I).status, "contested") -- a third member of the guild
+        return
+      end
+    end
+    error("Петър never loses")
+  end)
+
+  it("a bad hand is sticky through a resync", function()
+    local sim, cl = santase(1)
+    hostDealsOwnSeeds(sim, cl)
+    eq(cl[P].session.stakeFoul, "deal")
+    cl[P].session:requestSync(); sim:run(2)
+    eq(cl[P].session.stakeFoul, "deal")
+  end)
+
+  it("the loser waits for the last hand's reveal, then confirms", function()
+    shortly("santase", function()
+      local sim, cl = santase(5)
+      local held = holdReveals(sim, cl[I])
+      local gid, L, W = finish(sim, cl[I])
+      eq(cl[I].session.fair.d, 2) -- Петър deals the one hand: its reveal goes to the host
+      sim:run(4) -- +5
+      local loser = cl[L[1]]
+      local note = noteOf(loser, gid)
+      eq({ note.wait, note.foul }, { true, "unseen" })
+      ok(Play.debt(loser, gid, L[1], W[1]), "the claim is there")
+      eq(Play.debt(loser, gid, L[1], W[1]).status, "pending"); eq(words(sim, L[1], gid), 0)
+      sim:run(5); release(sim, held); sim:run(1) -- the reveal at +10
+      eq({ note.wait, note.foul }, { nil, nil })
+      eq(Play.debt(loser, gid, L[1], W[1]).status, "confirmed")
+      sim:run(C.LEDGER_COALESCE + 1)
+      eq(#wordsAt(sim, L[1], "C", gid), 1); eq(#wordsAt(sim, L[1], "N", gid), 0)
+    end)
+  end)
+
+  it("the last hand is never revealed: the loser waits, then contests", function()
+    shortly("santase", function()
+      for seed = 1, 40 do
+        local sim, cl = santase(seed)
+        holdReveals(sim, cl[I], true) -- the guest dealer's ACT to the host is lost
+        local gid, L = finish(sim, cl[I])
+        if L[1] == I then
+          eq(cl[I].session.fair.d, 2)
+          sim:run(C.FAIR_WAIT - 4)
+          eq(noteOf(cl[I], gid).wait, true); eq(words(sim, I, gid), 0)
+          sim:run(8)
+          eq({ cl[I].session.fairLast.verdict, cl[I].session.fairLast.why }, { "bad", "noreveal" })
+          eq({ noteOf(cl[I], gid).foul, noteOf(cl[I], gid).wait }, { "deal", nil })
+          sim:run(C.LEDGER_COALESCE + 1)
+          local n = wordsAt(sim, I, "N", gid)
+          eq(#n, 1); eq(n[1].why, "deal"); eq(#wordsAt(sim, I, "C", gid), 0)
+          return
+        end
+      end
+      error("Петър never wins")
+    end)
+  end)
+
+  it("a silent dealer that is the host: the debt is asked at STAKE_FAIR_WAIT", function()
+    for seed = 1, 40 do
+      local sim, cl = santase(seed)
+      toHand(sim, cl[I], 2)
+      eq(cl[I].session.fair.d, 1) -- Иван deals hand 2, its last
+      local silent = false
+      sim.bus.filter = function(from, _, _, m)
+        if from ~= I then return { m } end
+        if isReveal(m) and m.t == "EV" and cl[I].session:gameOver() then silent = true end
+        return (silent and m.t ~= "LEV") and {} or { m } -- only its ledger entries still go out
+      end
+      local gid, L
+      shortly("santase", function() gid, L = finish(sim, cl[I]) end)
+      if L[1] == P then
+        ok(silent, "the host's reveal never went out")
+        sim:run(C.STAKE_FAIR_WAIT - 5)
+        local note = noteOf(cl[P], gid)
+        eq({ note.wait, note.foul }, { true, "unseen" })
+        ok(Play.debt(cl[P], gid, P, I), "the claim is there"); eq(words(sim, P, gid), 0)
+        sim:run(8)
+        eq({ note.wait, note.foul }, { nil, "unseen" })
+        ok(asked(cl[P], gid, P, I), "the debt is put to Петър")
+        eq(words(sim, P, gid), 0)
+        return
+      end
+    end
+    error("Иван never wins")
+  end)
+
+  it("my own partner's missing reveal is a question, not a contest", function()
+    shortly("belot", function()
+      for seed = 1, 60 do
+        local sim, cl = belot(seed)
+        holdReveals(sim, cl[I], true)
+        local gid, L, W = finish(sim, cl[I])
+        local s = cl[I].session
+        local d = s.fair.d
+        local mate = d ~= 1 and s.seats[Belot.partner(d)] -- the dealer's partner; a dealing host reveals by itself
+        if mate and creditorOf(mate, L, W) then
+          sim:run(C.STAKE_FAIR_WAIT + 5)
+          eq({ cl[mate].session.fairLast.verdict, cl[mate].session.fairLast.why }, { "bad", "noreveal" })
+          eq(noteOf(cl[mate], gid).foul, "unseen")
+          ok(asked(cl[mate], gid, mate, creditorOf(mate, L, W)), "the debt is put to the dealer's partner")
+          eq(words(sim, mate, gid), 0)
+          return
+        end
+      end
+      error("the dealer's team never loses")
+    end)
+  end)
+
+  it("a note still waiting at a logout stays unseen", function()
+    shortly("santase", function()
+      for seed = 1, 40 do
+        local sim, cl, _, rnd = santase(seed)
+        holdReveals(sim, cl[I], true)
+        local gid, L = finish(sim, cl[I])
+        if L[1] == P then
+          sim:run(3)
+          eq(noteOf(cl[P], gid).wait, true)
+          cl[P] = sim:relog(P); cl[P].env.random = rnd; sim:settle(); sim:run(3)
+          eq({ noteOf(cl[P], gid).foul, noteOf(cl[P], gid).wait }, { "unseen", nil })
+          sim:run(C.STAKE_FAIR_WAIT)
+          ok(asked(cl[P], gid, P, I), "the debt is put to Петър")
+          eq(words(sim, P, gid), 0)
+          return
+        end
+      end
+      error("Петър never loses")
+    end)
+  end)
+
+  -- Петър, the dealer of the running hand at Иван's table, comes back without its deck (sim:crash): the hand is void.
+  local function voidBy(sim, cl, rnd)
+    for _ = 1, 2 do Play.step(sim, cl[I]) end
+    cl[P] = sim:crash(P); cl[P].env.random = rnd; sim:settle(); sim:run(4)
+  end
+
+  it("an opponent's void: once is a question, twice a contest", function()
+    for _, times in ipairs({ 1, 2 }) do
+      local found = false
+      for seed = 1, 40 do
+        local sim, cl, _, rnd = santase(seed)
+        eq({ cl[I].session.fairN, cl[I].session.fair.d }, { 1, 2 })
+        voidBy(sim, cl, rnd)
+        eq(cl[I].session.fairVoids, { [P] = 1 })
+        if times == 2 then
+          toHand(sim, cl[I], 3); eq(cl[I].session.fair.d, 2)
+          voidBy(sim, cl, rnd)
+          eq(cl[I].session.fairVoids, { [P] = 2 })
+        end
+        eq(cl[I].session.stakeFoul, times == 1 and "unseen" or "deal")
+        local gid, L = finish(sim, cl[I])
+        sim:run(C.STAKE_FAIR_WAIT + 5)
+        if L[1] == I then
+          local n = wordsAt(sim, I, "N", gid)
+          if times == 1 then
+            ok(asked(cl[I], gid, I, P), "the debt is put to Иван"); eq(#n, 0)
+          else
+            eq(#n, 1); eq(n[1].why, "deal")
+          end
+          eq(#wordsAt(sim, I, "C", gid), 0)
+          found = true
+          break
+        end
+      end
+      ok(found, "Иван never loses (" .. times .. " voids)")
+    end
+  end)
+
+  it("my own void costs me nothing (Белот: the dealer comes back without its deck; its partner confirms)", function()
+    shortly("belot", function()
+      for seed = 1, 60 do
+        local sim, cl, _, rnd = belot(seed)
+        eq(cl[I].session.fair.d, 4) -- Гошо deals the first hand
+        for _ = 1, 2 do Play.step(sim, cl[I]) end
+        cl[G] = sim:crash(G); cl[G].env.random = rnd; sim:settle(); sim:run(4)
+        eq(cl[I].session.fairVoids, { [G] = 1 })
+        eq(cl[P].session.stakeFoul, nil) -- my partner's void: nothing
+        eq({ cl[I].session.stakeFoul, cl[M].session.stakeFoul }, { "unseen", "unseen" }) -- an opponent's first
+        local gid, L, W = finish(sim, cl[I])
+        sim:run(C.STAKE_FAIR_WAIT + 5)
+        if creditorOf(G, L, W) then
+          ok(asked(cl[G], gid, G, creditorOf(G, L, W)), "Гошо's debt is put to it (its login)")
+          eq(#wordsAt(sim, G, "N", gid), 0)
+          eq(#wordsAt(sim, P, "C", gid), 1); eq(#wordsAt(sim, P, "N", gid), 0)
+          eq(Play.debt(cl[I], gid, P, creditorOf(P, L, W)).status, "confirmed")
+          return
+        end
+      end
+      error("Гошо's team never loses")
+    end)
+  end)
+
+  -- The client on turn at Иван's Белот table bids each token of str, one second apart.
+  local function bid(sim, cl, str)
+    for token in str:gmatch("%S+") do
+      local s = cl[I].session
+      ok(sim.clients[s.seats[s.state.turn]]:act{ k = "bid", b = token }, "bid " .. token)
+      sim:run(1)
+    end
+  end
+
+  it("a forged announce does not contest", function()
+    shortly("belot", function()
+      for seed = 1, 60 do
+        local sim, cl, tid = belot(seed)
+        local host = cl[I]
+        local said = {}
+        for _, name in ipairs({ I, M }) do
+          cl[name]:on("fair", function(v) said[name] = said[name] or (v.why == "announce" and v.verdict) end)
+        end
+        bid(sim, cl, "S P P P")
+        while host.session.state.turn == 1 do Play.step(sim, host) end -- seat 1 announces what it has and leads
+        local i = host.session.state.hands[2][1] -- the scenario of tests/core/belot_table_test.lua (G10)
+        host:receive("WHISPER", P, { v = 1, t = "ACT", tid = tid, a = { k = "ann", a = { { t = "cJ", i = i }, { t = "s8", i = i }, { t = "c9", i = i } } } })
+        sim:run(2)
+        local gid, L = finish(sim, host)
+        if L[1] == I then -- Иван and Мария lost
+          sim:run(C.STAKE_FAIR_WAIT + 5)
+          for _, name in ipairs({ I, M }) do
+            eq(said[name], "bad", name)
+            eq(#wordsAt(sim, name, "C", gid), 1, name); eq(#wordsAt(sim, name, "N", gid), 0, name)
+          end
+          return
+        end
+      end
+      error("Иван and Мария never lose")
+    end)
+  end)
+
+  it("a leave waits for no verdict", function()
+    local sim, cl, tid = santase(3)
+    for _ = 1, 3 do Play.step(sim, cl[I]) end
+    ok(cl[I].session.fair.stage == "dealt" and not cl[I].session:gameOver(), "mid-hand")
+    local gid = tid .. "/" .. (cl[I].session.seq + 1)
+    cl[P]:stand(); sim:run(0)
+    for _, name in ipairs({ I, P }) do eq(noteOf(cl[name], gid).wait, nil, name) end
+    sim:run(3)
+    eq(Play.debt(cl[P], gid, P, I).status, "confirmed")
+    sim:run(C.LEDGER_COALESCE)
+    eq(#wordsAt(sim, P, "C", gid), 1)
+  end)
+
+  it("a verdict that the next start brings does not touch the new match", function()
+    shortly("santase", function()
+      for seed = 1, 40 do
+        local sim, cl = santase(seed)
+        holdReveals(sim, cl[I], true)
+        local gid, L = finish(sim, cl[I])
+        if L[1] == I then -- the dealer Петър won
+          local s, t0 = cl[I].session, sim.clock
+          if s.fairTimer then s.fairTimer.cancel(); s.fairTimer = nil end -- a host that never orders the "noreveal"
+          sim.bus.filter = nil
+          local started = false
+          for _ = 1, C.STAKE_BREAK_MATCH + 5 do
+            if cl[I]:startGame() == true then started = true; break end
+            sim:run(1)
+          end
+          ok(started, "the next match never starts")
+          sim:run(0)
+          ok(sim.clock - t0 < C.STAKE_FAIR_WAIT - 2, "inside the note's own wait")
+          eq({ noteOf(cl[I], gid).foul, noteOf(cl[I], gid).wait }, { "deal", nil })
+          eq(noteOf(cl[P], gid).wait, nil)
+          for _, name in ipairs({ I, P }) do
+            ok(cl[name].session.stakeLive, name); eq(cl[name].session.stakeFoul, nil, name)
+          end
+          return
+        end
+      end
+      error("Петър never wins")
+    end)
   end)
 end)
 

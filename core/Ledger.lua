@@ -25,7 +25,7 @@ local KINDS = {
   D = { gid = true, g = true, f = true, t = true, c = true, why = true },
   C = { r = true, dh = true }, N = { r = true, dh = true, why = true }, P = { f = true, c = true, how = true }, X = { r = true, h = true },
 }
-local WHY = { D = set("lost", "left", "offline", "idle"), N = set("forged", "roll", "stand", "amount", "no"),
+local WHY = { D = set("lost", "left", "offline", "idle"), N = set("forged", "roll", "deal", "dice", "stand", "amount", "no"),
   R = set("left", "offline", "idle") }
 local HOW = set("trade", "mail", "hand")
 

@@ -107,7 +107,7 @@ end
 
 describe("stakes: play", function()
   it("Stakes.foul keeps the higher rank", function()
-    eq(Stakes.RANK, { forged = 4, roll = 3, stand = 2, unseen = 1 })
+    eq(Stakes.RANK, { forged = 4, roll = 3, deal = 3, dice = 3, stand = 2, unseen = 1 })
     local s = {}
     Stakes.foul(s, "unseen"); eq(s.stakeFoul, "unseen")
     Stakes.foul(s, "roll"); Stakes.foul(s, "stand"); eq(s.stakeFoul, "roll")

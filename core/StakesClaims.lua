@@ -4,7 +4,7 @@ local _, ns = ...
 --   my „Стани“ (db.stakeLeft, core/Stakes.lua): the one claim of that stand
 --   (its gid, why "left", the table's stake, within STAKE_LEFT_WINDOW of it,
 --   a creditor I left behind) -> C, once per creditor, unless my note of that
---   game holds any foul (then put to me; its roll part pending -> wait); another amount there
+--   game holds any foul (then put to me; its verdict pending -> wait); another amount there
 --   -> N "amount", any other claim at that gid -> put to me; in a team game (engine.partner) a
 --   creditor who is no opponent -> N "no", and the C waits for the one R of that game by my host
 --   at my stand (left.h) naming my seat (my partner's stand may have come first), put to me STAKE_OWE_WAIT after my stand
@@ -13,7 +13,7 @@ local _, ns = ...
 --   not in (N "forged") once that creditor's claim of my stand was taken and the
 --   claim came within LEAVE_AT_SLACK of the leave, else put to me (in-flight
 --   timing is no foul); an asked seat's leave is inert;
---   my note of its gid: roll part pending -> wait, a foul forged/roll/stand
+--   my note of its gid: its verdict pending -> wait, a foul forged/roll/deal/dice/stand
 --   -> N with it, a creditor I owe nothing at a clean loss -> N "no", another
 --   amount -> N "amount", my pair clean and the claim written within
 --   STAKE_LEFT_WINDOW of my note -> C (my own D when its id holds bodies of
@@ -25,7 +25,7 @@ local _, ns = ...
 local C, Util = ns.Const, ns.Util
 local Book = ns.Stakes.Book
 
-local BAD = { forged = true, roll = true, stand = true }
+local BAD = { forged = true, roll = true, deal = true, dice = true, stand = true }
 local LEAVE_SLACK = 4 -- events my host may order between my „Стани“ and its stand
 local LEAVE_AT_SLACK = 120 -- s: a far claim is contested only this close to the stored leave (a crash may lose a later one)
 

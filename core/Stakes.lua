@@ -52,7 +52,7 @@ local _, ns = ...
 --                s.stakeLog: Stakes.save, core/StakesWatch.lua)
 --   stakeDoubt   the log a login took up may be older than my last session here
 --                (Stakes.restore), until the next game begins
---   stakeFoul    nil | "forged" | "roll" | "stand" | "unseen"
+--   stakeFoul    nil | "forged" | "roll" | "deal" | "dice" | "stand" | "unseen" (deal, dice: core/StakesFair.lua)
 --   stakePend    the foul of the event being handled, set at the end of the hook
 --   stakeTurn    {seat, at, seen, was}: the seat on turn and my env.now() when my client
 --                first saw it on turn, or when another host took over (was: the first
@@ -76,7 +76,7 @@ ns.Stakes = Stakes
 local C = ns.Const
 local same = ns.Util.same
 
-Stakes.RANK = { forged = 4, roll = 3, stand = 2, unseen = 1 }
+Stakes.RANK = { forged = 4, roll = 3, deal = 3, dice = 3, stand = 2, unseen = 1 }
 
 -- Notes `why` against the running game; the higher rank stays.
 function Stakes.foul(s, why)
