@@ -8,8 +8,9 @@ local _, ns = ...
 -- filled. `paid` is what that creditor had recorded from me then; c the copper
 -- that left (a second payment meanwhile adds to it). The guard is live while
 -- the creditor's P entries since have not covered c and it is younger than
--- PAY_GUARD (24 h); a dead one is dropped. While it is live „Плати“ offers only
--- what has not left yet (Pay:left).
+-- PAY_GUARD (24 h) for a trade, PAY_GUARD_MAIL (30 days: a letter with gold lies
+-- in the box that long) for a letter; a dead one is dropped. While it is live
+-- „Плати“ offers only what has not left yet (Pay:left).
 local C, Names, View = ns.Const, ns.Names, ns.LedgerView
 local Pay = ns.Pay
 local floor, max = math.floor, math.max
@@ -24,7 +25,8 @@ function Pay:guard(name)
   if g == nil then return nil end
   local sound = type(g) == "table" and whole(g.at) and whole(g.c) and whole(g.paid) and HOW[g.how] == true
   local open = sound and g.paid + g.c - View.paid(self:view(), self.env.me, name) or 0
-  if open <= 0 or self.env.epoch() - g.at >= C.PAY_GUARD then
+  local life = sound and g.how == "mail" and C.PAY_GUARD_MAIL or C.PAY_GUARD
+  if open <= 0 or self.env.epoch() - g.at >= life then
     all[name] = nil
     return nil
   end

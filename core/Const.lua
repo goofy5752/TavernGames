@@ -87,6 +87,7 @@ ns.Const = {
 
   PAY_WINDOW = 300, -- a trade completes a payment when the payer's PAY came within this long
   PAY_GUARD = 86400, -- gold that left me guards its debt against a second payment this long, or until the creditor's P
+  PAY_GUARD_MAIL = 2592000, -- ... and 30 days when it left by letter: a letter with gold lies in the box that long
   NUDGE_GAP = 3600, -- a debtor is reminded at most this often
   MAIL_FEE = 30,    -- copper: the postage of one letter
 }

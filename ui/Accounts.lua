@@ -15,7 +15,7 @@ local _, ns = ...
 -- * "payAsk": gold that came from a debtor without proof (client.pay:asks): from
 --   one name „Да, към сметката“ / „Не“, from namesakes one button per name and „Не“.
 -- A row I owe has „Плати“ (ns.PayDialog); while gold of mine has left for that
--- creditor and no P of its has answered it yet (client.pay:guard, saved, 24 h), the
+-- creditor and no P of its has answered it yet (client.pay:guard, saved, 24 h; 30 days by letter), the
 -- row says what left, how and when, and „Плати“ is off unless more is owed than
 -- has left. A row owed to me has „Напомни“
 -- (online debtors only, the tooltip says why; „Напомнено“ for NUDGE_GAP s) and
@@ -163,7 +163,8 @@ local SPEC = {
   owe = function(client, r)
     local g = r.sent
     local sub = g and L(g.how == "mail" and "accounts.sent.mail" or "accounts.sent.trade", money(g.c), ddmm(client, g.at), who(client, r.name)) or nil
-    local gone = r.left == 0 and function(tip) tip:SetText(L("accounts.sent.tip")) end or nil
+    local tip = g and g.how == "mail" and "accounts.sent.tip.mail" or "accounts.sent.tip"
+    local gone = r.left == 0 and function(t) t:SetText(L(tip)) end or nil
     return { text = L("accounts.owe", who(client, r.name), money(r.c)), inline = true, sub = sub,
       buttons = { { L("accounts.pay"), function() ns.PayDialog.open(r.name) end, r.left > 0, gone } } }
   end,

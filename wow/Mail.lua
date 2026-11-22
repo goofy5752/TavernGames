@@ -6,8 +6,10 @@ local _, ns = ...
 -- presses the game's own „Send“: it never calls SendMail, a COD function,
 -- TakeInboxMoney or AutoLootMailItem. A letter the player sent is reported to
 -- client.pay:sent once the game says it left (MAIL_SEND_SUCCESS): its
--- recipient and money as a hook after the game's SendMail saw them; on a
--- client without hooksecurefunc, the letter the addon filled at this mailbox.
+-- recipient and money as a hook after the game's SendMail saw them, else as a
+-- script hooked to the game's „Send“ (SendMailMailButton) read them from the
+-- send frame at the click; with neither hook, nothing (residual 27). Only a
+-- letter that sends money counts: a COD letter is never a payment.
 -- Every game function is looked up at call time and skipped when absent.
 local C, Adapter = ns.Const, ns.Adapter
 local fn, lookup, plain = Adapter.fn, Adapter.lookup, Adapter.plain
@@ -19,9 +21,9 @@ local TAKE_WAIT = 10 -- s: a take the inbox has not answered within this long is
 local SEND_TAB = 2   -- the send tab of the mail frame
 
 local open = false -- between MAIL_SHOW and MAIL_CLOSED
-local filled       -- {to, c}: the letter Mail.fill wrote at this mailbox, not yet sent
 local sending      -- {to, c}: the letter the player's „Send“ handed to the game, until the game answers
-local sendHooked = false
+local clickedNote  -- {to, c}: what the game's „Send“ saw at the click, until the game answers
+local sendHooked, clickHooked = false, false
 
 -- "open" | "closed" | "off" (the client cannot set a letter's money).
 function Mail.state()
@@ -29,9 +31,10 @@ function Mail.state()
   return open and "open" or "closed"
 end
 
--- frame:method(...) under pcall when the frame has that method -> true | false.
+-- frame:method(...) under pcall when the frame has that method -> true, its results | false.
 local function call(frame, method, ...)
-  return type(frame) == "table" and type(frame[method]) == "function" and pcall(frame[method], frame, ...)
+  if not (type(frame) == "table" and type(frame[method]) == "function") then return false end
+  return pcall(frame[method], frame, ...)
 end
 
 -- Fills the send tab: recipient, subject, body (SendMailBodyEditBox or
@@ -39,6 +42,7 @@ end
 -- never sends: the player presses the game's button.
 function Mail.fill(name, subject, body, c)
   if Mail.state() ~= "open" then return nil end
+  clickedNote = nil -- a new letter: a click before it sent nothing of it
   local tab = fn("MailFrameTab_OnClick")
   if tab then pcall(tab, nil, SEND_TAB) end
   if not call(lookup("SendMailNameEditBox"), "SetText", name) then return nil end
@@ -52,24 +56,41 @@ function Mail.fill(name, subject, body, c)
   local boxed = show and box and pcall(show, box, c)
   local direct = set and pcall(set, c)
   local done = (show and box) and boxed or not (show and box) and direct
-  filled = done and { to = name, c = c } or nil
   return done or nil
+end
+
+-- The copper the letter being sent sends: the money the game holds for it
+-- (GetSendMailMoney), else what the money box shows -> c > 0 | nil. Nil for a
+-- COD letter (money not checked): its box asks for gold, it sends none.
+local function letterMoney()
+  local okCheck, on = call(lookup("SendMailSendMoneyButton"), "GetChecked")
+  if not (okCheck and on) then return nil end
+  local okMoney, c = false, nil
+  local money, copper, frame = fn("GetSendMailMoney"), fn("MoneyInputFrame_GetCopper"), lookup("SendMailMoney")
+  if money then okMoney, c = pcall(money)
+  elseif copper and frame then okMoney, c = pcall(copper, frame) end
+  return okMoney and plain(c) and c > 0 and c or nil
 end
 
 -- After the game's SendMail (the player's click): the recipient, and the money the game holds for the letter.
 local function sent(recipient)
-  local money = fn("GetSendMailMoney")
-  local okMoney, c = false, nil
-  if money then okMoney, c = pcall(money) end
-  if not money and filled and filled.to == recipient then okMoney, c = true, filled.c end
-  sending = type(recipient) == "string" and okMoney and plain(c) and c > 0 and { to = recipient, c = c } or nil
+  local c = letterMoney()
+  sending = type(recipient) == "string" and c and { to = recipient, c = c } or nil
 end
 
--- The game says a letter left: the one seen at SendMail; without a hook, the one the addon filled.
+-- A script after the game's „Send“ (its OnClick): the recipient and the money
+-- the send frame shows, for a client whose SendMail cannot be hooked.
+local function clicked()
+  local okTo, to = call(lookup("SendMailNameEditBox"), "GetText")
+  local c = letterMoney()
+  clickedNote = okTo and type(to) == "string" and to ~= "" and c and { to = to, c = c } or nil
+end
+
+-- The game says a letter left: the one seen at SendMail, else the one seen at
+-- the click, each used once; with neither, nothing.
 local function left()
-  local s = sending
-  if not sendHooked then s = filled end
-  sending, filled = nil, nil
+  local s = sending or clickedNote
+  sending, clickedNote = nil, nil
   local client = ns.client
   if s and client and client.pay then client.pay:sent({ shown = s.to, c = s.c, how = "mail" }) end
 end
@@ -128,6 +149,9 @@ local function took(i)
 end
 
 local function hook()
+  -- A frame script hook needs no hooksecurefunc; the button is looked up now, as the mail UI may load late.
+  local button = not clickHooked and lookup("SendMailMailButton")
+  if button and call(button, "HookScript", "OnClick", clicked) then clickHooked = true end
   local secure = fn("hooksecurefunc")
   if secure and not sendHooked and fn("SendMail") and pcall(secure, "SendMail", sent) then sendHooked = true end
   if not secure then return end
@@ -189,9 +213,9 @@ local EVENTS = {
     open = true
     hook()
   end,
-  MAIL_CLOSED = function() open, filled = false, nil end,
+  MAIL_CLOSED = function() open, clickedNote = false, nil end,
   MAIL_SEND_SUCCESS = left,
-  MAIL_FAILED = function() sending = nil end,
+  MAIL_FAILED = function() sending, clickedNote = nil, nil end,
   MAIL_INBOX_UPDATE = function()
     hook()
     update()

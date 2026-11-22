@@ -567,12 +567,27 @@ describe("pay: the payer's guard against paying twice (final review I2)", functi
 
   it("the guard expires after 24 h", function()
     local sim, _, m = setup()
-    eq(m.pay:sent({ name = I, c = G5, how = "mail" }), true)
+    eq(m.pay:sent({ name = I, c = G5, how = "trade" }), true)
     m.env.db.paySent[I].at = EPOCH0 + sim.clock - ns.Const.PAY_GUARD + 1
     eq(m.pay:waiting(I), true)
     sim:run(1)
     eq(m.pay:waiting(I), false); eq(m.pay:left(I), G5); eq(m.env.db.paySent[I], nil)
     eq(ns.Const.PAY_GUARD, 86400)
+  end)
+
+  it("a letter guards its debt for thirty days, a trade for one (residual 26)", function()
+    local sim, _, m = setup()
+    -- The guard as if it had been set `ago` seconds before now.
+    local function since(ago) m.env.db.paySent[I].at = EPOCH0 + sim.clock - ago end
+    eq(m.pay:sent({ name = I, c = G5, how = "mail" }), true)
+    since(86401)
+    eq(m.pay:waiting(I), true); eq(m.pay:left(I), 0)
+    since(2592001)
+    eq(m.pay:waiting(I), false); eq(m.pay:left(I), G5); eq(m.env.db.paySent[I], nil)
+    eq(ns.Const.PAY_GUARD_MAIL, 2592000)
+    eq(m.pay:sent({ name = I, c = G5, how = "trade" }), true)
+    since(86401)
+    eq(m.pay:waiting(I), false); eq(m.pay:left(I), G5)
   end)
 
   it("a part payment guards only its part; a late P for an earlier payment does not end the wait for the next", function()

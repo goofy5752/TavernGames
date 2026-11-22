@@ -604,8 +604,8 @@ describe("ui: the payment dialog „Плащане“", function()
     eq(shown(w2)[1].text, "Дължиш на Мария Стоянова 5g"); eq(shown(w2)[1].sub, line)
     eq(button(w2, "Плати"):IsEnabled(), false)
     eq(w2.ns.client.pay:left(B), 0); eq({ w2.ns.client.pay:byMail(B) }, { nil, "sent" })
-    -- Past 24 h with no P the row is payable again.
-    w2.ns.client.env.db.paySent[B].at = w2.G.GetServerTime() - w2.ns.Const.PAY_GUARD
+    -- Past 30 days with no P the row is payable again (a letter lies in the box that long; residual 26).
+    w2.ns.client.env.db.paySent[B].at = w2.G.GetServerTime() - w2.ns.Const.PAY_GUARD_MAIL
     w2.ns.Hall.refresh(); w2:advance(0)
     eq(shown(w2)[1].sub, nil); ok(button(w2, "Плати"):IsEnabled(), "payable again")
   end)
@@ -619,5 +619,20 @@ describe("ui: the payment dialog „Плащане“", function()
     lev(w, B, "P", { f = ME, c = 30000, how = "trade" })
     eq(P.frame:IsVisible(), false)
     eq(#shown(w), 0)
+  end)
+
+  it("the row of a letter on its way explains the thirty days", function()
+    for _, case in ipairs({
+      { how = "mail", tip = "Писмото вече е тръгнало. Ако парите са взети, помоли за „Уредено“. „Плати“ се връща след 30 дни без запис." },
+      { how = "trade", tip = "Това плащане вече е тръгнало. Ако до 24 часа не бъде записано, „Плати“ се връща." },
+    }) do
+      local w = readyWow()
+      debt(w, ME, B, 50000)
+      eq(w.ns.client.pay:sent({ name = B, c = 50000, how = case.how }), true)
+      w:advance(0)
+      eq(button(w, "Плати"):IsEnabled(), false, case.how)
+      w:hover(button(w, "Плати"))
+      eq(w.G.GameTooltip.lines[1], case.tip, case.how)
+    end
   end)
 end)

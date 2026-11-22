@@ -50,6 +50,38 @@ local function checkButton(on)
   return { on = on, SetChecked = function(b, v) b.on = v and true or false end, GetChecked = function(b) return b.on end }
 end
 
+-- The game's „Send“ of the send-mail frame (SendMailMailButton). Its own
+-- OnClick sets the letter's money, or its COD when COD is checked, from the
+-- money box and calls SendMail with the boxes; a script added by
+-- HookScript("OnClick") runs after all of it, or, with self.clickOrder ==
+-- "hooks first" (a client that asks to confirm the money before it sends),
+-- before the SendMail. `hooks` is the list of those scripts, in order. Click()
+-- is the player's click: the game's own calls are the player's, a hooked
+-- script's are the addon's.
+function Wow:sendButton()
+  local b = { hooks = {} }
+  function b.HookScript(_, script, fn)
+    if script == "OnClick" then b.hooks[#b.hooks + 1] = fn end
+  end
+  function b.Click()
+    local G, player = self.G, self.byPlayer
+    local function hooked()
+      self.byPlayer = false
+      for _, fn in ipairs(b.hooks) do fn(b, "LeftButton", false) end
+      self.byPlayer = true
+    end
+    self.byPlayer = true
+    local c = G.SendMailMoney.copper
+    if G.SendMailSendMoneyButton:GetChecked() then G.SetSendMailMoney(c) else G.SetSendMailCOD(c) end
+    if self.clickOrder == "hooks first" then hooked() end
+    local body = G.SendMailBodyEditBox or G.MailEditBox
+    G.SendMail(G.SendMailNameEditBox:GetText(), G.SendMailSubjectEditBox:GetText(), body and body:GetText() or "")
+    if self.clickOrder ~= "hooks first" then hooked() end
+    self.byPlayer = player
+  end
+  return b
+end
+
 local function run(path, G, ...)
   local chunk, err = loadfile(path)
   if not chunk then error(err, 0) end
@@ -190,10 +222,11 @@ function Wow.new(opts)
   -- The money box of the trade frame and of the send-mail frame: {copper}.
   G.TradePlayerInputMoneyFrame, G.SendMailMoney = { copper = 0 }, { copper = 0 }
   G.MoneyInputFrame_SetCopper = api(self, "MoneyInputFrame_SetCopper", function(frame, c) frame.copper = c end)
-  -- The money of the letter being written (the game's „Send“ sets it from the money box).
+  G.MoneyInputFrame_GetCopper = function(frame) return frame.copper end
+  -- The money of the letter being written (the game's „Send“ sets it from the money box); a COD letter sends none.
   G.SetSendMailMoney = api(self, "SetSendMailMoney", function(c) self.sendMoney = c end)
   G.GetSendMailMoney = function() return self.sendMoney or 0 end
-  G.SetSendMailCOD = api(self, "SetSendMailCOD")
+  G.SetSendMailCOD = api(self, "SetSendMailCOD", function() self.sendMoney = 0 end)
   G.SendMail = api(self, "SendMail")
   G.GetSendMailPrice = function() return self.mailPrice end
   G.MailFrame = { IsShown = function() return self.mailOpen end }
@@ -201,6 +234,7 @@ function Wow.new(opts)
   -- The classic send-mail frame: SendMailBodyEditBox (a test may swap it for MailEditBox).
   G.SendMailNameEditBox, G.SendMailSubjectEditBox, G.SendMailBodyEditBox = Wow.editBox(), Wow.editBox(), Wow.editBox()
   G.SendMailSendMoneyButton, G.SendMailCODButton = checkButton(true), checkButton(false)
+  G.SendMailMailButton = self:sendButton()
   G.GetInboxNumItems = function() return #self.inbox, #self.inbox end
   -- packageIcon, stationeryIcon, sender, subject, money, CODAmount, daysLeft, hasItem, wasRead, wasReturned
   G.GetInboxHeaderInfo = function(i)

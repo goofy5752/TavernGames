@@ -588,6 +588,7 @@ T["accounts.settle.tip"] = "Press it if you were paid by hand or in a way the ad
 T["accounts.sent.mail"] = "You sent %s by mail on %s. Waiting for %s to take it from the letter."
 T["accounts.sent.trade"] = "You gave %s by trade on %s. Waiting for %s's addon to record it."
 T["accounts.sent.tip"] = "This payment is already on its way. If it is not recorded within 24 hours, “Pay” comes back."
+T["accounts.sent.tip.mail"] = "The letter is already on its way. If the gold has been taken, ask for “Settled”. “Pay” comes back after 30 days without a record."
 T["pay.sent"] = "Already on its way: %s (%s)."
 T["pay.sent.all"] = "The whole amount is already on its way. Wait for it to be recorded."
 T["ask.debt"] = "%s says you owe them %s from %s (%s)."

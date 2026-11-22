@@ -91,17 +91,22 @@ describe("wow mail: a letter that left (final review I2)", function()
     eq(got, { { shown = "Мария", c = 20000, how = "mail" } })
   end)
 
-  it("without hooksecurefunc the letter the addon filled at this mailbox is the one reported", function()
-    local w = guildWow({ noHooks = true })
+  it("with neither hook nothing is guarded: the letter the addon filled is not taken on trust (residual 27)", function()
+    local w = guildWow({ noHooks = true, late = { "SendMailMailButton" } }) -- no send button to hook
     local got = sentLog(w)
     w:fireMail("MAIL_SHOW")
-    w:fireMail("MAIL_SEND_SUCCESS") -- nothing filled
-    eq(got, {})
     eq(w.ns.Mail.fill(M, SUBJECT, "Наздраве!", 50000), true)
     w:fireMail("MAIL_SEND_SUCCESS")
-    eq(got, { { shown = M, c = 50000, how = "mail" } })
+    eq(got, {})
+    -- A send button the client makes later is hooked at the next mailbox.
+    w.G.SendMailMailButton = w.late.SendMailMailButton
+    w:fireMail("MAIL_CLOSED"); w:fireMail("MAIL_SHOW")
+    eq(w.ns.Mail.fill(M, SUBJECT, "Наздраве!", 50000), true)
+    w.G.SendMailMailButton:Click()
     w:fireMail("MAIL_SEND_SUCCESS")
-    eq(#got, 1)
+    eq(got, { { shown = M, c = 50000, how = "mail" } })
+    w:fireMail("MAIL_CLOSED"); w:fireMail("MAIL_SHOW")
+    eq(#w.G.SendMailMailButton.hooks, 1) -- hooked once
   end)
 
   it("end to end: the sent letter guards my debt", function()
@@ -119,6 +124,125 @@ describe("wow mail: a letter that left (final review I2)", function()
     w:fireMail("MAIL_SEND_SUCCESS")
     eq(client.pay:waiting(M), true); eq(client.pay:left(M), 0)
     eq(w.G.TavernGamesDB.char[next(w.G.TavernGamesDB.char)].paySent[M].c, 50000) -- saved per character
+  end)
+end)
+
+-- body(opts, order, source, label) for each click order of the game's „Send“ and
+-- each way the letter's money is read (GetSendMailMoney, or the money box when
+-- the client has no GetSendMailMoney); `hooks` = false: a client without hooksecurefunc.
+local function eachClick(hooks, body)
+  for _, order in ipairs({ "default", "hooks first" }) do
+    for _, source in ipairs({ "GetSendMailMoney", "MoneyInputFrame_GetCopper" }) do
+      body({ noHooks = not hooks }, order, source, order .. " / " .. source)
+    end
+  end
+end
+
+-- A mailbox with that click order and money source, and the log of client.pay:sent.
+local function clickWow(opts, order, source)
+  local w = guildWow(opts)
+  w.clickOrder = order
+  if source == "MoneyInputFrame_GetCopper" then w.G.GetSendMailMoney = nil end
+  local got = sentLog(w)
+  w:fireMail("MAIL_SHOW")
+  return w, got
+end
+
+-- The addon called nothing it must never call.
+local function clean(w, label)
+  for name in pairs(w.forbidden) do eq(w:called(name), 0, label .. ": " .. name) end
+end
+
+describe("wow mail: the click on the game's „Send“ (residual 27)", function()
+  it("without hooksecurefunc the click on Send tells what left", function()
+    eachClick(false, function(opts, order, source, label)
+      local w, got = clickWow(opts, order, source)
+      local G = w.G
+      eq(w.ns.Mail.fill(M, SUBJECT, "Наздраве!", 50000), true, label)
+      G.SendMailNameEditBox:SetText("Петър") -- the player changes the letter
+      G.SendMailMoney.copper = 20000
+      G.SendMailMailButton:Click()
+      eq(got, {}, label) -- the game has not answered yet
+      w:fireMail("MAIL_SEND_SUCCESS")
+      eq(got, { { shown = "Петър", c = 20000, how = "mail" } }, label)
+      clean(w, label)
+    end)
+  end)
+
+  it("the SendMail hook still wins, whatever the boxes say", function()
+    eachClick(true, function(opts, order, source, label)
+      local w, got = clickWow(opts, order, source)
+      local G, hooks = w.G, w.G.SendMailMailButton.hooks
+      eq(w.ns.Mail.fill(M, SUBJECT, "Наздраве!", 50000), true, label)
+      -- Another addon's script on the button changes the boxes between the game's SendMail and my click hook.
+      local function change()
+        G.SendMailNameEditBox:SetText("Петър"); G.SendMailMoney.copper = 20000; w.sendMoney = 20000
+      end
+      if order == "hooks first" then hooks[#hooks + 1] = change else table.insert(hooks, 1, change) end
+      G.SendMailMailButton:Click()
+      w:fireMail("MAIL_SEND_SUCCESS")
+      local to, c = M, 50000 -- the game sent before the change
+      if order == "hooks first" then to, c = "Петър", 20000 end
+      local call
+      for _, x in ipairs(w.calls) do if x.name == "SendMail" and x.player then call = x end end
+      eq(call.args[1], to, label)
+      eq(got, { { shown = to, c = c, how = "mail" } }, label)
+      clean(w, label)
+    end)
+  end)
+
+  it("a COD letter sets no guard", function()
+    for _, hooks in ipairs({ false, true }) do
+      eachClick(hooks, function(opts, order, source, label)
+        local w, got = clickWow(opts, order, source)
+        local G = w.G
+        eq(w.ns.Mail.fill(M, SUBJECT, "Наздраве!", 50000), true, label)
+        G.SendMailSendMoneyButton:SetChecked(false); G.SendMailCODButton:SetChecked(true) -- the player asks M for 5g
+        G.SendMailMailButton:Click()
+        w:fireMail("MAIL_SEND_SUCCESS")
+        eq(got, {}, label)
+        clean(w, label)
+      end)
+    end
+  end)
+
+  it("a failed or cancelled send leaves no note; one success uses a note once; a fill clears it", function()
+    eachClick(false, function(opts, order, source, label)
+      local w, got = clickWow(opts, order, source)
+      local G, Mail = w.G, w.ns.Mail
+      eq(Mail.fill(M, SUBJECT, "Наздраве!", 50000), true, label)
+      G.SendMailMailButton:Click()
+      w:fireMail("MAIL_FAILED")
+      w:fireMail("MAIL_SEND_SUCCESS") -- of a letter that had no click
+      eq(got, {}, label)
+      G.SendMailMailButton:Click()
+      w:fireMail("MAIL_CLOSED"); w:fireMail("MAIL_SHOW")
+      w:fireMail("MAIL_SEND_SUCCESS")
+      eq(got, {}, label)
+      G.SendMailMailButton:Click()
+      eq(Mail.fill(M, SUBJECT, "Наздраве!", 30000), true, label)
+      w:fireMail("MAIL_SEND_SUCCESS")
+      eq(got, {}, label)
+      G.SendMailMailButton:Click()
+      w:fireMail("MAIL_SEND_SUCCESS")
+      w:fireMail("MAIL_SEND_SUCCESS") -- the next success without a click
+      eq(got, { { shown = M, c = 30000, how = "mail" } }, label)
+      clean(w, label)
+    end)
+  end)
+
+  it("the addon still never calls SendMail: the hook only watches the player's click", function()
+    eachClick(true, function(opts, order, source, label)
+      local w = clickWow(opts, order, source)
+      eq(w.ns.Mail.fill(M, SUBJECT, "Наздраве!", 50000), true, label)
+      w.G.SendMailMailButton:Click()
+      w:fireMail("MAIL_SEND_SUCCESS")
+      eq(w:called("SendMail"), 0, label)
+      local player = 0
+      for _, x in ipairs(w.calls) do if x.name == "SendMail" and x.player then player = player + 1 end end
+      eq(player, 1, label) -- the game's own button sent it
+      clean(w, label)
+    end)
   end)
 end)
 
