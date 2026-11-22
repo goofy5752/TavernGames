@@ -106,7 +106,7 @@ function Stakes.stepAsked(s)
   if s.role == "host" then return end -- my own step goes to no other client
   local asks = s.stepAsks
   if not (asks and asks.k == s.dueKey) then asks = { k = s.dueKey, n = 0 }; s.stepAsks = asks end
-  if s.hostHeard and s.client.env.now() - s.hostHeard <= C.FAIR_ASK_GAP then asks.n = asks.n + 1 end
+  if s.hostHeard and s.client.env.now() - s.hostHeard <= C.PING_EVERY + C.FAIR_ASK_GAP then asks.n = asks.n + 1 end
 end
 
 -- My host's heartbeat (Member's TCK at my epoch) is heard.

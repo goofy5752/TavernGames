@@ -283,6 +283,7 @@ end
 --   (s.stepAsks, Stakes.stepAsked: E2). Any other void of my dealt hand is
 --   the honest one (a step that never reached the host) and counts as one I
 --   asked for (round.voidAsked: core/DealHooks.lua does not call it forged).
+-- Called once per EV, before it is applied; it may mark the round (round.voidAsked) for the void it returns false for.
 function Member.unasked(s, seat, a)
   local engine, st = s:engine(), s.state
   if seat ~= 0 or type(a) ~= "table" or not (engine.sealed and st and engine.inHand(st)) then return false end

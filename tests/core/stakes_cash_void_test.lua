@@ -241,46 +241,56 @@ describe("the dealer's step (E2, H14)", function()
     end
   end)
 
-  it("a dealer that asked once and lost its link is not charged", function()
+  it("a dealer with one counted ask is not charged: the void is no forgery (H14)", function()
+    local sim, cl = toHand2()
+    local _, dn, chips, took = flopDue(sim, cl)
+    local host = cl[A]
+    mute(sim, dn, isStep) -- no ask reaches the host
+    sim:run(2)
+    local ds = cl[dn].session
+    eq(ds.stepAsks.n, 1)
+    ds.hostHeard = nil -- no more asks count: the host is not heard again before the void
+    untilVoid(sim, host)
+    sim:run(2)
+    eq(ds.stepAsks.n, 1)
+    eq(ds.seq, host.session.seq) -- the void came to it as an event, not as a snapshot
+    eq(ds.stakeFoul, nil)
+    for _, n in ipairs(ALL) do
+      local c, t = money(cl[n])
+      eq({ c, t }, { chips, took }, n)
+    end
+  end)
+
+  it("an honest host whose dealer link drops 6-7 s plays the step: no void, no foul (H14)", function()
     local sim, cl = toHand2()
     local _, dn = flopDue(sim, cl)
     local host = cl[A]
-    local unmute = mute(sim, dn, isStep) -- its first ask is lost in the link that goes down
-    sim:run(2)
-    eq(cl[dn].session.stepAsks.n, 1)
-    sim:offline(dn)
-    sim:run(C.FAIR_WAIT)
-    eq(host.session.state.last.void, true)
-    unmute(); sim:online(dn)
-    sim:run(C.PING_EVERY + 5)
-    local ds = cl[dn].session
-    eq(ds.seq, host.session.seq)
-    eq(ds.stakeFoul, "unseen") -- the question of the snapshot it asked for when back, no foul of the void
+    local seen = host.session.state.last
+    sim:offline(dn) -- down from the moment the step is due: the asks at +1 and +6 are lost
+    sim:run(7)
+    sim:online(dn)
+    sim:run(25)
+    ok(host.session.state.last == seen or not host.session.state.last.void, "no void")
+    ok(host.session.state.phase ~= "street", "the step was played")
+    eq(fouls(cl), { "nil", "nil", "nil" })
   end)
 
-  it("two asks into a dead link: no foul (H14)", function()
-    for _, up in ipairs({ false, true }) do
-      local sim, cl = toHand2()
-      local _, dn, chips, took = flopDue(sim, cl)
-      local host = cl[A]
-      -- No step of the dealer reaches the host: lost on the link (down), or dropped by a modified host (up).
-      local recv = host.receive
-      host.receive = function(self, channel, sender, msg)
-        if msg.t == "ACT" and type(msg.a) == "table" and isStep(msg.a) then return end
-        return recv(self, channel, sender, msg)
-      end
-      if not up then sim:offline(dn) end -- down from the moment the step is due
-      sim:run(3); tick(sim, cl, dn) -- the host's heartbeat: lost too while the link is down
-      sim:run(4)
-      eq(sim:count(function(m) return m.from == dn and m.msg.t == "ACT" and isStep(m.msg.a) end), 2)
-      sim:online(dn)
-      untilVoid(sim, host)
-      local ds = cl[dn].session
-      eq({ ds.stepAsks.n, ds.stakeFoul }, { up and 2 or 1, up and "forged" or nil }, up)
-      for _, n in ipairs(ALL) do
-        local c, t = money(cl[n])
-        eq({ c, t }, { chips, took }, n)
-      end
+  it("a host that drops the steps and whispers only its normal heartbeat is forged (E2, H14)", function()
+    local sim, cl = toHand2()
+    local _, dn, chips, took = flopDue(sim, cl)
+    local host = cl[A]
+    local recv = host.receive
+    host.receive = function(self, channel, sender, msg)
+      if msg.t == "ACT" and type(msg.a) == "table" and isStep(msg.a) then return end
+      return recv(self, channel, sender, msg)
+    end
+    untilVoid(sim, host) -- nothing injected
+    local ds = cl[dn].session
+    ok(ds.stepAsks.n >= 2, "two asks counted")
+    eq(ds.stakeFoul, "forged")
+    for _, n in ipairs(ALL) do
+      local c, t = money(cl[n])
+      eq({ c, t }, { chips, took }, n)
     end
   end)
 
@@ -294,10 +304,20 @@ describe("the dealer's step (E2, H14)", function()
     local dn = hs.seats[hs.fair.d]
     ok(hs.fair.d ~= 1, "a member deals")
     local third = dn == B and M or B
-    ok(sim.clients[hs.seats[hs.state.turn]]:act{ k = "allin" }); sim:run(1)
-    ok(sim.clients[hs.seats[hs.state.turn]]:act{ k = "call" }); sim:run(1)
+    local shover = hs.seats[hs.state.turn]
+    ok(sim.clients[shover]:act{ k = "allin" }); sim:run(1)
+    local called = false -- the dealer is in the all-in: it shoves, or it calls; the others fold
+    for _ = 1, 2 do
+      local t = hs.state.turn
+      if not t then break end
+      local who = hs.seats[t]
+      local call = who == dn or (shover == dn and not called)
+      ok(sim.clients[who]:act{ k = call and "call" or "fold" })
+      called = called or call
+      sim:run(1)
+    end
+    ok(hs.state.p[hs.fair.d].allin or hs.state.p[hs.fair.d].chips == 0, "the dealer is in the all-in")
     local unmute = mute(sim, dn, isStep) -- the all-in is called: the dealer's client goes silent
-    ok(sim.clients[hs.seats[hs.state.turn]]:act{ k = "fold" }); sim:run(1)
     eq(hs.state.phase, "street")
     untilVoid(sim, host)
     for _, n in ipairs(ALL) do
