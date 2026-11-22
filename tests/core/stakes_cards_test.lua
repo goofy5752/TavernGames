@@ -455,7 +455,8 @@ describe("stakes: the verdict feeds the confirmation", function()
   -- Hand 2 at Иван's Сантасе table: Иван deals it from seeds of its own (Петър's commit replaced by
   -- one of X, X fed to it as Петър's seed): the hand closes "bad" ("mine") on Петър
   -- (the scaffolding of tests/core/santase_table_test.lua's cheating host, G10).
-  local function hostDealsOwnSeeds(sim, cl)
+  -- rigHand2: until hand 2 is dealt, its foul already held on Петър's client (noted at the commit event).
+  local function rigHand2(sim, cl)
     local F, host = ns.Ext.fair, cl[I]
     local realAct = F.act
     F.act = function(s, seat, x)
@@ -472,6 +473,11 @@ describe("stakes: the verdict feeds the confirmation", function()
     end)
     F.act = realAct
     if not fine then error(err, 0) end
+    eq({ cl[P].session.fair.stage, cl[P].session.fair.foul }, { "dealt", "mine" })
+  end
+  local function hostDealsOwnSeeds(sim, cl)
+    local host = cl[I]
+    rigHand2(sim, cl)
     local h = host.session.fair.h
     ok(stepUntil(sim, host, function() local s = cl[P].session; return s:gameOver() or (s.fairLast and s.fairLast.h == h) end), "the end of hand 2")
     sim:run(1)
@@ -728,6 +734,92 @@ describe("stakes: the verdict feeds the confirmation", function()
     eq(Play.debt(cl[P], gid, P, I).status, "confirmed")
     sim:run(C.LEDGER_COALESCE)
     eq(#wordsAt(sim, P, "C", gid), 1)
+  end)
+
+  it("a foul held against the last hand, which the host deals and never reveals: contested at STAKE_FAIR_WAIT", function()
+    for seed = 1, 40 do
+      local sim, cl = santase(seed)
+      rigHand2(sim, cl)
+      local silent = false
+      sim.bus.filter = function(from, _, _, m)
+        if from ~= I then return { m } end
+        if isReveal(m) and m.t == "EV" and cl[I].session:gameOver() then silent = true end
+        return (silent and m.t ~= "LEV") and {} or { m } -- only its ledger entries still go out
+      end
+      local gid, L
+      shortly("santase", function() gid, L = finish(sim, cl[I]) end)
+      if L[1] == P then
+        ok(silent, "the host's reveal never went out")
+        eq({ noteOf(cl[P], gid).foul, noteOf(cl[P], gid).wait }, { "deal", true }) -- at once, the hand still open
+        sim:run(C.STAKE_FAIR_WAIT + 5)
+        eq({ noteOf(cl[P], gid).foul, noteOf(cl[P], gid).wait }, { "deal", nil })
+        local n = wordsAt(sim, P, "N", gid)
+        eq(#n, 1); eq(n[1].why, "deal"); eq(#wordsAt(sim, P, "C", gid), 0)
+        ok(not asked(cl[P], gid, P, I), "contested, not asked")
+        return
+      end
+    end
+    error("Иван never wins")
+  end)
+
+  it("a leave mid-hand while my client holds a foul against that hand never confirms by itself", function()
+    local sim, cl, tid = santase(3)
+    rigHand2(sim, cl)
+    local gid = tid .. "/" .. (cl[I].session.seq + 1)
+    cl[P]:stand(); sim:run(3 + C.LEDGER_COALESCE)
+    eq(noteOf(cl[P], gid).foul, "deal")
+    ok(Play.debt(cl[P], gid, P, I), "the claim is there")
+    ok(Play.debt(cl[P], gid, P, I).status ~= "confirmed", "not confirmed")
+    eq(#wordsAt(sim, P, "C", gid), 0)
+    ok(asked(cl[P], gid, P, I) or #wordsAt(sim, P, "N", gid) == 1, "put to me or contested")
+  end)
+
+  it("belot: the host stands me up mid-hand while my client holds a foul against that hand: contested as deal", function()
+    local sim, cl, tid = belot(1)
+    for _ = 1, 5 do Play.step(sim, cl[I]) end
+    local f = cl[G].session.fair
+    ok(f and f.stage == "dealt" and not f.foul, "mid-hand, clean")
+    f.foul = "mine" -- as sawCommit notes it when the host replaced my commit
+    local q = cl[I].session.seq + 1
+    ok(cl[I].session:event(0, { k = "stand", seat = 4, why = "offline" })); sim:run(11)
+    local gid = tid .. "/" .. q
+    eq(noteOf(cl[G], gid).foul, "deal")
+    local n = wordsAt(sim, G, "N", gid)
+    eq(#n, 2)
+    for _, e in ipairs(n) do eq(e.why, "deal") end
+    eq(#wordsAt(sim, G, "C", gid), 0)
+  end)
+
+  it("the last hand's own reveal audits bad after the match ended: contested", function()
+    local F = ns.Ext.fair
+    local realAct = F.act
+    F.act = function(s, seat, x) -- the host swaps the guest dealer's seeds in the reveal it relays
+      if s.client.env.me == I and type(x) == "table" and x.k == "fair" and x.op == "reveal" and seat == 2 and type(x.s) == "table" then
+        local t = {}
+        for k = 1, #x.s do t[k] = X end
+        x = { k = "fair", op = "reveal", h = x.h, s = t }
+      end
+      return realAct(s, seat, x)
+    end
+    local fine, err = pcall(shortly, "santase", function()
+      for seed = 1, 40 do
+        local sim, cl = santase(seed)
+        local gid, L = finish(sim, cl[I])
+        eq(cl[I].session.fair.d, 2) -- Петър deals the one hand
+        if L[1] == P then
+          sim:run(1)
+          eq({ cl[P].session.fairLast.verdict, cl[P].session.fairLast.why }, { "bad", "mine" })
+          eq({ noteOf(cl[P], gid).foul, noteOf(cl[P], gid).wait }, { "deal", nil })
+          sim:run(C.LEDGER_COALESCE + 1)
+          local n = wordsAt(sim, P, "N", gid)
+          eq(#n, 1); eq(n[1].why, "deal"); eq(#wordsAt(sim, P, "C", gid), 0)
+          return
+        end
+      end
+      error("Петър never loses")
+    end)
+    F.act = realAct
+    if not fine then error(err, 0) end
   end)
 
   it("a verdict that the next start brings does not touch the new match", function()

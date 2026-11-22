@@ -43,7 +43,9 @@ function Stakes.owed(s, roster, seat)
   return to, w
 end
 
-local function worse(a, b) return (not a or (b and Stakes.RANK[b] > Stakes.RANK[a])) and b or a end
+-- The worse of two fouls by Stakes.RANK (either may be nil) -> foul | nil.
+function Stakes.worse(a, b) return (not a or (b and Stakes.RANK[b] > Stakes.RANK[a])) and b or a end
+local worse = Stakes.worse
 local function names(seats, list)
   local out = {}
   for _, seat in ipairs(list or {}) do if type(seats[seat]) == "string" then out[#out + 1] = seats[seat] end end
@@ -143,7 +145,7 @@ function Book:settle(s, quits)
 end
 
 -- My note of an outcome and my entries for it: my claims, the owe timer, the
--- verdict still out (a forfeit's: none but the rolls'). `why`: the D's; `noted`: the note's, when another.
+-- verdict still out (a forfeit's: none but the rolls'; its running hand's held foul, Stakes.openFoul). `why`: the D's; `noted`: the note's, when another.
 function Book:outcome(s, gid, pairs, why, noted)
   local me, mine, owes = self.env.me, false, false
   for _, p in ipairs(pairs) do mine, owes = mine or p.f == me or p.t == me, owes or p.f == me end
@@ -151,7 +153,8 @@ function Book:outcome(s, gid, pairs, why, noted)
   local note = { at = self.env.epoch(), g = s.game, sk = s.stake, pairs = pairs, why = noted or why, tid = s.tid,
     q = tonumber(gid:match("/(%d+)$")) }
   self:seen(true)[gid] = note
-  self:pending(gid, note, s.stakeFoul, Stakes.audit(s, gid, why ~= "lost"))
+  local left = why ~= "lost" -- a forfeit: the foul held against its running hand counts at once
+  self:pending(gid, note, left and worse(s.stakeFoul, Stakes.openFoul(s.fair)) or s.stakeFoul, Stakes.audit(s, gid, left))
   for _, p in ipairs(pairs) do
     if p.t == me then self:make("D" .. gid .. "|" .. p.f .. "|" .. me, "D", { gid = gid, g = s.game, f = p.f, t = me, c = p.c, why = why }) end
   end
@@ -160,10 +163,10 @@ function Book:outcome(s, gid, pairs, why, noted)
 end
 
 -- The note of my „Стани“ as a member (core/Stakes.lua's quit): the foul my client
--- holds of that game with the rolls' audit folded in, as in Book:outcome, so a claim of that stand is judged with it.
+-- holds of that game (its running hand's held foul too) with the rolls' audit folded in, as in Book:outcome, so a claim of that stand is judged with it.
 function Book:quit(s, gid, note)
   self:seen(true)[gid] = note
-  self:pending(gid, note, note.foul, Stakes.audit(s, gid, true))
+  self:pending(gid, note, worse(note.foul, Stakes.openFoul(s.fair)), Stakes.audit(s, gid, true))
 end
 
 -- Note of gid: its foul the worse of base and the verdict a (Stakes.audit) reads now; with a,

@@ -24,7 +24,9 @@ local _, ns = ...
 -- The verdict of the last hand comes after the event that ended the match:
 -- the note of that match waits for it (note.wait) at most STAKE_FAIR_WAIT; a
 -- hand still open then reads "unseen". A match that ended by a leave waits
--- for nothing: its running hand gets no verdict.
+-- for nothing: its running hand gets no verdict. A foul my client already
+-- holds against a hand still open (fair.foul, noted before its close, which
+-- turns it "bad": Stakes.openFoul) is deal at once, but "announce".
 --
 -- What the throws mean for my debt (Stakes.fairCount, from the session's dice
 -- counts after the extension `dice` has run): a throw closed "bad" in this
@@ -40,7 +42,7 @@ local Stakes, C = ns.Stakes, ns.Const
 local NONE = {}
 
 local function has(engine, x) return ns.Util.contains(engine.ext or NONE, x) end
-local function worse(a, b) return (not a or (b and Stakes.RANK[b] > Stakes.RANK[a])) and b or a end
+local worse = Stakes.worse -- core/StakesBook.lua
 
 -- Does s's engine have a fairness layer that judges its snapshots -> bool.
 function Stakes.judged(s)
@@ -49,6 +51,11 @@ function Stakes.judged(s)
     if x == "fair" or x == "dice" then return true end
   end
   return false
+end
+
+-- The foul my client already holds against `round` (s.fair) while it is open: what its close will make of it -> "deal" | nil.
+function Stakes.openFoul(round)
+  return round and round.stage ~= "done" and round.foul and round.foul ~= "announce" and "deal" or nil
 end
 
 -- Is `name` on my side of s: me, or the player in my partner's seat (engine.partner, while I am seated).
@@ -97,7 +104,7 @@ end
 -- {read = function() -> foul | nil, wait = seconds}: Death Roll's rolls
 -- (Rolls.audit, final ROLL_FINAL_WAIT later); the last hand of a card match
 -- that ended by play while its round was still open (s.stakeRec; pending
--- reads "unseen", final STAKE_FAIR_WAIT later or at that hand's verdict). A
+-- reads "unseen", or "deal" by Stakes.openFoul; final STAKE_FAIR_WAIT later or at that hand's verdict). A
 -- leave waits for nothing: its running hand gets no verdict.
 function Stakes.audit(s, gid, left)
   local engine, fair = s:engine(), s.fair
@@ -108,5 +115,5 @@ function Stakes.audit(s, gid, left)
   if left or engine.sealed or not has(engine, "fair") or not (fair and fair.stage ~= "done") then return nil end
   local rec = { gid = gid, h = fair.h, open = true }
   s.stakeRec = rec
-  return { read = function() return worse(rec.late, rec.open and "unseen" or nil) end, wait = C.STAKE_FAIR_WAIT }
+  return { read = function() return worse(rec.late, rec.open and (Stakes.openFoul(fair) or "unseen") or nil) end, wait = C.STAKE_FAIR_WAIT }
 end
