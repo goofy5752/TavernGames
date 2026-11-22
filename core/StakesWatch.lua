@@ -20,8 +20,9 @@ local _, ns = ...
 --       name that I did not send, a new match of Морски шах that seats me
 --       without my own sit or „Реванш“ since the last began (Stakes.began,
 --       events too). It is saved with my stake note (Stakes.save), so a
---       /reload keeps what I sent; a copy a crash brought back is in doubt
---       (Stakes.restore): a start that rests on it is "unseen".
+--       /reload keeps what I sent; a start that rests on an entry of an
+--       earlier session, or comes while the copy is in doubt (a crash:
+--       Stakes.restore), is "unseen".
 --   A snapshot shows my game when legal play leads from the state I hold to
 --   it (Stakes.leadsTo), a round's end and the rounds after it included: what
 --   I did not see of it is "unseen". Only what no play reaches is another game.
@@ -37,12 +38,12 @@ local pend, refresh, running = Stakes.pend, Stakes.refresh, Stakes.running
 local LOG_KEPT = 32
 
 -- Did I send a `k` (cell c, in round r) since the last game began here -> the
--- entry | nil (`sure`: not one in doubt)
+-- entry | nil (`sure`: one of this session, not one a login took up)
 local function sentIn(s, k, c, r, sure)
   local log, g = s.stakeLog or {}, s.stakeNo or 0
   for i = 1, #log do
     local e = log[i]
-    if e.k == k and e.g == g and e.c == c and (r == nil or e.r == r) and not (sure and e.old and s.stakeDoubt) then return e end
+    if e.k == k and e.g == g and e.c == c and (r == nil or e.r == r) and not (sure and e.old) then return e end
   end
   return nil
 end
@@ -60,14 +61,16 @@ end
 
 -- A game begins on my client (Stakes' refresh, before the reset; `snap`: by a
 -- snapshot). Морски шах (no host start) seats a member in a new match only
--- by its own sit or its own „Реванш“ since the last one began. While my log
--- is in doubt only one of this run counts, and without it the start is a
+-- by its own sit or its own „Реванш“ since the last one began. Only one of
+-- this session makes the start clean: one a login took up (a host can replay
+-- the state it was saved at), or none while my log is in doubt, makes it a
 -- question ("unseen"), neither forged nor clean.
 function Stakes.began(s, snap)
   local seat = s.mySeat
   if s.role == "host" or s:engine().start == "host" or (snap and snap.fresh) then return end
   if not seat or s.seats[seat] ~= s.client.env.me then return end
-  if not (sentIn(s, "rematch", nil, nil, true) or sentIn(s, "sit", nil, nil, true)) then pend(s, s.stakeDoubt and "unseen" or "forged") end
+  if sentIn(s, "rematch", nil, nil, true) or sentIn(s, "sit", nil, nil, true) then return end
+  pend(s, (s.stakeDoubt or sentIn(s, "rematch") or sentIn(s, "sit")) and "unseen" or "forged")
 end
 
 -- My seat `seat` went while a game runs and I did not ask (`why`: the stand's,
