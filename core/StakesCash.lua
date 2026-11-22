@@ -75,7 +75,8 @@ end
 -- Does the state st hold the options of my table (s.opt) -> bool.
 local function myOptions(s, st)
   local o = s.opt or {}
-  return type(st.cash) == "table" and st.bb == o.blinds and st.betting == o.betting and st.cash.rebuy == o.rebuy
+  return type(st.cash) == "table" and st.bb == o.blinds and st.sb == math.floor((o.blinds or 0) / 2) and st.betting == o.betting
+    and st.cash.rebuy == o.rebuy
 end
 
 -- Has seat i a pair in the matrix of cash -> bool.

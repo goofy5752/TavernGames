@@ -7,7 +7,6 @@ local C, E, U, HC = ns.Const, ns.Engines.holdem, ns.Util, ns.HoldemCash
 -- Every scenario is played with the victim's real client and ends with `victim`: no debt
 -- of the victim confirmed on any client, no own D and no C from its client, and its word
 -- a contest (N with the reason) or a question; the honest twin of a scenario confirms.
-local restore = Play.staked("holdem")
 local A, B, M, G = Play.NAMES[1], Play.NAMES[2], Play.NAMES[3], Play.NAMES[4]
 local K, N6 = Play.MORE[1], Play.MORE[2]
 local ALL = { A, B, M, G, K, N6 } -- the name of chair i
@@ -753,7 +752,7 @@ describe("a modified host at a cash table: the snapshot and the book", function(
   end)
 
   it("other blinds or another rebuy mode in my host's snapshot: forged", function()
-    for _, mutate in ipairs({ function(st) st.bb = 20 end, function(st) st.cash.rebuy = "top" end }) do
+    for _, mutate in ipairs({ function(st) st.bb = 20 end, function(st) st.cash.rebuy = "top" end, function(st) st.sb = st.bb end }) do
       local sim, cl = cash({ 1, 2, 3 })
       local host, got = cl[A], outs(cl)
       hands(sim, host, 1)
@@ -784,6 +783,99 @@ describe("a modified host at a cash table: the snapshot and the book", function(
     victim(sim, cl, B, gid, A, "ask")
   end)
 
+  -- I1 (Task 9 review): the small blind is pinned like the big one. Мария sits into the running
+  -- game; the host's snapshot to her carries sb (the honest one: half the big blind).
+  it("the small blind in the snapshot of my sit: the host's sb = bb is forged; the honest one is clean", function()
+    for _, cheat in ipairs({ false, true }) do
+      local sim, cl, tid = cash({ 1, 2 })
+      local host, got = cl[A], outs(cl)
+      hands(sim, host, 1)
+      if cheat then
+        host.session.state.sb, cl[B].session.state.sb = 10, 10
+        sim.bus.filter = function(from, to, _, m)
+          if from == A and to == M and m.t == "SNP" and type(m.st) == "table" then
+            local x = U.copy(m)
+            x.st.sb = 10
+            return { x }
+          end
+          return { m }
+        end
+      end
+      cl[M]:sit(tid, 3, SK); sim:run(1)
+      sim.bus.filter = nil
+      eq(cl[M].session.stakeFoul, cheat and "forged" or nil)
+      assert(cl[M]:act{ k = "buy", n = 1000 }); sim:run(1)
+      hands(sim, host, 1)
+      setTook(cl, { [1] = { [3] = 40 } })
+      close(sim, host)
+      local gid = gidOf(got[A], "close")
+      if cheat then victim(sim, cl, M, gid, A, { k = "N", why = "forged" }) else honest(sim, cl, M, gid, A) end
+    end
+  end)
+
+  it("a host that waits for the keys before the next game: confirmed (the honest twin)", function()
+    local sim, cl = cash({ 1, 2, 3 })
+    local host, got = cl[A], outs(cl)
+    hands(sim, host, 1)
+    setTook(cl, { [1] = { [2] = 40 } })
+    close(sim, host)
+    local gid = gidOf(got[A], "close")
+    assert(host:startGame()); sim:run(C.STAKE_OWE_WAIT + 5)
+    honest(sim, cl, B, gid, A)
+  end)
+
+  it("the same host pushes me a finished game with a different end: forged, a contest", function()
+    local sim, cl = cash({ 1, 2, 3 })
+    local host, got = cl[A], outs(cl)
+    hands(sim, host, 1)
+    setTook(cl, { [1] = { [2] = 40 } })
+    local r = rig(sim, host, B)
+    assert(ns.Cash.close(host)); sim:run(1)
+    ok(E.over(cl[B].session.state), "the game is over on my client")
+    r.push(function(st) st.hand = st.hand + 1 end)
+    r.stop()
+    eq(cl[B].session.stakeFoul, "forged")
+    sim:run(C.BOOK_WAIT + 5)
+    sim:run(C.STAKE_OWE_WAIT + 5)
+    victim(sim, cl, B, gidOf(got[A], "close"), A, { k = "N", why = "forged" })
+  end)
+
+  it("a forged S record of the host changes no balance and no note", function()
+    local sim, cl = cash({ 1, 2, 3 })
+    local host, got = cl[A], outs(cl)
+    hands(sim, host, 1)
+    setTook(cl, { [1] = { [2] = 40 } })
+    close(sim, host)
+    sim:run(C.STAKE_OWE_WAIT + 5)
+    local gid = gidOf(got[A], "close")
+    local function state()
+      local out = {}
+      for name, c in pairs(cl) do
+        local v = ns.LedgerView.of(c.ledger)
+        local keys = {}
+        for g, n in pairs(c.stakes:seen()) do keys[#keys + 1] = g .. ":" .. tostring(n.foul) .. ":" .. tostring(n.wait) end
+        table.sort(keys)
+        out[name] = { ns.LedgerView.net(v, B, A), ns.LedgerView.net(v, A, B), ns.LedgerView.net(v, M, A), keys }
+      end
+      return out
+    end
+    local before = state()
+    ok(host.ledgerNet:make("S", { gid = gid, g = "holdem", f = B, c = 80000, sk = SK,
+      n = { A, B, false, false, false, false }, w = { 1 }, l = {}, why = "left" }))
+    sim:run(C.LEDGER_COALESCE + 5)
+    eq(state(), before)
+  end)
+
+  it("my one buy in top mode played twice by the host: forged", function()
+    local sim, cl = cash({ 1, 2, 3 }, { blinds = 10, rebuy = "top" }, { [2] = false })
+    local hs = cl[A].session
+    assert(cl[B]:act{ k = "buy", n = 500 }); sim:run(1)
+    eq(hs.state.seats[2].bought, 500)
+    eq(cl[B].session.stakeFoul, nil)
+    hs:play(2, { k = "buy", n = 500 }); sim:run(1)
+    eq(cl[B].session.stakeFoul, "forged")
+  end)
+
   it("a key withheld (E6): every player dealt in with it is asked", function()
     local sim, cl = cash({ 1, 2, 3 })
     local host, got = cl[A], outs(cl)
@@ -800,5 +892,3 @@ describe("a modified host at a cash table: the snapshot and the book", function(
     victim(sim, cl, B, gidOf(got[A], "close"), A, "ask")
   end)
 end)
-
-restore()
