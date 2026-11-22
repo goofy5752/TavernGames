@@ -611,15 +611,7 @@ describe("ui: table frame, a staked Белот", function()
   -- 20 s of the break are left.
   for _, from in ipairs({ "stakeEndedAt", "stakeHoldFrom" }) do
     it("the start button is not redrawn in a loop during the break (" .. from .. ")", function()
-      local w = Wow.new{ ui = true }
-      Play.staked(w.ns, "belot")
-      w.inGuild = true
-      w.roster = { { name = ME .. "-Forever", online = true, guid = Wow.GUID } }
-      w:boot()
-      w:firstRunDone()
-      w:fire("GUILD_ROSTER_UPDATE")
-      w:fire("PLAYER_LOGIN")
-      w:advance(w.ns.Const.LEDGER_ADOPT_WAIT + 1)
+      local w = require("staked").readyWow({ "belot" })
       local client, TF = w.ns.client, w.ns.TableFrame
       local tid = assert(client:openTable{ game = "belot", access = "guild", turn = 45, stake = 50000 })
       w:advance(0)
@@ -653,15 +645,7 @@ end)
 
 describe("ui: table frame, a staked Сантасе that fills up again", function()
   it("a full table that waits for the break says so", function()
-    local w = Wow.new{ ui = true }
-    Play.staked(w.ns, "santase")
-    w.inGuild = true
-    w.roster = { { name = ME .. "-Forever", online = true, guid = Wow.GUID } }
-    w:boot()
-    w:firstRunDone()
-    w:fire("GUILD_ROSTER_UPDATE")
-    w:fire("PLAYER_LOGIN")
-    w:advance(w.ns.Const.LEDGER_ADOPT_WAIT + 1)
+    local w = require("staked").readyWow({ "santase" })
     local client, TF, L = w.ns.client, w.ns.TableFrame, w.ns.L
     eq(L("table.holdStart", 25), "Новата игра започва след 25 сек.")
     local tid = assert(client:openTable{ game = "santase", access = "guild", turn = 45, stake = 10000 })
@@ -687,6 +671,16 @@ describe("ui: table frame, a staked Сантасе that fills up again", functio
     ok(v.banner:IsVisible(), "no banner"); eq(v.bannerText:GetText(), L("table.holdStart", 25))
     w:advance(1.5)
     eq(v.bannerText:GetText(), L("table.holdStart", 24))
+    -- A seated player silent for SILENT_AFTER: the line names her, it never restarts a count.
+    local silent = w.ns.W.colored(client, "Тодор Ангелов")
+    s.lastHeard["Тодор Ангелов"] = client.env.now() - w.ns.Const.SILENT_AFTER
+    w:advance(1)
+    eq(v.bannerText:GetText(), L("table.holdSilent", silent))
+    w:advance(6); eq(v.bannerText:GetText(), L("table.holdSilent", silent))
+    w:advance(5); eq(v.bannerText:GetText(), L("table.holdSilent", silent))
+    s.lastHeard["Тодор Ангелов"] = client.env.now() -- heard again: the number is back
+    w:advance(1.1)
+    eq(v.bannerText:GetText(), L("table.holdStart", math.ceil(w.ns.Stakes.held(s))))
     w:advance(w.ns.Stakes.gap(s) - 6.5 + 0.1)
     eq(s.status, "live"); eq(s.holdTimer, nil)
     w:advance(0)

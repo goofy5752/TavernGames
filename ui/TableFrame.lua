@@ -244,15 +244,15 @@ local function renderBoard(v, s, rows)
 end
 
 -- Precedence: hostSilent > resynced > the held start (a staked table full again,
--- s.holdTimer: key, whole seconds, seconds left of Stakes.held) > aborted > the
--- open table's waiting line. A host-started table waits for players, then for
+-- s.holdTimer: key, whole seconds or the silent player, seconds left) > aborted > the open table's line. A host-started table waits for players, then for
 -- its host; any other open table for a second player, or for more players when
 -- its engine needs more than two seats; a game that is over shows none (the view says who lost).
 local function bannerKey(s, engine)
   if s.hostSilent then return "table.hostSilent" end
   if TableFrame.resyncTid == s.tid then return "table.resynced" end
-  local left = s.holdTimer and s.role == "host" and ns.Stakes.held(s)
-  if left then return "table.holdStart", math.max(1, math.ceil(left)), left end
+  local left, silent
+  if s.holdTimer and s.role == "host" then left, silent = ns.Stakes.held(s) end
+  if left then return silent and "table.holdSilent" or "table.holdStart", silent and W.colored(ns.client, silent) or math.max(1, math.ceil(left)), left end
   if s.status == "aborted" then return "table.aborted" end
   if s.status ~= "open" then return nil end
   if engine.start ~= "host" then return engine.minSeats > 2 and "table.waitingMore" or "table.waiting" end

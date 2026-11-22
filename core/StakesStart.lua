@@ -69,7 +69,8 @@ local function arm(s, wait)
   end)
 end
 
--- The hold of s's next start -> seconds left (> 0: no start of any kind, the
+-- The hold of s's next start -> seconds left, and the name of a silent seated player
+-- the start waits for (seconds > 0: no start of any kind, the
 -- host's „Нова игра“ (Session:canStart's "break") nor the held one): the rest
 -- of the break (from my end of the last game, or from s.stakeHoldFrom); at an
 -- `again` table at least HOLD_RECHECK while a seated player other than me has
@@ -82,10 +83,11 @@ function Stakes.held(s)
   local from = s.stakeEndedAt or s.stakeHoldFrom
   if from then wait = from + Stakes.gap(s) - now end
   if not s:engine().again then return wait end
+  local silent
   for name, at in pairs(s.lastHeard or {}) do
-    if name ~= env.me and ns.Util.contains(s.seats, name) and now - at >= C.SILENT_AFTER then wait = math.max(wait, HOLD_RECHECK) end
+    if name ~= env.me and ns.Util.contains(s.seats, name) and now - at >= C.SILENT_AFTER and (not silent or name < silent) then wait, silent = math.max(wait, HOLD_RECHECK), name end
   end
-  return wait
+  return wait, silent
 end
 
 -- Host (Session:startIfFull at a staked table) -> true: the start of an

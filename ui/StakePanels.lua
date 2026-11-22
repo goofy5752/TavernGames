@@ -114,8 +114,10 @@ local function showAsk(q)
   P.askText:SetText(askText(q.game, q.sk))
   local engine = ns.Games.engine(q.game)
   local cards = engine ~= nil and engine.view ~= nil
-  local h = ASK_H + (cards and WARN_H or 0)
   P.askWarn:SetShown(cards)
+  -- the frame grows with its text: 52 above, 68 below (a 20 gap, 28 of buttons, a 20 margin)
+  local need = 52 + P.askText:GetStringHeight() + 10 + P.askLeave:GetStringHeight() + (cards and 10 + P.askWarn:GetStringHeight() or 0) + 68
+  local h = math.max(ASK_H + (cards and WARN_H or 0), need)
   P.askFrame:SetHeight(h)
   P.askWood:SetTexCoord(0, (ASK_W - 8) / Theme.texSize.wood, 0, (h - 8) / Theme.texSize.wood)
   P.askFrame:Show()
@@ -269,7 +271,9 @@ local function rematchState(s, client)
   if s.game ~= "ttt" and s.role == "host" then return "start" end
   if s.game ~= "ttt" then
     if not (s:engine().again and s.status == "live" and s:gameOver() and me and s.seats[me] == client.env.me) then return nil end
-    local left = ns.Stakes.held(s)
+    if s:seatedCount() < s:engine().minSeats then return "short" end
+    local left, silent = ns.Stakes.held(s)
+    if silent then return "silent", silent, left end
     if left > 0 then return "wait", math.ceil(left), left end
     return "ready"
   end
@@ -318,9 +322,11 @@ function P.bill(v, s)
     rows = rows + setLine(b, i, rows, item[1], item[2])
   end
   local what, other, left = rematchState(s, client)
-  if what == "wait" or what == "ready" then -- a guest: when the next match may begin
+  if what == "wait" or what == "ready" or what == "silent" or what == "short" then -- a guest: when the next match may begin
     n = n + 1
-    rows = rows + setLine(b, n, rows, what == "wait" and L("bill.again.wait", other) or L("bill.again.ready"))
+    local line = what == "silent" and L("bill.again.silent", first(client, other)) or what == "wait" and L("bill.again.wait", other)
+      or what == "short" and L("bill.again.short") or L("bill.again.ready")
+    rows = rows + setLine(b, n, rows, line)
   end
   for i = n + 1, #b.lines do b.lines[i].text:Hide(); b.lines[i].mark:Hide() end
   b:SetHeight(BILL_TOP + BILL_ROW * rows)

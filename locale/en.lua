@@ -580,6 +580,9 @@ T["stand.stake.team"] = "If you stand up now, your team loses. You owe %s to eac
 T["bill.left.team"] = "%s left the game and pays both opponents. Their partner owes nothing."
 T["bill.again.wait"] = "The host may start a new game at the same stake in %d s. If you don't want to play, press “To the hall”."
 T["bill.again.ready"] = "The host may start a new game at the same stake. If you don't want to play, press “To the hall”."
+T["table.holdSilent"] = "The new game is waiting for %s."
+T["bill.again.silent"] = "The host may start a new game at the same stake once %s is back. If you don't want to play, press “To the hall”."
+T["bill.again.short"] = "The host may start a new game once a player sits at the table. If you don't want to play, press “To the hall”."
 T["table.holdStart"] = "The new game starts in %d s."
 
 -- Accounts and payment (ui/Accounts.lua, ui/PayDialog.lua)

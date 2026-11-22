@@ -6,27 +6,8 @@ local Play = require("play")
 -- the warning on „Стани“, the bill „Сметката“ and the start refusals.
 local ME, B, C, D = "Иван Петров", "Мария Стоянова", "Тодор Ангелов", "Дара Колева"
 
--- In a guild, booted with the ui/ files, own name resolved, PLAYER_LOGIN fired;
--- the engines named in `staked` take a stake in this world's own namespace (ruling G6).
-local function guildWow(staked)
-  local w = Wow.new{ ui = true }
-  if staked then Play.staked(w.ns, unpack(staked)) end
-  w.inGuild = true
-  w.roster = { { name = ME .. "-Forever", online = true, guid = Wow.GUID } }
-  w:boot()
-  w:firstRunDone()
-  w:fire("GUILD_ROSTER_UPDATE")
-  w:fire("PLAYER_LOGIN")
-  return w
-end
-
--- ... and my login queue has closed: my ledger entries leave at once.
-local function readyWow(staked)
-  local w = guildWow(staked)
-  w:advance(w.ns.Const.LEDGER_ADOPT_WAIT + 1)
-  return w
-end
-
+local Staked = require("staked")
+local guildWow, readyWow = Staked.guildWow, Staked.readyWow
 -- readyWow where Сантасе, Белот and Табла take a stake (Task 10 turns them on for good).
 local function stakedWow() return readyWow({ "santase", "belot", "tabla" }) end
 
@@ -759,7 +740,11 @@ describe("ui: the staked table of Сантасе, Белот and Табла (F2)
     local function asked(card, what)
       ok(P.askFrame:IsShown(), "no question: " .. what)
       eq(P.askWarn:IsVisible(), card, what)
-      eq(P.askFrame:GetHeight(), card and 200 + 44 or 200, what)
+      -- the text, the leave line and the warning clear the buttons, whatever their height
+      local need = 52 + P.askText:GetStringHeight() + 10 + P.askLeave:GetStringHeight() + (card and 10 + P.askWarn:GetStringHeight() or 0)
+      local gap = P.askFrame:GetHeight() - 48 - need
+      ok(gap >= 20, what .. ": the text runs into the buttons, gap " .. gap)
+      ok(P.askFrame:GetHeight() >= (card and 200 + 44 or 200), what)
       if card then
         eq(P.askWarn:GetText(), L("stake.ask.cards"))
         eq(P.askWarn.points[1], { "TOPLEFT", P.askLeave, "BOTTOMLEFT", 0, -10 })
@@ -821,7 +806,7 @@ describe("ui: the staked table of Сантасе, Белот and Табла (F2)
   it("the bill of a leave names the leaver and its two debts", function()
     local w = stakedWow()
     local L = w.ns.L
-    eq(L("bill.left.team", "Мария"), "Мария напусна играта и плаща на двамата противници. Партньорът му не дължи нищо.")
+    eq(L("bill.left.team", "Мария"), "Мария напусна играта и плаща на двамата противници. Партньорът в отбора не дължи нищо.")
     local tid = host(w, "belot", 10000, { B, C, D })
     local v = w.ns.TableFrame.view
     w:deliver("WHISPER", B, { v = 1, t = "STD", tid = tid }); w:advance(0) -- seat 2: owes seats 1 and 3, never its partner in 4
@@ -872,6 +857,23 @@ describe("ui: the staked table of Сантасе, Белот and Табла (F2)
     s.role = "player"; TF.render()
     lines = billLines(v)
     eq(lines[#lines], { L("bill.again.ready"), "" })
+    -- A seated host silent for SILENT_AFTER: the line names the seat the start waits for.
+    s.lastHeard[ME] = nil
+    s.lastHeard[B] = w.ns.client.env.now() - w.ns.Const.SILENT_AFTER
+    TF.render()
+    lines = billLines(v)
+    eq(lines[#lines], { L("bill.again.silent", "Мария"), "" })
+  end)
+
+  it("after a leave the opponents' bill waits for a player to sit", function()
+    local w = stakedWow()
+    local TF, L = w.ns.TableFrame, w.ns.L
+    local tid, s = host(w, "belot", 10000, { B, C, D })
+    w:deliver("WHISPER", B, { v = 1, t = "STD", tid = tid }); w:advance(0)
+    s.role, s.status = "player", "live"; TF.render() -- a guest's table stays live while a seat is empty
+    local lines = billLines(TF.view)
+    eq(lines[#lines], { L("bill.again.short"), "" })
+    eq(L("bill.again.short"), "Домакинът може да започне нова игра, щом на масата седне играч. Не искаш ли, натисни „Към залата“.")
   end)
 
   it("the guest's countdown ends with the break, drawn again by itself", function()
