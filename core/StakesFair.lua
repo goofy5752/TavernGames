@@ -126,6 +126,7 @@ function Stakes.audit(s, gid, left)
     local rec = ns.Rolls.auditOf(s.client, gid) or s
     return { read = function() return ns.Rolls.audit(rec) end, wait = C.ROLL_FINAL_WAIT }
   end
+  if engine.sealed and not left and Stakes.cash(s) then return Stakes.sealedAudit(s, gid) end -- the book's verdict (core/StakesCashOwe.lua)
   if left or engine.sealed or not has(engine, "fair") or not (fair and fair.stage ~= "done") then return nil end
   local rec = { gid = gid, h = fair.h, open = true }
   s.stakeRec = rec

@@ -59,6 +59,7 @@ ns.Const = {
   STAKE_LEFT_WINDOW = 600, -- my client confirms a claim for a game I left myself within this long
   STAKE_OWE_WAIT = 60,     -- a clean loss with no claim this long after is written down by the loser
   STAKE_SEEN_KEEP = 1209600, -- my outcome notes are dropped this long after the game (14 days)
+  CASH_BOOK_WAIT = 86400,  -- a cash table's settlement note waits at most this long for the book (core/StakesCashOwe.lua)
 
   LEDGER_FUTURE = 3600,      -- an entry's `at` may be this far ahead of my clock
   LEDGER_AUTHOR_MAX = 5000,  -- R entries kept per author

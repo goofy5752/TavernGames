@@ -64,6 +64,7 @@ core/BookCheck.lua
 core/BookKeys.lua
 core/Cash.lua
 core/StakesCash.lua
+core/StakesCashOwe.lua
 core/DealHooks.lua
 core/DealKeep.lua
 core/Dice.lua
