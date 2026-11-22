@@ -419,6 +419,13 @@ describe("stake", function()
     eq(#invites, 1); eq(invites[1][1].stake, 50000)
   end)
 
+  it("positive control: a fun six-seat Holdem INV is taken", function()
+    local sim, _, b, c = setup()
+    local invites = record(b, "invite")
+    c:send("WHISPER", B, { v = 1, t = "INV", tid = P .. "#1", g = "holdem", h = P, s = { P, false, false, false, false, false } }); sim:run(1)
+    eq(#invites, 1); eq(invites[1][1].stake, nil)
+  end)
+
   it("a watcher seated by the host without a SIT of mine is stood up (C-A)", function()
     local sim, a, _, c = setup()
     local tid = a:openTable{ game = "ttt", access = "guild", turn = 45, stake = 50000 }; sim:run(3)

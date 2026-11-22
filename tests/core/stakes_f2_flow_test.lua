@@ -280,7 +280,7 @@ describe("stakes F2: the whole road (real wire)", function()
     local b = sim:relog(B)
     local asks = record(b, "debtAsk")
     for _ = 1, 120 do if #b.stakes:asks() > 0 then break end; sim:run(1) end
-    sim:run(30)
+    sim:run(30 + C.LEDGER_PEER_GAP) -- long enough for a second ask to have shown up
     local list = b.stakes:asks()
     eq(#list, 1); eq({ list[1].gid, list[1].g, list[1].f, list[1].t, list[1].c }, { gid, "tabla", B, A, SK })
     eq(#asks, 1)
@@ -323,6 +323,9 @@ describe("stakes F2: the whole road (real wire)", function()
     local tid = Play.open(sim, cl, "belot", SK, 4)
     local E = ns.Engines.belot
     local deals = {}
+    local fouls = {}
+    local function watch(c) fouls[#fouls + 1] = record(c, "forfeit") end
+    for _, c in pairs(cl) do watch(c) end
     -- Seat k's player reloads three moves into deal k + 1 (the host's: its successor plays on).
     for k = 1, 4 do
       for _ = 1, 600 do
@@ -337,7 +340,7 @@ describe("stakes F2: the whole road (real wire)", function()
       local name = h.session.seats[k]
       deals[#deals + 1] = h.session.fairN
       ok(not h.session:gameOver(), "the match runs")
-      cl[name] = sim:relog(name); sim:settle(); sim:run(3)
+      cl[name] = sim:relog(name); watch(cl[name]); sim:settle(); sim:run(3)
     end
     eq(deals, { 2, 3, 4, 5 })
     -- Then the next scored deal ends the match.
@@ -356,6 +359,8 @@ describe("stakes F2: the whole road (real wire)", function()
     local ds = {}
     for _, d in ipairs(view(cl[D]).debts) do if d.gid:find(tid, 1, true) == 1 then ds[#ds + 1] = d end end
     eq(#ds, 2)
+    for _, f in ipairs(fouls) do eq(#f, 0) end -- the match ended by play, no forfeit anywhere
+    for _, e in ipairs(Play.entries(sim, nil, "D")) do eq(e.why, "lost") end
     for _, d in ipairs(ds) do
       eq({ d.c, d.status }, { SK, "pending" }, d.key)
       eq(asked(cl[d.f], d.gid, d.f, d.t), true, d.key)
@@ -369,9 +374,8 @@ describe("stakes F2: the whole road (real wire)", function()
     local sim, cl = guild(4)
     local tid = Play.open(sim, cl, "belot", SK, 4)
     for _ = 1, 5 do Play.step(sim, cl[A]) end
-    -- The host stands Г, present, up (as its own sweep would, untracking him): Г contests both claims (N "stand").
+    -- The host stands Г, present, up (as its own sweep would): Г contests both claims (N "stand").
     local q = cl[A].session.seq + 1
-    ns.Succession.untrack(cl[A].session, G)
     ok(cl[A].session:event(0, { k = "stand", seat = 4, why = "offline" })); sim:run(1)
     eq(cl[G].session.stakeFoul, "stand")
     sim:run(10)
@@ -449,7 +453,7 @@ describe("stakes F2: the whole road (real wire)", function()
       if between(s) and s.msg.t == "LVC" and not s.msg.r then exchanges = exchanges + 1 end
       if between(s) and (s.msg.t == "LVC" or s.msg.t == "LID" or s.msg.t == "LEV") then last = s.at end
     end
-    ok(exchanges <= 2, "exchanges between Д and the new member: " .. exchanges)
+    ok(exchanges >= 1 and exchanges <= 2, "exchanges between Д and the new member: " .. exchanges)
     ok(last < sim.clock - 2 * C.LEDGER_PEER_GAP, "a sync message between them at " .. last)
     ok(e.ledger:get(n.i), "the new member holds the N (from another member)")
     eq(Play.debt(e, gid, B, A).status, "contested")
@@ -461,6 +465,15 @@ describe("stakes F2: the whole road (real wire)", function()
         for _, x in ipairs(s.msg.ev or {}) do ok(x.i ~= n.i, "Д relayed the N") end
       end
     end
+    eq(Play.debt(cl[D], gid, B, A).status, "pending"); eq(View.net(view(cl[D]), B, A), 0)
+    -- A contest of reason "deal" meets the same wrapper: refused, the debt stays pending, in no balance.
+    local author, num = Ledger.author(n.i)
+    local deal = {}
+    for k, v in pairs(n) do deal[k] = v end
+    deal.i, deal.why = author .. ":" .. (num + 50), "deal"
+    cl[D].ledgerNet:take(deal, author, true)
+    eq((cl[D].ledger:get(deal.i)), nil)
+    eq(cl[D].ledger:refused(author, num + 50, Ledger.hash(deal)), true)
     eq(Play.debt(cl[D], gid, B, A).status, "pending"); eq(View.net(view(cl[D]), B, A), 0)
   end)
 

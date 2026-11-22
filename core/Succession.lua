@@ -87,6 +87,7 @@ function Succession.sweep(s)
     end
   end
   if stood then s:abortIfShort() end
+  for name in pairs(s.lastHeard) do if not seatOf(s.seats, name) and not s.watcherSet[name] then s.lastHeard[name] = nil end end
   local silent = {}
   for name in pairs(s.watcherSet) do
     if now - (s.lastHeard[name] or now) >= C.SILENT_AFTER then silent[#silent + 1] = name end

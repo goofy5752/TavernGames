@@ -328,6 +328,9 @@ describe("stakes: a staked card table plays", function()
     eq(to, { I, M }) -- both opponents' claims; the partner owes and is owed nothing
     eq(#wordsAt(sim, G, "C", gid), 0)
     for _, name in ipairs({ I, M }) do eq(Play.debt(cl[P], gid, G, name).status, "contested") end
+    -- The stand left no trace in the host's sweep: it runs on and does not re-arm at 0 s forever.
+    sim:run(C.OFFLINE_STAND_SECONDS + C.SILENT_AFTER + 100)
+    eq(cl[I].session.lastHeard[G], nil)
   end)
 
   it("a /reload of the dealer mid-hand: the hand goes on, the dealer's debt is a question", function()
