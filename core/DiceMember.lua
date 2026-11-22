@@ -174,14 +174,15 @@ ns.Ext.dice.adopted = function(s, prev, m, how)
 end
 
 -- The throw died with its host. A running one whose opener hosts on (it raised
--- its own epoch) was a second try; else, my part said, it went unheard.
+-- its own epoch) was a second try; else, my part said, it went unheard (my
+-- seed had left: robbed, s.diceRobbed, core/Dice.lua's close).
 -- s.diceNew: another player hosts now, so the next snapshot is not held
 -- against my state.
 ns.Ext.dice.hostChanged = function(s)
   local t = s.throw
   if s.diceHost ~= s.host then s.diceNew = true end
   local why = t and not t.done and (t.foul or (s.seats[t.d] == s.host and "dodge"))
-  if why then int.close(s, t.h, "bad", why, t) elseif t and not t.done and (t.asked or t.sent) then int.unheard(s, true) end
+  if why then int.close(s, t.h, "bad", why, t) elseif t and not t.done and (t.asked or t.sent) and int.unheard(s, true) and t.sent then s.diceRobbed = (s.diceRobbed or 0) + 1 end
   s.throw, s.diceMine = nil, nil
   Dice.forget(s)
   int.stopTimer(s)

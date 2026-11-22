@@ -8,7 +8,7 @@ local _, ns = ...
 --       staked table a snapshot sets s.turnAt (Member.timedOut) from it, never
 --       from the host's `left`. A snapshot keeps the clock only of the very
 --       turn I hold (turnKey). Only a fresh adopt (a login: no clock of mine
---       ran) brings a turn "unseen": what my clock cannot tell is a question.
+--       ran) brings a turn "unseen": what my clock cannot tell is a question. It restarts with the host's turn timer (core/StakesFair.lua).
 --   (b) My roll is tied to its turn (Rolls: s.myRoll) through every host
 --       change. The first other host is not charged with it and the turn gets
 --       a fresh clock, once; without a roll of mine every other host does.
@@ -165,11 +165,11 @@ local function marksLead(a, b)
 end
 
 -- Does game state a lead to b in one game (b is a, or a later point of it)?
--- Death Roll: the same start, a's rolls are b's first rolls. Морски шах: by
--- legal play (marksLead; a state it cannot read leads nowhere).
+-- Death Roll (a start): the same start, a's rolls are b's first rolls. Морски шах: by
+-- legal play (marksLead; a state it cannot read, Табла's roll counts too, leads nowhere).
 function Stakes.leadsTo(a, b)
   if type(a) ~= "table" or type(b) ~= "table" then return false end
-  if a.rolls and b.rolls then
+  if a.rolls and b.rolls and a.start then
     if a.start ~= b.start or #a.rolls > #b.rolls then return false end
     for i = 1, #a.rolls do
       if not same(a.rolls[i], b.rolls[i]) then return false end
@@ -184,10 +184,10 @@ end
 local leadsTo = Stakes.leadsTo
 
 -- Which turn of its game a state stands at (two states of one game at the
--- same key and seat: the same turn) -> number | nil
+-- same key and seat: the same turn) -> number | nil (it cannot tell)
 local function turnKey(st)
   if type(st) ~= "table" then return nil end
-  if st.rolls then return #st.rolls end
+  if st.rolls and st.start then return #st.rolls end
   if not st.board then return nil end
   local n = 0
   for c = 1, 9 do
@@ -226,7 +226,7 @@ ns.Ext.stakes.adopted = function(s, prev, m, how)
   if sat then s.stakeRefill = "filled" end -- my own sit filled the seat
   if s.mySeat and (how.req or (sat and not how.fresh)) then Stakes.sent(s, { k = "sit" }) end -- my own SIT took me in
   local t = s.stakeTurn
-  local sameTurn = cont and on and t ~= nil and t.seat == st.turn and turnKey(prev) == turnKey(st)
+  local sameTurn = cont and on and t ~= nil and t.seat == st.turn and (identical or (turnKey(st) ~= nil and turnKey(prev) == turnKey(st)))
   refresh(s, not cont, not sameTurn, how)
   if kept then Stakes.foul(s, kept) end
   s.stakeHost, t = s.host, s.stakeTurn

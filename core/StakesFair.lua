@@ -31,7 +31,18 @@ local _, ns = ...
 -- What the throws mean for my debt (Stakes.fairCount, from the session's dice
 -- counts after the extension `dice` has run): a throw closed "bad" in this
 -- match (diceSeen.bad > 0) or diceRobbed > 0 -> dice; diceSeen.unseen > 0 or
--- diceAway > 0 -> unseen.
+-- diceAway > 0 -> unseen. s.diceRobbed (core/Dice.lua, per match, kept where
+-- s.diceUnheard is): a throw my host made alone after my client had sent its
+-- commit or seed for it, in its own event and not excused by my loading
+-- screen (D3); a running throw my seed had left for that died with a host
+-- change (D2). A throw made alone while my client had said nothing is no foul.
+--
+-- My turn clock (s.stakeTurn, and Member.timedOut's s.turnAt) at a staked
+-- table whose engine has no `idle` restarts at every event after which an
+-- honest host arms its turn timer again (Session:event: all but a sit, a
+-- stand and an event an extension calls `still`): Табла's throw for my turn,
+-- each step of my cascade. The host's timeout for my seat is then taken only
+-- after a whole turn of mine since (D1).
 --
 -- Session field (local, never sent): s.stakeRec = {gid, h, open, late}, the
 -- match that just ended by play while its last hand (h) was still open:
@@ -117,3 +128,42 @@ function Stakes.audit(s, gid, left)
   s.stakeRec = rec
   return { read = function() return worse(rec.late, rec.open and (Stakes.openFoul(fair) or "unseen") or nil) end, wait = C.STAKE_FAIR_WAIT }
 end
+
+-- The dice counts of the running match, as the foul of the event (or
+-- snapshot) being handled (the table above). Only while a match runs: a count
+-- left between two matches would land on the next one.
+function Stakes.fairCount(s)
+  if not (s.stakeLive and has(s:engine(), "dice")) then return end
+  local seen = s.diceSeen or NONE
+  if (seen.bad or 0) > 0 or (s.diceRobbed or 0) > 0 then
+    Stakes.pend(s, "dice")
+  elseif (seen.unseen or 0) > 0 or (s.diceAway or 0) > 0 then
+    Stakes.pend(s, "unseen")
+  end
+end
+
+-- The hooks count first; the original's refresh turns the pending foul into
+-- the game's (after its reset when the event begins a new game, before
+-- Book:settle writes the note). `hostChanged` refreshes nothing: its foul is
+-- the running match's at once.
+local ext = ns.Ext.stakes
+local applied, adopted, hostChanged, refused = ext.applied, ext.adopted, ext.hostChanged, ext.refused
+
+ext.applied = function(s, seat, a)
+  Stakes.fairCount(s)
+  applied(s, seat, a)
+  local t, k = s.stakeTurn, seat == 0 and a.k
+  if not t or s:engine().idle then return end
+  if k and k ~= "sit" and k ~= "stand" and not s:hook("still", seat, a) then
+    t = { seat = t.seat, at = s.client.env.now(), seen = true }
+    s.stakeTurn = t
+  end
+  if s.role ~= "host" and t.seat == s.mySeat then s.turnAt = t.at end
+end
+ext.adopted = function(s, prev, m, how) Stakes.fairCount(s); return adopted(s, prev, m, how) end
+ext.hostChanged = function(s)
+  Stakes.fairCount(s)
+  hostChanged(s)
+  if s.stakeLive and s.stakePend then Stakes.foul(s, s.stakePend); s.stakePend = nil end
+end
+ext.refused = function(s, seat, a) Stakes.fairCount(s); return refused(s, seat, a) end

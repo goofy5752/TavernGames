@@ -56,7 +56,7 @@ local _, ns = ...
 --   stakePend    the foul of the event being handled, set at the end of the hook
 --   stakeTurn    {seat, at, seen, was}: the seat on turn and my env.now() when my client
 --                first saw it on turn, or when another host took over (was: the first
---                clock then); seen false: a login brought the turn, no clock of mine saw it begin
+--                clock then); seen false: a login brought the turn, no clock of mine saw it begin; anew with the host's turn timer (core/StakesFair.lua)
 --   stakeStood   my seat's stand was judged in this game
 --   stakeRefill  "empty" | "filled": since the last game my client saw a seat
 --                empty, then filled by a sit (Морски шах's next start)

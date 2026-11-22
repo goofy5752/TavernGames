@@ -57,7 +57,7 @@ local function foul(throw, why) throw.foul = throw.foul or why end
 -- comes within the time an honest host's tick and my request take. Then
 -- nobody is blamed (s.diceAway). One loading screen excuses one throw
 -- (s.diceAwayAt: its env.loadedAt, true while it still shows). The flags are
--- my own client's; no message of a host sets them.
+-- my own client's; no message of a host sets them. -> true: counted against the host.
 local function unheard(s, resync)
   local env = s.client.env
   local at, now = env.loadedAt, env.now()
@@ -69,6 +69,7 @@ local function unheard(s, resync)
   if away then s.diceAwayAt = screen end
   local key = away and "diceAway" or "diceUnheard"
   s[key] = (s[key] or 0) + 1
+  return not away
 end
 -- c is the commit of my seed for `throw` (s.diceOwn: every one I made at this
 -- table, each good for its own throw only, with the seat it was thrown for).
@@ -79,8 +80,9 @@ end
 -- A throw is closed (`throw` nil: dice that no throw gave, or the last throw
 -- found bad afterwards, which is then counted once, as what it is now; never
 -- the other way: a bad throw stays counted whatever comes under its number):
--- s.diceLast, the counts of the match, "fair".
-local function close(s, h, verdict, why, throw)
+-- s.diceLast, the counts of the match, "fair". `heard`: its seeds event
+-- reached me (not a snapshot's proof).
+local function close(s, h, verdict, why, throw, heard)
   local old = s.diceLast
   local again = old ~= nil and old.h == h and verdict == "bad"
   local by = throw and s.seats[throw.d] or (again and old.by) or nil
@@ -94,8 +96,11 @@ local function close(s, h, verdict, why, throw)
     count[by or ""], s.diceAlone = (count[by or ""] or 0) + 1, count
     last.silent, last.n = s.seats[throw.alone] or nil, count[by or ""]
     -- My host threw without me although I had said my part (or had, before
-    -- a crash took my seed).
-    if s.mySeat == throw.alone and (throw.asked or throw.sent or throw.reload) then unheard(s) end
+    -- a crash took my seed). Against my commit or seed, in its own event and
+    -- not excused by my loading screen, it is robbed (s.diceRobbed: a staked
+    -- match's "dice", core/StakesFair.lua).
+    local said = throw.asked or throw.sent
+    if s.mySeat == throw.alone and (said or throw.reload) and unheard(s) and said and heard then s.diceRobbed = (s.diceRobbed or 0) + 1 end
   end
   local client = s.client
   client.events:emit("fair", { tid = s.tid, game = s.game, h = h, verdict = verdict, why = why, at = client.env.epoch() })
@@ -138,7 +143,7 @@ local function finish(s, throw, seeds, state)
   if thrown then _, r, t = thrown(state or s.state) end
   s.diceProof = { h = throw.h, c = copy(throw.commits), s = copy(seeds), r = r, t = t }
   local verdict = throw.foul and "bad" or throw.alone and "alone" or (throw.reload or throw.late) and "unseen" or "ok"
-  close(s, throw.h, verdict, throw.foul, throw)
+  close(s, throw.h, verdict, throw.foul, throw, state == nil)
 end
 
 -- The seeds event: both seeds (or the opener's alone) fit the commits ->
@@ -234,7 +239,7 @@ ns.Ext.dice = {
       s.throw, s.diceMine = nil, nil
       if k == "start" then
         s.diceLast, s.diceSeen, s.diceBad, s.diceAlone, s.diceUnheard, s.diceCry, s.diceProof = nil, nil, nil, nil, nil, nil, nil
-        s.diceCried, s.diceAway = nil, nil
+        s.diceCried, s.diceAway, s.diceRobbed = nil, nil, nil
       end
       Dice.forget(s)
       return stopTimer(s)
