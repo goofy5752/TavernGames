@@ -356,4 +356,58 @@ describe("stakes: the final review of F2", function()
       Play.restore()
     end
   end)
+
+  it("a login to a finished match, then the same snapshot pushed again, then a start 1 s later: still a question, the debt is asked (N1)", function()
+    Play.short("santase")
+    local sim, cl = Play.guild(2)
+    local tid = Play.open(sim, cl, "santase", SK, 2)
+    local host = cl[I]
+    Play.finish(sim, host); sim:run(2)
+    cl[P] = sim:relog(P); sim:settle(); sim:run(1)
+    local g = cl[P].session
+    ok(g.stakeLogin, "the login marks the end")
+    host.session:snapshotTo(P); sim:run(0)
+    ok(g.stakeLogin, "a resent snapshot keeps the mark")
+    sim:run(1)
+    host.session:event(0, { k = "start", first = 2 }); host.session:recordChanged(); sim:run(0)
+    eq({ g.stakeLive, g.stakeFoul }, { true, "unseen" })
+    local r2 = Play.finish(sim, host)
+    Play.restore()
+    sim:run(C.STAKE_FAIR_WAIT + C.STAKE_OWE_WAIT + 10)
+    local names = host.session.seats
+    local d = Play.debt(host, tid .. "/" .. r2.q, names[r2.losers[1]], names[r2.winners[1]])
+    eq(d.status, "pending")
+  end)
+
+  it("death roll: a stand that reached me by resync leaves no renamed seat when the chair is refilled: unseen, not forged (N2)", function()
+    local sim, cl = Sim.new(), {}
+    local G2 = Play.NAMES[4]
+    for _, name in ipairs({ I, M, P, G2 }) do cl[name] = sim:add(name) end
+    for _, env in pairs(sim.envs) do env.inGroup = function() return true end end
+    sim:run(1); sim:settle()
+    local tid = assert(cl[I]:openTable{ game = "deathroll", access = "guild", turn = 45, stake = SK, opt = { start = 100 } })
+    sim:run(3)
+    cl[M]:sit(tid, 2, SK); sim:run(1)
+    cl[P]:sit(tid, 3, SK); sim:run(1)
+    ok(cl[I]:startGame()); sim:run(0)
+    local seen = {}
+    cl[M]:on("result", function(r) seen[#seen + 1] = r end)
+    sim.nextRolls = { 50 }; ok(cl[I]:roll()); sim:run(0)
+    local drop = true
+    sim.bus.filter = function(from, to, _, m)
+      if drop and to == M and m.t == "EV" and type(m.a) == "table" and m.a.k == "stand" then drop = false; return {} end
+      return { m }
+    end
+    cl[P]:stand(); sim:run(1)
+    sim.bus.filter = nil
+    for _ = 1, 40 do if cl[M].session.seq == cl[I].session.seq then break end; sim:run(1) end
+    cl[G2]:sit(tid, 3, SK); sim:run(2)
+    local s = cl[M].session
+    sim:run(C.SYN_MIN_GAP + 1); s:requestSync(); sim:run(1)
+    eq(s.stakeFoul, "unseen")
+    sim.nextRolls = { 1 }; ok(cl[M]:roll()); sim:run(0)
+    sim:run(C.ROLL_FINAL_WAIT + C.STAKE_OWE_WAIT + 10)
+    ok(seen[1], "the roll ended the game")
+    eq(Play.debt(cl[I], tid .. "/" .. seen[1].q, M, I).status, "pending")
+  end)
 end)

@@ -112,13 +112,16 @@ end
 -- me a question. Whatever names the table shows, my debts go by my roster (Book:settle).
 local adopted = ns.Ext.stakes.adopted
 ns.Ext.stakes.adopted = function(s, prev, m, how)
+  local E = s:engine()
   if s.stakeLive and prev ~= nil and Stakes.running(s) and ns.Util.same(prev, s.state) then
     for seat, name in pairs(s.stakeRoster or {}) do
-      if type(s.seats[seat]) == "string" and s.seats[seat] ~= name then pend(s, how.moved and "unseen" or "forged") end
+      if type(s.seats[seat]) == "string" and s.seats[seat] ~= name and (not E.playing or E.playing(s.state, seat)) then pend(s, how.moved and "unseen" or "forged") end
     end
   end
   adopted(s, prev, m, how)
-  if s:engine().again and s.stakeEndedAt == nil and s:gameOver() then s.stakeHoldFrom, s.stakeLogin = s.client.env.now(), how.fresh and not how.req or nil end
+  if (E.again or E.start == "host") and s.stakeEndedAt == nil and s:gameOver() then
+    s.stakeHoldFrom, s.stakeLogin = s.client.env.now(), (how.fresh and not how.req) or (s.stakeLogin and not (how.sit or how.sat)) or nil
+  end
 end
 
 -- I became the host of an `again` table: a game over whose end my clock did
