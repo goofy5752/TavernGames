@@ -1146,7 +1146,7 @@ describe("stakes: play, fix round 4", function()
     sim, a, b, _, tid = tttTable(SK)
     playOut(sim, a, b); ok(b.session:gameOver())
     a:send("WHISPER", B, { v = 1, t = "END", tid = tid, e = a.session.epoch }); sim:run(0)
-    eq(b.session, nil); eq(b.env.db.stakeSeen, nil)
+    eq(b.session, nil); for _, n in pairs(b.env.db.stakeSeen) do eq(n.open, nil) end -- only the match's own outcome note (Task 8)
     -- A fun table: nothing of it.
     eq(spied(function()
       sim, a, b, _, tid = tttMariaOnTurn(nil)
@@ -1169,7 +1169,7 @@ describe("stakes: play, fix round 4", function()
     sim, a, b, _, tid = tttTable(SK)
     playOut(sim, a, b); mark = #sim.sent
     otherStake(sim); a.session:snapshotTo(B); sim:run(0); sim.bus.filter = nil
-    eq(b.session, nil); eq(#sent(sim, B, "STD", mark), 1); eq(b.env.db.stakeSeen, nil)
+    eq(b.session, nil); eq(#sent(sim, B, "STD", mark), 1); for _, n in pairs(b.env.db.stakeSeen) do eq(n.open, nil) end -- only the outcome note (Task 8)
   end)
 
   it("I1: what I sent outlives a /reload: my „Реванш“, then the host's, is no forged match (unseen: the breaker fix)", function()

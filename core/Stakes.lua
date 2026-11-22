@@ -38,8 +38,8 @@ local _, ns = ...
 -- up, so that client judges its own stand with its why. The same host at a new
 -- epoch is no host change here (s.stakeHost).
 -- Death Roll's rolls are judged by Rolls.audit, not here.
--- A foul survives my session only where my host ends it for me (the hook
--- `ended`): as the note db.stakeSeen[tid .. "/" .. my seq] = {at, tid, g, sk,
+-- A foul survives my session where my host ends it for me (the hooks `ended`,
+-- and `gone` for my seat): as the note db.stakeSeen[tid .. "/" .. my seq] = {at, tid, g, sk,
 -- q, foul, h, open = true}; open: the game had not ended on my client, so the
 -- note answers every claim about this table from a later event; h: who sent
 -- what ended it (my host, or a seated player that called itself the host).
@@ -68,6 +68,8 @@ local _, ns = ...
 --                "break"); nil when a snapshot ended it
 --   stakeIdle    my client stands up as host after its own idle turn (the note's why "idle")
 --   idleTimer    the host's idle stand: OFFLINE_STAND_SECONDS after the seat came on turn
+--   stakeResult  the "result" of the event being handled, for core/StakesBook.lua after its hooks
+--   stakeR       {by, r}: the R of the forfeit of my host `by`, written if I become its successor
 local Stakes = {}
 ns.Stakes = Stakes
 
@@ -208,9 +210,56 @@ local function tellStood(s, a)
   }))
 end
 
+-- A seat-0 stand of seat a.seat of `roster` (the running game's, before the
+-- event) is the forfeit "forfeit"{tid, game, q, seat, name, to, why, sk, at}:
+-- owed to the roster's other names at gid tid .. "/" .. q; the seat leaves the
+-- roster. The host writes its R; a leaving host's R is its successor's
+-- (s.stakeR, hostChanged). The players' outcome: core/StakesBook.lua.
+local function forfeit(s, a, roster)
+  local env, book, name, to, w = s.client.env, s.client.stakes, roster[a.seat], {}, {}
+  for i = 1, #s.seats do
+    if i ~= a.seat and roster[i] then to[#to + 1], w[#w + 1] = roster[i], i end
+  end
+  roster[a.seat] = nil
+  s.client.events:emit("forfeit", { tid = s.tid, game = s.game, q = s.seq, seat = a.seat, name = name, to = to, why = a.why, sk = s.stake, at = env.epoch() })
+  if not book or #to == 0 or book:bot(s.tid) then return end
+  local gid, n = s.tid .. "/" .. s.seq, ns.Util.copy(s.seats)
+  n[a.seat] = name
+  local r = { gid = gid, g = s.game, n = n, w = w, l = { a.seat }, sk = s.stake, why = a.why }
+  if s.role == "host" and name ~= env.me then book:make("R" .. gid, "R", r) elseif name == s.host and name ~= env.me then s.stakeR = { by = name, r = r } end
+  book:outcome(s, gid, Stakes.pairs({ name }, to, s.stake), a.why, name == env.me and s.stakeIdle and "idle" or nil)
+end
+
+-- „Стани“ in the running game I play at the stake I accepted (my note
+-- db.stakeSat; an asked seat has none): db.stakeLeft[tid] = {at, sk, names,
+-- used}, before my STD; a member, whose client never applies its stand, also
+-- notes the forfeit and tells it ("forfeit"). A host's handoff plays it here.
+local function quit(s)
+  local env, roster, sat = s.client.env, s.stakeRoster, s.client.env.db.stakeSat
+  if not (s.client.stakes and s.stakeLive and roster and s.mySeat and roster[s.mySeat] == env.me) then return end
+  if not (type(sat) == "table" and sat.tid == s.tid and sat.sk == s.stake) then return end
+  local to, q, at = {}, s.seq + 1, env.epoch()
+  for i = 1, #s.seats do if i ~= s.mySeat and roster[i] then to[#to + 1] = roster[i] end end
+  env.db.stakeLeft = env.db.stakeLeft or {}
+  env.db.stakeLeft[s.tid] = { at = at, sk = s.stake, names = to, used = {} }
+  if s.role == "host" then return end
+  s.client.events:emit("forfeit", { tid = s.tid, game = s.game, q = q, seat = s.mySeat, name = env.me, to = to, why = "left", sk = s.stake, at = at })
+  s.client.stakes:seen(true)[s.tid .. "/" .. q] = { at = at, g = s.game, sk = s.stake, pairs = Stakes.pairs({ env.me }, to, s.stake), why = "left", foul = s.stakeFoul, tid = s.tid, q = q }
+end
+
+-- What I judged of my running game, past my session: db.stakeSeen[tid .. "/"
+-- .. my seq] = {at, tid, g, sk, q, foul, h, open = true} (see the header).
+local function openNote(s, by)
+  local env = s.client.env
+  env.db.stakeSeen = env.db.stakeSeen or {}
+  local gid = s.tid .. "/" .. s.seq
+  env.db.stakeSeen[gid] = { at = env.epoch and env.epoch() or env.now(), tid = s.tid, g = s.game, sk = s.stake, q = s.seq, foul = s.stakeFoul, h = by, open = true }
+end
+
 -- The member's checks (stood, badStart, began, sent, the hook `adopted`): core/StakesWatch.lua.
 ns.Ext.stakes = {
   applied = function(s, seat, a)
+    local live, roster = s.stakeLive, s.stakeRoster -- before the event
     local start = seat == 0 and a.k == "start"
     -- My own move as host; as a member what my client took for mine (my own ACT, or my timeout
     -- due by my clock): the log holds every action in my name that was not forged.
@@ -225,6 +274,8 @@ ns.Ext.stakes = {
     if seat == 0 and a.k == "stand" then s.stakeRefill = "empty" end
     if seat == 0 and a.k == "sit" and s.stakeRefill == "empty" then s.stakeRefill = "filled" end
     refresh(s, start, seat ~= 0)
+    if s.client.stakes then s.client.stakes:settle(s) end -- the outcome of a "result" of this event
+    if seat == 0 and a.k == "stand" and live and roster and type(roster[a.seat]) == "string" then forfeit(s, a, roster) end
   end,
   -- The event is applied (or refused) next. The timeout of a turn a login
   -- brought me (no clock of mine saw it begin) is a question, not forged.
@@ -250,15 +301,22 @@ ns.Ext.stakes = {
       s.stakeTurn = { seat = t.seat, at = s.client.env.now(), seen = true, was = t.seen and (t.was or t.at) or nil }
     end
     armIdle(s)
+    local p, book = s.stakeR, s.client.stakes
+    if p and s.role == "host" and book then book:make("R" .. p.r.gid, "R", p.r) end
+    if p and (s.role == "host" or s.host ~= p.by) then s.stakeR = nil end
   end,
   leaving = function(s)
+    quit(s)
     Stakes.sent(s, { k = "stand" })
     refresh(s)
   end,
-  -- Member: my host says I am not at its table any more (SNO "gone"), before my session ends.
+  -- Member: my host says I am not at its table any more (SNO "gone"), before my
+  -- session ends; while I sit in the running game, an open note keeps the foul.
   gone = function(s)
-    if s.seats[s.mySeat] == s.client.env.me then Stakes.stood(s, s.mySeat, nil, false, s.state and s.state.max) end
+    local me = s.client.env.me
+    if s.seats[s.mySeat] == me then Stakes.stood(s, s.mySeat, nil, false, s.state and s.state.max) end
     refresh(s)
+    if running(s) and s.mySeat and s.seats[s.mySeat] == me then openNote(s, s.host) end
   end,
   -- Member: my host ends my session (its END, a snapshot at another stake)
   -- while I sit in the running game, which no honest host does: forged, and
@@ -267,11 +325,7 @@ ns.Ext.stakes = {
     local env = s.client.env
     if not (running(s) and s.mySeat and s.seats[s.mySeat] == env.me) then return end
     Stakes.foul(s, "forged")
-    local db = env.db
-    db.stakeSeen = db.stakeSeen or {}
-    db.stakeSeen[s.tid .. "/" .. s.seq] = {
-      at = env.epoch and env.epoch() or env.now(), tid = s.tid, g = s.game, sk = s.stake, q = s.seq, foul = s.stakeFoul, h = by, open = true,
-    }
+    openNote(s, by)
     return true
   end,
 }

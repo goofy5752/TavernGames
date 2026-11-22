@@ -18,7 +18,8 @@ local _, ns = ...
 -- (no group invite and no "not in your group" hint for a bot, and bots may sit
 -- at my "group" table), and forwards my "rollSeen" events to every bot, so a
 -- bot that hosts Death Roll sees my server rolls. A bot has no env.roll and no
--- env.groupInvite: its rolls are table rolls (src "ask").
+-- env.groupInvite: its rolls are table rolls (src "ask"). enable() installs
+-- env.noLedger(tid) as well: true for a bot table, which writes no ledger entry.
 --
 -- Behaviour: a bot accepts an invitation after ACCEPT_AFTER s (two bots that
 -- accept at once both get a seat: see Invites.seatFor), but declines one to a
@@ -355,6 +356,7 @@ function Bots.enable(client, env, makeEnv)
   self.bus:join(env.me, function(channel, sender, msg) client:receive(channel, sender, msg) end)
   env.send = humanSend(self)
   env.inGroup = humanInGroup(self)
+  env.noLedger = function(tid) return (self:tableKind(tid)) == true end -- no ledger entry for a bot table (core/StakesBook.lua)
   -- My sightings of server rolls reach every bot (only until disable).
   client:on("rollSeen", function(shown, n, lo, hi)
     if self.disabled then return end
@@ -381,7 +383,7 @@ function Bots.disable(self)
   for name in pairs(self.isBot) do client:peerOffline(name) end
   self.disabled = true
   self.env.send = self.orig
-  self.env.inGroup = self.origInGroup
+  self.env.inGroup, self.env.noLedger = self.origInGroup, nil
   for name in pairs(self.isBot) do self.bus:leave(name) end
   self.bus:leave(self.env.me)
 end

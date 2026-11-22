@@ -22,3 +22,6 @@ Later tasks of the stage append their rows below.
 | 10 | a third guild character with the first name of a seated player types `/roll <max>` on that player's turn | what the table does, and that the seated player's line turns red | not yet measured |
 | 11 | leave a staked Death Roll turn untouched for three minutes | stood up, the bill names the idle player | not yet measured |
 | 11a | staked Death Roll in one party: `/run print(UnitInParty("Име-Realm"), UnitInRaid("Име-Realm"))` with a party member's full „Име-Realm“ (and with „Име Фамилия“) | whether `UnitInParty` / `UnitInRaid` accept the full name on Forever; the „Хвърли“ warning „не си в група с домакина“ stays off while grouped with the host | not yet measured |
+| 12 | two characters, staked Морски шах | both see the same bill; a third character sees the debt in „Тефтер“ within a few seconds | not yet measured |
+| 13 | the loser alt-F4s on the last move | the debt waits, and is confirmed without a question when it logs in | not yet measured |
+| 14 | the loser goes offline mid-game for three minutes, then logs in | the question appears once, with the game and the amount | not yet measured |

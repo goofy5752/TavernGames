@@ -24,6 +24,7 @@ function Client.new(env)
     self.ledger = ns.Ledger.new(ledgers[env.guild], env.me, env.epoch)
     self.ledgerNet = ns.LedgerNet.new(self, self.ledger)
     self.ledgerSync = ns.LedgerSync.new(self, self.ledger, self.ledgerNet)
+    self.stakes = ns.Stakes.new(self) -- outcomes to the ledger, claims against me (core/StakesBook.lua)
   elseif not env.guild and env.log then
     env.log("ledger", nil, nil, "no guild: no ledger")
   end
@@ -57,7 +58,7 @@ end
 function Client:start()
   if self.running then return end
   self.running = true
-  if self.ledgerNet then self.ledgerNet:start() end
+  if self.ledgerNet then self.ledgerNet:start(); self.stakes:start() end
   self.presence:start()
 end
 
