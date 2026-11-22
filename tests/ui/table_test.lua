@@ -1,4 +1,5 @@
 local Wow = require("wow")
+local Play = require("play")
 
 local ME, B = "Иван Петров", "Мария Стоянова"
 local BOT = "Бот Иванов"
@@ -601,6 +602,47 @@ describe("ui: table frame, card fairness", function()
     w:click(v.startButton); w:advance(2)
     eq(s.state.gp, { 0, 0 })
     eq(v.startButton:IsShown(), false)
+  end)
+end)
+
+describe("ui: table frame, a staked Белот", function()
+  it("the start button is not redrawn in a loop during the break", function()
+    local w = Wow.new{ ui = true }
+    Play.staked(w.ns, "belot")
+    w.inGuild = true
+    w.roster = { { name = ME .. "-Forever", online = true, guid = Wow.GUID } }
+    w:boot()
+    w:firstRunDone()
+    w:fire("GUILD_ROSTER_UPDATE")
+    w:fire("PLAYER_LOGIN")
+    w:advance(w.ns.Const.LEDGER_ADOPT_WAIT + 1)
+    local client, TF = w.ns.client, w.ns.TableFrame
+    local tid = assert(client:openTable{ game = "belot", access = "guild", turn = 45, stake = 50000 })
+    w:advance(0)
+    for i, name in ipairs({ B, "Тодор Ангелов", "Дара Колева" }) do
+      w:member(name)
+      w:deliver("GUILD", name, { v = 1, t = "HI", ver = "0.1.0", cls = "PRIEST", id = "Player-1-" .. name })
+      w:deliver("WHISPER", name, { v = 1, t = "SIT", tid = tid, seat = i + 1, sk = 50000 })
+      w:advance(0)
+    end
+    local s = client.session
+    eq(s.status, "live")
+    -- The match ended 10 s ago by my clock (the bill is up): 20 s of the break are left.
+    s.state.phase, s.state.winner, s.stakeLive = "match", 1, false
+    s.stakeEndedAt = client.env.now() - 10
+    eq(w.ns.Stakes.gap(s), 30)
+    TF.render()
+    eq({ s:canStart() }, { nil, "break" })
+    ok(TF.breakTimer, "no break timer")
+    local render, renders = TF.render, 0
+    TF.render = function(...) renders = renders + 1; return render(...) end
+    w:advance(19.9)
+    local during = renders
+    w:advance(0.2)
+    TF.render = render
+    eq(during, 0); ok(renders <= 2, "rendered " .. renders .. " times")
+    eq(s:canStart(), true)
+    eq(TF.view.startButton:GetAlpha(), 1)
   end)
 end)
 

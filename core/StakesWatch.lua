@@ -47,6 +47,7 @@ local function sentIn(s, k, c, r, sure)
   end
   return nil
 end
+Stakes.sentIn = sentIn
 
 -- I sent `a` (a member's ACT, a host's own move, my sit, my stand), or my
 -- client took it for mine (Stakes' applied); logged once, and of this run.
@@ -57,20 +58,6 @@ function Stakes.sent(s, a)
   if e then e.old = nil else log[#log + 1] = { k = a.k, c = a.c, g = s.stakeNo or 0, r = r } end
   if #log > LOG_KEPT then table.remove(log, 1) end
   Stakes.save(s)
-end
-
--- A game begins on my client (Stakes' refresh, before the reset; `snap`: by a
--- snapshot). Морски шах (no host start) seats a member in a new match only
--- by its own sit or its own „Реванш“ since the last one began. Only one of
--- this session makes the start clean: one a login took up (a host can replay
--- the state it was saved at), or none while my log is in doubt, makes it a
--- question ("unseen"), neither forged nor clean.
-function Stakes.began(s, snap)
-  local seat = s.mySeat
-  if s.role == "host" or s:engine().start == "host" or (snap and snap.fresh) then return end
-  if not seat or s.seats[seat] ~= s.client.env.me then return end
-  if sentIn(s, "rematch", nil, nil, true) or sentIn(s, "sit", nil, nil, true) then return end
-  pend(s, (s.stakeDoubt or sentIn(s, "rematch") or sentIn(s, "sit")) and "unseen" or "forged")
 end
 
 -- My seat `seat` went while a game runs and I did not ask (`why`: the stand's,
@@ -243,16 +230,4 @@ ns.Ext.stakes.adopted = function(s, prev, m, how)
   if kept then Stakes.foul(s, kept) end
   s.stakeHost, t = s.host, s.stakeTurn
   s.turnAt = t and t.seat == s.mySeat and t.at or nil
-end
-
--- A start no honest host plays now (a member's check, before the event's
--- refresh): a game ran; Морски шах (no host start) at a live table; a
--- host-started game inside the break.
-function Stakes.badStart(s)
-  local engine = s:engine()
-  if s.stakeLive or (engine.start ~= "host" and (s.stakeStatus == "live" or (s.stakeHad and s.stakeRefill ~= "filled"))) then
-    return true
-  end
-  return engine.start == "host" and s.stakeEndedAt ~= nil
-    and s.client.env.now() < s.stakeEndedAt + C.STAKE_BREAK - C.AUTO_GRACE
 end

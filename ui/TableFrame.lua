@@ -270,7 +270,7 @@ local function renderStart(v, s, engine, client)
   local b = v.startButton
   b:SetShown(shown)
   if shown and code == "break" and not TableFrame.breakTimer then
-    local left = s.stakeEndedAt + ns.Const.STAKE_BREAK - client.env.now()
+    local left = s.stakeEndedAt + ns.Stakes.gap(s) - client.env.now()
     TableFrame.breakTimer = C_Timer.NewTimer(math.max(0, left) + 0.05, function()
       TableFrame.breakTimer = nil
       TableFrame.refresh()

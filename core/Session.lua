@@ -41,7 +41,7 @@ local WHISPERED = {
 
 local TIMERS = {
   "announceTimer", "heartbeatTimer", "tickTimer", "pingTimer", "turnTimer", "systemTimer",
-  "sweepTimer", "silenceTimer", "fairTimer", "askTimer", "autoTimer", "stepTimer", "keysTimer", "bookTimer", "idleTimer",
+  "sweepTimer", "silenceTimer", "fairTimer", "askTimer", "autoTimer", "stepTimer", "keysTimer", "bookTimer", "idleTimer", "holdTimer",
 }
 
 -- message, emit and refuse are shared with core/Member.lua and core/Succession.lua.
@@ -245,6 +245,7 @@ end
 
 function Session:startIfFull()
   if self.status == "live" or self:engine().start == "host" then return end
+  if self.stake ~= nil and self:hook("hold") then return end
   for i = 1, #self.seats do
     if not self.seats[i] then return end
   end

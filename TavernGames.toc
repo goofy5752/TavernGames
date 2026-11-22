@@ -55,6 +55,7 @@ core/Stakes.lua
 core/StakesBook.lua
 core/StakesClaims.lua
 core/StakesWatch.lua
+core/StakesStart.lua
 core/Deal.lua
 core/DealLine.lua
 core/Book.lua

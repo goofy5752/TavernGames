@@ -257,7 +257,7 @@ local function openNote(s, by)
   env.db.stakeSeen[gid] = { at = env.epoch and env.epoch() or env.now(), tid = s.tid, g = s.game, sk = s.stake, q = s.seq, foul = s.stakeFoul, h = by, open = true }
 end
 
--- The member's checks (stood, badStart, began, sent, the hook `adopted`): core/StakesWatch.lua.
+-- The member's checks (stood, sent, the hook `adopted`): core/StakesWatch.lua; began, badStart: core/StakesStart.lua.
 ns.Ext.stakes = {
   applied = function(s, seat, a)
     local live, roster = s.stakeLive, s.stakeRoster -- before the event
