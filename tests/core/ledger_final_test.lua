@@ -208,6 +208,43 @@ describe("ledger final review: an entry one side refuses (I4)", function()
     ok(e >= 1 and e <= 2, "the new entry: " .. e); ok(b.ledger:get(VERA .. ":41"), "taken")
   end)
 
+  it("an author of whom I only remember refusals: one cell, the same digest, also after a relog", function()
+    local sim, c = world(ANA, BOR)
+    local a, b = c[ANA], c[BOR]
+    local members = { [ANA] = true, [BOR] = true }
+    sim.envs[BOR].member = function(name) return members[name] == true end
+    for n = 1, 5 do give(a, { pay(ZH, n) }) end -- Жана is no member to Борис and no author in his store
+    eq(round(sim), 5)
+    eq(#b.ledger:above(ZH, 0), 0); eq(b.ledger:vector()[ZH], { n = 0, x = a.ledger:vector()[ZH].x })
+    eq(b.ledger:digest(), a.ledger:digest()); eq({ round(sim) }, { 0, 0, 0 })
+    b:stop(); b = sim:relog(BOR); sim.envs[BOR].member = function(name) return members[name] == true end
+    sim:run(1); sim:settle()
+    eq(b.ledger:vector()[ZH], { n = 0, x = a.ledger:vector()[ZH].x })
+    eq(b.ledger:digest(), a.ledger:digest()); eq({ round(sim) }, { 0, 0, 0 })
+  end)
+
+  it("a refused entry that is no plain entry is not remembered, and nothing of it is hashed", function()
+    local sim, c = world(ANA, BOR)
+    local b = c[BOR]
+    local hashes, hash = 0, Ledger.hash
+    Ledger.hash = function(e) hashes = hashes + 1; return hash(e) end
+    local deep = { 1 }
+    for _ = 1, 50 do deep = { deep } end
+    local bad = {
+      { i = VERA .. ":1", k = "P", at = EPOCH0, f = deep, c = 5, how = "hand" },                       -- a nested table
+      { i = VERA .. ":2", k = "P", at = EPOCH0, f = string.rep("я", 400), c = 5, how = "hand" },        -- an overlong string
+      { i = VERA .. ":3", k = "R", at = EPOCH0, gid = "t/1", g = "ttt", n = { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12 }, w = {}, l = {} }, -- a long list
+      { i = VERA .. ":4", k = "P", at = EPOCH0, f = function() end, c = 5, how = "hand" },
+    }
+    local s, err = pcall(function() for _, e in ipairs(bad) do eq(b.ledgerNet:take(e, VERA, true), nil) end end)
+    Ledger.hash = hash
+    if not s then error(err, 0) end
+    eq(hashes, 0); eq(sim.envs[BOR].db.ledger["МЕХАНАТА"].rf[VERA], nil)
+    -- An entry of a kind this version does not know is plain: remembered.
+    eq(b.ledgerNet:take({ i = VERA .. ":5", k = "S", at = EPOCH0, zz = { 1, { 2 } } }, VERA, true), nil)
+    ok(sim.envs[BOR].db.ledger["МЕХАНАТА"].rf[VERA], "remembered")
+  end)
+
   it("the refused set is bounded per author; past it nothing more is remembered", function()
     local sim, c = world(ANA, BOR)
     local b = c[BOR]

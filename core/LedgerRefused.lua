@@ -34,6 +34,7 @@ function Store:refusedLoad()
       if n and #n <= 9 and hex16(h) and whole(till) and till > now and till <= now + C.LEDGER_REFUSED_TTL then
         out[a] = out[a] or {}
         out[a][it] = till
+        self.dirty[a] = true -- its x is to be hashed, as after any load (an author of whom I hold no body, too)
         self:refusedCount(a, tonumber(n), 1)
       end
     end
@@ -98,8 +99,10 @@ function Store:refusals(a)
   return out
 end
 
--- Entry e of `author`, number n, was not taken: remembered (see the header) -> nil.
+-- Entry e of `author`, number n, was not taken: remembered (see the header), when
+-- its fields are plain enough to hash (Ledger.plain) -> nil.
 function Net:refuse(e, author, n)
+  if not Ledger.plain(e) then return nil end
   local at = type(e.at) == "number" and e.at or nil
   local late = at and at > self.L.epoch() + C.LEDGER_FUTURE and at - C.LEDGER_FUTURE or nil -- only its clock is ahead
   self.L:refuse(author, n, Ledger.hash(e), late)

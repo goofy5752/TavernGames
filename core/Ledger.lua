@@ -107,6 +107,27 @@ local function right(e, author)
   return e.k ~= "X" or Ledger.author(e.r) == author
 end
 
+-- Are the canonical fields of table e plain: a boolean, a number, a string of at most
+-- PLAIN_MAX bytes, or a list of at most MAX_SEATS of those? Only such an e is hashed
+-- when it is no valid entry (a refused one, core/LedgerRefused.lua).
+local PLAIN_MAX = 200
+local function plain(v) return v == nil or type(v) == "boolean" or type(v) == "number" or (type(v) == "string" and #v <= PLAIN_MAX) end
+function Ledger.plain(e)
+  for _, f in ipairs(FIELDS) do
+    local v = e[f]
+    if type(v) == "table" then
+      local count = 0
+      for _, x in pairs(v) do
+        count = count + 1
+        if count > C.MAX_SEATS or type(x) == "table" or not plain(x) then return false end
+      end
+    elseif not plain(v) then
+      return false
+    end
+  end
+  return true
+end
+
 -- Is `e` a well-formed entry its author may write -> true | nil, reason.
 function Ledger.valid(e, now)
   if type(e) ~= "table" then return nil, "shape" end
