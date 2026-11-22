@@ -44,14 +44,28 @@ function Presence:mayReturn(tid)
   return self.been[tid] == true or home or next(self.been) == nil
 end
 
--- My HI; `ld` is the digest of my ledger (none without a guild: a bot).
+-- My HI; `ld` is the digest of my ledger (none without a guild: a bot), the last
+-- settled one while its x values are being hashed (core/LedgerHash.lua).
 function Presence:hi(re)
   local env, L = self.client.env, self.client.ledger
   return { v = C.PROTOCOL, t = "HI", ver = C.VERSION, cls = env.cls, id = env.guid, at = self.at, re = re,
-    ld = L and L:digest() or nil }
+    ld = L and L:digest(true) or nil }
 end
 
+-- My GUILD HI. While my ledger's digest is being hashed it waits for it (a few
+-- frames; the first HI after a login above all), the latest `re` kept.
 function Presence:sendGuildHi(re)
+  local net = self.client.ledgerNet
+  if net and net.running and net.L:hashing() then
+    self.hiRe = self.hiRe or re
+    if self.hiWait then return end
+    self.hiWait = true
+    return net:fresh(function()
+      local r = self.hiRe
+      self.hiWait, self.hiRe = nil, nil
+      if self.client.running then self:sendGuildHi(r) end
+    end)
+  end
   if self.pendingHi then self.pendingHi.cancel(); self.pendingHi = nil end
   self.lastHi = self.client.env.now()
   self.sentAt = self.at
@@ -68,6 +82,7 @@ function Presence:heartbeat()
 end
 
 function Presence:start()
+  self.hiWait, self.hiRe = nil, nil
   self:sendGuildHi(true)
   self:heartbeat()
 end

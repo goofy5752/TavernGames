@@ -71,6 +71,8 @@ end
 -- The partner's whole vector came. P: what A lacks goes, and my answer (where A
 -- is not behind). A: what P lacks where I am ahead; equal n: LID.
 function Sync:vector(x)
+  x.hold = self.L:hashing() or nil
+  if x.hold then return self:later(function() if self.by[x.peer] == x then self:vector(x) end end) end
   local L, mine, back = self.L, self.L:vector(), {}
   for _, a in ipairs(sorted(x.ask and x.v or mine)) do
     local m, t = mine[a], x.v[a]

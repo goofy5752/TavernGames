@@ -3,10 +3,9 @@ local _, ns = ...
 -- The per-guild store of the gold ledger (core/Ledger.lua has the entries).
 -- The store is a plain table the caller owns (saved variables):
 --   ev[author][n] = the first body of an id; tw[author][n] = its further
---   versions (at most 3); me[name] = {seq, born}, my counter. An author's x (in the
---   vector) is the first 12 hex of SHA-256 over the sorted "<id>:<h>" of its bodies:
---   not a sum, so no set of planted bodies cancels out. It is computed when a vector
---   is built, cached per author until that author's bodies change (L.xc).
+--   versions (at most 3); me[name] = {seq, born}, my counter. An author's x, the
+--   vector and the digest: core/LedgerHash.lua (L.xc, cached per author until that
+--   author's bodies change; hashed in slices).
 -- A load files every sound body again (hashing nothing); a
 -- body that is not sound (no 16-hex h, an X without r or rh, filed under
 -- another id, a copy of a body already filed, a fifth version) is dropped. The
@@ -18,8 +17,8 @@ local _, ns = ...
 -- of a new store; the caller sets L.adopting = false when the window closes) an
 -- id of mine is adopted when it is at most LEDGER_JUMP above my live counter, and
 -- the ids of mine the store holds at load are adopted in ascending order.
-local Ledger, C, Util, Sha256 = ns.Ledger, ns.Const, ns.Util, ns.Sha256
-local concat, sort, byteLess = table.concat, table.sort, ns.Util.byteLess
+local Ledger, C, Util = ns.Ledger, ns.Const, ns.Util
+local sort, byteLess = table.sort, ns.Util.byteLess
 local BODIES_MAX = 4
 
 local Store = {}; Store.__index = Store
@@ -55,7 +54,7 @@ function Ledger.new(store, me, epoch)
   local rec = store.me[me]
   if not (type(rec) == "table" and whole(rec.seq) and rec.seq >= 0 and rec.seq <= Ledger.ID_MAX
     and type(rec.born) == "number") then rec, store.me[me] = nil, nil end
-  local L = setmetatable({ store = store, me = me, epoch = epoch, rev = 0, top = {}, run = {}, rc = {}, deny = {}, xc = {},
+  local L = setmetatable({ store = store, me = me, epoch = epoch, rev = 0, top = {}, run = {}, rc = {}, deny = {}, xc = {}, dirty = {},
     fresh = rec == nil, adopting = rec == nil, base = rec and rec.seq or 0 }, Store)
   for a, byN in pairs(ev) do
     for n, b in pairs(type(byN) == "table" and byN or {}) do
@@ -111,7 +110,7 @@ function Store:move(a, n, b, gone)
     s.ev[a][n] = b
   end
   if #tw == 0 then s.tw[a][n] = nil end
-  self.xc[a] = nil
+  self:stale(a)
   self:advance(a)
 end
 -- The body held under (a, n) with b's h and canonical form, or nil.
@@ -192,31 +191,6 @@ end
 -- Every body, twins included: authors in byte order, then n, then h.
 function Store:each(fn)
   for _, a in ipairs(keys(self.store.ev, byteLess)) do for _, e in ipairs(self:above(a, 0)) do fn(e) end end
-end
--- {[author] = {n, x}}: n the highest k with 1..k all held, x as in the header (12 hex).
-function Store:vector()
-  local out = {}
-  for a, byN in pairs(self.store.ev) do
-    if next(byN) then
-      if not self.xc[a] then
-        local items = {}
-        for j, b in ipairs(self:above(a, 0)) do items[j] = b.i .. ":" .. b.h end
-        sort(items, byteLess)
-        self.xc[a] = Sha256.hex(concat(items, ",")):sub(1, 12)
-      end
-      out[a] = { n = self.run[a] or 0, x = self.xc[a] }
-    end
-  end
-  return out
-end
-
--- 8 hex of SHA-256 over the sorted "<author>:<x>", cached until the next change.
-function Store:digest()
-  if self.cache and self.cache.rev == self.rev then return self.cache.d end
-  local v, parts = self:vector(), {}
-  for j, a in ipairs(keys(v, byteLess)) do parts[j] = a .. ":" .. v[a].x end
-  self.cache = { rev = self.rev, d = Sha256.hex(concat(parts, ",")):sub(1, 8) }
-  return self.cache.d
 end
 -- Every body of the author numbered above n, ascending, twins after their sibling.
 function Store:above(a, n)

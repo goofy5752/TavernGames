@@ -21,7 +21,9 @@ local _, ns = ...
 -- An asked exchange that ended with both f does net:settle(). A changed digest
 -- gives one GUILD HI (one per LEDGER_HI_GAP s). <= LEDGER_EXCHANGE_MAX entries sent
 -- and taken. A LEV of another author than its sender only inside an exchange with
--- it. Nothing goes out in an instance; an unlisted sender is ignored.
+-- it. Nothing goes out in an instance; an unlisted sender is ignored. My x values
+-- are hashed in slices (core/LedgerHash.lua): a comparison of digests, my vector and
+-- what I do with the partner's wait until they are fresh (net:fresh).
 local Ledger, C, Util = ns.Ledger, ns.Const, ns.Util
 local Net = ns.LedgerNet
 local byteLess, inInstance = Util.byteLess, Net.inInstance
@@ -48,14 +50,27 @@ end
 -- A peer's HI carried ld: not my digest and I am the lower name -> I look again after the jitter.
 function Sync:peer(peer, ld)
   local L = self.L
-  if not self.client.running or self.wait[peer] or not byteLess(L.me, peer) or ld == L:digest() then return end
+  if not self.client.running or self.wait[peer] or not byteLess(L.me, peer) then return end
+  if L:hashing() then return self:later(function() self:again(peer) end) end
+  if ld == L:digest() then return end
   local sum = 0
   for _, s in ipairs({ L.me, peer, ld }) do for j = 1, #s do sum = sum + s:byte(j) end end
   self.wait[peer] = self.client:after(C.LEDGER_JITTER_MIN + sum % 16, function() self.wait[peer] = nil; self:begin(peer) end)
 end
 
+-- fn() once my x values are fresh (at once when they are), unless my client stopped meanwhile.
+function Sync:later(fn)
+  self.net:fresh(function() if self.client.running and self.net.running then fn() end end)
+end
+-- `peer`'s digest as presence has it now is looked at again.
+function Sync:again(peer)
+  local p = self.client.presence.peers[peer]
+  if p and p.ld then self:peer(peer, p.ld) end
+end
+
 -- The difference still stands: my exchange with `peer` starts.
 function Sync:begin(peer)
+  if self.L:hashing() then return self:later(function() self:begin(peer) end) end
   local p, L, now = self.client.presence.peers[peer], self.L, self.client.env.now()
   if not (p and p.ld and p.ld ~= L:digest()) or not self.net.running then return end
   if self.ask or self.by[peer] then self.missed[peer] = true; return end -- tried again when mine ends
@@ -74,7 +89,7 @@ function Sync:welcome(sender)
 end
 
 function Sync:open(peer, ask)
-  local x = { peer = peer, ask = ask, q = {}, qs = {}, sent = 0, took = 0, d0 = self.L:digest(), lidOut = 0,
+  local x = { peer = peer, ask = ask, q = {}, qs = {}, sent = 0, took = 0, d0 = self.L:digest(true), lidOut = 0,
     lids = 0, lidN = {}, lidMine = {}, lidAll = {}, lin = {}, pages = {}, items = {} }
   self.by[peer], self.last[peer] = x, self.client.env.now()
   if ask then self.ask = x else self.serve = x end
@@ -83,9 +98,10 @@ function Sync:open(peer, ask)
   return x
 end
 
--- May my side's last LEV (f) go? Has exchange x a LEV to send?
+-- May my side's last LEV (f) go? Has exchange x a LEV to send (none while the partner's
+-- vector waits for my fresh x values, x.hold)?
 local function last(x) return x.spoke and (x.ask and x.lidOut == 0 or not x.ask and (not x.answered or x.fTheirs)) end
-local function due(x) return (#x.q > 0 and x.sent < C.LEDGER_EXCHANGE_MAX) or (not x.fMine and last(x)) end
+local function due(x) return not x.hold and ((#x.q > 0 and x.sent < C.LEDGER_EXCHANGE_MAX) or (not x.fMine and last(x))) end
 
 -- The partner moved exchange x: given up LEDGER_SYNC_TIMEOUT s from now unless it moves
 -- again, while I wait for it (not while I still have batches to send; LEDGER_EX_MAX holds).
@@ -130,10 +146,10 @@ function Sync:finish(x, capped)
   x.v, x.lin, x.q = nil, nil, {} -- stored pages dropped
   if capped then self.last[x.peer] = self.client.env.now() end
   if x.ask and x.fMine and x.fTheirs then self.net:settle() end
-  if self.L:digest() ~= x.d0 then self:announce() end
-  local peers, missed = self.client.presence.peers, self.missed -- the differences seen meanwhile
+  self:later(function() if self.L:digest() ~= x.d0 then self:announce() end end)
+  local missed = self.missed -- the differences seen meanwhile
   self.missed = {}
-  for _, peer in ipairs(sorted(missed)) do if peers[peer] and peers[peer].ld then self:peer(peer, peers[peer].ld) end end
+  for _, peer in ipairs(sorted(missed)) do self:again(peer) end
 end
 
 -- One GUILD HI with my new digest, at most one per LEDGER_HI_GAP s, within the GUILD budget.
@@ -141,6 +157,7 @@ function Sync:announce()
   local presence, now = self.client.presence, self.client.env.now()
   local wait = (self.hiAt or -C.LEDGER_HI_GAP) + C.LEDGER_HI_GAP - now
   if wait > 0 then return self:arm("hiTimer", wait, Sync.announce) end
+  if self.L:hashing() then return self:later(function() self:announce() end) end
   if presence.sentLd == self.L:digest() or not self.client.running then return end
   if not self.net:afford(presence:hi(false)) then return self:arm("hiTimer", 1, Sync.announce) end
   self.hiAt = now
@@ -170,8 +187,8 @@ function Sync:receive(sender, msg)
     if not Sync.gather(x.lin[au], msg.l, false, msg.m) then return end
     local l = x.lin[au]; x.lin[au] = nil
     if theirs then -- P: I queue what A lacks and answer with my list of that scope
-      local v, m = x.v[au], self.L:vector()[au]
-      local n = math.min(v and v.n or 0, m and m.n or 0)
+      local v = x.v[au]
+      local n = math.min(v and v.n or 0, self.L.run[au] or 0)
       x.lids = x.lids + 1
       return self:lid(x, au, n, (self:lacks(x, au, n, l)), true)
     end

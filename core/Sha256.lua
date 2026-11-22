@@ -103,18 +103,10 @@ local function compress(H, s, at)
   H[7] = (H[7] + g) % W32; H[8] = (H[8] + h) % W32
 end
 
--- The eight state words after hashing `msg`.
-local function words(msg)
-  assert(type(msg) == "string", "Sha256: message must be a string")
-  local H = {}
-  for i = 1, 8 do H[i] = H0[i] end
-  local len = #msg
-  local full = len - len % 64
-  for at = 1, full, 64 do compress(H, msg, at) end
-
+-- Closes the hash of a message of `len` bytes whose last, incomplete block is `tail`.
+local function close(H, tail, len)
   -- Tail: the remaining bytes, 0x80, zeros, then the bit length as 8
   -- big-endian bytes, filling one or two final blocks.
-  local tail = msg:sub(full + 1)
   local zeros = (55 - #tail) % 64
   local bits = len * 8
   local lenBytes = {}
@@ -127,9 +119,20 @@ local function words(msg)
   return H
 end
 
--- 32-byte binary digest.
-function Sha256.digest(msg)
-  local H, out = words(msg), {}
+-- The eight state words after hashing `msg`.
+local function words(msg)
+  assert(type(msg) == "string", "Sha256: message must be a string")
+  local H = {}
+  for i = 1, 8 do H[i] = H0[i] end
+  local len = #msg
+  local full = len - len % 64
+  for at = 1, full, 64 do compress(H, msg, at) end
+  return close(H, msg:sub(full + 1), len)
+end
+
+-- The 32 bytes of the state words H.
+local function bytes(H)
+  local out = {}
   for i = 1, 8 do
     local w = H[i]
     local b4 = w % 256; w = (w - b4) / 256
@@ -140,10 +143,31 @@ function Sha256.digest(msg)
   return concat(out)
 end
 
+local function hexOf(s) return (s:gsub(".", function(c) return format("%02x", byte(c)) end)) end
+
+-- 32-byte binary digest.
+function Sha256.digest(msg) return bytes(words(msg)) end
+
 -- 64 lowercase hex characters (built per byte: %x of a number >= 2^31 is not
 -- portable across Lua 5.1 builds).
-function Sha256.hex(msg)
-  return (Sha256.digest(msg):gsub(".", function(c) return format("%02x", byte(c)) end))
+function Sha256.hex(msg) return hexOf(Sha256.digest(msg)) end
+
+-- A running hash, for a message that comes in parts: s:add(part) any number of
+-- times, then s:hex() once -> the hex of the parts joined.
+function Sha256.stream()
+  local H, rest, len = {}, "", 0
+  for i = 1, 8 do H[i] = H0[i] end
+  local s = {}
+  function s:add(part)
+    assert(type(part) == "string", "Sha256: message must be a string")
+    len = len + #part
+    local buf = rest .. part
+    local full = #buf - #buf % 64
+    for at = 1, full, 64 do compress(H, buf, at) end
+    rest = buf:sub(full + 1)
+  end
+  function s:hex() return hexOf(bytes(close(H, rest, len))) end
+  return s
 end
 
 return Sha256

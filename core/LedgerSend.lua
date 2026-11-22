@@ -5,6 +5,8 @@ local _, ns = ...
 -- instance; my X entries at most LEDGER_DENY_RATE in any minute. The GUILD
 -- budget (Net:afford) counts my LEVs and the sync's HI in parts of PART bytes,
 -- as the server's throttle does: at most PARTS within any WINDOW s; the rest waits.
+-- Net:hash hashes the stale x values of my store LEDGER_HASH_ITEMS items a frame
+-- (core/LedgerHash.lua); Net:fresh(fn) runs fn once they are all fresh.
 local C = ns.Const
 local Net = ns.LedgerNet
 
@@ -40,6 +42,22 @@ function Net.fit(max, limit, build)
     if Net.size(build(mid)) <= limit then lo = mid else hi = mid - 1 end
   end
   return lo
+end
+
+-- One frame's share of the x hashing; then again next frame, or whoever waited is called.
+function Net:hash()
+  if not self.L:work(C.LEDGER_HASH_ITEMS) then return self:arm("hashTimer", 0, Net.hash) end
+  local list = self.freshly or {}
+  self.freshly = nil
+  for _, fn in ipairs(list) do fn() end
+end
+
+-- fn() once no x of my store is stale: at once, or after the frames the hashing takes.
+function Net:fresh(fn)
+  if not (self.running and self.L:hashing()) then return fn() end
+  self.freshly = self.freshly or {}
+  self.freshly[#self.freshly + 1] = fn
+  self.L.kick()
 end
 
 -- May msg go on GUILD now (within the budget)? -> true, and it is counted | false.

@@ -79,6 +79,7 @@ ns.Const = {
   LEDGER_EX_MAX = 120,       -- an exchange is closed this long after it opened (its peer then waits a full gap)
   LEDGER_EX_PAGES = 10,      -- ... or past this many pages of one kind (LVC, LID) got in it
   LEDGER_PAGE_ITEMS = 120,   -- authors in one LVC page, ids in one LID page (a bigger page is refused)
+  LEDGER_HASH_ITEMS = 300,   -- bodies fed to an author's x hash in one frame (core/LedgerHash.lua)
 
   PAY_WINDOW = 300, -- a trade completes a payment when the payer's PAY came within this long
   PAY_GUARD = 86400, -- gold that left me guards its debt against a second payment this long, or until the creditor's P

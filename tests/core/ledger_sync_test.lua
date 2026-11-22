@@ -762,6 +762,7 @@ describe("ledger sync: fix round 1", function()
     -- As asker: Борис answers with a vector that never ends.
     give(a, { pay(ZH, 1) }) -- her digest differs from the one Борис last told her
     sim:offline(BOR)
+    sim:run(0) -- her x values are fresh (hashed in slices): the exchange begins at once
     a.ledgerSync:begin(BOR)
     ok(a.ledgerSync.ask, "Ана asks Борис")
     sim:run(3) -- so that the close is not the opening

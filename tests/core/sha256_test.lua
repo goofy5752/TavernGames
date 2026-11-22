@@ -40,6 +40,20 @@ describe("sha256", function()
     eq(Sha256.hex(table.concat(bytes)), "40aff2e9d2d8922e47afd4648e6967497158785fbd1da870e7110266bf944880")
   end)
 
+  it("a running hash of parts equals the hash of the parts joined (final review I3)", function()
+    local parts = { "", "abc", string.rep("x", 63), "y", string.rep("z", 64), string.rep("w", 129), "", "tail" }
+    local s = Sha256.stream()
+    for _, p in ipairs(parts) do s:add(p) end
+    eq(s:hex(), Sha256.hex(table.concat(parts)))
+    eq(Sha256.stream():hex(), Sha256.hex(""))
+    for _, n in ipairs({ 55, 56, 63, 64, 65, 119, 120, 128 }) do
+      local one, msg = Sha256.stream(), string.rep("a", n)
+      for j = 1, n, 7 do one:add(msg:sub(j, j + 6)) end
+      eq(one:hex(), Sha256.hex(msg), "length " .. n)
+    end
+    raises(function() Sha256.stream():add(5) end, "must be a string")
+  end)
+
   it("digest is the 32 raw bytes behind hex", function()
     local d = Sha256.digest("abc")
     eq(type(d), "string")

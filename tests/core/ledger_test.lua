@@ -209,8 +209,11 @@ describe("ledger store", function()
     store.ev[P][1] = { i = Ledger.id(P, 1), k = "R", at = NOW, gid = "t/1", g = "ttt", n = { P, I }, w = { 1 }, l = { 2 }, h = ("ab"):rep(8) }
     local function x(list) local c = U.copy(list); table.sort(c, U.byteLess); return ns.Sha256.hex(table.concat(c, ",")):sub(1, 12) end
     local want = x(items)
-    local calls, hex = 0, ns.Sha256.hex
-    ns.Sha256.hex = function(s) calls = calls + 1; return hex(s) end
+    -- An author's x is a running hash (Sha256.stream); a body's h and the digest are one Sha256.hex each.
+    local calls, hex, stream = 0, ns.Sha256.hex, ns.Sha256.stream
+    local function count(...) calls = calls + 1; return ... end
+    ns.Sha256.hex = function(s) return count(hex(s)) end
+    ns.Sha256.stream = function() return count(stream()) end
     local s, err = pcall(function()
       local l = Ledger.new(store, I, function() return NOW end)
       eq(calls, 0, "a load hashes nothing"); eq(store.x, nil)
@@ -221,14 +224,55 @@ describe("ledger store", function()
       items[#items + 1] = Ledger.id(M, 5001) .. ":" .. l:get(M .. ":5001").h
       local now = l:vector()
       eq(calls, 1, "only the author that changed"); eq(now[M].n, 5001)
-      ns.Sha256.hex = hex
-      eq(now[M].x, x(items)); ns.Sha256.hex = function(s2) calls = calls + 1; return hex(s2) end
+      ns.Sha256.hex, ns.Sha256.stream = hex, stream
+      eq(now[M].x, x(items))
+      ns.Sha256.hex = function(s2) return count(hex(s2)) end
+      ns.Sha256.stream = function() return count(stream()) end
       calls = 0
       local d = l:digest(); eq(l:digest(), d); eq(calls, 1, "the digest is cached")
     end)
 
-    ns.Sha256.hex = hex
+    ns.Sha256.hex, ns.Sha256.stream = hex, stream
     if not s then error(err, 0) end
+  end)
+
+  it("an author's x is hashed in slices and equals the hash of the whole list (final review I3)", function()
+    local store, items = { ev = { [M] = {}, [P] = {} }, tw = {}, me = { [I] = { seq = 0, born = NOW } } }, {}
+    for n = 1, 5000 do
+      local h = string.format("%08x%08x", n * 7919, n)
+      store.ev[M][n] = { i = Ledger.id(M, n), k = "R", at = NOW, gid = "t/" .. n, g = "ttt", n = { M, I }, w = { 1 }, l = { 2 }, h = h }
+      items[n] = Ledger.id(M, n) .. ":" .. h
+    end
+    store.ev[P][1] = { i = Ledger.id(P, 1), k = "R", at = NOW, gid = "t/1", g = "ttt", n = { P, I }, w = { 1 }, l = { 2 }, h = ("ab"):rep(8) }
+    table.sort(items, U.byteLess)
+    local whole = ns.Sha256.hex(table.concat(items, ",")):sub(1, 12)
+    local l = Ledger.new(store, I, function() return NOW end)
+    ok(l:hashing(), "stale after a load"); eq(l:digest(true), nil) -- nothing settled yet, and asking lazily hashes nothing
+    eq(l.hashed, nil)
+    local ticks = 0
+    repeat
+      local before = l.hashed or 0
+      local done = l:work(300)
+      ticks = ticks + 1
+      ok((l.hashed or 0) - before <= 300, "a slice of at most 300 items")
+    until done
+    ok(ticks >= 17, "5001 items in slices of 300: " .. ticks); eq(l.hashed, 5001)
+    eq(l:hashing(), false); eq(l.xc[M], whole)
+    eq(l:vector()[M].x, whole); eq(l.hashed, 5001) -- nothing is hashed again
+    local settled = l:digest()
+    eq(l:digest(true), settled)
+    -- One more body: stale again; the lazy digest is the last settled one until the work is done.
+    eq(l:add(paid(5001), M), "new")
+    ok(l:hashing(), "stale"); eq(l:digest(true), settled)
+    eq(l:work(300), false); eq(l:digest(true), settled)
+    -- A change in the middle of the work starts that author again.
+    eq(l:add(paid(5002), M), "new")
+    while not l:work(300) do end
+    local all = {}
+    for j, b in ipairs(l:above(M, 0)) do all[j] = b.i .. ":" .. b.h end
+    table.sort(all, U.byteLess)
+    eq(l.xc[M], ns.Sha256.hex(table.concat(all, ",")):sub(1, 12))
+    ok(l:digest(true) ~= settled, "a new digest"); eq(l:digest(true), l:digest())
   end)
   it("my counter jumps above every id seen under my name", function()
     local l = L()

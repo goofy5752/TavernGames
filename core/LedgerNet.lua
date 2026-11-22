@@ -30,8 +30,10 @@ ns.LedgerNet = Net
 Net.LIVE_MAX = 4
 
 function Net.new(client, ledger)
-  return setmetatable({ client = client, L = ledger, running = false, out = {}, denials = {}, deniedAt = {},
+  local self = setmetatable({ client = client, L = ledger, running = false, out = {}, denials = {}, deniedAt = {},
     made = {} }, Net)
+  ledger.kick = function() if self.running then self:arm("hashTimer", 0, Net.hash) end end -- core/LedgerSend.lua
+  return self
 end
 
 -- fn(self) in `seconds`, unless the timer named `field` is armed already.
@@ -66,6 +68,7 @@ function Net:start()
   self.waiting = true
   self:pending()
   self:arm("settleTimer", C.LEDGER_ADOPT_WAIT, Net.settle)
+  if L:hashing() then L.kick() end -- a load hashes nothing: the x values are hashed from now on, in slices
   if #self:asks() > 0 then self.asked = true; self:changed() end -- still unanswered from before
 end
 
@@ -75,7 +78,7 @@ function Net:stop()
   self:flush()
   self.running = false
   self.out, self.denials = {}, {}
-  self.outTimer, self.denyTimer, self.emitTimer, self.settleTimer = nil, nil, nil, nil
+  self.outTimer, self.denyTimer, self.emitTimer, self.settleTimer, self.hashTimer, self.freshly = nil, nil, nil, nil, nil, nil
 end
 
 -- Is the adoption window of a new store open?
