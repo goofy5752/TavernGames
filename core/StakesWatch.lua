@@ -101,7 +101,7 @@ end
 -- hold, engine.auto's cell: my timeout, due by my clock or of a turn a login
 -- brought me (no clock of mine saw it begin: the snapshot's "unseen").
 local function doneForMe(s, prev, st, seat, forward, prefix)
-  if not (st and st.board and seat) then return false end
+  if not (st and st.board and st.round and seat) then return false end -- a board of rounds: Холдем's is no Морски шах
   local round, t = (forward or prefix) and prev.round == st.round, s.stakeTurn
   local auto = forward and round and (timeoutDue(s, seat) or (t and t.seat == seat and not t.seen)) and s:engine().auto(prev, seat)
   for c = 1, 9 do
@@ -189,7 +189,7 @@ local leadsTo = Stakes.leadsTo
 local function turnKey(st)
   if type(st) ~= "table" then return nil end
   if st.rolls and st.start then return #st.rolls end
-  if not st.board then return nil end
+  if not (st.board and st.round) then return nil end
   local n = 0
   for c = 1, 9 do
     if st.board[c] ~= 0 then n = n + 1 end

@@ -82,6 +82,7 @@ end
 function Stakes.fairFoul(s, v)
   local engine, verdict, why = s:engine(), v.verdict, v.why
   if has(engine, "dice") then return (verdict == "bad" and "dice") or (verdict == "unseen" and "unseen") or nil end
+  if engine.sealed then return verdict == "bad" and "deal" or nil end -- Холдем: a void or a lapse moves no chip
   if not has(engine, "fair") or verdict == "ok" or (verdict == "bad" and why == "announce") then return nil end
   if verdict == "unseen" then return "unseen" end
   local side = mySide(s, v.dealer)

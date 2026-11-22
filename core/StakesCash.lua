@@ -1,0 +1,152 @@
+local _, ns = ...
+
+-- The extension `stakes` at a cash table (Stakes.cash: a staked table whose
+-- engine has cashGame, Холдем): a game there is one long sitting, and money
+-- moves only by the out records of the engine state (engines/holdem_cash.lua).
+-- This file wraps the hooks `applied`, `adopted`, `leaving` and `gone`
+-- (outermost, after core/StakesFair.lua) and adds `still`. The rules:
+--   No forfeit. Every wrapped hook runs with s.stakeRoster nil, before and
+--     after the original: F1's forfeit of a stand, its R, my stakeLeft at my
+--     own „Стани“, the host's whisper of a stand and the renamed-seat check of
+--     core/StakesStart.lua do nothing here. Stakes.stood (my seat stood up
+--     while I did not ask) stays.
+--   My own names (s.cashNames, seat -> name; local, never sent): only for the
+--     rename check below, never for money (the out record names its pairs by
+--     the engine's own `who`). Taken from s.seats at the `start` event and at
+--     a snapshot that is not my state (a first one, a login, a resync: the
+--     names of the state I take up); a `sit` adds its name, a `stand` drops
+--     its seat.
+--   A snapshot (before the original): other options than the ones I accepted
+--     (how.o, how.tn), or a state whose blinds, betting or rebuy mode is not my
+--     s.opt's, or a staked state without `cash`: forged. Only when the
+--     snapshot is my very state (same(prev, st), a game running): a seat of my
+--     names that it shows under another name is forged from my host, a
+--     question ("unseen") from a host new to me (how.moved); my name stays.
+--   My own sit starts my sitting (after the original): when my own SIT took
+--     me in, my seat is the record whose `who` is me (not leaving), or a chair
+--     still leaving whose `takenWho` is me (no record of mine yet: the record
+--     there is the leaver's). No chips, no buy, no pair in cash.took and not
+--     dealt into the running hand (or such a taken chair): s.stakeFoul is only
+--     what this snapshot's own checks above raised. With chips, a buy or a
+--     pair in my name there: forged.
+--   The clock: another seat's `buy` or `cashout` is `still` (the host keeps
+--     the turn timer; with no seat on turn it arms its timers, two seats with
+--     chips may now be enough for a hand), and my client keeps s.stakeTurn and
+--     s.turnAt across it, so an honest timeout after my lost ACT is no foul.
+--   No break between games (Stakes.gap 0, core/StakesStart.lua): a new game
+--     gives nobody chips, so staying seated accepts nothing.
+local Stakes = ns.Stakes
+
+local RANK, pend, same = Stakes.RANK, Stakes.pend, ns.Util.same
+
+-- Is s a cash table -> bool.
+function Stakes.cash(s)
+  return s.stake ~= nil and s:engine().cashGame == true
+end
+
+-- My names from the table as it sits now.
+local function takeNames(s)
+  local out = {}
+  for i = 1, #s.seats do
+    if type(s.seats[i]) == "string" then out[i] = s.seats[i] end
+  end
+  s.cashNames = out
+end
+
+-- Does the state st hold the options of my table (s.opt) -> bool.
+local function myOptions(s, st)
+  local o = s.opt or {}
+  return type(st.cash) == "table" and st.bb == o.blinds and st.betting == o.betting and st.cash.rebuy == o.rebuy
+end
+
+-- Has seat i a pair in the matrix of cash -> bool.
+local function paired(cash, i)
+  if type(cash) ~= "table" or type(cash.took) ~= "table" then return false end
+  if type(cash.took[i]) == "table" and next(cash.took[i]) ~= nil then return true end
+  for _, row in pairs(cash.took) do
+    if type(row) == "table" and row[i] then return true end
+  end
+  return false
+end
+
+-- My own sit in state st -> true (clean: my record has nothing yet, or a
+-- chair still leaving is taken for me), false (chips, a buy, a pair or a hand
+-- in my name), nil (no seat of mine in the state).
+local function sitting(s, st, me)
+  local engine, taken = s:engine(), nil
+  for i, r in ipairs(type(st.seats) == "table" and st.seats or {}) do
+    if type(r) == "table" and r.who == me and not r.leaving then
+      local p = engine.inHand(st) and type(st.p) == "table" and st.p[i]
+      return r.chips == 0 and r.bought == 0 and not paired(st.cash, i) and not (p and not p.gone)
+    end
+    if type(r) == "table" and r.leaving and r.takenWho == me then taken = true end
+  end
+  return taken
+end
+
+local ext = ns.Ext.stakes
+local applied, adopted, leaving, gone, still = ext.applied, ext.adopted, ext.leaving, ext.gone, ext.still
+
+ext.applied = function(s, seat, a)
+  if not Stakes.cash(s) then return applied(s, seat, a) end
+  local t, at = s.stakeTurn, s.turnAt
+  local money = seat ~= 0 and (a.k == "buy" or a.k == "cashout")
+  s.stakeRoster = nil
+  applied(s, seat, a)
+  s.stakeRoster = nil
+  if money and t and t.seat ~= seat and s.stakeTurn and s.stakeTurn.seat == t.seat then s.stakeTurn, s.turnAt = t, at end
+  local k = seat == 0 and a.k
+  if k == "start" then
+    takeNames(s)
+  elseif k == "sit" and type(a.name) == "string" then
+    s.cashNames = s.cashNames or {}
+    s.cashNames[a.seat] = a.name
+  elseif k == "stand" and s.cashNames then
+    s.cashNames[a.seat] = nil
+  end
+  if money and s.role == "host" and s.state and not s.state.turn then s:armTimers() end
+end
+
+ext.adopted = function(s, prev, m, how)
+  if not Stakes.cash(s) then return adopted(s, prev, m, how) end
+  local st, raised = s.state, nil
+  local function raise(why)
+    if not raised or RANK[why] > RANK[raised] then raised = why end
+    pend(s, why)
+  end
+  if how.o or how.tn or (type(st) == "table" and not myOptions(s, st)) then raise("forged") end
+  local identical = prev ~= nil and st ~= nil and same(prev, st)
+  if identical and s.stakeLive and Stakes.running(s) then
+    for seat, name in pairs(s.cashNames or {}) do
+      if type(s.seats[seat]) == "string" and s.seats[seat] ~= name and st.seats[seat] then raise(how.moved and "unseen" or "forged") end
+    end
+  end
+  s.stakeRoster = nil
+  adopted(s, prev, m, how)
+  s.stakeRoster = nil
+  if not identical or how.fresh then takeNames(s) end
+  if s.mySeat and type(st) == "table" and (how.req or how.sit or (how.sat and not how.fresh)) then
+    local clean = sitting(s, st, s.client.env.me)
+    if clean then s.stakeFoul = raised elseif clean == false then Stakes.foul(s, "forged") end
+  end
+end
+
+ext.leaving = function(s)
+  if not Stakes.cash(s) then return leaving(s) end
+  s.stakeRoster = nil
+  leaving(s)
+  s.stakeRoster = nil
+end
+
+ext.gone = function(s)
+  if not Stakes.cash(s) then return gone(s) end
+  s.stakeRoster = nil
+  gone(s)
+  s.stakeRoster = nil
+end
+
+-- Another seat's buy or cash-out leaves the turn clock alone.
+ext.still = function(s, seat, a)
+  if Stakes.cash(s) and seat ~= 0 and (a.k == "buy" or a.k == "cashout") then return true end
+  if still then return still(s, seat, a) end
+end

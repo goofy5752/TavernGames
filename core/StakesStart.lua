@@ -24,7 +24,7 @@ local HOLD_RECHECK = 5 -- s: a held start waits this long for a silent seat, aga
 
 -- The break after a game of s's engine -> seconds.
 function Stakes.gap(s)
-  return s:engine().again and C.STAKE_BREAK_MATCH or C.STAKE_BREAK
+  return Stakes.cash(s) and 0 or s:engine().again and C.STAKE_BREAK_MATCH or C.STAKE_BREAK -- a cash table: none (core/StakesCash.lua)
 end
 
 -- A game begins on my client (Stakes' refresh, before the reset; `snap`: by a
@@ -87,7 +87,7 @@ function Stakes.held(s)
   local now, wait = env.now(), 0
   local from = s.stakeEndedAt or s.stakeHoldFrom
   if from then wait = from + Stakes.gap(s) - now end
-  if not s:engine().again then return wait end
+  if not s:engine().again or Stakes.cash(s) then return wait end -- a cash table holds no start for a silent seat
   local silent
   for name, at in pairs(s.lastHeard or {}) do
     if name ~= env.me and ns.Util.contains(s.seats, name) and now - at >= C.SILENT_AFTER and (not silent or name < silent) then wait, silent = math.max(wait, HOLD_RECHECK), name end
