@@ -105,8 +105,17 @@ function ns.Ext.stakes.hold(s)
 end
 
 -- A snapshot showed me a game over that my client never held live: the break runs from now.
+-- Before that: a snapshot of the very game I hold (the same state, still running) that puts
+-- another name in a seat of its roster. No honest table does that (a seat changes hands only
+-- through a stand, which changes the game): from my own host it is forged, from a host new to
+-- me a question. Whatever names the table shows, my debts go by my roster (Book:settle).
 local adopted = ns.Ext.stakes.adopted
 ns.Ext.stakes.adopted = function(s, prev, m, how)
+  if s.stakeLive and prev ~= nil and Stakes.running(s) and ns.Util.same(prev, s.state) then
+    for seat, name in pairs(s.stakeRoster or {}) do
+      if type(s.seats[seat]) == "string" and s.seats[seat] ~= name then pend(s, how.moved and "unseen" or "forged") end
+    end
+  end
   adopted(s, prev, m, how)
   if s:engine().again and s.stakeEndedAt == nil and s:gameOver() then s.stakeHoldFrom = s.client.env.now() end
 end

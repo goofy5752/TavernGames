@@ -5,9 +5,8 @@ local _, ns = ...
 -- .. "/" .. q) is noted first, db.stakeSeen[gid] = {at, g, sk, pairs, why,
 -- foul, tid, q, wait}: the foul after the event's hooks, the verdict still
 -- out folded in (Stakes.audit: pending reads "unseen"; wait: until final). Then the
--- host writes R (a fun table: nothing else), each creditor a D per pair, a
--- debtor with a clean final note and no claim by its `owe` (STAKE_OWE_WAIT
--- later; kept in the note, so a /reload or login resumes it) its own D;
+-- host writes R (a fun table: nothing else), each creditor a D per pair, a debtor with a clean final
+-- note and no claim by its `owe` (STAKE_OWE_WAIT later; kept in the note, so a /reload or login resumes it) its own D;
 -- nothing at a bot table (env.noLedger). A claim against me (stakes:review,
 -- judged in core/StakesClaims.lua) is decided or put to me (asks, answer,
 -- "debtAsk"); nothing is written while my login queue is open.
@@ -132,14 +131,15 @@ end
 -- The outcome of the event's "result" and the host's R. `quits`: the event is
 -- the stand of a seat of the running game, which the forfeit settles (core/Stakes.lua):
 -- the result is dropped, one outcome per game. A team game's losers pay by
--- Stakes.matched, every other game's by Stakes.pairs.
-function Book:settle(s, quits)
+-- Stakes.matched, every other game's by Stakes.pairs; who they are is read from `roster`
+-- (seat -> name, my own of that game: s.stakeRoster before the event), never from the names of the result.
+function Book:settle(s, quits, roster)
   local r = s.stakeResult
   if not r then return end
   s.stakeResult = nil
   if quits then return end
   hostR(self, s, r)
-  local function by(list) local out = copy(list or {}); table.sort(out); return names(r.names, out) end
+  local function by(list) local out = copy(list or {}); table.sort(out); return names(roster or {}, out) end
   local pair = s:engine().teams and Stakes.matched or Stakes.pairs
   self:outcome(s, r.tid .. "/" .. r.q, pair(by(r.losers), by(r.winners), r.sk), r.left and "left" or "lost")
 end

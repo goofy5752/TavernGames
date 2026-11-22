@@ -278,7 +278,7 @@ ns.Ext.stakes = {
     if seat == 0 and a.k == "stand" then s.stakeRefill = "empty" end
     if seat == 0 and a.k == "sit" and s.stakeRefill == "empty" then s.stakeRefill = "filled" end
     refresh(s, start, seat ~= 0)
-    if s.client.stakes then s.client.stakes:settle(s, quits) end -- the outcome of a "result" of this event
+    if s.client.stakes then s.client.stakes:settle(s, quits, roster) end -- the outcome of a "result" of this event
     if quits then forfeit(s, a, roster) end
   end,
   -- The event is applied (or refused) next. The timeout of a turn a login

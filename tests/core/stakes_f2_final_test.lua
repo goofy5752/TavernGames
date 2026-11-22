@@ -140,4 +140,145 @@ describe("stakes: the final review of F2", function()
       Play.restore()
     end
   end)
+
+  -- The pairs of client's note of gid as "f>t" strings, sorted.
+  local function notePairs(client, gid)
+    local note, out = client.env.db.stakeSeen[gid], {}
+    for _, p in ipairs(note and note.pairs or {}) do out[#out + 1] = p.f .. ">" .. p.t end
+    table.sort(out)
+    return out, note
+  end
+
+  -- host's snapshot for `to` with `names` (seat -> name) put over its seats, as the message
+  -- of `from` (default: the host itself) at epoch + e.
+  local function renamedSnapshot(host, to, names, from, e)
+    local hs = host.session
+    local tbl = hs:record()
+    for seat, name in pairs(names) do tbl.s[seat] = name end
+    tbl.h, tbl.e = from or tbl.h, hs.epoch + (e or 0)
+    return ns.Session.message("SNP", { tid = hs.tid, e = tbl.e, q = hs.seq, tbl = tbl, st = hs:snapshotFor(to),
+      left = hs:left(), inv = hs:invitedList(), fr = hs:hook("snap") })
+  end
+
+  -- Петър's Белот match (petarHosts), `cheat(sim, cl)` right before its last step
+  -- -> sim, cl, gid; Иван and Гошо lose it: Гошо owes Мария, never Петър.
+  local function lastStep(cheat)
+    local sim0, cl0 = petarHosts()
+    local r0, steps = play(sim0, cl0[P])
+    eq(r0.losers, { 1, 3 })
+    local sim, cl, tid = petarHosts()
+    local r = play(sim, cl[P], function(n)
+      if n == steps then cheat(sim, cl) end
+      return false
+    end)
+    eq(r.losers, { 1, 3 })
+    return sim, cl, tid .. "/" .. r.q
+  end
+
+  it("belot: my own host's snapshot of my very state under other names is forged; my debt stays my roster's (C3)", function()
+    local sim, cl, gid = lastStep(function(sim, cl)
+      eq(cl[G].session.stakeFoul, nil)
+      cl[G]:receive("WHISPER", P, renamedSnapshot(cl[P], G, { [2] = M, [4] = P })); sim:run(0)
+      eq(cl[G].session.seats, { I, M, G, P })
+      eq(cl[G].session.stakeFoul, "forged")
+    end)
+    eq(notePairs(cl[G], gid), { G .. ">" .. M, I .. ">" .. P })
+    ok(cl[P].ledgerNet:make("D", { gid = gid, g = "belot", f = G, t = P, c = SK, why = "lost" }), "Петър's forged claim")
+    sim:run(C.STAKE_FAIR_WAIT + C.STAKE_OWE_WAIT + 10)
+    eq(#wordsAt(sim, G, "C", gid), 0)
+    for _, n in ipairs(wordsAt(sim, G, "N", gid)) do eq(n.why, "forged") end
+    eq(Play.debt(cl[I], gid, G, P).status, "contested")
+  end)
+
+  it("belot: the same snapshot from a host new to me is a question (C3)", function()
+    local sim, cl = petarHosts()
+    for _ = 1, 6 do Play.step(sim, cl[P]) end
+    eq(cl[G].session.stakeFoul, nil)
+    cl[G]:receive("WHISPER", M, renamedSnapshot(cl[P], G, { [2] = M, [4] = P }, M, 1)); sim:run(0)
+    eq({ cl[G].session.host, cl[G].session.seats }, { M, { I, M, G, P } })
+    eq(cl[G].session.stakeFoul, "unseen")
+    eq(cl[G].session.stakeRoster, { I, P, G, M }) -- my roster is the one the match began with
+    -- The very state under the names I hold, from a new host: nothing (as before).
+    sim, cl = petarHosts()
+    for _ = 1, 6 do Play.step(sim, cl[P]) end
+    cl[G]:receive("WHISPER", M, renamedSnapshot(cl[P], G, {}, M, 1)); sim:run(0)
+    eq({ cl[G].session.host, cl[G].session.stakeFoul }, { M, nil })
+  end)
+
+  it("belot: whatever names the table shows at the end, the pairs are my roster's: the honest claim is confirmed, the other contested (C3)", function()
+    local sim, cl, gid = lastStep(function(_, cl)
+      local s = cl[G].session -- the names of seats 2 and 4 swapped on Гошо's client, by a path no check saw
+      s.seats[2], s.seats[4] = s.seats[4], s.seats[2]
+      s.seatedBefore = ns.Util.copy(s.seats)
+    end)
+    local pairs_, note = notePairs(cl[G], gid)
+    eq(pairs_, { G .. ">" .. M, I .. ">" .. P }); eq(note.foul, nil)
+    ok(cl[P].ledgerNet:make("D", { gid = gid, g = "belot", f = G, t = P, c = SK, why = "lost" }), "Петър's forged claim")
+    sim:run(C.STAKE_FAIR_WAIT + C.STAKE_OWE_WAIT + 10)
+    eq(Play.debt(cl[I], gid, G, M).status, "confirmed")
+    eq(Play.debt(cl[I], gid, G, P).status, "contested")
+    local n = wordsAt(sim, G, "N", gid)
+    eq(#n, 1); eq(n[1].why, "no")
+  end)
+
+  -- Иван's table of `game` at SK with Мария and Петър (Death Roll: all in one group, started).
+  local T = "Тодор Илиев"
+  local function small(game, n)
+    local sim, cl = Sim.new(), {}
+    for _, name in ipairs({ I, M, P }) do cl[name] = sim:add(name) end
+    for _, env in pairs(sim.envs) do env.inGroup = function() return true end end
+    sim:run(1); sim:settle()
+    local tid = assert(cl[I]:openTable{ game = game, access = "guild", turn = 45, stake = SK, opt = game == "deathroll" and { start = 100 } or nil })
+    sim:run(3)
+    cl[M]:sit(tid, 2, SK); sim:run(1)
+    if n == 3 then cl[P]:sit(tid, 3, SK); sim:run(1) end
+    if game == "deathroll" then ok(cl[I]:startGame()); sim:run(0) end
+    eq(cl[M].session.stakeLive, true)
+    return sim, cl, tid
+  end
+  local function roll(sim, client, n)
+    sim.nextRolls = { n }
+    ok(client:roll()); sim:run(0)
+  end
+
+  it("death roll: a seat renamed by my host's snapshot is forged, and the loser owes the players it began with (C3)", function()
+    for _, how in ipairs({ "snapshot", "seats" }) do
+      local sim, cl, tid = small("deathroll", 3)
+      local seen = {}
+      cl[M]:on("result", function(r) seen[#seen + 1] = r end)
+      roll(sim, cl[I], 50)
+      if how == "snapshot" then
+        cl[M]:receive("WHISPER", I, renamedSnapshot(cl[I], M, { [3] = T })); sim:run(0)
+        eq(cl[M].session.seats[3], T); eq(cl[M].session.stakeFoul, "forged")
+      else
+        cl[M].session.seats[3] = T; cl[M].session.seatedBefore = ns.Util.copy(cl[M].session.seats)
+      end
+      roll(sim, cl[M], 1) -- Мария loses
+      eq(#seen, 1)
+      local gid = tid .. "/" .. seen[1].q
+      eq(notePairs(cl[M], gid), { M .. ">" .. I, M .. ">" .. P })
+      sim:run(C.ROLL_FINAL_WAIT + C.STAKE_OWE_WAIT + 10)
+      eq(Play.debt(cl[P], gid, M, T), nil)
+      eq(Play.debt(cl[P], gid, M, P).status, how == "snapshot" and "contested" or "confirmed")
+    end
+  end)
+
+  it("морски шах: a seat renamed by my host's snapshot is forged, and my note names the player I sat down with (C3)", function()
+    local sim, cl, tid = small("ttt", 2)
+    local TTT, seen = ns.Engines.ttt, {}
+    cl[M]:on("result", function(r) seen[#seen + 1] = r end)
+    ok(cl[I]:act({ k = "mark", c = 1 })); sim:run(0)
+    cl[M]:receive("WHISPER", I, renamedSnapshot(cl[I], M, { [1] = T })); sim:run(0)
+    eq(cl[M].session.seats[1], T); eq(cl[M].session.stakeFoul, "forged")
+    for _ = 1, 200 do
+      local s = cl[I].session
+      if #seen > 0 or not s or s:gameOver() then break end
+      local seat = s.state.turn
+      if seat == 1 then cl[I]:act(TTT.auto(s.state, 1)) elseif seat == 2 then cl[M]:act(TTT.auto(cl[M].session.state, 2)) end
+      sim:run(1)
+    end
+    eq(#seen, 1)
+    local pairs_ = notePairs(cl[M], tid .. "/" .. seen[1].q)
+    eq(#pairs_, 1); ok(not pairs_[1]:find(T, 1, true), pairs_[1])
+  end)
 end)
