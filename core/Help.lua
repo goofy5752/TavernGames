@@ -104,14 +104,19 @@ Help.topics = {
     { kind = "p", key = "help.fair.dice" },
     { kind = "p", key = "help.fair.sealed" },
   } },
-  -- Playing for gold (Морски шах and Death Roll): the stake, its acceptance, the forfeit, the confirmation.
+  -- Playing for gold (Морски шах, Death Roll, Сантасе, Белот, Табла): the stake, its acceptance, who owes
+  -- whom (Белот's two transfers), the forfeit, the next match, the confirmation, what a hand or a throw means for it.
   { id = "stakes", title = "help.stakes.title", blocks = {
     { kind = "p", key = "help.stakes.p1" },
     { kind = "p", key = "help.stakes.accept" },
     { kind = "example", key = "help.stakes.example" },
     { kind = "p", key = "help.stakes.deathroll" },
+    { kind = "example", key = "help.stakes.belot" },
     { kind = "p", key = "help.stakes.leave" },
+    { kind = "p", key = "help.stakes.again" },
     { kind = "p", key = "help.stakes.honest" },
+    { kind = "p", key = "help.stakes.cards" },
+    { kind = "p", key = "help.stakes.tabla" },
   } },
   -- The guild's ledger and paying a debt; the ⓘ of „Сметки“, „Плащане“ and „Тефтер“ opens it.
   { id = "ledger", title = "tab.ledger", blocks = {

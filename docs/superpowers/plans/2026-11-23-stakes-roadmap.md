@@ -46,17 +46,17 @@ Residuals F1 must close or re-accept:
 
 Residuals F2 must close or re-accept (rulings log, "Stage D, Tabla dice" 1–7, and the card-game counts):
 
-| Residual | Expected ruling (to be confirmed in the F2 plan) |
+| Residual | Ruling as built in F2 (rulings log, "Stage F2"; Addendum 9) |
 |---|---|
-| D1 F8 forged move | Closed by F1's check. |
-| D2 F9 host reload re-rolls one throw | Must be **closed or priced**: a kept seed for the opener (`DealKeep` for dice), or the re-rolled throw counts as a foul on the guest's client from the first one on a staked table. |
-| D3 a throw made alone is proved only against the opener's commit | Must be **closed**: on a staked table an alone throw the guest's client had sent its part to is a foul from the first one (not „unheard from the second“). |
-| D4 the host could look at the guest's seed before publishing | Re-accept: its own commit is out first, it gains nothing. |
-| D5 after a `/reload` a client takes an alone proof as it fits | Re-accept under the F1 rule: such a match is `unseen`, never confirmed automatically. |
-| D6 a loading screen excuses one throw | Re-accept under the same rule: the match is `unseen` on my client. |
-| D7 a watcher's false `dodge` | Re-accept: watchers hold no stake. |
-| Stage B/C: a dealer's void, no-deal and seed lapses are only counted | Must be ruled: on a staked table the second void of a dealer in a match forfeits the match for its side (or the count stays a colour; the F2 plan decides with the numbers of the check list). |
-| Stage C: nobody acts for an offline Belot player for 180 s | Already the spec's forfeit; F2 only adds the debts. |
+| D1 F8 forged move | **Closed** at a staked Табла by F1's check, on by `stakes = true`: the host's timeout for my seat only after my own clock ran out, the clock restarted at every event an honest host re-arms on, and my turn length the one of the table I accepted (a snapshot with another `tn` is `forged`). |
+| D2 F9 host reload re-rolls one throw | **Closed by a contest** (priced): a running throw my seed had left for that dies with a host change, or that a same-host snapshot drops, counts in `s.diceRobbed`, foul `dice` from the first one. No `DealKeep` for the opener. Cost: an honest host that disconnects between my seed and its seeds event gets my loss contested (S3). |
+| D3 a throw made alone is proved only against the opener's commit | **Closed by a contest**: an alone throw after my client sent its commit or seed, not excused by my own loading screen, counts in `s.diceRobbed`, foul `dice` from the first one. Cost: an honest alone throw (lag over `DICE_WAIT`) contests too (S3, `help.stakes.tabla`). |
+| D4 the host could look at the guest's seed before publishing | **Re-accepted**: its own commit is out first; what it can still do (not publish) is D2 and D3. |
+| D5 after a `/reload` a client takes an alone proof as it fits | **Re-accepted**: a login is `unseen`, so the match is put to me, never confirmed automatically. |
+| D6 a loading screen excuses one throw | **Re-accepted**: `s.diceAway > 0` is `unseen`; the match is put to me. |
+| D7 a watcher's false `dodge` | **Re-accepted**: a watcher holds no stake and writes no entry. |
+| Stage B/C: a dealer's void, no-deal and seed lapses are only counted | **Closed by a contest, no forfeit**: an opponent dealer's first void or no-deal in a match makes it `unseen` (asked), its second `deal` (contested); my side's cost me nothing. No automatic forfeit: the host would have to order it and may be the cheater. |
+| Stage C: nobody acts for an offline Belot player for 180 s | **The spec's forfeit**: the stand (`why = "offline"`) is a leave; the leaver owes both opponents, the partner nothing; the debts wait for the leaver's answer at its login. |
 
 ### F3 — Hold'em cash
 

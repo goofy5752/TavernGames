@@ -265,3 +265,162 @@ Every number and message shape of the stage is in the stage F1 plan (`docs/super
     21. The bill uses first names, so two players with one first name read alike there; after a `/reload` at the end of a game no bill is shown until the next game.
   - The stage D and E residuals of the rulings log ("Accepted residuals") other than those closed or re-accepted above stay for F2 (Табла) and F3 (Холдем).
 - **The F1 final wave** (the whole-stage review: 1 Critical, 6 Important, 9 Minor; `.superpowers/sdd/2026-11-23-stageF1-ledger-payments/final-review.md` and `final-fix-report.md`). Closed, each stated above where it changed what was built: C1 (my „Стани“ and a foul), I1 (gold ahead of the `C`), I2 (the payer's guard), I3 (the sliced `x` hash), I4 (the refused set), I5 (the partial vector), I6 (the adoption window asks), and the minors: a stand with a reason the ledger does not know is recorded as `"left"`; `net:asks()` walks my entries once per change of the store; each mail take function is hooked by itself; a staked invitation accepted while my asked seat's question is open is asked right after it. Nothing is left open for it; what it deferred is residual 24.
+
+## Addendum 9 (stage F2, stakes for Сантасе, Белот and Табла; `core/StakesStart.lua`, `core/StakesFair.lua`, with `core/Stakes.lua`, `core/StakesBook.lua`, `core/StakesClaims.lua`, `core/StakesWatch.lua`, the dice files, and residuals 24–27 in the ledger and payment files)
+
+Every number of the stage is in the stage F2 plan (`docs/superpowers/plans/2026-11-24-stageF2-card-dice-stakes.md`: Global Constraints, "Pre-flight amendments" G1–G19 and "Residual rulings") and in the stage 1 plan's „Stage F2 additions“, which state what was built where the two differ. The rulings are in `docs/superpowers/notes/2026-11-21-rulings.md`, section "Stage F2". **Nothing new goes on the wire**: no message, no field. `N.why` gains `"deal"` and `"dice"`, `TBL.sk` and its kin are accepted for the three games, and the host's start of a refilled staked table waits for the break.
+
+- **Files.** `core/StakesStart.lua` (new, 122 lines, cap < 140): when a staked game may begin (`Stakes.gap`, `Stakes.held`, `Stakes.began` and `Stakes.badStart` (moved from `core/StakesWatch.lua`), the hook `hold` and its timer, `s.stakeHoldFrom`). `core/StakesFair.lua` (new, 169 lines, cap < 200): what the fairness layer means for my debt (`Stakes.judged`, `Stakes.fairFoul`, `Stakes.fairHeard`, `Stakes.fairCount`, `Stakes.openFoul`, `Stakes.audit`, the turn clock of an open staked game). Both load right after `core/StakesWatch.lua` and wrap hooks of `ns.Ext.stakes`. `core/StakesBook.lua` (256/< 260): `Stakes.matched`, `Stakes.owed`, `Stakes.worse`, one outcome per game, the staked `R`, `Book:pending` and `Book:final`, `Book:results`. `core/StakesClaims.lua` (113/< 120): the two new reasons, the partner's wait (G2), `N "no"` (G3). `core/Stakes.lua` is 334/< 340 (every edit is inside a line or replaces lines). `core/Session.lua` is 525 lines: the one new line of `startIfFull`, and `"holdTimer"` inside the `TIMERS` line. `core/Deal.lua` and `core/DealHooks.lua` are not edited. The three engines get `E.stakes = true` (Task 10), and Белот gets `E.partner`. Холдем stays without a stake (F3).
+- **`E.partner(seat) -> seat`** (optional; Белот: `(seat + 1) % 4 + 1`, so 1↔3 and 2↔4). The partner in a team game. At a leave it owes nothing and is owed nothing. Its void costs my side nothing. "My side" of a hand verdict is me and it. `Stake.worst` for an engine with `teams` is `stake × 2`, because a leaver pays both opponents.
+- **Who owes whom.**
+  - `Stakes.matched(losers, winners, c)`: both lists are sorted by seat, and the i-th loser owes the i-th winner the stake. Белот has two transfers, never four. An engine without `teams` keeps `Stakes.pairs`.
+  - `Stakes.owed(s, roster, seat) -> names, seats`: everyone else in the roster, in seat order, except the partner.
+  - `forfeit` and `quit` ask `Stakes.owed`. A leave („Стани“, or 180 s offline) is owed to both opponents. A second stand after that event costs nothing.
+- **One outcome per game (ruling G1).** An event can end the match in the engine (`E.leave`, then a `"result"`) and also be the stand of a roster seat. Such an event is settled once, by the forfeit path.
+  - In `ns.Ext.stakes.applied`, the forfeit condition (`seat == 0 and a.k == "stand"` while the game is live, with a roster name at that seat) is computed once as `quits`.
+  - `Book:settle(s, quits)` drops the result when `quits` is set: no outcome, no `R`. The **event** decides this, not `r.left` (Сантасе's result has no `left`).
+  - At a staked table, the host's `R` for a match that ended by play is written by `Book:settle`. It moved there from `Book:result`, which keeps a fun table's `R` byte for byte.
+  - A forfeit's `R` has `l = {leaver's seat}` and `w` = the seats it owes. The host writes it, or the successor when the host is the leaver, as in F1.
+- **The next match (`E.again`).**
+  - `Stakes.gap(s)` is `STAKE_BREAK_MATCH` (30) for an engine with `again`, else `STAKE_BREAK` (10, so Морски шах and Death Roll are unchanged).
+  - `Stakes.held(s) -> seconds, silent` (pure) gives what is left of the break. The break runs from `s.stakeEndedAt`. For a host that took up a table whose game was over, and whose end its clock never dated, it runs from `s.stakeHoldFrom` instead.
+  - At an `again` table it is at least `HOLD_RECHECK` (5 s) while a seated player other than me has been silent for `SILENT_AFTER` (ruling G4). Succession's sweep stands that player up in time, so the old host of a takeover is never seated in a match it does not hear begin.
+  - `Session:canStart` answers `"break"` while `held` is above 0 (the host's „Нова игра“).
+  - **`Session:startIfFull` asks the hook `hold`** at a staked table; this is the one new line of `core/Session.lua`. A table that fills up again starts by itself only when `held` is 0. `s.holdTimer` tries again then.
+  - A member's start check (`Stakes.badStart`): a start of a later match of an `again` table is clean when the break has passed by my own clock, less `AUTO_GRACE`. An earlier start is `forged` against the new match. `Stakes.began` does not demand my own sit for it: staying seated is the acceptance (S2).
+  - The UI names a silent seat instead of counting down (`table.holdSilent`, `bill.again.silent`).
+- **The fouls `deal` and `dice`.** `Stakes.RANK` is `forged = 4`, `roll = 3`, `deal = 3`, `dice = 3`, `stand = 2`, `unseen = 1`. A game has one of `roll`, `deal` and `dice`, never two. `StakesClaims` contests with them (`N "deal"`, `N "dice"`; `Ledger`'s `WHY.N`) like `forged`, `roll` and `stand`. `unseen` is put to me.
+- **From a hand to a foul** (`Stakes.fairFoul(s, v)`, from the `"fair"` event of `core/Deal.lua`; my side = me and `E.partner(mySeat)`):
+
+  | verdict on my client | foul |
+  |---|---|
+  | `"ok"` | none |
+  | `"unseen"` | `unseen` |
+  | `"bad"`, `why = "announce"` | none: the engine scored that announce 0 on every client (Addendum 5) |
+  | `"bad"`, `why = "noreveal"`, the dealer on my side | `unseen` |
+  | any other `"bad"` | `deal` |
+  | `"void"`, or `"bad"` `"nodeal"`, the dealer on my side | none (`nodeal` on my side: `unseen`) |
+  | `"void"`, or `"bad"` `"nodeal"`, the dealer not on my side: its first in the match | `unseen` |
+  | its second (`s.fairVoids[name] + s.fairLapses[name] >= 2`) | `deal` |
+
+  - `Stakes.fairHeard` reads **`s.stakeLive`**, not `Stakes.running`. DealHooks closes an unrevealed last hand at the next start, inside the `fair` hook, before `stakes` resets anything.
+  - While the match is live, it notes the foul against the match. Otherwise it can only close `s.stakeRec`.
+  - **A foul my client already holds against a hand that is still open** (`fair.foul`; the hand's close will turn it `"bad"`, `Stakes.openFoul`) reads `deal` at once, except for `announce`. This holds in `Stakes.audit`, in `Book:quit`'s base and in `Book:outcome`'s forfeit branch (Task 4 review I1).
+- **From the throws to a foul** (`Stakes.fairCount(s)`). It runs after the extension `dice`, in the wrapped `applied`, `adopted`, `hostChanged` and `refused`, only while `s.stakeLive` and only for an engine with `"dice"`.
+
+  | the match's dice counts on my client | foul |
+  |---|---|
+  | `s.diceSeen.bad > 0` or `s.diceRobbed > 0` | `dice` |
+  | `s.diceSeen.unseen > 0` or `s.diceAway > 0` | `unseen` |
+  | a throw made alone while my client had sent nothing for it | none: my own silence |
+
+- **The last hand's verdict** (`Stakes.audit(s, gid, left)`, `Book:pending(gid, note, base, a)`, `Book:final(gid)`).
+  - A match can end by play while its last hand is still open. Its note then waits for that hand's verdict (`note.wait`, as a Death Roll verdict waits `ROLL_FINAL_WAIT`), for at most `STAKE_FAIR_WAIT` (40 s = `FAIR_WAIT` + `AUTO_GRACE` + 13).
+  - `s.stakeRec = {gid, h, open, late}`, where `h` is the number of that hand (ruling G12). Only the verdict of hand `h` closes it. `late` is the worse of the note's foul and what that verdict brought. At the time-out a hand still open reads `unseen`.
+  - Whichever comes first, the timer or `Book:final`, wins, once.
+  - A match that ended by a leave waits for nothing: its running hand gets no verdict (ruling PC3).
+  - `s.stakeRec` dies with the session. A login, or the hall before the reveal, leaves the note `unseen` (S11).
+  - A verdict that comes after the final is not taken: the note stays asked (Task 4 Minor 1).
+- **`s.diceRobbed`** (`core/Dice.lua`, `core/DiceMember.lua`). **This amends Addendum 6's field list** ("per match `s.diceSeen` … `s.diceCried`"). It is per match: reset at the match's start where `s.diceAway` is reset, and kept across an `END` and a re-adoption (`DiceCheck`'s `FIELDS`) and through a bad start (`was`), exactly as `s.diceUnheard` is. It counts:
+  - a throw my host made alone after my client had sent its commit or its seed for it, in an event my client applied itself and not excused by my own loading screen (D3; `close`, through `unheard`'s answer);
+  - a running throw my seed had left for that died with a host change (D2; `hostChanged`);
+  - a running throw my seed had left for that a same-host snapshot, asked or pushed, drops (`dropped`; Task 5 review C2).
+
+  A throw I logged in over without my kept seed is `unseen` by the login (D5).
+- **The turn clock of a staked open game** (Табла; in practice nothing new for Морски шах).
+  - `s.stakeTurn` restarts at every seat-0 event after which an honest host arms its turn timer again (`Session:event`: everything but a `sit`, a `stand` and an event an extension calls `still`). For my seat, `Member.timedOut`'s `s.turnAt` restarts with it. In Табла these events are the throw for my turn and each step of my cascade.
+  - `leadsTo` and `turnKey` read `rolls` only for a state that has a `start` (Death Roll), so Табла's two roll counters keep no clock. `sameTurn` keeps the clock only for an identical state or for a known, equal key.
+  - **My turn length is the one of the table I accepted** (Task 5 review C1). My note is `db.stakeSat = {tid, sk, tn}`, written at open, at my `SIT` and at `Stake.accept`.
+    - At a staked table `Member.adopt` keeps the note's `tn`. A snapshot with another `tn` is `forged` (`how.tn`) and never changes my clock. This applies to Морски шах too.
+    - A note written before this change takes the first snapshot's `tn`, once.
+- **The snapshot rule for a judged game.** `Stakes.judged(s)` is true when `engine.ext` holds `"fair"` or `"dice"`. **This amends Addendum 8's "A snapshot is my game"**, which still holds for Морски шах and Death Roll.
+  - The fairness extension judges what a snapshot did to the hand or the throw, and its verdicts feed the two tables above.
+  - For `stakes`, a snapshot from a host new to me **by name** (`how.moved`; a new epoch of the same host does not count, Task 3 review M1) that is not the state I hold is the same match, `unseen`. Морски шах's `leadsTo` cannot read these states.
+  - A snapshot my own host pushed on me unasked that changes my state is `forged`, at a new epoch too. One I asked for or logged in with is `unseen`.
+  - A new host's snapshot that **is** my state brings nothing. The fair extension puts my own cards back before `stakes` compares (Task 3), my client saw the whole game, and the later hands are judged by their verdicts.
+  - The roster is kept across such a snapshot (`cont`).
+- **No card face in `db.stakeLog`.** `Stakes.save` stores no state (`st = nil`) for an engine with `view`, and `Stakes.sent` stores no card (`c`) in the log entries of a view engine (Task 3 review I1). A mid-match login there always sets `s.stakeDoubt`. That is harmless: the login is already `unseen`.
+- **The `stakeLeft` claim of a partnered engine** (`core/StakesClaims.lua`; rulings G2 and G3; Task 1 review I1). `stakeLeft[tid]` keeps `g` and `h` (the host I left).
+  - My quit note confirms the `"left"` claim only once the ledger holds **exactly one `R` of that gid, written by `left.h`, with `l = {my seat}`**. `Book:results(gid, h)` finds it, from an index by gid built in `View.of`'s walk.
+  - With no such `R` yet, the claim waits. It is re-judged on `"ledger"`, and one timer, `self.wake`, re-runs the review when the wait ends. It is put to me `STAKE_OWE_WAIT` after my stand.
+  - With another `R`, or more than one, the claim is put to me at once (S8).
+  - A creditor outside `left.names` (my partner, or nobody of that game) gets `N "no"`.
+  - **G3 applies to every game.** Against my clean final note with a pair naming me, a claim from a creditor I owe nothing gets `N "no"`. That includes Морски шах and Death Roll: a clean loss's foreign claim is contested anywhere.
+- **Residuals 24–27 as built.** These amend Addendum 8's residuals 4 and 24 and its payment paragraph.
+  - *24, closed: asked, with a ratchet on the answer* (`core/LedgerNet.lua` `Net:own` and `Net:answer`; `core/LedgerStore.lua` `Store:bump(n, force)`; `core/LedgerQueue.lua`).
+    - An own id that is more than `LEDGER_JUMP` above my counter, above my saved seq and not held is put to me like a crash's: uncounted on my client, never denied unasked. This holds inside the adoption window too. `held` and `n <= saved` still deny.
+    - „Мои са“ moves the counter above it (`force`). Outside the window, `L.base` catches up only at my next make, so a second far id near it is still asked. That is the cautious side.
+    - **A kept id within 10^6 of `ID_MAX` never moves my counter** (Task 6 review M1). The entry stays mine, and `Store:make` skips held numbers. So a planted top id cannot use up my number space.
+    - An asked body more than `LEDGER_JUMP` above `L.base` never stands for a queued row of mine (`Net:settle`).
+  - *25, closed* (`core/LedgerHash.lua`).
+    - An author's sorted list `L.il[a]` is kept. A new or dropped item is inserted or removed by binary search, in byte order.
+    - The first build of a session collects the items unsorted (`store.ev[a]`, `store.tw[a]`, the refusals; ruling G16). It then sorts runs of `LEDGER_HASH_ITEMS` items and merges them while feeding the hash.
+    - **`LEDGER_HASH_ITEMS` is 150** (it was 300). The worst frame is about 16 ms with the JIT off, and the first build of a 5 000-body author takes about 1.2 s.
+    - A change during the first build restarts it.
+  - *26, closed* (`core/PayGuard.lua`).
+    - A guard set by a letter lives `PAY_GUARD_MAIL` (30 days) or until the creditor's `P`. A trade's guard keeps `PAY_GUARD` (24 h). A merged guard keeps `"mail"` when any part of it was mail.
+    - **This replaces Addendum 8's "live for `PAY_GUARD` (24 h)" for a letter, and residual 4's "payable again after 24 h"**, which still holds for a trade.
+    - Cost: a letter the creditor's client never records keeps „Плати“ off for 30 days. The creditor's „Уредено“ clears it, and `accounts.sent.tip.mail` says so.
+  - *27, closed* (`wow/Mail.lua`). The letter the addon filled is no longer taken on trust. **This replaces Addendum 8's "without `hooksecurefunc`, the letter the addon filled at this mailbox".**
+    - The click of the game's own send button is hooked as well (`SendMailMailButton:HookScript("OnClick")`). It needs no `hooksecurefunc`, is hooked once, and is retried at `MAIL_SHOW`.
+    - The click notes the recipient and the money, and only for a money letter. **It reads the money box first** (`MoneyInputFrame_GetCopper(SendMailMoney)`, then `GetSendMailMoney()`). The `SendMail` post-hook reads `GetSendMailMoney()` first.
+    - The note is cleared at `MAIL_FAILED`, at `MAIL_CLOSED`, at each `Mail.fill` and after one `MAIL_SEND_SUCCESS`. The `SendMail` hook consumes it.
+    - The `SendMail` path refuses only a known COD (`GetSendMailCOD() > 0` where that function exists), never a letter just because the money button is missing. With neither `GetSendMailCOD` nor `GetSendMailMoney`, an unchecked money button means COD.
+    - With neither hook, no guard is set at all.
+- **The widenings of ruling G15** (under Addendum 8's residuals 2 and 24).
+  - *Under residual 2 (the crash question).* A forged `C` at a far id under a debtor's name used to be denied automatically in F1. Now it is asked, and it **counts on every other client until „Не са мои“**, like any unanswered forgery above my saved seq. A forger can also fill the `LEDGER_MINE_ASK` shown questions with far ids.
+  - *Under residual 24.* Near asked entries still move the counter up to `L.base + LEDGER_JUMP` unasked, while a far real id of mine (from my other computer) does not move it until „Мои са“. So in residual 2's own scenario my next own id can land on one of my far real ids that I do not hold yet, which makes a twin, until the answer. (`Store:make` skips the ids I hold.)
+- **Forward compatibility of the two new `N` reasons.**
+  - A client of the F1 version refuses an `N` with `why = "deal"` or `"dice"` (`Ledger.valid`: `"shape"`). It remembers it in its refused set for 24 h, where it counts as held in its vector and digest, and it never relays it.
+  - For that client the debt stays „чака потвърждение“, which is never a balance.
+  - It does not list a staked table of the three games: its `Lobby.valid` refuses `sk` for an engine without `stakes`.
+  - Pinned by `tests/core/stakes_f2_flow_test.lua` `a client of the F1 version keeps the debt pending and the sync settles`.
+- **The sync slack fix** (a flaky test that was a real bug; `core/LedgerSend.lua`, `core/LedgerSync.lua`). AceSerializer writes keys in `pairs` order, and that order differs after the wire rebuilds a table. So a page's packed size can differ between sender and receiver by up to about 36 bytes.
+  - The sender cuts pages at `1 500 − Net.SLACK`, with **`Net.SLACK = 48`** (it was 24). F1-version receivers still refuse a page over 1 500.
+  - The receiver (`Sync:page`) accepts up to `PAGE + SLACK`.
+- **The residual rulings**, the plan's three tables as built. The rulings log ("Stage F2") names the test that pins each.
+  - **S1. The dealer's client knows the deck of the hand it deals** (spec 6.3; `help.fair.dealer`).
+    - A modified client reads the opponents' cards in every hand it deals. Nothing detects it, and the victim's client confirms the debt. **This is the one item that does not pass the one rule.**
+    - Re-accepted as the spec's own design (ruling G0), with a warning. Every staked card table's acceptance question shows `stake.ask.cards`, and `help.fair.dealer` adds „На маса със залог това важи с пълна сила: играй карти за голд с хора, на които вярваш.“
+    - Closing it needs mental poker, which is out of reach in Lua 5.1.
+    - Cost: card games for gold are for people who trust each other's clients. **The user confirms this before the three games are announced.**
+  - *The roadmap's F2 table.*
+    - D1 (F8, a forged move in an open game): **closed** at a staked Табла, by F1's check, my own turn clock and my accepted turn length.
+    - D2 (F9, a host reload or silence re-rolls a throw): **closed by a contest**, `s.diceRobbed` from the first one. The opener gets no kept seed: a kept seed helps only an honest host.
+    - D3 (an alone throw is proved only against the opener's commit): **closed by a contest**, `s.diceRobbed`.
+    - D4 (the host sees the guest's seed first): re-accepted. Its own commit is out first.
+    - D5 (an alone proof after my `/reload`): re-accepted. A login is `unseen`.
+    - D6 (a loading screen excuses one throw): re-accepted. `s.diceAway` is `unseen`.
+    - D7 (a watcher's false `dodge`): re-accepted. A watcher holds no stake.
+    - Stage B/C, the counted voids, no-deals and lapses: **closed by a contest, with no forfeit**. An opponent dealer's first is `unseen`, its second `deal`. My side's cost me nothing.
+    - Stage C, nobody acts for an offline Белот player for 180 s: the spec's forfeit (`"offline"`), owed to both opponents.
+  - *F1's deferred residuals.* 24–27 are closed, as above.
+  - *Addendum 8's stake-aware residuals 10–19, re-judged for the three games.* All are re-accepted, and none yields a debt my client confirms.
+    - 10, a losing host aborts: no entry is written. The next start is `forged` on the members. **That includes an honest successor's start after a cheating host's abort with every seat full** (Task 2 concern 2): a cheating host can make the next match a contest, not a debt.
+    - 11, a colluding successor: Death Roll only. Табла's twin is D2.
+    - 12, message loss and my turn clock: Табла only, as in Морски шах. In the card games the host never moves for my seat.
+    - 13, a rollback snapshot: `unseen` or `forged` by the snapshot rule. The fair extension adds `round` and `dodge`.
+    - 14, one timeout after my login: Табла only, and `unseen` by the login.
+    - 15 and 16, a repeated gid, and an honest start after my own `/reload`: asked.
+    - 17, a game a snapshot ended has no note: unchanged.
+    - 18, claims around a leave: unchanged. The partners' simultaneous stand is S8.
+    - 19, the `R` of a leaving host: its successor writes it.
+  - *New in F2.*
+    - S2. Staying seated through the 30 s break is the acceptance of the next match. Cost: a player who walks away without „Към залата“ is dealt in, and its own client plays its timeouts.
+    - S3. An honest alone throw (lag over `DICE_WAIT`), or an honest host's disconnect inside the seed window, contests the guest's loss. This is the price of D2 and D3, and `help.stakes.tabla` says it.
+    - S4. Any login or resync of mine during a match makes my debt for it a question. A host change in a card game makes it a question for every member that follows the new host **whose snapshot is not the state it holds**. A new host's identical snapshot brings nothing (corrected in Task 3).
+    - S5. A leaver's partner has no note, so it gets no bill.
+    - S6. A sore loser with an honest client can make its own debt a question or a contest.
+    - S7. A protest forged in my name after the match's last hand closed comes too late for a note that is already final.
+    - S8. A forging host that orders one partner's stand first and writes an `R` naming the other partner gets that other partner's confirmation. The first partner is asked (G2).
+    - S9. A dealer that disconnects honestly before its last reveal makes its opponents contest (`deal`); this is the card twin of S3. **S9 also covers a modified host that drops or pre-empts an honest opponent dealer's reveal (a `noreveal` at once), or orders two voids against it** (Task 4 review M2). In Белот the host's honest partner then contests its loss, which gives the host nothing F1 does not already give it.
+    - S10. Белот's `"nodeal"` can follow a fourth player's silence in the shuffle, and the second one per dealer contests.
+    - S11. A loser who goes to the hall before the last reveal is asked, because `s.stakeRec` dies with the session.
+    - **S12. A guest back after a long disconnect may take the table over** at the state it holds, rolling back the host's moves made meanwhile. It counts `SILENT_AFTER` from the last host message it heard, which can be up to `PING_EVERY` before it went away. The honest host is then `unseen` and asked, never charged automatically, while the guest, which saw its own game whole, confirms (Task 10 concern 2). No gold is at risk.
+  - *Further residuals found during execution.* Each is re-accepted, and none confirms a debt.
+    - A stale roster after a fully missed match (Task 3 review M3). A changed-host snapshot of a later match keeps `s.stakeRoster`, so a creditor's `D` can name a player of the earlier match. That player is then asked.
+    - An asked seat pins the turn length it saw when it accepted (Task 5).
+    - A verdict that comes later than `STAKE_FAIR_WAIT` stays asked (Task 4 Minor 1).
+    - The note of a stand or forged event in an open game (`openNote`) leaves out a held foul. Open notes never give a `C`, so it never confirms.
+    - `L.il` holds one string per body, bounded only as far as the store is (F4 retention). A change during the first build of a large author restarts that build; this is bounded by the exchange caps.
+- **What to measure first** (`docs/superpowers/notes/2026-11-stageF2-ingame-checks.md`, rows 11, 12 and 20). S3 and S9–S11 are honest costs. If a normal evening produces contested debts, the numbers to revisit are `DICE_WAIT` at a staked table and `STAKE_FAIR_WAIT`.

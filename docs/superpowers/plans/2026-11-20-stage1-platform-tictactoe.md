@@ -359,6 +359,48 @@ The addon never calls `AcceptTrade`, `SendMail`, `TakeInboxMoney`, `AutoLootMail
 
 **Message budget (measured; the caps of the stage F1 plan hold).** A finished two-player staked game costs 2 GUILD `LEV` in the guild (the host's `R` + `D`, the loser's `C`), each one 255-byte part (`R` + `D` 186-196 packed bytes, `C` 123-127); its payment by trade one more (`P`, 123-125) and one `PAY` whisper; a fun game costs 1 (`R`). A five-player Death Roll's loser sends its four `C` in one `LEV` (under 600 packed bytes). The whole road of `tests/core/stakes_flow_test.lua` (a staked Морски шах, the payment, a member's catch-up after login) is 3 GUILD `LEV` (cap 5, at most 3 a sender), a catch-up of one exchange in 4 whispers (`LVC`, its answer, a `LEV` of four entries at 260-266 bytes, the closing `LEV`), and at most 2 778-2 856 packed bytes from any one client in any 10 s (cap 8 000; pinned at 3 400) in 1 GUILD part. Sync pages (Task 6): a vector of 45 authors with 25-byte names is one page (1 246-1 419 bytes), of 60 two; a `LID` of 50 / 60 / 70 / 300 items of 16-hex `h` is 830 / 959 / 1 113 / 4 414 bytes (about 95 items a page). AceSerializer writes keys in `pairs` order, which LuaJIT seeds per process, so a packed size moves by up to about 20 bytes between runs: every byte pin sits away from its cut. A fun-only guild's message log is the one of `82b0140` but for `HI.ld` and the host's one `LEV` of each result (pinned).
 
+#### Stage F2 additions
+
+Copied from the stage F2 plan (`docs/superpowers/plans/2026-11-24-stageF2-card-dice-stakes.md`, Global Constraints) and brought up to what was built. Where the two differ, this section and Addendum 9 of `docs/superpowers/notes/engine-contract.md` win, together with the rulings log, section "Stage F2".
+
+**Engine, optional:** `E.stakes = true` now also for Сантасе, Белот and Табла (Холдем: F3). `E.partner(seat) -> seat` (Белот: `(seat + 1) % 4 + 1`) is the player who owes nothing and is owed nothing when its partner leaves. With `E.teams`, the i-th loser by seat owes the i-th winner (`Stakes.matched`), and `Stake.worst` is `stake × 2`. With `E.again`, the next match of a staked table waits `STAKE_BREAK_MATCH` (`Stakes.gap`).
+
+**Extension `stakes`:** the new hook `hold(s) -> true` (host; `Session:startIfFull` asks it at a staked table: the start of a refilled `again` table waits for the break and for a silent seat). The `"fair"` client event and the session's dice counts feed the fouls `deal` and `dice` (`core/StakesFair.lua`).
+
+**Protocol additions:** none: no new message and no new field (`v=1`, prefix `TAVG`, GUILD and WHISPER only). The complete list of what changes on the wire:
+
+| where | change | meaning |
+|---|---|---|
+| `TBL.sk`, `SNP.tbl.sk`, `SIT.sk`, `INV.sk` | now accepted for `santase`, `belot` and `tabla` (`engine.stakes == true`) | as in F1 |
+| ledger `N.why` | two more values: `"deal"` and `"dice"` | my client contests because a hand, or a throw, was not clean on it. A client of the F1 version refuses such an `N` (`"shape"`), remembers it, never relays it, and keeps the debt „чака потвърждение“ |
+| `EV` timing at a staked table of a game with `E.again` | the host's start after a match, and after a leave and a refilled seat, waits until `STAKE_BREAK_MATCH` (30 s) after the last match ended, and while a seated player has been silent for `SILENT_AFTER` | a member takes a start as clean only when the break has passed by its own clock, less `AUTO_GRACE`; an earlier one is `forged` against the new match |
+
+**Session fields** (local, never sent):
+
+| field | meaning |
+|---|---|
+| `s.holdTimer` | host: the held start (`hold`), tried again when it fires; one of `Session`'s `TIMERS` |
+| `s.stakeHoldFrom` | host: `env.now()` when it took up, by a snapshot or by becoming host, a table whose game was over and whose end its clock never dated (`stakeEndedAt == nil`); the break runs from then |
+| `s.stakeRec = {gid, h, open, late}` | the match that just ended by play while its last hand `h` was still open: open until that hand's verdict; `late` = the foul it brought. It dies with the session |
+| `s.diceRobbed` | per match, beside `s.diceUnheard`: the throws my host made alone after my commit or seed for them, or that a host change or a same-host snapshot dropped after my seed (foul `dice`) |
+
+**Saved:** `db.stakeSat` is now `{tid, sk, tn}`: `tn` is the turn length of the table I accepted, and a snapshot with another `tn` is `forged`. `db.stakeLog` keeps no state (`st = nil`) and no card (`c`) for an engine with `view`. There is no new db key and no new `env` field.
+
+**Constants:**
+
+| constant | value | meaning |
+|---|---|---|
+| `STAKE_BREAK_MATCH` | 30 | s: the break before the next match of Сантасе, Белот and Табла (Морски шах and Death Roll keep `STAKE_BREAK = 10`) |
+| `STAKE_FAIR_WAIT` | 40 | s: a match's note waits this long for its last hand's verdict (`FAIR_WAIT` + `AUTO_GRACE` + 13); a hand still open then reads `unseen` |
+| `PAY_GUARD_MAIL` | 2 592 000 | s (30 days): the payer's guard set by a letter; `PAY_GUARD` (24 h) stays for a trade |
+| `LEDGER_HASH_ITEMS` | 150 | was 300: items of a stale author's `x` hashed (and, at its first build, sorted or merged) per frame |
+| `Net.SLACK` | 48 | was 24: a sync page is cut at 1 500 − 48 packed bytes, and the receiver accepts up to `PAGE + SLACK` |
+| `HOLD_RECHECK` | 5 | s (local to `core/StakesStart.lua`): a held start waits this long for a silent seat, again and again |
+
+**Client events:** none new. `"fair"` events (cards and dice) now also feed the stake's fouls at a staked table.
+
+**Message budget (measured, Task 10, `tests/core/stakes_f2_flow_test.lua`):** GUILD `LEV`s of one finished staked match in the whole guild: Белот 4 (cap 7: `R`, two `D`, two `C`, two spare; at most 3 a client, measured 1), Сантасе 2 and Табла 2 (cap 4). A fun-only evening of the three games sends exactly the message log of `88a48e7` (pinned chunk by chunk).
+
 ---
 
 ### Task 1: Tooling, test runner, TOC skeleton
