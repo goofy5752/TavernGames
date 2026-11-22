@@ -5,11 +5,11 @@ local _, ns = ...
 --   The buy-in follows my sit: the `buy` (chips) of Client:sit, or
 --     Client:wantBuy (an invitation's yes), is my wish client.cashWant = {tid,
 --     n}. At every "session", while it names my live table and my own record
---     (its `who` is me) bought nothing, my client plays `buy` with the wish
---     clamped into E.buyRange: once per event number, never while a buy I sent
---     is unmatched (s.sent; at "top" a second one could pass). It goes when my
---     record shows the buy, at "rebuy" or "full", and when I leave; "hand",
---     "phase" and a stake I did not accept ("stake", H15c) only wait (H15b).
+--     (its `who` is me) bought nothing, my client plays `buy` with the wish clamped
+--     down into E.buyRange, never while a buy I sent is unmatched (s.sent): one wish
+--     buys once. A floor above my pick is not bought: the wish goes, "buyLow"(lo,
+--     pick). It also goes when my record shows the buy, at "rebuy" or "full", and when
+--     I leave; "hand", "phase" and a stake I did not accept ("stake", H15c) only wait (H15b).
 --   „Стани“ (Client:stand) while CashOut.owes: client.cashGoing = {tid, at},
 --     "cashGoing"(tid), and `cashout` once no running hand holds me (once per
 --     event number). My cashout applied (owes no more), the original stand
@@ -20,8 +20,7 @@ local _, ns = ...
 local CashOut = {}
 ns.CashOut = CashOut
 
-local Client, C = ns.Client, ns.Const
-local sit, stand = Client.sit, Client.stand
+local Client, C, sit, stand = ns.Client, ns.Const, ns.Client.sit, ns.Client.stand
 
 -- My own record of the table's state, or nil.
 local function mine(s)
@@ -64,15 +63,16 @@ end
 local function wish(client, s, want)
   local r = s.status == "live" and ns.Stakes.cash(s) and mine(s)
   if not r then return end
-  if r.bought > 0 then client.cashWant = nil; return end
-  if want.q == s.seq or buying(s) then return end
+  if r.bought > 0 or (want.q and not buying(s)) then client.cashWant = nil; return end -- one wish buys once
+  if buying(s) then return end
   local lo, hi = s:engine().buyRange(s.state, s.mySeat)
   if not lo then
     if hi == "rebuy" or hi == "full" then client.cashWant = nil end
     return
   end
   local n = type(want.n) == "number" and want.n or lo
-  if client:buy(math.max(lo, math.min(hi, n))) then want.q = s.seq end
+  if n < lo then client.cashWant = nil; return client.events:emit("buyLow", lo, n) end -- never more than I picked
+  if client:buy(math.min(hi, n)) then want.q = s.seq end
 end
 
 local function cashOut(client, s, g)
@@ -87,7 +87,7 @@ local function cashOut(client, s, g)
   if g.timer then return end
   g.timer = client:after(C.CASH_OUT_WAIT, function()
     g.timer = nil
-    if client.cashGoing == g and client.session and client.session.tid == g.tid then leave(client) end
+    if client.cashGoing == g and client.session and client.session.tid == g.tid and not held(client.session) then leave(client) end
   end)
 end
 

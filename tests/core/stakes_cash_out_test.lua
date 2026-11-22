@@ -173,17 +173,46 @@ describe("the buy-in follows my sit", function()
     eq(#evsOf(sim2, A, "buy", 2), 1)
   end)
 
-  it("a wish outside the range is clamped", function()
+  it("a wish above the range is clamped down; a floor above my pick is never bought (buyLow)", function()
     local sim, cl, tid = cash({ 1, 2, 3 }, { 1000, 1000, 700 })
     local host = cl[A]
     ok(not (E.inHand(host.session.state) and host.session.state.p[3]), "Мария is not dealt in")
     cl[M]:stand(); sim:run(1)
     eq(cl[M].session, nil)
     eq(host.session.state.cash.left[M], 700)
+    local low = {}
+    cl[M]:on("buyLow", function(...) low[#low + 1] = { ... } end)
     local mark = #sim.sent
     cl[M]:sit(tid, 3, SK, 400); sim:run(1)
-    local b = evsOf(sim, A, "buy", 3, mark)
-    eq(#b, 1); eq(b[1].a.n, 700)
+    eq(#evsOf(sim, A, "buy", 3, mark), 0) -- never more than I picked
+    eq(cl[M].cashWant, nil)
+    eq(low, { { 700, 400 } })
+    eq(host.session.state.seats[3].bought, 0)
+    -- a pick above the ceiling is clamped down
+    local _, hi = E.buyRange(host.session.state, 3)
+    cl[M]:wantBuy(tid, hi + 500)
+    ns.Session.emit(cl[M]); sim:run(1)
+    local bs = evsOf(sim, A, "buy", 3, mark)
+    eq(#bs, 1); eq(bs[1].a.n, hi)
+    eq(#low, 1)
+  end)
+
+  it("one wish buys at most once: a forged cashout right after my buy brings no second buy", function()
+    local sim, cl, tid = cash({ 1, 2 })
+    local hs = cl[A].session
+    local play, forged = hs.play, false
+    hs.play = function(self, seat, a, ...)
+      local r = { play(self, seat, a, ...) }
+      if seat == 3 and a.k == "buy" and not forged then forged = true; play(self, 3, { k = "cashout" }) end
+      return unpack(r)
+    end
+    local mark = #sim.sent
+    cl[M]:sit(tid, 3, SK, 600); sim:run(3)
+    ok(forged, "the host forged the cashout")
+    eq(acts(sim, M, "buy", mark), 1)
+    eq(cl[M].cashWant, nil)
+    sim:run(10)
+    eq(acts(sim, M, "buy", mark), 1)
   end)
 
   it("an asked seat cannot buy (H15c)", function()
@@ -211,15 +240,15 @@ describe("the buy-in follows my sit", function()
     cl[G]:stand(true); sim:run(1)
     ok(host.session.state.seats[4].leaving, "his record still leaves")
     local mark = #sim.sent
-    cl[G]:sit(tid, 5, SK, 600); sim:run(1)
+    cl[G]:sit(tid, 5, SK, 1000); sim:run(1)
     eq(cl[G].session.mySeat, 5)
     eq({ E.buyRange(cl[G].session.state, 5) }, { nil, "hand" })
     eq(#evsOf(sim, A, "buy", 5, mark), 0)
-    eq(cl[G].cashWant.n, 600)
+    eq(cl[G].cashWant.n, 1000)
     calm(sim, host); sim:run(1)
     local left = host.session.state.cash.left[G]
     local b = evsOf(sim, A, "buy", 5, mark)
-    eq(#b, 1); eq(b[1].a.n, math.max(600, math.min(left, 1000)))
+    eq(#b, 1); eq(b[1].a.n, math.min(left, 1000))
     eq(cl[G].cashWant, nil)
   end)
 end)
@@ -305,6 +334,8 @@ describe("„Стани“ is a cashout, then the stand", function()
     eq(cl[M].session, nil)
   end)
 
+  -- NB: this cuts the link for the whole wait, so it tests a dead link; the honest-link
+  -- variant (the host gets my cashout, the hand goes on) is the H15a test below.
   it("a host that never plays my cashout: I stand after CASH_OUT_WAIT and its claims are put to me (C5)", function()
     local sim, cl, tid = cash({ 1, 2, 3 })
     local host, got = cl[A], outs(cl)
@@ -361,6 +392,21 @@ describe("„Стани“ is a cashout, then the stand", function()
     sim:run(C.CASH_OUT_WAIT + 1)
     heal()
     eq(cl[M].session, nil)
+  end)
+
+  it("the wait's timer re-checks the hand: dealt in within the same frame, I am not stood up", function()
+    local sim, cl = cash({ 1, 2, 3 })
+    local host = cl[A]
+    hands(sim, host, 1)
+    ok(not E.inHand(host.session.state), "between hands")
+    local heal = cut(sim, A, M)
+    cl[M]:stand(); sim:run(C.CASH_OUT_WAIT - 1)
+    ok(cl[M].session, "still waiting")
+    local st = cl[M].session.state -- the deal lands; no "session" step has run yet
+    st.phase, st.p = "bet", { [3] = {} }
+    sim:run(2)
+    heal()
+    ok(cl[M].session, "not stood up into a running hand")
   end)
 
   it("the host leaves mid-game: its cashout, its own S, the handoff; the table plays on", function()
