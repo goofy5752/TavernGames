@@ -200,7 +200,7 @@ end
 -- prefix: its marks in my name are judged by my log like any other): the same
 -- game, "unseen". Anything else is another game. A snapshot nobody asked
 -- for that changes my game is "forged", from my own host always, from a
--- changed host unless it is a prefix (F21); one I asked for or logged in with
+-- changed host unless a prefix (F21; any of a judged game's); one I asked for or logged in with
 -- is "unseen". Its Death Roll state must say staked (Member.adopt set mine).
 -- The foul of a game that was running here stays, whatever the snapshot (the
 -- host can make me ask for one at will: a TCK or a gap); Rolls' adopted
@@ -212,7 +212,7 @@ ns.Ext.stakes.adopted = function(s, prev, m, how)
   if s:engine().idle and type(m.st) == "table" and m.st.staked ~= true then pend(s, "forged") end
   local identical = prev ~= nil and st ~= nil and same(prev, st) and was == on
   local forward = leadsTo(prev, st)
-  local prefix = not forward and how.changed and leadsTo(st, prev)
+  local prefix = not forward and how.changed and (Stakes.judged(s) or leadsTo(st, prev)) -- a judged game: the same match
   local cont = identical or forward or prefix
   if not identical and (was or on) then
     local pushed = not (how.changed or how.asked or how.fresh)

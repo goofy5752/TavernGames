@@ -109,13 +109,13 @@ Stakes.running = running
 
 -- My log and my game counter go to my saved variables, beside my stake note
 -- for this table and only while it stands (ns.Stake.clear drops both):
--- db.stakeLog = {tid, no, log, st}, st the game state they were saved at
+-- db.stakeLog = {tid, no, log, st}, st the game state they were saved at (none with engine.view: no card faces)
 -- (also when my client stops: Client:stop).
 function Stakes.save(s)
   local db = s.client.env.db
   local note = db.stakeSat
   if type(note) ~= "table" or note.tid ~= s.tid then return end
-  db.stakeLog = { tid = s.tid, no = s.stakeNo, log = s.stakeLog, st = s.state and s:engine().snapshot(s.state) or nil }
+  db.stakeLog = { tid = s.tid, no = s.stakeNo, log = s.stakeLog, st = s.state and not s:engine().view and s:engine().snapshot(s.state) or nil }
 end
 
 -- A login back to my table takes up what Stakes.save kept. WoW writes saved

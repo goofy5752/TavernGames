@@ -55,6 +55,7 @@ ns.Const = {
   STAKE_MAX = 99999990000, -- copper: the largest stake (the gold cap, whole silver)
   STAKE_BREAK = 10,        -- a staked table's next game starts at the earliest this long after the last ended
   STAKE_BREAK_MATCH = 30,  -- the same for an engine with `again` (Сантасе, Белот, Табла): Stakes.gap
+  STAKE_FAIR_WAIT = 40,    -- the note of a match waits this long for its last hand's verdict (FAIR_WAIT + AUTO_GRACE + 13 s)
   STAKE_LEFT_WINDOW = 600, -- my client confirms a claim for a game I left myself within this long
   STAKE_OWE_WAIT = 60,     -- a clean loss with no claim this long after is written down by the loser
   STAKE_SEEN_KEEP = 1209600, -- my outcome notes are dropped this long after the game (14 days)
