@@ -70,7 +70,7 @@ function Store:refuse(a, n, h, till)
   rf[a][it] = math.max(now + 1, math.min(till or math.huge, now + C.LEDGER_REFUSED_TTL))
   self:refusedCount(a, n, 1)
   self.rev = self.rev + 1
-  self:stale(a)
+  self:stale(a, a .. ":" .. n .. ":" .. h)
   return true
 end
 
@@ -83,7 +83,7 @@ function Store:forget(a, n, h)
         set[it] = nil
         self:refusedCount(author, tonumber(it:match("^%d+")), -1)
         self.rev = self.rev + 1
-        self:stale(author)
+        self:stale(author, author .. ":" .. it:gsub("%.", ":"), true)
       end
     end
   end

@@ -56,7 +56,7 @@ function Ledger.new(store, me, epoch)
   local rec = store.me[me]
   if not (type(rec) == "table" and whole(rec.seq) and rec.seq >= 0 and rec.seq <= Ledger.ID_MAX
     and type(rec.born) == "number") then rec, store.me[me] = nil, nil end
-  local L = setmetatable({ store = store, me = me, epoch = epoch, rev = 0, top = {}, run = {}, rc = {}, deny = {}, xc = {}, dirty = {}, act = {},
+  local L = setmetatable({ store = store, me = me, epoch = epoch, rev = 0, top = {}, run = {}, rc = {}, deny = {}, xc = {}, il = {}, dirty = {}, act = {},
     fresh = rec == nil, adopting = rec == nil, base = rec and rec.seq or 0 }, Store)
   L:refusedLoad()
   for a, byN in pairs(ev) do
@@ -114,7 +114,7 @@ function Store:move(a, n, b, gone)
     s.ev[a][n] = b
   end
   if #tw == 0 then s.tw[a][n] = nil end
-  self:stale(a)
+  self:stale(a, b.i .. ":" .. b.h, gone)
   self:advance(a)
 end
 -- The body held under (a, n) with b's h and canonical form, or nil.

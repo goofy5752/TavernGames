@@ -115,6 +115,127 @@ describe("ledger final review: the x hash is sliced across frames (I3)", functio
   end)
 end)
 
+describe("ledger F2: the author's sorted list is kept and first built in slices (residual 25)", function()
+  local N, now = C.LEDGER_HASH_ITEMS, EPOCH0
+  local function clock() return now end
+  -- A loaded store of `count` R bodies of Жана (no client: nothing is hashed yet).
+  local function big(count)
+    local ev = {}
+    for n = 1, count do
+      ev[n] = { i = Ledger.id(ZH, n), k = "R", at = EPOCH0, gid = "t/" .. n, g = "ttt", n = { ZH, ANA }, w = { 1 }, l = { 2 },
+        h = string.format("%08x%08x", n * 7919, n) }
+    end
+    return Ledger.new({ ev = { [ZH] = ev }, tw = {}, me = { [ANA] = { seq = 0, born = EPOCH0 } } }, ANA, clock)
+  end
+  -- Author a's x as a second store hashes the same bodies (and remembered refusals) in one go.
+  local function oneGo(L, a)
+    local copy = Ledger.new(U.copy(L.store), ANA, clock)
+    eq(copy:work(), true)
+    return copy.xc[a]
+  end
+  -- Author a's x as 88a48e7 made it: every "<id>:<h>" sorted by bytes in one go, joined by ",".
+  local function byHand(L, a)
+    local items = {}
+    for j, b in ipairs(L:above(a, 0)) do items[j] = b.i .. ":" .. b.h end
+    for _, r in ipairs(L:refusals(a)) do items[#items + 1] = a .. ":" .. r.n .. ":" .. r.h end
+    table.sort(items, U.byteLess)
+    return ns.Sha256.hex(table.concat(items, ",")):sub(1, 12), items
+  end
+  -- Runs L:work(n) until every x is fresh -> one {sorted, hashed} per call: what it added to L.sorted and L.hashed.
+  local function frames(L, n)
+    local calls = {}
+    repeat
+      local s, h = L.sorted or 0, L.hashed or 0
+      local done = L:work(n)
+      calls[#calls + 1] = { sorted = (L.sorted or 0) - s, hashed = (L.hashed or 0) - h }
+      ok(#calls < 10000, "work ends")
+    until done
+    return calls
+  end
+  local function capped(calls, what)
+    for j, call in ipairs(calls) do
+      ok(call.sorted <= N, what .. ": " .. call.sorted .. " items sorted in call " .. j)
+      ok(call.hashed <= N, what .. ": " .. call.hashed .. " items hashed in call " .. j)
+    end
+  end
+
+  it("the sort of a 5000-body author is sliced as well (residual 25)", function()
+    local l = big(5000)
+    eq(l.il[ZH], nil); eq(l.sorted, nil)
+    local calls = frames(l, N)
+    eq(calls[1].sorted, 0, "the collecting call sorts nothing")
+    capped(calls, "the first build")
+    local sorts = 0
+    for _, call in ipairs(calls) do if call.sorted > 0 then sorts = sorts + 1 end end
+    ok(sorts >= math.ceil(5000 / N), "the sort is split: " .. sorts)
+    eq(l.sorted, 5000); eq(l.hashed, 5000)
+    local x, items = byHand(l, ZH)
+    eq(l:vector()[ZH].x, x); eq(x, oneGo(l, ZH))
+    eq(l.il[ZH], items, "the list is kept")
+  end)
+
+  it("one more body of that author sorts nothing", function()
+    local l = big(5000)
+    frames(l, N)
+    local sorted = l.sorted
+    -- A P: a 5001st R would be refused (LEDGER_AUTHOR_MAX).
+    eq(l:add(pay(ZH, 5001), BOR), "new")
+    ok(l:hashing(), "stale")
+    local calls = frames(l, N)
+    capped(calls, "one more body")
+    eq(l.sorted, sorted, "nothing is sorted again")
+    ok(#calls >= math.ceil(5001 / N), "fed in slices: " .. #calls)
+    eq(l:vector()[ZH].x, oneGo(l, ZH)); eq(l.xc[ZH], (byHand(l, ZH)))
+    eq(#l.il[ZH], 5001)
+  end)
+
+  it("a dropped twin and a forgotten refusal leave the list right", function()
+    local l = big(5000)
+    frames(l, N)
+    local sorted = l.sorted
+    local function settled(what)
+      frames(l, N)
+      eq(l.xc[ZH], oneGo(l, ZH), what); eq(l.xc[ZH], (byHand(l, ZH)), what)
+      eq(l.il[ZH], select(2, byHand(l, ZH)), what)
+    end
+    -- Four bodies under one id; the author denies one; a fifth body drops the denied one.
+    local twins = {}
+    for c = 1, 4 do
+      local st, b = l:add(pay(ZH, 5001, 100 * c), BOR)
+      eq(st, c == 1 and "new" or "twin"); twins[c] = b
+      settled("body " .. c)
+    end
+    eq(l:add({ i = Ledger.id(ZH, 5002), k = "X", at = EPOCH0, r = twins[2].i, h = twins[2].h }, BOR), "new")
+    settled("the denial")
+    eq(l:add(pay(ZH, 5001, 500), BOR), "twin")
+    eq(l:has(twins[2].i, twins[2].h), false, "the denied twin is dropped")
+    settled("the dropped twin")
+    -- A refusal remembered, then forgotten (taken after all); another forgotten when it expires.
+    local h1, h2 = ("1a"):rep(8), ("2b"):rep(8)
+    eq(l:refuse(ZH, 6000, h1), true); settled("a refusal")
+    l:forget(ZH, 6000, h1); settled("a forgotten refusal")
+    eq(l:refuse(ZH, 7, h2), true); settled("a refusal of a held number")
+    now = now + C.LEDGER_REFUSED_TTL + 1
+    l:forget(); settled("an expired refusal")
+    now = EPOCH0
+    eq(l.sorted, sorted, "the kept list was never sorted again")
+  end)
+
+  it("runs merge in byte order, not number order", function()
+    for _, n in ipairs({ 1, 2 }) do
+      local l = Ledger.new({}, ANA, clock)
+      for _, k in ipairs({ 2, 10, 100 }) do eq(l:add(pay(ZH, k), BOR), "new") end
+      local calls = frames(l, n)
+      for j, call in ipairs(calls) do ok(call.sorted <= n and call.hashed <= n, "slice " .. j .. " of n = " .. n) end
+      local il = l.il[ZH]
+      eq(#il, 3)
+      -- By bytes "0" (0x30) is below ":" (0x3a): "…:100:" < "…:10:" < "…:2:"; by number it would be 2, 10, 100.
+      eq({ il[1]:match(":(%d+):"), il[2]:match(":(%d+):"), il[3]:match(":(%d+):") }, { "100", "10", "2" }, "byte order, n = " .. n)
+      eq(l.xc[ZH], oneGo(l, ZH)); eq(l.xc[ZH], (byHand(l, ZH)))
+    end
+  end)
+end)
+
 describe("ledger final review: an entry one side refuses (I4)", function()
   -- Ана holds 40 entries of Вера; number 3 names Жана, whom Борис's guild roster does not list.
   local function disagreeing()
