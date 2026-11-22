@@ -142,6 +142,15 @@ local function playUntilPaired(sim, host, least)
   error("Мария never has a pair")
 end
 
+-- f() with t[k] = v, t[k] given back after it, even when f fails (the failure raised again).
+local function patched(t, k, v, f)
+  local was = t[k]
+  t[k] = v
+  local done, err = pcall(f)
+  t[k] = was
+  if not done then error(err, 0) end
+end
+
 -- Seat of `name` in ALL.
 local function seatOf(name) for i, n in ipairs(ALL) do if n == name then return i end end end
 
@@ -275,6 +284,26 @@ describe("a cash settlement becomes pair debts", function()
     eq(words(sim, B, gid, A), { { k = "N", why = "amount" } })
   end)
 
+  it("a claim that names another game: my word is still my own D of the cash game (M1)", function()
+    local sim, cl = Play.cash(3)
+    local host, got = cl[A], outs(cl)
+    hands(sim, host, 1)
+    setTook(cl, { [1] = { [2] = 20 } }) -- Петър owes Иван 20 chips
+    local net = cl[A].ledgerNet
+    local make = net.make
+    net.make = function(self, kind, f) -- Иван's modified client names a fun game in its claim
+      if kind == "D" then f.g = "tabla" end
+      return make(self, kind, f)
+    end
+    close(sim, host)
+    local gid = gidOf(got[A], "close")
+    eq(words(sim, B, gid, A), { { k = "D", why = "cash" } })
+    local own
+    for _, e in ipairs(Play.entries(sim, B, "D")) do if e.gid == gid and e.f == B then own = e end end
+    eq(own and own.g, "holdem")
+    eq(#Play.entries(sim, nil, "C"), 0)
+  end)
+
   it("a claim from a player I owe nothing is contested", function()
     local sim, cl = Play.cash(3)
     local host, got = cl[A], outs(cl)
@@ -312,15 +341,15 @@ describe("a cash settlement becomes pair debts", function()
     setTook(cl, { [3] = { [1] = 10 } }) -- Иван owes Мария 10 chips
     ok(cl[M]:act{ k = "cashout" }); sim:run(1)
     local take = ns.Book.take
-    ns.Book.take = function(s, seat, a) -- the host never publishes Мария's key
+    patched(ns.Book, "take", function(s, seat, a) -- the host never publishes Мария's key
       if s.client == host and seat == 3 then return end
       return take(s, seat, a)
-    end
-    ok(cl[G]:act{ k = "buy", n = 1000 }); sim:run(1)
-    hands(sim, host, 2) -- Иван, Петър and Гошо
-    setTook(cl, { [1] = { [4] = 20 }, [4] = { [2] = 10 } }) -- Гошо owes Иван 20, Петър owes Гошо 10
-    close(sim, host)
-    ns.Book.take = take
+    end, function()
+      ok(cl[G]:act{ k = "buy", n = 1000 }); sim:run(1)
+      hands(sim, host, 2) -- Иван, Петър and Гошо
+      setTook(cl, { [1] = { [4] = 20 }, [4] = { [2] = 10 } }) -- Гошо owes Иван 20, Петър owes Гошо 10
+      close(sim, host)
+    end)
     local out, closing = gidOf(got[A], nil, 3), gidOf(got[A], "close")
     ok(host.session.book.final and #host.session.book.missing == 1, "the book ended without Мария's key")
     eq(Play.debt(cl[A], closing, G, A).status, "confirmed")
@@ -345,7 +374,7 @@ describe("a cash settlement becomes pair debts", function()
     end
     ok(liar, "a dealer that is not the host")
     local submit, idx, face = ns.Cash.submit, nil, nil
-    ns.Cash.submit = function(s, a) -- the dealer's modified client gives a false river, and holds to it at the showdown
+    patched(ns.Cash, "submit", function(s, a) -- the dealer's modified client gives a false river, and holds to it at the showdown
       local step = s.client == liar and a.k == "book" and a.op == "step" and type(a.a) == "table" and a.a
       if step and step.k == "street" and #s.state.board == 4 then
         idx, face = next(step.cards), s.fair.deck[52]
@@ -354,16 +383,16 @@ describe("a cash settlement becomes pair debts", function()
         step.cards[idx] = face
       end
       return submit(s, a)
-    end
-    for _ = 1, 200 do -- every seat checks or calls to the showdown
-      local st = hs.state
-      if not E.inHand(st) then break end
-      if st.phase == "bet" and st.turn then
-        cl[ALL[st.turn]]:act{ k = st.bet > st.p[st.turn].bet and "call" or "check" }
+    end, function()
+      for _ = 1, 200 do -- every seat checks or calls to the showdown
+        local st = hs.state
+        if not E.inHand(st) then break end
+        if st.phase == "bet" and st.turn then
+          cl[ALL[st.turn]]:act{ k = st.bet > st.p[st.turn].bet and "call" or "check" }
+        end
+        sim:run(1)
       end
-      sim:run(1)
-    end
-    ns.Cash.submit = submit
+    end)
     ok(idx, "the river was false")
     setTook(cl, { [1] = { [2] = 20, [3] = 30 } }) -- Петър and Мария owe Иван
     close(sim, host)
@@ -467,7 +496,7 @@ describe("a cash settlement becomes pair debts", function()
     local S
     for _, e in ipairs(Play.entries(sim, A, "S")) do if e.gid == gid then S = e end end
     eq({ S.f, S.n[4], S.why }, { G, G, "left" })
-    eq(cl[K].stakes:seen()[gid], nil)
+    eq(cl[K].stakes:seen()[gid].pairs, {}) -- Kiro applied it: a note that owes nobody (I1)
     for _, e in ipairs(Play.entries(sim, K, "D")) do ok(e.gid ~= gid, "Kiro writes no D for Гошо's hand") end
     ok(cl[K]:act{ k = "buy", n = 1000 }); sim:run(1)
     setTook(cl, { [1] = { [4] = 5 } }) -- Kiro owes Иван 5 chips
@@ -542,7 +571,8 @@ describe("a cash settlement becomes pair debts", function()
     close(sim, host)
     local gid = gidOf(got[A], "close")
     eq(cl[G].stakes:seen()[gid].foul, "unseen")
-    ok(cl[K].stakes:seen()[gid].foul ~= "deal", "not deal for Kiro")
+    -- Kiro sat after the bad hand closed: his book never heard of it (a snapshot carries no bad hand), and it holds none of his chips.
+    eq(cl[K].stakes:seen()[gid].foul, nil)
     eq(cl[B].stakes:seen()[gid].foul, "deal")
     eq(words(sim, B, gid, A), { { k = "N", why = "deal" } })
     eq(words(sim, G, gid, A), {})
@@ -584,12 +614,10 @@ describe("a cash settlement becomes pair debts", function()
     hands(sim, host, 1)
     setTook(cl, { [1] = { [2] = 20, [3] = 30 } }) -- Петър and Мария owe Иван
     local take = ns.Book.take
-    ns.Book.take = function(s, seat, a) -- Петър's key is late: the host waits BOOK_WAIT for it
+    patched(ns.Book, "take", function(s, seat, a) -- Петър's key is late: the host waits BOOK_WAIT for it
       if s.client == host and seat == 2 then return end
       return take(s, seat, a)
-    end
-    assert(ns.Cash.close(host)); sim:run(3)
-    ns.Book.take = take
+    end, function() assert(ns.Cash.close(host)); sim:run(3) end)
     local gid = gidOf(got[A], "close")
     ok(gid and not host.session.book.published, "no key is out yet")
     eq({ host:startGame() }, { nil, "book" }) -- an honest host waits for the keys
@@ -603,6 +631,61 @@ describe("a cash settlement becomes pair debts", function()
       ok(asked(cl[name], gid .. "|" .. name .. "|" .. A), name)
       eq(words(sim, name, gid, A), {}, name)
     end
+  end)
+
+  it("a claim at an event that settled only others: contested when clean, after the book (I1)", function()
+    local sim, cl = Play.cash(3)
+    local host, got = cl[A], outs(cl)
+    hands(sim, host, 1)
+    setTook(cl, { [1] = { [3] = 10 } }) -- Мария owes Иван 10 chips, Петър nobody
+    ok(cl[M]:act{ k = "cashout" }); sim:run(3)
+    local gid = gidOf(got[A], nil, 3)
+    local note = cl[B].stakes:seen()[gid]
+    eq({ note and note.pairs, note and note.wait }, { {}, true })
+    ok(cl[M].ledgerNet:make("D", { gid = gid, g = "holdem", f = B, t = M, c = SK, why = "lost" })); sim:run(6)
+    eq(words(sim, B, gid, M), {}) -- waiting for the book
+    eq(asked(cl[B], gid .. "|" .. B .. "|" .. M), false)
+    close(sim, host)
+    eq(words(sim, B, gid, M), { { k = "N", why = "no" } })
+    eq(Play.debt(cl[M], gid, B, M).status, "contested")
+  end)
+
+  it("a claim at an event that settled only others: asked when unseen (I1)", function()
+    local sim, cl = Play.cash(3)
+    local host, got = cl[A], outs(cl)
+    hands(sim, host, 1)
+    cl[B] = sim:relog(B); sim:run(3) -- Петър's notes of this game are unseen
+    calm(sim, host)
+    setTook(cl, { [1] = { [3] = 10 } }) -- Мария owes Иван 10 chips, Петър nobody
+    ok(cl[M]:act{ k = "cashout" }); sim:run(3)
+    local gid = gidOf(got[A], nil, 3)
+    eq(cl[B].stakes:seen()[gid].pairs, {})
+    ok(cl[M].ledgerNet:make("D", { gid = gid, g = "holdem", f = B, t = M, c = SK, why = "lost" })); sim:run(6)
+    close(sim, host)
+    eq(words(sim, B, gid, M), {})
+    ok(asked(cl[B], gid .. "|" .. B .. "|" .. M), "put to Петър")
+  end)
+
+  it("an open that replaces my dealt hand: its bad close is mine, deal (I2)", function()
+    local sim, cl = Play.cash(3)
+    local host, got = cl[A], outs(cl)
+    local hs = host.session
+    hands(sim, host, 1)
+    inHand(sim, host)
+    for _ = 1, 20 do if hs.state.phase == "bet" then break end sim:run(1) end
+    ok(hs.fair and hs.fair.stage == "dealt" and U.contains(hs.fair.p, 2), "Петър's hand is dealt")
+    eq(cl[B].session.stakeFoul, nil)
+    if hs.fairTimer then hs.fairTimer.cancel(); hs.fairTimer = nil end
+    -- A modified host opens a new round over the dealt hand, with the same players.
+    hs:play(0, { k = "fair", op = "open", h = hs.seq + 1, d = E.dealer(hs.state), p = U.copy(hs.fair.p) }); sim:run(1)
+    eq(cl[B].session.stakeFoul, "deal")
+    for _ = 1, 300 do if not E.inHand(hs.state) then break end sim:run(1) end -- the hand that lost its round ends by itself
+    ok(not E.inHand(hs.state), "the hand ended")
+    setTook(cl, { [1] = { [2] = 20 } }) -- Петър owes Иван 20 chips
+    close(sim, host)
+    local gid = gidOf(got[A], "close")
+    ok(gid, "the close settled seats")
+    eq(words(sim, B, gid, A), { { k = "N", why = "deal" } })
   end)
 
   it("Stakes.cashPairs names the record's own names and leaves out a missing one", function()
