@@ -71,8 +71,12 @@ function Member.adopt(client, sender, m)
   local t, me = m.tbl, client.env.me
   local seat = seatOf(t.s, me)
   local known, sk = accepted(client, m.tid)
+  -- My staked table at another stake while I sit in its running game: forged
+  -- (the hook `ended`, core/Stakes.lua), and no STD goes: I gave up no seat.
+  local cur = client.session
+  local robbed = cur ~= nil and cur.tid == m.tid and cur.stake ~= nil and cur.stake ~= t.sk and cur:hook("ended") == true
   if seat and known and sk ~= t.sk then
-    client:send("WHISPER", sender, Session.message("STD", { tid = m.tid }))
+    if not robbed then client:send("WHISPER", sender, Session.message("STD", { tid = m.tid })) end
     client.pending, client.gaveUp = nil, m.tid
     if client.session and client.session.role == "host" then Succession.demote(client.session) end
     if client.session then Session.leave(client) end
@@ -94,11 +98,12 @@ function Member.adopt(client, sender, m)
   -- How this snapshot came, for the extensions: fresh, from a host new to me
   -- (changed), answering a request of mine (asked: SYN, WAT or SIT), with a
   -- seat I did not have (sat); q = my seq before it; req: it takes me in at
-  -- my own SIT or WAT (a newcomer, not a login back to a seat I held).
+  -- my own SIT or WAT (a newcomer, not a login back to a seat I held); sit:
+  -- it seats me while a SIT of mine at this table is unanswered.
   local how = {
     fresh = fresh, changed = not fresh and (prevHost ~= sender or s.epoch ~= m.e or s.stale == true),
     asked = s.asked == true, sat = seat ~= nil and s.mySeat == nil, q = s.seq,
-    req = fresh and client.pending ~= nil and client.pending.tid == m.tid,
+    req = fresh and client.pending ~= nil and client.pending.tid == m.tid, sit = seat ~= nil and s.sitAsked ~= nil,
   }
   if s.role == "host" then Succession.demote(s) end
   s.tid, s.role, s.mySeat, s.host = m.tid, seat and "player" or "watcher", seat, sender
@@ -351,6 +356,7 @@ local function onEnd(client, sender, m)
   local s, p = client.session, client.pending
   if s and s.role ~= "host" and s.tid == m.tid and s.host == sender
       and type(m.e) == "number" and m.e >= s.epoch then
+    if s.stake ~= nil then s:hook("ended") end -- while I sit in a running staked game: forged (core/Stakes.lua)
     Session.leave(client)
   elseif p and p.tid == m.tid and p.host == sender then
     client.pending = nil

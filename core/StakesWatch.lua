@@ -19,7 +19,11 @@ local _, ns = ...
 --       they go). A snapshot of any game is checked against it: a mark in my
 --       name that I did not send, a new match of Морски шах that seats me
 --       without my own sit or „Реванш“ since the last began (Stakes.began,
---       events too).
+--       events too). It is saved with my stake note (Stakes.save), so a
+--       /reload keeps what I sent.
+--   A snapshot shows my game when legal play leads from the state I hold to
+--   it (Stakes.leadsTo), a round's end and the rounds after it included: what
+--   I did not see of it is "unseen". Only what no play reaches is another game.
 -- Session fields (local, never sent):
 --   stakeLog  {k, c, g, r}: the action's kind and cell, s.stakeNo and the round when sent
 local Stakes = ns.Stakes
@@ -36,6 +40,7 @@ function Stakes.sent(s, a)
   s.stakeLog = log
   log[#log + 1] = { k = a.k, c = a.c, g = s.stakeNo or 0, r = s.state and s.state.round }
   if #log > LOG_KEPT then table.remove(log, 1) end
+  Stakes.save(s)
 end
 
 -- Did I send a `k` (cell c, in round r) since the last game began here -> bool
@@ -91,29 +96,75 @@ local function timeoutDue(s, seat)
 end
 
 -- What a snapshot of Морски шах did for my seat that I did not -> true:
--- forged. A mark of mine that my game did not have and my log does not: in my
--- game carried on (`forward`) beyond one due timeout, in another game any.
+-- forged. A mark of mine that my game did not have and my log does not: in
+-- another game any; in my game carried on (`forward`) any but one in the
+-- round I hold, engine.auto's cell: my timeout, due by my clock or of a turn
+-- a login brought me (no clock of mine saw it begin: the snapshot's "unseen").
 local function doneForMe(s, prev, st, seat, forward)
   if not (st and st.board and seat) then return false end
-  local timeout = forward and timeoutDue(s, seat)
+  local round, t = forward and prev.round == st.round, s.stakeTurn
+  local auto = round and (timeoutDue(s, seat) or (t and t.seat == seat and not t.seen)) and s:engine().auto(prev, seat)
   for c = 1, 9 do
-    local had = forward and prev.round == st.round and prev.board[c] == seat
-    if st.board[c] == seat and not had then
-      local mine = forward and sentIn(s, "mark", c, st.round)
-      if mine then
+    if st.board[c] == seat and not (round and prev.board[c] == seat) then
+      if forward and sentIn(s, "mark", c, st.round) then
         ns.Member.mine(s, { k = "mark", c = c }) -- shown: no later event may pass for it
-      elseif not timeout then
+      elseif not (auto and auto.c == c) then
         return true
       end
-      timeout = timeout and mine
+    end
+  end
+  return false
+end
+
+-- Морски шах: does legal play lead from a to b in one match? From a's board,
+-- or from the empty one of a later round (whoever's turn it is to begin it),
+-- the marks b adds are played through the engine, seat by seat, with each of
+-- the last mover's as the last (only the last mark may end a round). b must
+-- stand where that play ends, and the points it holds beyond that play are
+-- at most one for each round it skips, a's own open round among them.
+local function marksLead(a, b)
+  local E, skip = ns.Engines.ttt, b.round - a.round
+  if skip < 0 or (skip > 0 and a.phase == "match") then return false end
+  local x, add = E.restore(a), { {}, {} }
+  if skip > 0 then
+    x.board, x.round, x.phase, x.line, x.draw = { 0, 0, 0, 0, 0, 0, 0, 0, 0 }, b.round, "play", nil, false
+    x.first = skip % 2 == 0 and a.first or 3 - a.first
+    x.turn = x.first
+  end
+  for c = 1, 9 do
+    local v, w = x.board[c], b.board[c]
+    if v ~= w then
+      if v ~= 0 or not add[w] then return false end
+      table.insert(add[w], c)
+    end
+  end
+  local n, hidden = #add[1] + #add[2], skip > 0 and skip - 1 + (a.phase == "play" and 1 or 0) or 0
+  local last = x.turn and add[n % 2 == 1 and x.turn or 3 - x.turn] or {}
+  for i = 1, math.max(1, #last) do
+    local y, at, played = E.restore(x), { 0, 0 }, true
+    for _ = 1, n do
+      local seat = y.turn
+      local cells = seat and add[seat]
+      local k = cells and at[seat] + 1
+      at[seat or 1] = k
+      if cells == last then k = (k == #cells and i) or (k >= i and k + 1) or k end -- its i-th mark goes last
+      played = played and cells ~= nil and cells[k] ~= nil and E.apply(y, seat, { k = "mark", c = cells[k] }) == true
+    end
+    local g1, g2 = y.score[1] - a.score[1], y.score[2] - a.score[2] -- the point of this play
+    local h1, h2 = b.score[1] - y.score[1], b.score[2] - y.score[2] -- the points of the rounds skipped
+    local over = b.score[1] >= E.WINS or b.score[2] >= E.WINS
+    if played and y.turn == b.turn and y.first == b.first and h1 >= 0 and h2 >= 0 and h1 + h2 <= hidden
+        and (skip == 0 or (b.score[1] - g1 < E.WINS and b.score[2] - g2 < E.WINS))
+        and b.phase == ((y.phase == "play" and not over and "play") or (over and "match") or "round") then
+      return true
     end
   end
   return false
 end
 
 -- Does game state a lead to b in one game (b is a, or a later point of it)?
--- Death Roll: the same start, a's rolls are b's first rolls. Морски шах: the
--- same round with a's marks on b's board, or the next round after a's ended.
+-- Death Roll: the same start, a's rolls are b's first rolls. Морски шах: by
+-- legal play (marksLead; a state it cannot read leads nowhere).
 function Stakes.leadsTo(a, b)
   if type(a) ~= "table" or type(b) ~= "table" then return false end
   if a.rolls and b.rolls then
@@ -124,13 +175,8 @@ function Stakes.leadsTo(a, b)
     return true
   end
   if not (a.board and b.board) then return false end
-  if a.round ~= b.round then
-    return a.round + 1 == b.round and a.phase == "round" and a.score[1] <= b.score[1] and a.score[2] <= b.score[2]
-  end
-  for c = 1, 9 do
-    if a.board[c] ~= 0 and a.board[c] ~= b.board[c] then return false end
-  end
-  return true
+  local read, leads = pcall(marksLead, a, b)
+  return read and leads
 end
 
 local leadsTo = Stakes.leadsTo
@@ -149,8 +195,9 @@ local function turnKey(st)
 end
 
 -- A snapshot replaced my state (how: see Member.adopt). The very game I hold:
--- nothing. My game carried on (or, from a changed host, one behind mine): the
--- same game, "unseen". Anything else is another game. A snapshot nobody asked
+-- nothing. My game carried on (or, from a changed host, one behind mine, a
+-- prefix: nothing in it is new, so nothing of it is judged): the same game,
+-- "unseen". Anything else is another game. A snapshot nobody asked
 -- for that changes my game is "forged", from my own host always, from a
 -- changed host unless it is a prefix (F21); one I asked for or logged in with
 -- is "unseen". Its Death Roll state must say staked (Member.adopt set mine).
@@ -159,20 +206,24 @@ end
 -- judged the rolls it brought in my name. The clock of my turn is my own (a).
 ns.Ext.stakes.adopted = function(s, prev, m, how)
   local st, was, on, me = s.state, s.stakeLive, running(s), s.client.env.me
+  local saved = s.client.env.db.stakeLog -- a login back to my table: what I sent there before
+  if how.fresh and type(saved) == "table" and saved.tid == s.tid then s.stakeLog, s.stakeNo = saved.log, saved.no end
   local kept = was and s.stakeFoul or nil
   if s:engine().idle and type(m.st) == "table" and m.st.staked ~= true then pend(s, "forged") end
   local identical = prev ~= nil and st ~= nil and same(prev, st) and was == on
   local forward = leadsTo(prev, st)
-  local cont = identical or forward or (how.changed and leadsTo(st, prev))
+  local prefix = not forward and how.changed and leadsTo(st, prev)
+  local cont = identical or forward or prefix
   if not identical and (was or on) then
     local pushed = not (how.changed or how.asked or how.fresh)
     pend(s, (pushed or (how.changed and not how.asked and not cont)) and "forged" or "unseen")
   end
   local held = s.stakeSeat -- my seat before this snapshot
-  if held and not identical and doneForMe(s, prev, st, held, forward) then pend(s, "forged") end
+  if held and not identical and not prefix and doneForMe(s, prev, st, held, forward) then pend(s, "forged") end
   if held and s.seats[held] ~= me then Stakes.stood(s, held, nil, true, prev and prev.max) end
-  if how.sat then s.stakeRefill = "filled" end -- my own sit filled the seat
-  if s.mySeat and (how.req or (how.sat and not how.fresh)) then Stakes.sent(s, { k = "sit" }) end -- my own SIT took me in
+  local sat = how.sat or (how.sit and not held) -- a seat I did not hold (one the host had stood: by my own SIT)
+  if sat then s.stakeRefill = "filled" end -- my own sit filled the seat
+  if s.mySeat and (how.req or (sat and not how.fresh)) then Stakes.sent(s, { k = "sit" }) end -- my own SIT took me in
   local t = s.stakeTurn
   local sameTurn = cont and on and t ~= nil and t.seat == st.turn and turnKey(prev) == turnKey(st)
   refresh(s, not cont, not sameTurn, how)

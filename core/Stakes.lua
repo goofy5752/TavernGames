@@ -20,14 +20,16 @@ local _, ns = ...
 --           AUTO_GRACE left for the transport; a snapshot, of my game or
 --           another, that does for my seat what I did not (a mark or a roll in
 --           my name, my seat gone without my stand or a stand for idleness my
---           clock agrees with);
+--           clock agrees with); my host's END, or its snapshot at another
+--           stake, while I sit in the running game (Member.onEnd, Member.adopt);
 --   roll    a stand for idleness of my seat after my client saw its own roll
 --           on that turn while it saw me in the host's group (the host ignored
 --           it; outside the group the host could not see it: no foul);
 --   stand   my seat stood up while my client ran and I did not ask, unless for
 --           idleness and my own clock agrees;
---   unseen  a snapshot I asked for or logged in with brought me into the game,
---           or one from a changed host is a prefix of my game (or mine of it);
+--   unseen  a snapshot I asked for or logged in with brought me into the game
+--           or carried it on by moves I did not see (a round's end among them),
+--           or one from a changed host is a prefix of my game;
 --           what my clock cannot tell after a login or another host.
 -- Fouls are reset when an event begins a new game; a foul raised by that
 -- event is set after the reset, so it counts against that game. A snapshot
@@ -36,12 +38,17 @@ local _, ns = ...
 -- up, so that client judges its own stand with its why. The same host at a new
 -- epoch is no host change here (s.stakeHost).
 -- Death Roll's rolls are judged by Rolls.audit, not here.
+-- A foul survives my session only where my host ends it for me (the hook
+-- `ended`): as the note db.stakeSeen[tid .. "/" .. my seq] = {at, tid, g, sk,
+-- q, foul, open = true}; open: the game had not ended on my client, so the
+-- note answers every claim about this table from a later event.
 --
 -- Session fields (local, never sent):
 --   stakeLive    a game runs (live, a state, not over); recomputed at the end of every hook
 --   stakeRoster  seat -> name of who plays the running game, taken when it begins
 --                (the seats engine.playing accepts); nil while none runs
---   stakeNo      how many games began on my client at this table
+--   stakeNo      how many games began on my client at this table (saved with
+--                s.stakeLog: Stakes.save, core/StakesWatch.lua)
 --   stakeFoul    nil | "forged" | "roll" | "stand" | "unseen"
 --   stakePend    the foul of the event being handled, set at the end of the hook
 --   stakeTurn    {seat, at, seen, was}: the seat on turn and my env.now() when my client
@@ -95,6 +102,15 @@ local function running(s)
 end
 Stakes.running = running
 
+-- My log and my game counter go to my saved variables, beside my stake note
+-- for this table and only while it stands (ns.Stake.clear drops both):
+-- db.stakeLog = {tid, no, log}; a login back to the table takes them up again.
+function Stakes.save(s)
+  local db = s.client.env.db
+  local note = db.stakeSat
+  if type(note) == "table" and note.tid == s.tid then db.stakeLog = { tid = s.tid, no = s.stakeNo, log = s.stakeLog } end
+end
+
 local function roster(s)
   local engine, out = s:engine(), {}
   for i = 1, #s.seats do
@@ -138,6 +154,7 @@ local function refresh(s, fresh, moved, snap)
     Stakes.began(s, snap)
     s.stakeRoster, s.stakeFoul, s.stakeTurn, s.stakeStood, s.stakeRefill = roster(s), nil, nil, nil, nil
     s.stakeNo = (s.stakeNo or 0) + 1
+    Stakes.save(s)
   elseif not on then
     if s.stakeLive then s.stakeEndedAt = not snap and now or nil end
     s.stakeRoster, s.stakeTurn = nil, nil
@@ -214,5 +231,19 @@ ns.Ext.stakes = {
   gone = function(s)
     if s.seats[s.mySeat] == s.client.env.me then Stakes.stood(s, s.mySeat, nil, false, s.state and s.state.max) end
     refresh(s)
+  end,
+  -- Member: my host ends my session (its END, a snapshot at another stake)
+  -- while I sit in the running game, which no honest host does: forged, and
+  -- noted where it outlives the session (db.stakeSeen, above) -> true
+  ended = function(s)
+    local env = s.client.env
+    if not (running(s) and s.mySeat and s.seats[s.mySeat] == env.me) then return end
+    Stakes.foul(s, "forged")
+    local db = env.db
+    db.stakeSeen = db.stakeSeen or {}
+    db.stakeSeen[s.tid .. "/" .. s.seq] = {
+      at = env.epoch and env.epoch() or env.now(), tid = s.tid, g = s.game, sk = s.stake, q = s.seq, foul = s.stakeFoul, open = true,
+    }
+    return true
   end,
 }

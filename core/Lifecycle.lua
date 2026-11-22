@@ -36,7 +36,8 @@ local copy, seatOf = ns.Util.copy, ns.Util.seatOf
 -- table(s, a) -> true (a seat-0 event the extension applied itself), snap(s)
 -- -> the SNP field `fr`, leaving(s) (my client stands up: Client:stand, before
 -- its STD), gone(s) (member: my host answered SNO "gone" while I held a seat,
--- before my session ends). A hook that raises counts as nil: the error goes to
+-- before my session ends), ended(s) -> true (member, staked: my host's END or its
+-- snapshot at another stake, before my session ends). A hook that raises counts as nil: the error goes to
 -- env.log ("error", "ext", "<ext>.<hook>", message), so it cannot cut short the
 -- request, event or snapshot handling around it (e.g. the sitter's SNP after a sit);
 -- an act hook that raises drops the action.

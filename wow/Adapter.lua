@@ -17,10 +17,11 @@ ns.Adapter = Adapter
 -- Which AceDB section holds each db key.
 -- fairKeep: core/DealKeep.lua; lastAt: the table I am at (core/Presence.lua);
 -- bookKeep, bookSpent: the Hold'em table key and spend (core/Book.lua);
--- stakeSeen, stakeLeft, stakeSat: my own outcome notes and the stake I sat
--- down for, never sent; ledger: the guild's gold ledger, account-wide.
+-- stakeSeen, stakeLeft, stakeSat, stakeLog: my own outcome notes, the stake I
+-- sat down for and what I sent at that table (core/StakesWatch.lua), never
+-- sent; ledger: the guild's gold ledger, account-wide.
 local CHAR_KEYS = { snoozeUntil = true, busy = true, debug = true, fairKeep = true, lastAt = true,
-  bookKeep = true, bookSpent = true, stakeSeen = true, stakeLeft = true, stakeSat = true }
+  bookKeep = true, bookSpent = true, stakeSeen = true, stakeLeft = true, stakeSat = true, stakeLog = true }
 local GLOBAL_KEYS = { lang = true, introDone = true, minimap = true, ledger = true }
 Adapter.CHAR_KEYS, Adapter.GLOBAL_KEYS = CHAR_KEYS, GLOBAL_KEYS
 Adapter.DEFAULTS = {

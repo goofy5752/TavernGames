@@ -201,9 +201,10 @@ describe("stake", function()
     end
     a.session:snapshotTo(B); sim:run(1)
     sim.bus.filter = nil
-    eq(#sent(sim, B, "STD", mark), 1); eq(b.session, nil)
+    -- The match runs: I go, but I give up no seat (no STD; the foul is noted: Task 7 fix round 4, C1).
+    eq(#sent(sim, B, "STD", mark), 0); eq(b.session, nil)
     eq(refused, { { tid, "stake" } })
-    eq(a.session.seats[2], false)
+    eq(a.session.seats[2], B); eq(b.env.db.stakeSeen[tid .. "/" .. a.session.seq].foul, "forged")
   end)
 
   it("an invitation shows the stake and its yes sits with it", function()

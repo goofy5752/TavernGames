@@ -732,7 +732,7 @@ describe("stakes: play, fix round 1", function()
     ok(L(won, nextRound)); ok(not L(nextRound, won))
     local later = Util.copy(nextRound); later.round = 3
     ok(not L(won, later))
-    ok(not L(mine, nextRound)) -- round 1 still running is not followed by round 2
+    ok(L(mine, nextRound)) -- round 1 still running leads to round 2 by legal play (fix round 4, I2): its end is unseen
   end)
 end)
 
@@ -1103,5 +1103,199 @@ describe("stakes: play, fix round 3 (structural)", function()
     eq(b.session, nil); eq(s.stakeFoul, "stand")
     a.session:snapshotTo(B); sim:run(0)
     eq(b.session, nil); ok(#sent(sim, B, "STD", mark) >= 1, "the seat is not refused")
+  end)
+end)
+
+describe("stakes: play, fix round 4", function()
+  local function tick(sim, a, tid, q)
+    a:send("WHISPER", B, { v = 1, t = "TCK", tid = tid, e = a.session.epoch, q = q or a.session.seq }); sim:run(1)
+  end
+
+  -- Иван's EVs to Мария (and with `acts` Мария's ACTs) are lost while this holds.
+  local function hold(sim, acts)
+    sim.bus.filter = function(from, to, _, m)
+      if (from == A and to == B and m.t == "EV") or (acts and from == B and m.t == "ACT") then return {} end
+      return { m }
+    end
+  end
+
+  -- A snapshot of Иван to Мария says twice the stake while this holds.
+  local function otherStake(sim)
+    sim.bus.filter = function(from, to, _, m)
+      if from == A and to == B and m.t == "SNP" then m.tbl.sk = 2 * SK end
+      return { m }
+    end
+  end
+
+  -- Иван takes round 1 with the cells 1, 2, 3 (Мария: 4, 5), but for his last mark.
+  local function roundOne(sim, a, b)
+    for _, c in ipairs({ 1, 4, 2, 5 }) do
+      ok((c < 3 and a or b):act({ k = "mark", c = c })); sim:run(1)
+    end
+  end
+
+  it("C1: an END from my host while I sit in a running staked game is forged, noted beyond my session", function()
+    local sim, a, b, _, tid = drTable({ B }, SK)
+    roll(sim, a, 50)
+    local s, q = b.session, b.session.seq
+    a:send("WHISPER", B, { v = 1, t = "END", tid = tid, e = a.session.epoch }); sim:run(0)
+    eq(b.session, nil); eq(s.stakeFoul, "forged")
+    local note = b.env.db.stakeSeen[tid .. "/" .. q]
+    eq({ note.foul, note.open, note.sk, note.tid, note.q, note.g }, { "forged", true, SK, tid, q, "deathroll" })
+    -- Outside a running game an END is what it was: I leave, nothing is noted.
+    sim, a, b, _, tid = tttTable(SK)
+    playOut(sim, a, b); ok(b.session:gameOver())
+    a:send("WHISPER", B, { v = 1, t = "END", tid = tid, e = a.session.epoch }); sim:run(0)
+    eq(b.session, nil); eq(b.env.db.stakeSeen, nil)
+    -- A fun table: nothing of it.
+    eq(spied(function()
+      sim, a, b, _, tid = tttMariaOnTurn(nil)
+      a:send("WHISPER", B, { v = 1, t = "END", tid = tid, e = a.session.epoch }); sim:run(0)
+    end), {})
+    eq(b.session, nil); eq(b.env.db.stakeSeen, nil)
+  end)
+
+  it("C1: a snapshot at another stake while I sit in a running staked game is forged, and I give up no seat", function()
+    local sim, a, b, _, tid = drTable({ B }, SK)
+    roll(sim, a, 50)
+    local s, q, mark = b.session, b.session.seq, #sim.sent
+    local refused = record(b, "refused")
+    otherStake(sim); a.session:snapshotTo(B); sim:run(0); sim.bus.filter = nil
+    eq(b.session, nil); eq(refused, { { tid, "stake" } }); eq(s.stakeFoul, "forged")
+    eq(#sent(sim, B, "STD", mark), 0); eq(a.session.seats[2], B)
+    local note = b.env.db.stakeSeen[tid .. "/" .. q]
+    eq({ note.foul, note.open, note.sk }, { "forged", true, SK })
+    -- No game runs: the seat is given up as before, and nothing is noted.
+    sim, a, b, _, tid = tttTable(SK)
+    playOut(sim, a, b); mark = #sim.sent
+    otherStake(sim); a.session:snapshotTo(B); sim:run(0); sim.bus.filter = nil
+    eq(b.session, nil); eq(#sent(sim, B, "STD", mark), 1); eq(b.env.db.stakeSeen, nil)
+  end)
+
+  it("I1: what I sent outlives a /reload: my „Реванш“, then the host's, is a clean new match", function()
+    local sim, a, b, _, tid = tttTable(SK)
+    playOut(sim, a, b); ok(b.session:gameOver())
+    ok(b:act({ k = "rematch" })); sim:run(1)
+    eq(b.env.db.stakeLog.tid, tid); eq(b.env.db.stakeLog.no, 1)
+    b = sim:relog(B); sim:run(1)
+    eq(b.session.mySeat, 2); eq(b.session.stakeNo, 1)
+    eq(b.session.stakeLog[#b.session.stakeLog].k, "rematch")
+    ok(a:act({ k = "rematch" })); sim:run(1)
+    eq(b.session.stakeLive, true); eq(b.session.stakeFoul, nil); eq(b.env.db.stakeLog.no, 2)
+    -- The log goes with my stake note.
+    b:stand(); sim:run(0)
+    eq(b.env.db.stakeSat, nil); eq(b.env.db.stakeLog, nil)
+    -- A log of another table is not mine here.
+    sim, a, b, _, tid = tttTable(SK)
+    playOut(sim, a, b)
+    b.env.db.stakeLog = { tid = "x#1", no = 1, log = { { k = "rematch", g = 1 } } }
+    b = sim:relog(B); sim:run(1)
+    a.session:play(2, { k = "rematch" }); ok(a:act({ k = "rematch" })); sim:run(1)
+    eq(b.session.stakeLive, true); eq(b.session.stakeFoul, "forged")
+  end)
+
+  it("I2: a lost round-ending event is the same game: unseen, never forged; a mark in my name still needs my log", function()
+    local sim, a, b = tttTable(SK)
+    roundOne(sim, a, b)
+    hold(sim); ok(a:act({ k = "mark", c = 3 })); sim:run(0); sim.bus.filter = nil
+    eq(b.session.state.phase, "play")
+    sim:run(5) -- the host's `next` shows the gap: I ask
+    eq(b.session.state.round, 2); eq(b.session.state.score, { 1, 0 })
+    eq(b.session.stakeFoul, "unseen"); eq(b.session.stakeNo, 1)
+    -- I play on in round 2: my own marks are mine.
+    ok(b:act({ k = "mark", c = 9 })); sim:run(1)
+    eq(a.session.state.board[9], 2); eq(b.session.stakeFoul, "unseen")
+    -- The same loss, and the host marks for me in the round I never saw begin.
+    local tid
+    sim, a, b, _, tid = tttTable(SK)
+    roundOne(sim, a, b)
+    hold(sim); ok(a:act({ k = "mark", c = 3 })); sim:run(4)
+    eq(a.session.state.round, 2); eq(a.session.state.turn, 2)
+    a.session:play(2, { k = "mark", c = 7 }); sim:run(0); sim.bus.filter = nil
+    tick(sim, a, tid)
+    eq(b.session.state.board[7], 2); eq(b.session.stakeFoul, "forged")
+  end)
+
+  it("I2: only what no legal play reaches is another game", function()
+    local function st(over)
+      local t = TTT.new()
+      for k, v in pairs(over or {}) do t[k] = v end
+      if t.phase ~= "play" then t.turn = nil end
+      return t
+    end
+    local lead = Stakes.leadsTo
+    local mid = st({ board = { 1, 1, 0, 2, 2, 0, 0, 0, 0 } })
+    ok(lead(mid, mid)); ok(lead(st(), mid)); ok(not lead(mid, st()))
+    -- The round's end, the next round, a later one: each within what the rounds between can score.
+    ok(lead(mid, st({ board = { 1, 1, 1, 2, 2, 0, 0, 0, 0 }, phase = "round", score = { 1, 0 } })))
+    ok(lead(mid, st({ round = 2, first = 2, turn = 2, score = { 1, 0 } })))
+    ok(lead(mid, st({ round = 2, first = 2, turn = 2, score = { 0, 1 } })))
+    ok(lead(mid, st({ round = 2, first = 2, turn = 2 })), "a draw")
+    ok(lead(mid, st({ round = 3, score = { 1, 1 } })))
+    ok(not lead(mid, st({ round = 2, first = 2, turn = 2, score = { 1, 1 } })), "two points in one round")
+    ok(not lead(mid, st({ round = 2, first = 2, turn = 2, score = { 2, 0 } })))
+    ok(not lead(mid, st({ round = 2, score = { 1, 0 } })), "the wrong seat begins")
+    ok(not lead(st({ round = 2, first = 2, turn = 2, score = { 1, 0 } }), st({ round = 3, score = { 0, 1 } })), "a score went down")
+    -- A round already decided adds nothing more; a match that is over goes nowhere.
+    local won = st({ board = { 1, 1, 1, 2, 2, 0, 0, 0, 0 }, phase = "round", score = { 1, 0 } })
+    ok(lead(won, st({ round = 2, first = 2, turn = 2, score = { 1, 0 } })))
+    ok(not lead(won, st({ round = 2, first = 2, turn = 2, score = { 2, 0 } })))
+    ok(not lead(won, st({ board = { 1, 1, 1, 2, 2, 2, 0, 0, 0 }, phase = "round", score = { 1, 0 } })))
+    local over = st({ board = { 1, 1, 1, 2, 2, 0, 0, 0, 0 }, phase = "match", score = { 3, 0 }, round = 3, winner = 1 })
+    ok(lead(over, over)); ok(not lead(over, st({ round = 4, first = 2, turn = 2, score = { 3, 0 } })))
+    -- Marks no play makes: three more of one seat, a cell changed, a point that is not the line's.
+    ok(not lead(mid, st({ board = { 1, 1, 0, 2, 2, 0, 1, 1, 1 } })))
+    ok(not lead(mid, st({ board = { 1, 2, 0, 2, 2, 0, 1, 0, 0 } })))
+    ok(not lead(mid, st({ board = { 1, 1, 1, 2, 2, 0, 0, 0, 0 }, phase = "round", score = { 0, 1 } })))
+  end)
+
+  it("I2: a changed host's honest prefix of my match is unseen, my own marks in it are no foul", function()
+    local sim, a, b = tttTable(SK)
+    for _, c in ipairs({ 1, 5, 2 }) do
+      ok((c < 3 and a or b):act({ k = "mark", c = c })); sim:run(1)
+    end
+    eq(b.session.state.board, { 1, 1, 0, 0, 2, 0, 0, 0, 0 }); eq(b.session.stakeFoul, nil)
+    -- The host at a new epoch, one mark behind me.
+    local s = a.session
+    s.state.board[2], s.state.turn, s.epoch = 0, 1, s.epoch + 1
+    s:snapshotTo(B); sim:run(0)
+    eq(b.session.epoch, s.epoch); eq(b.session.state.board, { 1, 0, 0, 0, 2, 0, 0, 0, 0 })
+    eq(b.session.stakeFoul, "unseen"); eq(b.session.stakeNo, 1)
+    -- A "prefix" with a mark in my name that my match never had is none: forged.
+    sim, a, b = tttTable(SK)
+    for _, c in ipairs({ 1, 5, 2 }) do
+      ok((c < 3 and a or b):act({ k = "mark", c = c })); sim:run(1)
+    end
+    s = a.session
+    s.state.board, s.state.turn, s.epoch = { 1, 0, 0, 0, 0, 0, 0, 0, 2 }, 1, s.epoch + 1
+    s:snapshotTo(B); sim:run(0)
+    eq(b.session.state.board[9], 2); eq(b.session.stakeFoul, "forged")
+  end)
+
+  it("M1: a seat the host stood, taken again by my own sit before I was told to go, is a sit", function()
+    local sim, a, b, _, tid = tttMariaOnTurn(SK)
+    a.session:event(0, { k = "stand", seat = 2, why = "offline" }); a.session:abortIfShort(); sim:run(0)
+    eq(b.session.seats[2], false); eq(b.session.mySeat, 2); eq(b.session.stakeFoul, "stand")
+    b:sit(tid, 2, SK); sim:run(1)
+    eq(a.session.seats[2], B); eq(b.session.stakeLive, true); eq(b.session.stakeNo, 2)
+    eq(b.session.stakeFoul, nil)
+  end)
+
+  it("M2: after a login on my turn the honest timeout is unseen by a snapshot as by an event", function()
+    local sim, a, b, _, tid = tttMariaOnTurn(SK)
+    sim:run(30); b = sim:relog(B); sim:run(1)
+    eq(b.session.stakeFoul, "unseen")
+    hold(sim, true)
+    sim:run(C.TURN_DEFAULT + C.AUTO_GRACE - 31); sim.bus.filter = nil
+    eq(a.session.state.board[2], 2); eq(b.session.state.board[2], 0)
+    tick(sim, a, tid)
+    eq(b.session.state.board[2], 2); eq(b.session.stakeFoul, "unseen")
+    -- Any other mark in my name on that turn is forged.
+    sim, a, b, _, tid = tttMariaOnTurn(SK)
+    sim:run(30); b = sim:relog(B); sim:run(1)
+    hold(sim, true)
+    a.session:play(2, { k = "mark", c = 9 }); sim:run(0); sim.bus.filter = nil
+    tick(sim, a, tid)
+    eq(b.session.state.board[9], 2); eq(b.session.stakeFoul, "forged")
   end)
 end)

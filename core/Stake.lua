@@ -57,7 +57,7 @@ function Stake.note(client, tid, sk)
 end
 
 function Stake.clear(client)
-  client.env.db.stakeSat = nil
+  client.env.db.stakeSat, client.env.db.stakeLog = nil, nil -- and what I sent there (core/StakesWatch.lua)
   client.stakeNoted = true
 end
 
