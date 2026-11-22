@@ -2,7 +2,7 @@
 
 Run these in the game client on Forever with `/console scriptErrors 1` on throughout.
 Nothing here is marked passed on the strength of the unit tests: every row stays `not yet measured` until the result is written in by hand.
-Rows 1, 5–9 and 13 need two characters; rows 2–4, 14 and 20 need four (row 2 a fifth); rows 10–12 need a second account or a second machine, so that one side's connection can be cut.
+Rows 1, 5–9, 13 and 25 need two characters; rows 2–4, 14, 20, 23 and 26 need four (row 2 a fifth); rows 10–12 and 24 need a second account or a second machine, so that one side's connection can be cut.
 
 Scope of this stage: stakes for Сантасе, Белот and Табла (who owes whom, the leave, the next match, the hand and dice verdicts that feed the confirmation), and F1's residuals 24–27 (a far own id is asked, the sliced sort, the mail guard).
 Rows 2–5 and 29–32 of the F1 list (`docs/superpowers/notes/2026-11-stageF1-ingame-checks.md`) should be measured before this list: they decide how trade and mail behave on Forever.
@@ -33,3 +33,7 @@ Before the three games are announced, the user confirms residual S1 (the dealer'
 | 20 | over a normal evening of staked card games, count the no-deals, voids and contested matches | S9–S11: how often an honest dealer's disconnect, a fourth player's silence in a Белот shuffle, or a loser's trip to the hall before the last reveal costs a contest or a question | not yet measured |
 | 21 | (F1 row 32, still open) a staked Белот debt naming a guild member who is offline, with "show offline" off in the guild roster | the debt is taken by a fifth character's ledger (`env.member`); if it is not, F1's residual 23 applies to card debts too | not yet measured |
 | 22 | staked Сантасе, the guest's connection is cut for 60–90 s mid-match (residual S12) | whether the guest comes back as host and the host's moves meanwhile are rolled back; at the end the honest host is asked, never charged automatically | not yet measured |
+| 23 | staked Белот, the **host** presses „Стани“ mid-deal (final review I1) | another player takes the table over; both opponents' rows turn plain within a few seconds, without a question to the leaver, also when the leaver logs off right after; the partner sees no bill | not yet measured |
+| 24 | staked Сантасе, the guest's connection is cut for 10–20 s over the last card of a match (pull the cable), and the host presses „Нова игра“ as soon as its button lights up (final review C2) | the guest catches up by a snapshot and its bill counts 30 s from then; the match the host starts before that is a question for the guest if it loses it („Потвърждавам“ / „Оспорвам“), never „оспорен“ and never confirmed by itself | not yet measured |
+| 25 | staked Сантасе, the guest sits on a loading screen (a hearthstone, an instance portal) for more than 7 s over the last card, and the host presses „Нова игра“ at 30 s (final review M2, re-accepted) | whether the guest's row of the next match reads „оспорен“ when it loses it (its break began when the screen closed); how often on a normal evening | not yet measured |
+| 26 | staked Белот, the dealer alt-F4s mid-hand and logs in again, and its team loses the match (final review C1) | „Ръката е анулирана от …“; the dealer's partner gets a question about its debt instead of a silent confirmation; how often an evening | not yet measured |
