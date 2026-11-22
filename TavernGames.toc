@@ -126,6 +126,7 @@ ui/games/TablaModel.lua
 ui/games/TablaView.lua
 ui/games/HoldemModel.lua
 ui/games/HoldemView.lua
+ui/games/HoldemCashView.lua
 ui/InviteToast.lua
 ui/HelpBook.lua
 ui/Intro.lua

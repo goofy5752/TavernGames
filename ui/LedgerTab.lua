@@ -94,7 +94,7 @@ local function dress(client, l, now)
     l.who = L("ledger.row", name(client, d.f), name(client, d.t))
     l.amount = l.state == "open" and l.open < d.c and L("ledger.part", money(l.open), money(d.c)) or money(d.c)
     l.mark = #marks > 0 and table.concat(marks, " · ") or nil
-    l.what, l.relayed = W.gameName(d.g), debtRelayed(client.ledger, d)
+    l.what, l.relayed = d.why == "cash" and L("why.cash") or W.gameName(d.g), debtRelayed(client.ledger, d) -- a Холдем debt of its debtor's own word
   else
     l.who = L("ledger.row", name(client, e.f), name(client, l.t))
     l.amount, l.mark = money(e.c), L(e.dr and "ledger.reneged" or "ledger.denied")

@@ -249,6 +249,49 @@ describe("ui: the questions of „Сметки“", function()
     end
   end)
 
+  it("a debt nobody claimed is asked in „Сметки“ and its yes writes my D", function()
+    local w = readyWow()
+    local client, now = w.ns.client, w.G.GetServerTime()
+    local g = gid()
+    local tid, q = g:match("^(.*)/(%d+)$")
+    client.stakes:seen(true)[g] = { at = now - w.ns.Const.STAKE_OWE_WAIT - 1, g = "holdem", sk = 1000, why = "cash", foul = "unseen",
+                                    pairs = { { f = ME, t = D, c = 1500 } }, tid = tid, q = tonumber(q) }
+    w.ns.Accounts.render(V(w), client)
+    eq(kinds(w), { "owing" })
+    local list = shown(w)
+    eq(list[1].text, "Дара Колева не е записал вземане. Според твоя аддон му дължиш 15s от Холдем. Да го запиша ли?")
+    eq(list[1].buttons, { "Да, към сметката", "Не" })
+    w:click(button(w, "Да, към сметката")); settle(w)
+    local mine
+    client.ledger:each(function(e) if e.k == "D" and e.f == ME and e.t == D then mine = e end end)
+    ok(mine, "no D of mine"); eq({ mine.why, mine.c, mine.gid }, { "cash", 1500, g })
+    eq(kinds(w), { "owe" }) -- the question is gone; the confirmed debt is a row I owe
+    -- „Не“ writes nothing and stops asking
+    local w2 = readyWow()
+    local c2 = w2.ns.client
+    c2.stakes:seen(true)[g] = { at = w2.G.GetServerTime() - w2.ns.Const.STAKE_OWE_WAIT - 1, g = "holdem", sk = 1000, why = "cash", foul = "unseen",
+                                pairs = { { f = ME, t = D, c = 1500 } }, tid = tid, q = tonumber(q) }
+    w2.ns.Accounts.render(V(w2), c2)
+    w2:click(button(w2, "Не")); settle(w2)
+    local n = 0
+    c2.ledger:each(function(e) if e.k == "D" then n = n + 1 end end)
+    eq(n, 0); eq(kinds(w2), {})
+  end)
+
+  it("a claim against a cash note I did not see says so, and my entry list writes an S", function()
+    local w = readyWow()
+    local client, now = w.ns.client, w.G.GetServerTime()
+    local g = gid()
+    local tid, q = g:match("^(.*)/(%d+)$")
+    client.stakes:seen(true)[g] = { at = now, g = "holdem", sk = 1000, pairs = { { f = ME, t = D, c = 1500 } }, why = "cash",
+                                    foul = "unseen", tid = tid, q = tonumber(q) }
+    local c = lev(w, D, "D", { gid = g, g = "holdem", f = ME, t = D, c = 1500, why = "lost" })
+    eq(shown(w)[1].text, "Дара Колева казва, че му дължиш 15s от Тексас Холдем (" .. ddmm(c.at) .. "). Не видях цялата игра. Ръцете от тази игра не са проверени при теб.")
+    local line = w.ns.Accounts.entryLine
+    ok(line, "no entryLine export")
+    eq(plain(line(client, { k = "S", at = c.at, f = B, c = 100000, g = "holdem", gid = g })), "Мария Стоянова стана от Холдем (вход 10g) · " .. ddmm(c.at))
+  end)
+
   it("the own-entries question: one „Мои са“ / „Не са мои“ per entry, each answering its own body", function()
     local w = readyWow()
     local client, net = w.ns.client, w.ns.client.ledgerNet

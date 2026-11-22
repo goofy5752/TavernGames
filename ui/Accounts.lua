@@ -12,6 +12,9 @@ local _, ns = ...
 -- * "ask": a claim against me my client could not decide (client.stakes:asks):
 --   who claims what from which game and day, and why it is put to me (a forfeit
 --   of mine, or a game I did not see whole); „Потвърждавам“ / „Оспорвам“.
+-- * "owing": a Холдем sitting my client did not see whole, whose debt of mine nobody claimed
+--   (client.stakes:owing()): „Да, към сметката“ writes my own D (why "cash"), „Не“ asks no more; a claim
+--   against me from such a sitting says so too (ask.cash.unseen).
 -- * "payAsk": gold that came from a debtor without proof (client.pay:asks): from
 --   one name „Да, към сметката“ / „Не“, from namesakes one button per name and „Не“.
 -- A row I owe has „Плати“ (ns.PayDialog); while gold of mine has left for that
@@ -59,6 +62,7 @@ function A.rows(client)
   for i, b in ipairs(mine) do out[#out + 1] = { kind = "mine", entry = b, head = i == 1 } end
   if #mine > 0 and (more or 0) > 0 then out[#out + 1] = { kind = "mine", more = more } end
   for _, d in ipairs(client.stakes:asks()) do out[#out + 1] = { kind = "ask", debt = d, note = client.stakes:seen()[d.gid] } end
+  for _, o in ipairs(client.stakes:owing()) do out[#out + 1] = { kind = "owing", owing = o } end
   for _, q in ipairs(pay:asks()) do out[#out + 1] = { kind = "payAsk", ask = q } end
   for _, a in ipairs(View.accounts(View.of(client.ledger), client.env.me)) do
     if a.net > 0 then
@@ -85,6 +89,8 @@ local function entryLine(client, e, deep)
     if d and d.k == "D" then parts[3] = L("bill.row", who(client, d.f), who(client, d.t), money(d.c)) end
   elseif e.k == "R" then
     parts = { W.gameName(e.g), ddmm(client, e.at) }
+  elseif e.k == "S" then
+    parts = { L("accounts.entry.S", who(client, e.f), money(e.c)), ddmm(client, e.at) }
   elseif e.k == "X" then
     local a, n = ns.Ledger.author(e.r)
     local what = tostring(e.r)
@@ -97,11 +103,15 @@ local function entryLine(client, e, deep)
   end
   return table.concat(parts, " · ")
 end
+A.entryLine = entryLine
 
 -- The claim put to me: who, how much, which game and day, and why I am asked.
 local function debtText(client, d, note)
   local s = L("ask.debt", who(client, d.t), money(d.c), W.gameName(d.g), ddmm(client, d.at))
   local foul = type(note) == "table" and note.foul
+  if type(note) == "table" and note.why == "cash" and foul == "unseen" and d.why == "lost" then -- a Холдем sitting my client did not see whole
+    return s .. " " .. L("ask.debt.unseen") .. " " .. L("ask.cash.unseen")
+  end
   if d.why ~= "lost" then -- my own „Стани“ is put to me only when my client holds a foul of that game
     return s .. " " .. L("ask.debt.left") .. (foul and " " .. L(foul == "unseen" and "ask.debt.unseen" or "ask.debt.foul") or "")
   end
@@ -147,6 +157,12 @@ local SPEC = {
     return { text = debtText(client, r.debt, r.note), buttons = {
       { L("ask.yes"), function() stakes:answer(key, true) end },
       { L("ask.no"), function() stakes:answer(key, false) end } } }
+  end,
+  owing = function(client, r) -- a Холдем debt of mine nobody claimed: my own D, why "cash", when I say yes
+    local o, stakes = r.owing, client.stakes
+    return { text = L("ask.cash.owe", who(client, o.t), money(o.c)), buttons = {
+      { L("ask.pay.yes"), function() stakes:admit(o.key, true) end },
+      { L("ask.pay.no"), function() stakes:admit(o.key, false) end } } }
   end,
   payAsk = function(client, r)
     local q, pay = r.ask, client.pay

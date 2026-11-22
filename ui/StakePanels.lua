@@ -32,7 +32,10 @@ local _, ns = ...
 --   the host may begin the next match at the same stake (the rest of
 --   Stakes.held, counted down by the table frame) and that „Към залата“ is
 --   how to say no. StakePanels.shown says whether it is up, so the game views
---   hide their own result line.
+--   hide their own result line. At a cash table (Холдем; a note with `why = "cash"`, heard by the client
+--   event "cashout") a note's reason line is `bill.cash` (who stood up) or `bill.cash.close` (the game
+--   closed), then its pairs, and `bill.cash.wait` while a note still waits for the keys; a note with
+--   no pair of mine is no bill. P.blinds: the „5s/10s“ a cash table shows in place of a stake.
 local Theme, W, L = ns.Theme, ns.W, ns.L
 local money = ns.Util.money
 
@@ -49,6 +52,12 @@ local BILL_W, BILL_TOP, BILL_ROW, BILL_Y, BILL_LINES = 500, 32, 18, 6, 6
 local MARK_W = 112 -- the row's mark, right of its text
 
 local function first(client, name) return W.colored(client, name, W.firstWord(name)) end
+
+-- „5s/10s“ for a cash table of `game` (its stake is its big blind), nil for any other table.
+function P.blinds(game, sk)
+  local engine = ns.Games.engine(game)
+  if engine and engine.stakeOf and sk ~= nil then return L("hall.blinds", money(sk / 2), money(sk)) end
+end
 
 ---------------------------------------------------------------------------
 -- The question
@@ -137,7 +146,7 @@ local function rebuyLine(q)
   local s = client and client.session
   local mode = rec and rec.opt and rec.opt.rebuy or (s and s.tid == q.tid and s.opt and s.opt.rebuy)
   if mode == "top" then return L("stake.ask.rebuy.top", money(ns.HoldemCash.MAX_BB * q.sk)) end
-  return mode and L("stake.ask.rebuy." .. mode) or ""
+  return L(mode and "stake.ask.rebuy." .. mode or "stake.ask.rebuy.unknown") -- an invitation does not carry the mode
 end
 
 local function showAsk(q)
@@ -215,25 +224,30 @@ end
 -- no: the table's s.stakeNo then (the game they belong to, core/Stakes.lua).
 local heard = {}
 
-local function hear(tid, q)
+-- `who`, `why`: a cash table's settlement (the "cashout" event): the seat's name and why it was settled.
+local function hear(tid, q, who, why)
   local s = ns.client and ns.client.session
   if not (s and s.tid == tid and s.stake ~= nil and type(q) == "number") then return end
   if heard.tid ~= tid then heard = { tid = tid } end
   local gid = tid .. "/" .. q
   for _, h in ipairs(heard) do if h.gid == gid then return end end
-  heard[#heard + 1] = { gid = gid, no = s.stakeNo }
+  heard[#heard + 1] = { gid = gid, no = s.stakeNo, who = who, why = why }
 end
 
 -- My notes of the staked game just over at my table s, in the order heard ->
--- {note, ...} | nil (a game still running, a fun table, no note of mine).
+-- {note, ...}, {the heard entry of each: {who, why} of a cash table} | nil (a game still running, a fun
+-- table, no note of mine; a note with no pair of mine is no bill).
 function P.notes(client, s)
   if s.stake == nil or not client.stakes or heard.tid ~= s.tid or ns.Stakes.running(s) then return nil end
-  local seen, out = client.stakes:seen(), {}
+  local seen, out, hs = client.stakes:seen(), {}, {}
   for _, h in ipairs(heard) do
     local n = seen[h.gid]
-    if h.no == s.stakeNo and type(n) == "table" and type(n.pairs) == "table" then out[#out + 1] = n end
+    if h.no == s.stakeNo and type(n) == "table" and type(n.pairs) == "table" and #n.pairs > 0 then
+      out[#out + 1] = n
+      hs[#out] = h
+    end
   end
-  return #out > 0 and out or nil
+  return #out > 0 and out or nil, hs
 end
 
 -- The rows of a note: every pair as the ledger has it now -> {{f, t, c,
@@ -349,7 +363,8 @@ end
 -- guest's countdown on it, or nil.
 function P.bill(v, s)
   local client = ns.client
-  local notes = client and P.notes(client, s)
+  local notes, hs = nil, nil
+  if client then notes, hs = P.notes(client, s) end
   P.shown = notes ~= nil
   if not notes then
     if v.bill then v.bill:Hide() end
@@ -357,14 +372,22 @@ function P.bill(v, s)
   end
   if not v.bill then buildBill(v) end
   local b, items, team = v.bill, {}, s:engine().teams
-  for _, note in ipairs(notes) do
-    local leaver = note.why ~= "lost" and note.pairs[1] and note.pairs[1].f
-    local why = note.why == "idle" and "bill.idle" or team and "bill.left.team" or "bill.left"
-    if leaver then items[#items + 1] = { L(why, first(client, leaver)) } end
+  local waits = false
+  for i, note in ipairs(notes) do
+    if note.why == "cash" then -- one sitting: who stood up (or the close), then the pairs, then the keys' line
+      local h = hs[i]
+      items[#items + 1] = { h.why == "close" and L("bill.cash.close") or L("bill.cash", first(client, h.who or "?")) }
+      waits = waits or note.wait == true
+    else
+      local leaver = note.why ~= "lost" and note.pairs[1] and note.pairs[1].f
+      local why = note.why == "idle" and "bill.idle" or team and "bill.left.team" or "bill.left"
+      if leaver then items[#items + 1] = { L(why, first(client, leaver)) } end
+    end
     for _, r in ipairs(P.billRows(client, note)) do
       items[#items + 1] = { L("bill.row", first(client, r.f), first(client, r.t), money(r.c)), r.status }
     end
   end
+  if waits then items[#items + 1] = { L("bill.cash.wait") } end
   local n, rows = math.min(#items, BILL_LINES), 0
   for i = 1, n do
     local item = items[i]
@@ -390,6 +413,7 @@ end
 ns.ready(function(client)
   client:on("result", function(r) if r.sk ~= nil then hear(r.tid, r.q) end end)
   client:on("forfeit", function(f) if f.sk ~= nil then hear(f.tid, f.q) end end)
+  client:on("cashout", function(e) hear(e.tid, tonumber(tostring(e.gid):match("/(%d+)$")), e.name, e.why) end)
   client:on("ledger", function() if P.shown then ns.TableFrame.refresh() end end)
   -- Drawn on the next frame (a drawing error never breaks Member.adopt), while the seat is still asked.
   client:on("stakeAsk", function(tid, sk)

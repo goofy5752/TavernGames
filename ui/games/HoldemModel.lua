@@ -106,6 +106,28 @@ local function seatOf(s, st, i, m, lastOfHand)
   return seat
 end
 
+-- A staked table's account (chips, the view turns them to money): `mine` = per other seat what it took
+-- from me and I from it, `all` = every seat's buy-in, chips and net, `lo`/`hi` = what my seat may buy
+-- now (E.buyRange; nil when it refuses, and while my stake is still asked: H15b, H15c).
+local function cashOf(s, st, m)
+  local cash = st.cash
+  local mine, all = {}, {}
+  local function took(a, b) return cash.took[a] and cash.took[a][b] or 0 end
+  for i, chair in ipairs(st.seats) do
+    if chair then
+      if m.seated and i ~= m.me then
+        local t, g = took(m.me, i), took(i, m.me)
+        mine[#mine + 1] = { seat = i, name = nameOf(s, i), took = t, gave = g, net = t - g }
+      end
+      all[#all + 1] = { seat = i, name = nameOf(s, i), bought = chair.bought, chips = chair.chips, net = chair.chips - chair.bought }
+    end
+  end
+  local lo, hi
+  if m.seated and not s.stakeAsk then lo, hi = E.buyRange(st, m.me) end
+  if not lo then hi = nil end
+  return { mode = cash.rebuy, mine = mine, all = all, lo = lo, hi = hi }
+end
+
 -- Everything the Холдем view draws. `want`: the amount the view remembers for a bet or raise (nil: the
 -- minimum); it is clamped to what the engine allows.
 function M.build(s, want)
@@ -150,6 +172,7 @@ function M.build(s, want)
   m.text = textOf(s, st, m, lastOfHand)
   if m.closing and not m.over then m.note = { "holdem.closing" } end
   m.log = logOf(s, st.last)
+  if type(st.cash) == "table" then m.cash = cashOf(s, st, m) end
   return m
 end
 

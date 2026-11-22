@@ -29,7 +29,7 @@ local _, ns = ...
 -- neither has one, the tooltip ns.Book.tip) the book's count of hands; it
 -- opens the rules book on "fair".
 -- Title bar: the game, the access, turn time and table options, the stake
--- („Залог: 5g“, a staked table only), the watcher
+-- („Залог: 5g“, a staked table only; a cash table its blinds), the watcher
 -- count and ⓘ (topic = game id). Bottom: „Стани“
 -- (watchers: „Към залата“; in a running match of a team game, or a running
 -- staked game I play in, it first asks in a small panel above the button,
@@ -93,20 +93,29 @@ end
 -- that is not over, of a team game (engine.teams: my partner loses with me),
 -- or staked and I play in it (I lose by forfeit: TableFrame.panels.forfeitCost).
 function TableFrame.standCosts(s)
-  if s == nil or s.status ~= "live" or s.mySeat == nil or s:gameOver() then return false end
+  if s == nil or s.status ~= "live" or s.mySeat == nil or s:gameOver() or s:engine().cashGame then return false end -- a cash table has no forfeit
   return s:engine().teams == true or TableFrame.panels.forfeitCost(s) ~= nil
 end
 
 -- „Стани“ / „Към залата“: leave the table and go back to the hall. While
 -- standCosts, the first click only opens the question („Отборът ви губи
 -- мача…“, at a staked table „Ако станеш сега…“); its „Стани“ calls this with sure = true.
+-- Does my cash-out of table session s wait (client.cashGoing) -> bool.
+function TableFrame.cashGoing(client, s)
+  return s ~= nil and client.cashGoing ~= nil and client.cashGoing.tid == s.tid
+end
+
+-- At a cash table my cash-out is made first and the table stays until it is applied (client.cashGoing, the news
+-- line says so; the hall shows when my session ends); while it waits the button reads „Стани веднага“ and stands at once.
 function TableFrame.stand(sure)
   local client = ns.client
   if not client then return end
-  local v = TableFrame.view
-  if v and sure ~= true and TableFrame.standCosts(client.session) then return TableFrame.panels.confirm(v, client.session) end
+  local v, s = TableFrame.view, client.session
+  local going = TableFrame.cashGoing(client, s)
+  if v and sure ~= true and TableFrame.standCosts(s) then return TableFrame.panels.confirm(v, s) end
   if v then v.confirm:Hide() end
-  client:stand()
+  client:stand(going or nil)
+  if client.session == s and client.cashGoing and s then return TableFrame.say(L("cash.going")) end
   ns.MainWindow.show("hall")
 end
 
@@ -362,7 +371,8 @@ function TableFrame.render()
   local watchers = s.watchers or 0
   v.watchers:SetText(L("table.watchers", watchers))
   v.watchers:SetShown(watchers > 0)
-  v.stake:SetText(s.stake and L("table.stake", ns.Util.money(s.stake)) or "")
+  local blinds = s.stake and ns.StakePanels.blinds(s.game, s.stake) -- a cash table shows its blinds, not its big blind as a stake
+  v.stake:SetText(blinds and L("table.blinds", blinds) or s.stake and L("table.stake", ns.Util.money(s.stake)) or "")
   v.stake:SetShown(s.stake ~= nil)
   local billLeft = ns.StakePanels.bill(v, s) -- before the board: its view hides its own result line under the bill
   renderBoard(v, s, renderPlates(v, s, client))
@@ -370,7 +380,7 @@ function TableFrame.render()
   if key then v.bannerText:SetText(secs and L(key, secs) or L(key)) end
   v.banner:SetShown(key ~= nil)
   countdown(left or billLeft)
-  v.standButton.text:SetText(L(s.role == "watcher" and "table.toHall" or "table.stand"))
+  v.standButton.text:SetText(L(TableFrame.cashGoing(client, s) and "cash.standNow" or s.role == "watcher" and "table.toHall" or "table.stand"))
   if not TableFrame.standCosts(s) then v.confirm:Hide() elseif v.confirm:IsShown() then TableFrame.panels.confirm(v, s) end -- ended, or the cost moved
   local canInvite = s.role == "host" and firstFree(s.seats) ~= nil
   v.inviteButton:SetShown(canInvite)
@@ -525,6 +535,9 @@ end
 
 ns.ready(function(client)
   client:on("session", TableFrame.refresh)
+  client:on("cashGoing", function(tid) -- my cash-out waits, or went: my table ended
+    if tid == nil and not client.session then ns.MainWindow.show("hall") end; TableFrame.refresh()
+  end)
   client:on("peers", TableFrame.refresh)
   client:on("desync", TableFrame.resynced)
   client:on("fair", TableFrame.refresh)

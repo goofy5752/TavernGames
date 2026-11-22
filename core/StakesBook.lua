@@ -101,12 +101,12 @@ function Book:note(gid, note)
   self:seen(true)[gid] = note
   self:review()
 end
-
+-- The newest note of table tid that has a pair -> note | nil (the bill reads it; a cash note that owes nothing is skipped).
 -- The newest note of table tid -> note | nil (the bill reads it).
 function Book:last(tid)
   local best
   for _, n in pairs(self:seen()) do
-    if type(n) == "table" and n.tid == tid and (not best or n.at > best.at or (n.at == best.at and (n.q or 0) > (best.q or 0))) then best = n end
+    if type(n) == "table" and n.tid == tid and next(n.pairs or {}) and (not best or n.at > best.at or (n.at == best.at and (n.q or 0) > (best.q or 0))) then best = n end
   end
   return best
 end

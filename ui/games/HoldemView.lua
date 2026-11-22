@@ -219,6 +219,7 @@ function View.build(parent)
   f.callButton = gold(f, 86, 26, 536, -388, function() onCall(f) end)
   f.raiseButton = gold(f, 100, 26, 626, -388, function() onRaise(f) end)
   f.closeButton = ghost(f, L("holdem.close"), 96, 22, 12, -366, function() onClose(f) end)
+  ns.HoldemCashView.build(f) -- „Сметка“ and „Вход“ / „Докупи“ of a staked table (ui/games/HoldemCashView.lua)
   return f
 end
 
@@ -367,6 +368,7 @@ function View.update(f, s)
   drawTable(f, m)
   drawButtons(f, s, m)
   drawWords(f, m)
+  ns.HoldemCashView.update(f, s, m)
 end
 
 ns.TableFrame.registerView(E.id, View)
