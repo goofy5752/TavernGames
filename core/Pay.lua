@@ -6,8 +6,8 @@ local _, ns = ...
 -- P waiting in my login queue). Only the creditor's client writes a P, min(gold, due):
 -- a completed trade with my debtor, no item on either side, within PAY_WINDOW s
 -- of its whispered PAY "trade" (one PAY, one trade) -> P "trade"; money taken
--- from a letter tagged Pay.TAG whose sender fits exactly one debtor
--- (Names.matches) -> P "mail"; other gold from a debtor is put to me (asks,
+-- from a letter tagged Pay.TAG whose sender fits exactly one name I have any debt
+-- with, a debtor (Names.matches) -> P "mail"; other gold from a debtor is put to me (asks,
 -- answer, "payAsk"), from anybody else ignored. „Уредено“ (settle): P "hand"
 -- for the whole due; over the gold cap a P splits. „Напомни“ (nudge): PAY
 -- "nudge", once per NUDGE_GAP s. Nothing here is saved (the login queue keeps a P).
@@ -71,12 +71,12 @@ function Pay:paying(name, c, how)
 end
 
 -- „Трейд“: opens a trade with `name` for what I owe -> true | nil, code ("none":
--- nothing owed; the trade state "far", "none" or "off"; "short": not enough gold).
+-- nothing owed; "far", "nounit" (trade state "none") or "off"; "short": not enough gold).
 function Pay:byTrade(name)
   local env, c = self.env, self:owed(name)
   if c == 0 then return nil, "none" end
   local state = env.trade and env.trade.state(name) or "off"
-  if state ~= "ok" then return nil, state end
+  if state ~= "ok" then return nil, state == "none" and "nounit" or state end
   local money = env.money and env.money()
   if money and money < c then return nil, "short" end
   if not env.trade.open(name, c) then return nil, "off" end
@@ -162,25 +162,28 @@ function Pay:ask(q)
 end
 
 -- A completed trade with guild member t.name: the copper I gave and got, items =
--- an item on either side.
+-- an item on either side (anything but false is put to me).
 function Pay:traded(t)
   if type(t) ~= "table" or type(t.name) ~= "string" or type(t.got) ~= "number" or type(t.gave) ~= "number" then return end
   local name, gold = t.name, t.got - t.gave
   if not copper(gold) or self:due(name) == 0 then return end
   local heard = self.heard[name]
   self.heard[name] = nil
-  if not t.items and heard and self.env.now() - heard <= C.PAY_WINDOW then return self:record(name, gold, "trade") end
+  if t.items == false and heard and self.env.now() - heard <= C.PAY_WINDOW then return self:record(name, gold, "trade") end
   self:ask({ name = name, c = gold, how = "trade" })
 end
 
--- Money m.c taken from a letter of m.shown (the sender as the inbox shows it).
+-- Money m.c taken from a letter of m.shown (the sender as the inbox shows it):
+-- it may be any name I have a debt with, either way and in any state (pending,
+-- contested, confirmed or paid); ignored when none of them owes me.
 function Pay:mailed(m)
   if type(m) ~= "table" or not copper(m.c) then return end
-  local shown, fit = Names.normalize(m.shown), {}
-  for _, a in ipairs(View.accounts(self:view(), self.env.me)) do
-    if a.net < 0 and Names.matches(a.name, shown) and self:due(a.name) > 0 then fit[#fit + 1] = a.name end
+  local me, shown, fit, owing = self.env.me, Names.normalize(m.shown), {}, false
+  for _, d in ipairs(self:view().debts) do
+    local who = d.f == me and d.t or d.t == me and d.f
+    if who and not Util.contains(fit, who) and Names.matches(who, shown) then fit[#fit + 1], owing = who, owing or self:due(who) > 0 end
   end
-  if #fit == 0 then return end
+  if not owing then return end
   table.sort(fit, Util.byteLess)
   local tagged = type(m.subject) == "string" and m.subject:sub(1, #Pay.TAG) == Pay.TAG
   if tagged and #fit == 1 then return self:record(fit[1], m.c, "mail") end
@@ -188,11 +191,7 @@ function Pay:mailed(m)
 end
 
 -- The gold put to me: {{id, name | names, c, how}}, oldest first.
-function Pay:asks()
-  local out = {}
-  for j, q in ipairs(self.questions) do out[j] = Util.copy(q) end
-  return out
-end
+function Pay:asks() return Util.copy(self.questions) end
 
 -- My answer to question `id`: the debtor it came from (a name of the question),
 -- whose P it records, or false (not a payment) -> true | nil.
@@ -226,7 +225,8 @@ end
 -- A whispered PAY from `sender`, a peer presence lists: a payment announced to
 -- me, or a reminder of what I owe it (at most one per NUDGE_GAP s).
 function Pay:receive(sender, msg)
-  if not self.client.presence:get(sender) or not copper(msg.c) or not HOW[msg.how] then return end
+  local p = self.client.presence:get(sender)
+  if not p or p.incompatible or not copper(msg.c) or not HOW[msg.how] then return end
   local now = self.env.now()
   if msg.how == "trade" then self.heard[sender] = now end
   if msg.how ~= "nudge" then return end

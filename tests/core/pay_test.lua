@@ -101,6 +101,11 @@ describe("pay: by trade", function()
     local mark = #sim.sent
     eq({ m.pay:byTrade(I) }, { nil, "far" })
     eq(m.pay:options(I).trade, "far")
+    local state = m.env.trade.state
+    m.env.trade.state = function() return "none" end -- no unit of И: not targeted, not grouped
+    eq({ m.pay:byTrade(I) }, { nil, "nounit" })
+    eq(m.pay:options(I).trade, "none")
+    m.env.trade.state = state
     mo.near = { I }
     eq({ i.pay:byTrade(M) }, { nil, "none" }) -- И owes М nothing
     mo.money = 49999
@@ -203,6 +208,23 @@ describe("pay: by trade", function()
     trade(sim, i, m, 0, G5, true)
     eq(#ps(i), 0); eq(net(i, M, I), G5)
     eq(asks(i), { { name = M, c = G5, how = "trade" } })
+  end)
+
+  it("a trade that does not say whether an item changed hands is put to me", function()
+    local sim, i, m = setup()
+    eq(m.pay:byTrade(I), true)
+    sim:run(0)
+    i.pay:traded({ name = M, gave = 0, got = G5 })
+    eq(#ps(i), 0); eq(asks(i), { { name = M, c = G5, how = "trade" } })
+  end)
+
+  it("a PAY from a peer listed as incompatible is ignored", function()
+    local sim, i, m = setup()
+    i.presence:incompatible(M)
+    eq(m.pay:byTrade(I), true)
+    sim:run(0)
+    i.pay:traded({ name = M, gave = 0, got = G5, items = false })
+    eq(#ps(i), 0); eq(#i.pay:asks(), 1)
   end)
 
   it("gold from somebody who owes me nothing is ignored", function()
@@ -334,13 +356,12 @@ describe("pay: by mail", function()
     eq(#ps(i), 1); eq(ps(i)[1].f, M); eq(ps(i)[1].c, G5); eq(ps(i)[1].how, "mail")
     sim:run(2)
     eq(net(m, M, I), 0); eq(i.pay:asks(), {})
-    local sim2, i2 = setup()
+    local _, i2 = setup()
     i2.pay:mailed({ shown = "Мария", subject = TAGGED, c = G5 }) -- first name only
     eq(#ps(i2), 1); eq(ps(i2)[1].f, M); eq(ps(i2)[1].how, "mail")
-    local sim3, i3 = setup()
+    local _, i3 = setup()
     i3.pay:mailed({ shown = "Мария Колева-Forever", subject = "Tavern Games:", c = G5 }) -- with the realm
     eq(#ps(i3), 1)
-    local _ = sim2, sim3
   end)
 
   it("a letter from a first name that fits two debtors is put to me with both", function()
@@ -361,7 +382,7 @@ describe("pay: by mail", function()
   end)
 
   it("an untagged letter from a debtor is put to me; from anybody else ignored", function()
-    local sim, i = setup(nil, { P })
+    local _, i = setup(nil, { P })
     i.pay:mailed({ shown = "Мария", subject = "Подарък", c = G5 })
     eq(#ps(i), 0); eq(asks(i), { { name = M, c = G5, how = "mail" } })
     i.pay:mailed({ shown = P, subject = TAGGED, c = G5 })
@@ -371,7 +392,34 @@ describe("pay: by mail", function()
     eq(#ps(i), 0); eq(#i.pay:asks(), 1)
     eq(i.pay:answer(i.pay:asks()[1].id, M), true)
     eq(#ps(i), 1); eq(ps(i)[1].how, "mail")
-    local _ = sim
+  end)
+
+  it("a first name that fits a namesake with a pending claim is put to me (the C has not synced yet)", function()
+    local sim, i = setup()
+    -- my claim against „Мария Стоянова“: her C is still on its way, so it is pending on my client
+    i.ledgerNet:make("D", { gid = "T#2/1", g = "ttt", f = MS, t = I, c = G5, why = "lost" })
+    sim:run(2)
+    eq(View.of(i.ledger).debts[2].status, "pending"); eq(i.pay:due(MS), 0)
+    i.pay:mailed({ shown = "Мария", subject = TAGGED, c = G5 })
+    eq(#ps(i), 0); eq(i.pay:due(M), G5)
+    eq(asks(i), { { names = { M, MS }, c = G5, how = "mail" } })
+    -- the full name is no namesake
+    i.pay:mailed({ shown = M, subject = TAGGED, c = G5 })
+    eq(#ps(i), 1); eq(ps(i)[1].f, M)
+  end)
+
+  it("a first name that fits a namesake whose debt is settled is put to me", function()
+    local sim, i = setup(nil, { MS })
+    owe(sim, MS, I, 20000) -- „Мария Стоянова“ owes me 2g
+    eq(i.pay:settle(MS)[1].c, 20000); eq(i.pay:due(MS), 0)
+    i.pay:mailed({ shown = "Мария", subject = TAGGED, c = 20000 })
+    eq(#ps(i), 1); eq(i.pay:due(M), G5)
+    eq(asks(i), { { names = { M, MS }, c = 20000, how = "mail" } })
+    -- a name I only owe to counts as well
+    local sim2, i2 = setup()
+    owe(sim2, I, MS, 100)
+    i2.pay:mailed({ shown = "Мария", subject = TAGGED, c = G5 })
+    eq(#ps(i2), 0); eq(#i2.pay:asks(), 1)
   end)
 
   it("a letter with more than is owed records only the debt", function()
