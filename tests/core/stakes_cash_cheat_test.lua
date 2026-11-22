@@ -367,9 +367,12 @@ describe("a modified host at a cash table: the key draw (E8)", function()
     eq(cl[M].stakes:seen()[gid].foul, "unseen")
   end)
 
+  -- Ruling F3-F (C1): the first snapshot of a host an HND gave me is a new host's, so what it
+  -- changes is a question, not a contest (it was { k = "N", why = "forged" } before the ruling).
   it("E8: the same, the accomplice pushes its snapshot on me", function()
     local sim, cl, gid = accomplice(true)
-    victim(sim, cl, M, gid, B, { k = "N", why = "forged" })
+    victim(sim, cl, M, gid, B, "ask")
+    eq(cl[M].stakes:seen()[gid].foul, "unseen")
   end)
 
   it("E8: the same, the accomplice takes the table once the real game is over: my notes of the told end are asked", function()

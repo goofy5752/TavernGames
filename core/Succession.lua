@@ -251,7 +251,10 @@ function Succession.onHandoff(client, sender, m)
   local s = client.session
   if not s or s.tid ~= m.tid or s.role == "host" or s.host ~= sender then return end
   if type(m.e) ~= "number" or m.e <= s.epoch or type(m.to) ~= "string" or m.to == sender then return end
-  if m.to ~= client.env.me then return Succession.follow(s, m.to, m.e) end
+  if m.to ~= client.env.me then
+    s.handed = true -- its first snapshot is a new host's (Member.adopt)
+    return Succession.follow(s, m.to, m.e)
+  end
   if not s.mySeat then return end -- watchers never become host
   if s.stakeAsk then return ns.Stake.standUp(client, s) end -- nor an asked seat (Succession.claim)
   local seat = seatOf(s.seats, sender)

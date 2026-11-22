@@ -62,6 +62,22 @@ local function hands(sim, host, n)
   for _ = 1, n do calm(sim, host) end
 end
 
+-- As calm, but `seat` folds at its first turn: its cards are never shown.
+local function folded(sim, host, seat)
+  inHand(sim, host)
+  local hs = host.session
+  local hand, did = hs.state.hand, false
+  for _ = 1, 300 do
+    local st = hs.state
+    if not (E.inHand(st) and st.hand == hand) then ok(did, "seat " .. seat .. " folded"); return end
+    local c = st.phase == "bet" and st.turn and sim.clients[hs.seats[st.turn]]
+    if c and st.turn == seat and not did then did = true; c:act{ k = "fold" }
+    elseif c then c:act{ k = st.bet > st.p[st.turn].bet and "call" or "check" } end
+    sim:run(1)
+  end
+  error("the hand did not end")
+end
+
 -- The "cashout" events of every client of cl (name -> list).
 local function outs(cl)
   local got = {}
@@ -411,11 +427,12 @@ describe("„Стани“ is a cashout, then the stand", function()
   it("the host leaves mid-game: its cashout, its own S, the handoff; the table plays on", function()
     local sim, cl, tid = cash({ 1, 2, 3 })
     local host, got = cl[A], outs(cl)
-    hands(sim, host, 1)
+    folded(sim, host, 3) -- Мария's cards are never shown: the successor's view cannot hold them (F3-F C1)
     setTook(cl, { [2] = { [1] = 20 } }) -- Иван owes Петър 20 chips
     ok(not E.inHand(host.session.state), "between hands")
     cl[A]:stand(); sim:run(3)
     eq(cl[A].session, nil)
+    for _, name in ipairs({ B, M }) do eq(cl[name].session.stakeFoul, nil, name .. ": an honest handover is no foul") end
     for _, name in ipairs({ A, B, M }) do eq(#got[name], 1, name) end
     local v = got[B][1]
     eq({ v.seat, v.name, v.why }, { 1, A, nil })
@@ -425,6 +442,57 @@ describe("„Стани“ is a cashout, then the stand", function()
     eq(cl[B].session.role, "host")
     inHand(sim, cl[B])
     eq(E.players(cl[B].session.state), { 2, 3 })
+  end)
+
+  -- F3-F C1: the successor's snapshot is its own view; the faces I knew of the same hand stay mine.
+  -- Hand 1: the host deals, so its stand voids the hand; hand 3: Мария deals and the hand runs on
+  -- under Петър, who holds nobody's cards but his own.
+  for _, before in ipairs({ 0, 2 }) do
+    it("the host leaves at once inside hand " .. (before + 1) .. ": no member is fouled by the successor's snapshot", function()
+      local sim, cl = cash({ 1, 2, 3, 4 })
+      hands(sim, cl[A], before)
+      inHand(sim, cl[A])
+      for _ = 1, 30 do if cl[A].session.state.phase == "bet" then break end; sim:run(1) end
+      eq({ cl[A].session.state.phase, cl[A].session.state.hand }, { "bet", before + 1 })
+      for _, name in ipairs({ B, M, G }) do eq(cl[name].session.stakeFoul, nil, name) end
+      cl[A]:stand(true); sim:run(3)
+      eq(cl[A].session, nil); eq(cl[B].session.role, "host")
+      for _, name in ipairs({ B, M, G }) do eq(cl[name].session.stakeFoul, nil, name .. ": an honest handover is no foul") end
+    end)
+  end
+
+  it("the host leaves after a folded hand at four seats: the folder is not fouled", function()
+    local sim, cl = cash({ 1, 2, 3, 4 })
+    folded(sim, cl[A], 4)
+    ok(not E.inHand(cl[A].session.state), "between hands")
+    cl[A]:stand(); sim:run(3)
+    eq(cl[A].session, nil); eq(cl[B].session.role, "host")
+    for _, name in ipairs({ B, M, G }) do eq(cl[name].session.stakeFoul, nil, name .. ": an honest handover is no foul") end
+  end)
+
+  -- Only the first snapshot of the host the HND gave me is a new host's: its next push is my host's.
+  it("after the handover the successor's second pushed snapshot that changes my game is forged", function()
+    local sim, cl = cash({ 1, 2, 3, 4 })
+    folded(sim, cl[A], 4)
+    cl[A]:stand(); sim:run(3)
+    eq({ cl[B].session.role, cl[G].session.stakeFoul, cl[G].session.handed }, { "host", nil, nil })
+    cl[B].session.state.cash.took = { [2] = { [4] = 500 } }
+    cl[B].session:snapshotTo(G); sim:run(1)
+    eq(cl[G].session.stakeFoul, "forged")
+  end)
+
+  -- ... and no new trust: a face the snapshot shows otherwise than I knew it is still a difference.
+  it("a snapshot of my hand with another face than the one I knew is still forged", function()
+    local sim, cl = cash({ 1, 2, 3 })
+    hands(sim, cl[A], 1)
+    inHand(sim, cl[A])
+    for _ = 1, 30 do if cl[A].session.state.phase == "bet" then break end; sim:run(1) end
+    local mine = cl[M].session.state.p[3].cards[1]
+    local face = cl[M].session.state.deck[mine]
+    ok(face, "Мария knows her card")
+    cl[A].session.state.deck[mine] = face == "AS" and "KS" or "AS"
+    cl[A].session:snapshotTo(M); sim:run(1)
+    eq(cl[M].session.stakeFoul, "forged")
   end)
 
   it("heads-up: the other player's cashout and stand end the game with every pair settled", function()

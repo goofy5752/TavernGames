@@ -22,6 +22,10 @@ local _, ns = ...
 --     snapshot is my very state (same(prev, st), a game running): a seat of my
 --     names that it shows under another name is forged from my host, a
 --     question ("unseen") from a host new to me (how.moved); my name stays.
+--     A snapshot of the hand I hold (same g, same hand) is its host's own
+--     view: a face of that hand's deck that I knew and it does not show stays
+--     mine (a face it shows otherwise is a difference like any other), so an
+--     honest successor's snapshot is the state I hold (F3-F C1).
 --   My own sit starts my sitting (after the original): when my own SIT took
 --     me in (a seat I did not hold: a repeated SIT of a seated player is
 --     answered with the snapshot again, and a relog's SIT or WAT at the table
@@ -186,6 +190,10 @@ end
 ext.adopted = function(s, prev, m, how)
   if not Stakes.cash(s) then return adopted(s, prev, m, how) end
   local st, raised = s.state, nil
+  if type(prev) == "table" and type(st) == "table" and prev.g ~= nil and prev.g == st.g and prev.hand == st.hand
+      and type(prev.deck) == "table" and type(st.deck) == "table" then
+    for i, f in pairs(prev.deck) do if st.deck[i] == nil then st.deck[i] = f end end
+  end
   local function raise(why)
     if not raised or RANK[why] > RANK[raised] then raised = why end
     pend(s, why)

@@ -109,12 +109,13 @@ function Member.adopt(client, sender, m)
     if note.o then otherOpt, opt = not ns.Util.same(note.o, opt), copy(note.o) end
   end
   -- How this snapshot came, for the extensions: fresh, from a host new to me
-  -- (changed), answering a request of mine (asked: SYN, WAT or SIT), with a
+  -- (moved: another sender than my host, or the first one of a host an HND
+  -- gave me, s.handed; changed: that, or another epoch), answering a request of mine (asked: SYN, WAT or SIT), with a
   -- seat I did not have (sat); q = my seq before it; req: it takes me in at
   -- my own SIT or WAT (a newcomer, not a login back to a seat I held); sit:
   -- it seats me while a SIT of mine at this table is unanswered.
   local how = {
-    fresh = fresh, moved = not fresh and prevHost ~= sender, changed = not fresh and (prevHost ~= sender or s.epoch ~= m.e or s.stale == true),
+    fresh = fresh, moved = not fresh and (prevHost ~= sender or s.handed == true), changed = not fresh and (prevHost ~= sender or s.epoch ~= m.e or s.stale == true),
     asked = s.asked == true, sat = seat ~= nil and s.mySeat == nil, q = s.seq,
     req = fresh and client.pending ~= nil and client.pending.tid == m.tid, sit = seat ~= nil and s.sitAsked ~= nil,
     tn = tn ~= t.tn, -- another turn length than the one I accepted
@@ -139,7 +140,7 @@ function Member.adopt(client, sender, m)
   -- My turn in a snapshot: no clock of mine saw it begin, the host's word dates it
   -- (at a staked table never: my own clock does, the hook `adopted` of core/StakesWatch.lua).
   s.turnAt = s.stake == nil and seat and s.state and s.state.turn == seat and s.deadline and type(s.turn) == "number" and s.deadline - s.turn or nil
-  s.stale, s.sitAsked, s.asked = nil, nil, nil
+  s.stale, s.sitAsked, s.asked, s.handed = nil, nil, nil, nil
   if not same then s.gameNo = (s.gameNo or 0) + 1 end -- another game, for all I can tell (Session:noteResult)
   s.invited = {}
   s:addInvited(m.inv)
