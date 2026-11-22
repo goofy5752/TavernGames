@@ -8,14 +8,14 @@ local Ledger, C, Util = ns.Ledger, ns.Const, ns.Util
 local Net, Sync = ns.LedgerNet, ns.LedgerSync
 local item, sorted = Ledger.item, Sync.sorted
 
--- `data` (keyed: a map, by key; else a list) as messages base + {[key] = part} of
--- at most PAGE packed bytes and LEDGER_PAGE_ITEMS items, m = true on all but the last;
--- they go out in turn. Past LEDGER_EX_PAGES x LEDGER_PAGE_ITEMS items, the rest is left out
--- (what a partner takes in one exchange).
-function Sync:pages(x, base, key, data, keyed)
-  local keys = keyed and sorted(data) or {}
+-- `data` (a map with its keys in the order `keys`; without keys a list) as messages
+-- base + {[key] = part} of at most PAGE packed bytes and LEDGER_PAGE_ITEMS items, m = true
+-- on all but the last. Past LEDGER_EX_PAGES pages the rest is left out (what a partner
+-- takes in one exchange) -> the messages, whether something was left out, how many items went.
+function Sync:paged(base, key, data, keys)
+  local keyed = keys ~= nil
+  keys = keys or {}
   if not keyed then for j = 1, #data do keys[j] = j end end
-  for j = #keys, C.LEDGER_EX_PAGES * C.LEDGER_PAGE_ITEMS + 1, -1 do keys[j] = nil end
   local function page(from, k) -- measured with m (the last page loses it)
     local msg, part = Util.copy(base), {}
     for j = from, from + k - 1 do
@@ -31,10 +31,20 @@ function Sync:pages(x, base, key, data, keyed)
       function(k) return page(from, k) end)) or 0
 
     list[#list + 1], from = page(from, k), from + k
-  until from > #keys
+  until from > #keys or #list >= C.LEDGER_EX_PAGES
   list[#list].m = nil
+  return list, from <= #keys, from - 1
+end
+
+-- The messages `list` of exchange x go out in turn.
+function Sync:post(x, list)
   for _, msg in ipairs(list) do self.out[#self.out + 1] = { x = x, msg = msg } end
   self:pump()
+end
+
+-- `data` (keyed: a map, in the byte order of its keys; else a list) goes out in pages (Sync:paged).
+function Sync:pages(x, base, key, data, keyed)
+  self:post(x, (self:paged(base, key, data, keyed and sorted(data) or nil)))
 end
 
 -- My bodies of author au in a LID's scope: above n, at ids I hold twins for, at the ids in `at` (all: every one).
@@ -70,47 +80,6 @@ function Sync:lacks(x, au, n, l)
   for _, b in ipairs(self:scope(au, n, at)) do if not set[item(b)] then send[#send + 1] = b end end
   self:queue(x, send)
   return at, #send, set
-end
-
--- What my complete exchanges with `peer` left as it was: sig[author] = {s, n}, the
--- two cells ("<their n>:<x>|<my n>:<x>") I acted on and in how many exchanges in a
--- row; kept LEDGER_REFUSED_TTL s, at most FIX_MAX authors. With `acted` (an
--- exchange's x.acted) those are noted.
-local FIX_MAX = 500
-function Sync:fixed(peer, acted)
-  local f, now = self.fix[peer], self.client.env.now()
-  if not f or now - f.at >= C.LEDGER_REFUSED_TTL then f = { at = now, n = 0, sig = {} }; self.fix[peer] = f end
-  for a, s in pairs(acted or {}) do
-    local old = f.sig[a]
-    if old or f.n < FIX_MAX then f.n, f.sig[a] = f.n + (old and 0 or 1), { s = s, n = old and old.s == s and old.n + 1 or 1 } end
-  end
-  return f.sig
-end
-
--- The partner's whole vector came. P: what A lacks goes, and my answer (where A
--- is not behind). A: what P lacks where I am ahead; equal n: LID. An author whose
--- two cells are as two complete exchanges in a row left them is not acted on again.
-function Sync:vector(x)
-  x.hold = self.L:hashing() or nil
-  if x.hold then return self:later(function() if self.by[x.peer] == x then self:vector(x) end end) end
-  local L, mine, back, fix = self.L, self.L:vector(), {}, self:fixed(x.peer)
-  x.acted = {}
-  for _, a in ipairs(sorted(x.ask and x.v or mine)) do
-    local m, t = mine[a], x.v[a]
-    local sig = (t and t.n .. ":" .. t.x or "-") .. "|" .. (m and m.n .. ":" .. m.x or "-")
-    local was = fix[a]
-    local go = not (t and m and t.x == m.x) and not (was and was.s == sig and was.n >= 2) -- they differ, and not as twice before
-    if go and not x.ask then x.acted[a] = sig; self:queue(x, L:above(a, t and t.n or 0)) end
-    if not x.ask and t and t.x ~= m.x and t.n >= m.n then back[a] = m end
-    if go and x.ask and m and m.n > t.n then x.acted[a] = sig; self:queue(x, L:above(a, t.n)) end
-    if go and x.ask and m and m.n == t.n and x.lidOut < C.LEDGER_LID_AUTHORS then
-      x.acted[a], x.lidOut = sig, x.lidOut + 1
-      self:lid(x, a, m.n, {})
-    end
-  end
-  for a in pairs(x.ask and {} or x.v) do if not mine[a] then back[a] = { n = 0, x = ("0"):rep(12) } end end
-  if next(back) then x.answered = true; self:pages(x, { v = C.PROTOCOL, t = "LVC", r = true }, "a", back, true) end
-  self:pump()
 end
 
 local function name(v) return type(v) == "string" and v ~= "" and #v <= 64 and not v:find("[|,]") end

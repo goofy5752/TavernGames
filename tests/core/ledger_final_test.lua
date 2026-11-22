@@ -229,4 +229,79 @@ describe("ledger final review: an entry one side refuses (I4)", function()
   end)
 end)
 
+describe("ledger final review: a vector of more than 10 pages (I5)", function()
+  -- A name of exactly `len` bytes, Cyrillic letters, from a fixed sequence.
+  local seed = 11
+  local function rnd(n) seed = (seed * 1103515245 + 12345) % 2147483648; return math.floor(seed / 65536) % n end
+  local function named(len)
+    local out = {}
+    for j = 1, len / 2 do
+      local ch = 0x430 + rnd(32)
+      out[j] = string.char(0xC0 + math.floor(ch / 64), 0x80 + ch % 64)
+    end
+    return table.concat(out)
+  end
+  local function entry(author, n, at) return { i = Ledger.id(author, n), k = "P", at = at, f = ANA, c = 100 + n, how = "hand" } end
+
+  it("700 authors on both sides: every exchange stays within 10 pages and moves entries until the two agree", function()
+    local sim, c = world(ANA, BOR)
+    local a, b = c[ANA], c[BOR]
+    local names, seen = {}, {}
+    while #names < 740 do
+      local name = named(24)
+      if not seen[name] then seen[name] = true; names[#names + 1] = name end
+    end
+    local OLD, NEW = EPOCH0 + 10, EPOCH0 + 3000
+    for j = 1, 700 do -- both hold number 1 of 700 authors
+      give(a, { entry(names[j], 1, OLD) }); give(b, { entry(names[j], 1, OLD) })
+    end
+    for j = 1, 30 do give(a, { entry(names[j], 2, NEW) }) end       -- Ана is ahead, lately
+    for j = 101, 130 do give(b, { entry(names[j], 2, NEW) }) end    -- Борис is ahead, lately
+    for j = 701, 720 do give(a, { entry(names[j], 1, OLD) }) end    -- only Ана has these, from long ago
+    for j = 721, 740 do give(b, { entry(names[j], 1, OLD) }) end    -- only Борис has these, from long ago
+    sim:run(0)
+    ok(a.ledger:digest() ~= b.ledger:digest(), "they differ")
+    local rounds, moved = 0, {}
+    while a.ledger:digest() ~= b.ledger:digest() and rounds < 8 do
+      rounds = rounds + 1
+      local mark = #sim.sent
+      hello(sim, ANA, BOR)
+      sim:run(C.LEDGER_PEER_GAP + 30)
+      moved[rounds] = entries(whispers(sim, "LEV", mark))
+      ok(moved[rounds] > 0, "round " .. rounds .. " moved nothing")
+      for _, from in ipairs({ ANA, BOR }) do
+        local pages = whispers(sim, "LVC", mark, from)
+        ok(#pages >= 1 and #pages <= C.LEDGER_EX_PAGES, from .. " sent " .. #pages .. " vector pages in round " .. rounds)
+        for _, s in ipairs(pages) do ok(#wire:pack(s.msg) <= 1500, "a page of " .. #wire:pack(s.msg) .. " bytes") end
+      end
+      local first = whispers(sim, "LVC", mark, ANA)[1].msg
+      eq(first.p, true) -- a part of her vector, and it says so
+    end
+    eq(a.ledger:digest(), b.ledger:digest())
+    ok(rounds <= 4, "converged in " .. rounds .. " exchanges")
+    local total = 0
+    for _, n in ipairs(moved) do total = total + n end
+    ok(total >= 100, "the 100 entries one side lacked moved: " .. total)
+    for j = 1, 740 do
+      eq(a.ledger:seen(names[j]), b.ledger:seen(names[j]), names[j])
+    end
+    -- The first exchange already served the authors with the newest entries, both ways.
+    ok(moved[1] >= 60, "the recent differences went first: " .. moved[1])
+    -- Agreed: no whisper at all.
+    local mark = #sim.sent
+    hello(sim, ANA, BOR); sim:run(C.LEDGER_PEER_GAP + 30)
+    eq(#whispers(sim, "LVC", mark), 0); eq(#whispers(sim, "LEV", mark), 0)
+  end)
+
+  it("a vector that fits is whole and is not marked as a part", function()
+    local sim, c = world(ANA, BOR)
+    for n = 1, 30 do give(c[ANA], { entry("Автор " .. n, 1, EPOCH0 + n) }) end
+    local mark = #sim.sent
+    hello(sim, ANA, BOR); sim:run(40)
+    local pages = whispers(sim, "LVC", mark, ANA)
+    eq(#pages, 1); eq(pages[1].msg.p, nil)
+    eq(c[ANA].ledger:digest(), c[BOR].ledger:digest())
+  end)
+end)
+
 ns.LedgerNet.size = stand

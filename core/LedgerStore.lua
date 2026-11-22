@@ -55,7 +55,7 @@ function Ledger.new(store, me, epoch)
   local rec = store.me[me]
   if not (type(rec) == "table" and whole(rec.seq) and rec.seq >= 0 and rec.seq <= Ledger.ID_MAX
     and type(rec.born) == "number") then rec, store.me[me] = nil, nil end
-  local L = setmetatable({ store = store, me = me, epoch = epoch, rev = 0, top = {}, run = {}, rc = {}, deny = {}, xc = {}, dirty = {},
+  local L = setmetatable({ store = store, me = me, epoch = epoch, rev = 0, top = {}, run = {}, rc = {}, deny = {}, xc = {}, dirty = {}, act = {},
     fresh = rec == nil, adopting = rec == nil, base = rec and rec.seq or 0 }, Store)
   L:refusedLoad()
   for a, byN in pairs(ev) do
@@ -88,6 +88,7 @@ function Store:index(a, n, b, d)
     self.deny[key][b] = d > 0 or nil
   end
   if n > (self.top[a] or 0) then self.top[a] = n end
+  if type(b.at) == "number" and b.at > (self.act[a] or 0) then self.act[a] = b.at end -- the author's newest entry (the sync's order)
 end
 function Store:advance(a)
   local k, ev = self.run[a] or 0, self.store.ev[a]

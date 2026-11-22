@@ -1,7 +1,7 @@
 local _, ns = ...
 
 -- The whispered sync of the gold ledger, one exchange as asker and one as responder
--- at a time (pages, vectors and LID lists: core/LedgerSyncPage.lua). A, the
+-- at a time (pages and LID lists: core/LedgerSyncPage.lua; vectors: core/LedgerSyncVector.lua). A, the
 -- byte-lower of a pair whose HI.ld differ, waits LEDGER_JITTER_MIN + (byte sum of
 -- me .. peer .. ld) % 16 s (never env.random), checks again, sends LVC {a = vector}.
 -- P serves only the byte-lower name, nobody else at the time, and that peer not
@@ -18,6 +18,8 @@ local _, ns = ...
 -- A's f when it answered with a vector). The end: both f; or LEDGER_SYNC_TIMEOUT s
 -- without a valid word of the partner while I wait for it; or LEDGER_EX_MAX s, or
 -- more than LEDGER_EX_PAGES pages of a kind (then that peer waits a full peer gap).
+-- No side sends more: a vector that does not fit goes in part, marked p = true (the
+-- authors the partner differs on first), and each exchange does some of the work.
 -- An asked exchange that ended with both f does net:settle(). A changed digest
 -- gives one GUILD HI (one per LEDGER_HI_GAP s). <= LEDGER_EXCHANGE_MAX entries sent
 -- and taken. A LEV of another author than its sender only inside an exchange with
@@ -42,7 +44,7 @@ Sync.arm = Net.arm -- fn(self) in seconds, unless the timer `field` is armed
 
 function Sync.new(client, ledger, net)
   return setmetatable({ client = client, L = ledger, net = net, by = {}, wait = {}, last = {}, out = {}, missed = {},
-    fix = {}, stats = { sent = 0, got = 0 } }, Sync)
+    fix = {}, cur = {}, want = {}, stats = { sent = 0, got = 0 } }, Sync)
 end
 
 function Sync.sorted(t) local out = {} for k in pairs(t) do out[#out + 1] = k end table.sort(out, byteLess) return out end
@@ -83,7 +85,7 @@ function Sync:begin(peer)
   if self.ask or self.by[peer] then self.missed[peer] = true; return end -- tried again when mine ends
   if self.last[peer] and now - self.last[peer] < C.LEDGER_PEER_GAP then return end
   if inInstance(self.client.env) then return self:peer(peer, p.ld) end
-  self:pages(self:open(peer, true), { v = C.PROTOCOL, t = "LVC" }, "a", L:vector(), true)
+  self:asking(self:open(peer, true))
 end
 
 -- May `sender` open an exchange with me as its responder? The byte-lower name,
@@ -184,6 +186,7 @@ function Sync:receive(sender, msg)
     if not x and not self:welcome(sender) then return end
     x = x or self:open(sender, false)
     if x.spoke or not self:page(x, "LVC", msg, msg.a) then return end -- one vector per side and exchange
+    x.partial = x.partial or (msg.p == true and not x.ask) or nil
     x.v = x.v or {}
     if Sync.gather(x.v, msg.a, true, msg.m) then x.spoke = true; self:vector(x) end
   elseif msg.t == "LID" and x and Sync.name(msg.au) and type(msg.l) == "table" then
