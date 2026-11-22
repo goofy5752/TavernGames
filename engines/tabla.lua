@@ -63,7 +63,7 @@ ns.Engines = ns.Engines or {}
 
 local E = {
   id = "tabla", minSeats = 2, maxSeats = 2, TARGET = 5, CASCADE_ROLL = 4,
-  VARIANTS = { "std", "tapa", "gul" }, options = {}, ext = { "dice" }, again = true,
+  VARIANTS = { "std", "tapa", "gul" }, options = {}, ext = { "dice" }, again = true, stakes = true,
 }
 ns.Engines.tabla = E
 

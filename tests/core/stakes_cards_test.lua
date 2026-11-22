@@ -4,8 +4,6 @@ local ns = Sim.ns
 local C, View, Stakes = ns.Const, ns.LedgerView, ns.Stakes
 local Santase = ns.Engines.santase
 
-local restore = Play.staked("santase", "belot")
-
 local I, P, M, G = Play.NAMES[1], Play.NAMES[2], Play.NAMES[3], Play.NAMES[4]
 local SK = 50000
 
@@ -853,4 +851,4 @@ describe("stakes: the verdict feeds the confirmation", function()
   end)
 end)
 
-restore()
+Play.restore()

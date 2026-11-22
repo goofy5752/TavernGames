@@ -9,19 +9,6 @@ Play.NAMES = { "Иван Петров", "Петър Колев", "Мария С�
 
 local pending = {} -- the restores of Play.short not run yet, in the order made
 
--- Play.staked([ns,] id, ...): the engines `id` take a stake in `ns` (default
--- Sim.ns) -> a function that puts the old flags back and runs Play.restore().
-function Play.staked(ns, ...)
-  local ids = { ... }
-  if type(ns) ~= "table" then table.insert(ids, 1, ns); ns = Sim.ns end
-  local old = {}
-  for i, id in ipairs(ids) do old[i] = ns.Engines[id].stakes; ns.Engines[id].stakes = true end
-  return function()
-    for i, id in ipairs(ids) do ns.Engines[id].stakes = old[i] end
-    Play.restore()
-  end
-end
-
 -- The first n of NAMES and the names in `more`, past their login queues -> sim, cl (cl[name]).
 function Play.guild(n, more)
   local sim, cl = Sim.new(), {}

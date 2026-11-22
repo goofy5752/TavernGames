@@ -4,8 +4,6 @@ local ns = Sim.ns
 local C, View = ns.Const, ns.LedgerView
 local Stakes = ns.Stakes
 
-local restore = Play.staked("santase", "belot", "tabla")
-
 local I, P, M, G = Play.NAMES[1], Play.NAMES[2], Play.NAMES[3], Play.NAMES[4]
 local SK = 50000
 
@@ -378,4 +376,4 @@ describe("stakes: who owes whom in Сантасе, Белот and Табла", f
   end)
 end)
 
-restore()
+Play.restore()

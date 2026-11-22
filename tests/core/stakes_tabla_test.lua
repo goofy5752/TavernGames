@@ -4,8 +4,6 @@ local ns = Sim.ns
 local C, Stakes = ns.Const, ns.Stakes
 local E = ns.Engines.tabla
 
-local restore = Play.staked("tabla")
-
 local I, P = Play.NAMES[1], Play.NAMES[2] -- the host (seat 1) and the guest (seat 2)
 local SK = 50000
 local NEED = ns.Ext.dice.need -- a test that holds a throw back puts it back
@@ -454,4 +452,4 @@ describe("stakes: a staked Табла table (F2 Task 5)", function()
 end)
 
 ns.Ext.dice.need = NEED
-restore()
+Play.restore()

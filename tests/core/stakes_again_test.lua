@@ -3,8 +3,6 @@ local Play = require("play")
 local ns = Sim.ns
 local C, Stakes = ns.Const, ns.Stakes
 
-local restore = Play.staked("santase", "belot", "tabla")
-
 local I, P, M, G = Play.NAMES[1], Play.NAMES[2], Play.NAMES[3], Play.NAMES[4]
 local T = "Тодор Ангелов" -- the fifth guild member: the refill
 local SK = 50000
@@ -355,4 +353,4 @@ describe("stakes: the next match of a staked table", function()
   end)
 end)
 
-restore()
+Play.restore()

@@ -67,7 +67,7 @@ ns.Engines = ns.Engines or {}
  a match is over the host may start a new one, led by its loser (E.nextFirst).
 ]]
 
-local E = { id = "santase", minSeats = 2, maxSeats = 2, GOAL = 11, TARGET = 66, options = {}, ext = { "fair" }, again = true }
+local E = { id = "santase", minSeats = 2, maxSeats = 2, GOAL = 11, TARGET = 66, options = {}, ext = { "fair" }, again = true, stakes = true }
 ns.Engines.santase = E
 
 local RANKS = { "9", "J", "Q", "K", "T", "A" }

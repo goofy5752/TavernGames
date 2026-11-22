@@ -611,7 +611,7 @@ describe("ui: table frame, a staked Белот", function()
   -- 20 s of the break are left.
   for _, from in ipairs({ "stakeEndedAt", "stakeHoldFrom" }) do
     it("the start button is not redrawn in a loop during the break (" .. from .. ")", function()
-      local w = require("staked").readyWow({ "belot" })
+      local w = require("staked").readyWow()
       local client, TF = w.ns.client, w.ns.TableFrame
       local tid = assert(client:openTable{ game = "belot", access = "guild", turn = 45, stake = 50000 })
       w:advance(0)
@@ -645,7 +645,7 @@ end)
 
 describe("ui: table frame, a staked Сантасе that fills up again", function()
   it("a full table that waits for the break says so", function()
-    local w = require("staked").readyWow({ "santase" })
+    local w = require("staked").readyWow()
     local client, TF, L = w.ns.client, w.ns.TableFrame, w.ns.L
     eq(L("table.holdStart", 25), "Новата игра започва след 25 сек.")
     local tid = assert(client:openTable{ game = "santase", access = "guild", turn = 45, stake = 10000 })

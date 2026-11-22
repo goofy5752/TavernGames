@@ -102,7 +102,7 @@
 local _, ns = ...
 ns.Engines = ns.Engines or {}
 
-local E = { id = "belot", minSeats = 4, maxSeats = 4, TARGET = 151, options = {}, ext = { "fair" }, again = true, teams = true }
+local E = { id = "belot", minSeats = 4, maxSeats = 4, TARGET = 151, options = {}, ext = { "fair" }, again = true, teams = true, stakes = true }
 ns.Engines.belot = E
 
 local SUITS = { "C", "D", "H", "S" }

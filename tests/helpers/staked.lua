@@ -1,13 +1,10 @@
 local Wow = require("wow")
-local Play = require("play")
 
--- A guild world booted with the ui/ files for player "Иван Петров", PLAYER_LOGIN fired; the
--- engines named in `staked` take a stake in this world's own namespace (ruling G6).
+-- A guild world booted with the ui/ files for player "Иван Петров", PLAYER_LOGIN fired.
 local M = { ME = "Иван Петров" }
 
-function M.guildWow(staked)
+function M.guildWow()
   local w = Wow.new{ ui = true }
-  if staked then Play.staked(w.ns, unpack(staked)) end
   w.inGuild = true
   w.roster = { { name = M.ME .. "-Forever", online = true, guid = Wow.GUID } }
   w:boot()
@@ -18,8 +15,8 @@ function M.guildWow(staked)
 end
 
 -- ... and my login queue has closed: my ledger entries leave at once.
-function M.readyWow(staked)
-  local w = M.guildWow(staked)
+function M.readyWow()
+  local w = M.guildWow()
   w:advance(w.ns.Const.LEDGER_ADOPT_WAIT + 1)
   return w
 end

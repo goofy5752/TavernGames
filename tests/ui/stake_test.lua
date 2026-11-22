@@ -1,5 +1,4 @@
 local Wow = require("wow")
-local Play = require("play")
 
 -- The stake at the table in the UI: the new-table dialog, the question before
 -- a staked chair, the stake in the hall, the invitation and the table header,
@@ -8,8 +7,6 @@ local ME, B, C, D = "Иван Петров", "Мария Стоянова", "Т�
 
 local Staked = require("staked")
 local guildWow, readyWow = Staked.guildWow, Staked.readyWow
--- readyWow where Сантасе, Белот and Табла take a stake (Task 10 turns them on for good).
-local function stakedWow() return readyWow({ "santase", "belot", "tabla" }) end
 
 local function lastSent(w, t)
   local all = w:sentOf(t)
@@ -106,18 +103,18 @@ describe("ui: the stake in the new-table dialog", function()
     eq(lastSent(w, "TBL").msg.sk, nil)
   end)
 
-  it("„Със залог“ is offered only for Морски шах and Death Roll", function()
+  it("„Със залог“ is offered only for the five games that take a stake", function()
     local w = guildWow()
     w.ns.MainWindow.show()
     local Dlg, L = w.ns.NewTableDialog, w.ns.L
     eq(L("dialog.stake.gold"), "Със залог")
-    for _, id in ipairs({ "ttt", "deathroll" }) do
+    for _, id in ipairs({ "ttt", "deathroll", "santase", "belot", "tabla" }) do
       Dlg.open(id)
       eq(#Dlg.stake.options, 2)
       eq({ Dlg.stake.options[1].text:GetText(), Dlg.stake.options[2].text:GetText() }, { "Само за удоволствие", "Със залог" })
       ok(Dlg.stake.options[2].frame:IsVisible(), "no „Със залог“ for " .. id)
     end
-    for _, id in ipairs({ "santase", "belot", "tabla", "holdem" }) do
+    for _, id in ipairs({ "holdem" }) do
       Dlg.open(id)
       eq(#Dlg.stake.options, 1)
       eq(Dlg.stake.options[1].text:GetText(), "Само за удоволствие")
@@ -716,7 +713,7 @@ end
 
 describe("ui: the staked table of Сантасе, Белот and Табла (F2)", function()
   it("the question at a Белот chair names both prices", function()
-    local w = stakedWow()
+    local w = readyWow()
     w.ns.MainWindow.show()
     local P, L = w.ns.StakePanels, w.ns.L
     eq(L("stake.ask.team", "1g", "1g", "1g", "2g"), "Залогът е 1g. Ако отборът ти загуби, плащаш 1g на един от противниците. "
@@ -734,7 +731,7 @@ describe("ui: the staked table of Сантасе, Белот and Табла (F2)
   end)
 
   it("a card table warns about the dealer", function()
-    local w = stakedWow()
+    local w = readyWow()
     local P, L = w.ns.StakePanels, w.ns.L
     eq(L("stake.ask.cards"), "Аддонът на раздаващия знае тестето на ръката, която раздава. Играй карти за голд с хора, на които вярваш.")
     local function asked(card, what)
@@ -770,7 +767,7 @@ describe("ui: the staked table of Сантасе, Белот and Табла (F2)
   end)
 
   it("„Стани“ in a staked Белот match names what I owe", function()
-    local w = stakedWow()
+    local w = readyWow()
     local TF, L = w.ns.TableFrame, w.ns.L
     local _, s = host(w, "belot", 10000, { B, C, D })
     eq(s.status, "live")
@@ -789,7 +786,7 @@ describe("ui: the staked table of Сантасе, Белот and Табла (F2)
   end)
 
   it("the bill of a Белот match shows two rows", function()
-    local w = stakedWow()
+    local w = readyWow()
     local L = w.ns.L
     local _, s = host(w, "belot", 10000, { B, C, D })
     local v = w.ns.TableFrame.view
@@ -804,7 +801,7 @@ describe("ui: the staked table of Сантасе, Белот and Табла (F2)
   end)
 
   it("the bill of a leave names the leaver and its two debts", function()
-    local w = stakedWow()
+    local w = readyWow()
     local L = w.ns.L
     eq(L("bill.left.team", "Мария"), "Мария напусна играта и плаща на двамата противници. Партньорът в отбора не дължи нищо.")
     local tid = host(w, "belot", 10000, { B, C, D })
@@ -825,7 +822,7 @@ describe("ui: the staked table of Сантасе, Белот and Табла (F2)
   end)
 
   it("a guest's bill says when the next match may begin", function()
-    local w = stakedWow()
+    local w = readyWow()
     local TF, L = w.ns.TableFrame, w.ns.L
     eq(L("bill.again.wait", 25), "Домакинът може да започне нова игра за същия залог след 25 сек. Не искаш ли, натисни „Към залата“.")
     eq(L("bill.again.ready"), "Домакинът може да започне нова игра за същия залог. Не искаш ли, натисни „Към залата“.")
@@ -866,7 +863,7 @@ describe("ui: the staked table of Сантасе, Белот and Табла (F2)
   end)
 
   it("after a leave the opponents' bill waits for a player to sit", function()
-    local w = stakedWow()
+    local w = readyWow()
     local TF, L = w.ns.TableFrame, w.ns.L
     local tid, s = host(w, "belot", 10000, { B, C, D })
     w:deliver("WHISPER", B, { v = 1, t = "STD", tid = tid }); w:advance(0)
@@ -877,7 +874,7 @@ describe("ui: the staked table of Сантасе, Белот and Табла (F2)
   end)
 
   it("the guest's countdown ends with the break, drawn again by itself", function()
-    local w = stakedWow()
+    local w = readyWow()
     local TF, L = w.ns.TableFrame, w.ns.L
     local _, s = host(w, "tabla", 10000, { B })
     over(w, s, 2)
