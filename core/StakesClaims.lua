@@ -83,11 +83,12 @@ function Book:judge(b, taken)
   return "ask"
 end
 
--- The R bodies of gid by author h in my ledger (neither denied nor put to me; LedgerView's
+-- The R bodies of gid by author h in my ledger that came to me straight from h (dr: an id under
+-- its name proves nothing, the sync hands on any; neither denied nor put to me; LedgerView's
 -- index) -> how many, and whether there is one and it names my seat alone as the loser.
 function Book:results(gid, h)
   local View, rs = ns.LedgerView, {}
-  for _, e in ipairs(View.results(View.of(self.client.ledger), gid)) do if ns.Ledger.author(e.i) == h then rs[#rs + 1] = e end end
+  for _, e in ipairs(View.results(View.of(self.client.ledger), gid)) do if e.dr and ns.Ledger.author(e.i) == h then rs[#rs + 1] = e end end
   return #rs, #rs == 1 and type(rs[1].l) == "table" and #rs[1].l == 1 and type(rs[1].n) == "table" and rs[1].n[rs[1].l[1]] == self.env.me
 end
 

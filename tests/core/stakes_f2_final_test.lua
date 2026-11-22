@@ -302,4 +302,39 @@ describe("stakes: the final review of F2", function()
     for _, e in ipairs(Play.entries(sim, nil, "R")) do if e.gid == gid then rs[#rs + 1] = e end end
     eq(#rs, 1); ok(rs[1].i:find(P, 1, true) == 1, "the successor wrote the R") -- none by the leaver itself
   end)
+
+  it("belot: an R under my host's name that did not come from my host is not its R: asked, never confirmed (M1)", function()
+    -- Петър hosts; Иван (seat 2) and Мария (seat 4), partners, both stand: Иван's stand is ordered first.
+    local sim, cl = Play.guild(4)
+    local tid = assert(cl[P]:openTable{ game = "belot", access = "guild", turn = 45, stake = SK }); sim:run(3)
+    cl[I]:sit(tid, 2, SK); sim:run(1)
+    cl[G]:sit(tid, 3, SK); sim:run(1)
+    cl[M]:sit(tid, 4, SK); sim:run(1)
+    sim.bus.filter = function(_, to, _, m) -- the honest R of that game does not reach Мария
+      if to == M and (m.t == "LEV" or m.t == "LVC" or m.t == "LID") then return {} end
+      return { m }
+    end
+    for _ = 1, 4 do Play.step(sim, cl[P]) end
+    local seen = {}
+    cl[P]:on("forfeit", function(f) seen[#seen + 1] = f end)
+    cl[I]:stand(); cl[M]:stand(); sim:run(5)
+    eq(#seen, 1); eq(seen[1].name, I)
+    local gid = tid .. "/" .. seen[1].q
+    eq(cl[M].env.db.stakeLeft[tid].h, P)
+    -- Гошо hands Мария, as a sync would, an R with an id of Петър's that names her seat alone, and claims his stake.
+    local r = cl[G].ledgerNet:make("R", { gid = gid, g = "belot", n = { P, I, G, M }, w = { 1, 3 }, l = { 4 }, sk = SK, why = "left" })
+    local forged = {}
+    for k, v in pairs(ns.Ledger.wire(r)) do forged[k] = v end
+    forged.i = P .. ":900"
+    local d = cl[G].ledgerNet:make("D", { gid = gid, g = "belot", f = M, t = G, c = SK, why = "left" })
+    eq({ cl[M].ledgerNet:take(forged, G, false), cl[M].ledgerNet:take(d, G, true) }, { "new", "new" })
+    sim:run(3)
+    eq({ cl[M].stakes:results(gid, P) }, { 0, false })
+    eq(cl[M].stakes:asks(), {}) -- no R of Петър's own yet: it waits
+    sim:run(C.STAKE_OWE_WAIT + 5)
+    eq(#cl[M].stakes:asks(), 1)
+    eq(#wordsAt(sim, M, "C", gid), 0)
+    eq(Play.debt(cl[G], gid, M, G).status, "pending")
+    sim.bus.filter = nil
+  end)
 end)
