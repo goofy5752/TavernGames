@@ -90,19 +90,38 @@ T["help.fair.how"] = "The box is a fingerprint of the number. You cannot guess t
 T["help.fair.verify"] = "After every hand the numbers are shown to everyone. Your addon lays out the deck again by itself and goes through the whole hand: are the cards you got from this deck, and was every move allowed? If it all adds up, below the table it says “verified”. If something does not add up, it says “irregular”. When only your addon can see it, it tells the table. The others see that as a claim under your name, because they cannot check it."
 T["help.fair.dealer"] = "One thing you should know: the dealer's addon knows the whole deck of the hand it deals. Otherwise it could not send you your cards. A normal player does not see it. Only a tampered addon could peek, and only when it deals. That is why the deal passes to the next player every hand, and in the end every hand is checked."
 T["help.fair.bad"] = "See “irregular”? Tell the others. Point at the text with the mouse and you will see what exactly does not add up. A hand can also be irregular because the dealer left right at the end without showing the numbers. If the dealer only reloads the game, their addon keeps the deck and the hand goes on. If they leave or their game crashes in the middle of a hand, it is annulled and the next player deals. Below the table it says who annulled it."
+T["help.fair.stakes"] = "At a table with a stake nobody plays or rolls for you. In Tic-tac-toe the host places your mark only once your own clock has run out too. In Death Roll there is no automatic roll. If the table still plays or rolls something in your name, your addon contests the debt by itself."
 T["help.fair.dice"] = "The backgammon dice are thrown the same way. The host locks in its number. The guest locks in its own and then sends it only to the host. Only then does the host show both, and every addon works out the dice by itself. The host's number does not come out before the guest's has arrived. The guest cannot pick a die. A tampered host addon can still throw alone. That cannot be stopped, but the guest's addon shows it below the table and counts it."
 T["help.fair.sealed"] = "In Hold'em the numbers are not shown after every hand, only when the table closes. Otherwise the cards of those who gave up would be seen. Until then the line below the table counts the sealed hands. The dealer's addon knows the deck of its hand here too, and the dealer changes with the button."
 
+-- Rules book: stakes
+T["help.stakes.title"] = "Stakes"
+T["help.stakes.p1"] = "At a table “For a stake” you play for real gold. You open a table, choose “For a stake” and enter the amount per person, in gold and silver. For now only Tic-tac-toe and Death Roll take a stake. A table “Just for fun” is as it always was. Nobody owes anybody anything there."
+T["help.stakes.accept"] = "Before you sit at a table with a stake, the addon asks you. It says what the stake is and how much you can lose at most. Press “Accept and sit” and the stake holds for you too. The same question comes with an invitation to such a table. If the host changes the stake later, your addon does not accept it and you leave the table."
+T["help.stakes.example"] = "Ivan and Maria play Tic-tac-toe for 1g. Maria wins. Ivan sees in “Accounts”: “You owe Maria Koleva 1g” and presses “Pay”."
+T["help.stakes.deathroll"] = "In Death Roll whoever rolls 1 pays the stake to each of the others. Ivan, Maria and Peter play for 1g. Peter rolls 1 and owes 1g each to Ivan and to Maria, 2g in all. You lose the most when there are five of you: four stakes. Here the addon never rolls for you. You press “Roll” yourself, and everyone at the table must be in the host's group, so that the host sees the rolls."
+T["help.stakes.leave"] = "Press “Stand up” during a game and you lose by forfeit at once. The addon asks you first. You owe the stake to everyone still in the game. The same happens if you are gone for more than three minutes. In Death Roll you also lose by forfeit if it is your turn and you do not roll for three minutes. If you reload the interface, your chair waits for you. Stand up after the game is over and you owe nothing."
+T["help.stakes.honest"] = "A debt counts only once the debtor's addon confirms it. Your addon confirms by itself only a game it saw whole and clean. If you came in halfway or were not there at the end, it asks you: “Confirm” or “Contest”. If somebody played, rolled or stood you up in your place, your addon contests the debt by itself. Everybody then sees that debt as “contested”, and it counts in nobody's accounts."
+
+-- Rules book: the ledger (its title is the tab's, tab.ledger)
+T["help.ledger.p1"] = "There is one ledger for the whole guild. Every addon keeps a copy, and the copies even out by themselves, by whisper. So everyone sees the same thing: who owes whom and what has been paid. Nothing is erased. In “Accounts” you see only your own debts; “Ledger” has them all."
+T["help.ledger.pay.trade"] = "By trade: stand next to the person you owe. In “Accounts” press “Pay”, then “Trade”. The addon opens the trade and fills in the amount. Check it and accept the trade with the game's own button. If the amount stays empty, type it yourself: the addon shows it to you. Once the trade goes through, the other addon records it and the debt is struck through. A trade has no fee."
+T["help.ledger.pay.mail"] = "By mail: go to a mailbox and open it. In “Accounts” press “Pay”, then “Mail”. The addon fills in the letter: name, subject and amount. You send it yourself, with the game's own button. The post takes a small fee on top, and a letter may take up to an hour. When the other person takes the money from the letter, their addon records the payment."
+T["help.ledger.settle"] = "Paid by hand, or some other way? Press “Settled” next to the name. The addon asks whether you got exactly the amount it shows, and clears only that. Somebody owes you and forgot? “Remind” sends them a short message, at most once an hour."
+T["help.ledger.net"] = "Ivan owes Maria 5g from Tic-tac-toe. Then Maria loses 3g to Ivan at Death Roll. The two debts are set off. In “Accounts” Ivan sees that he owes Maria 2g, and pays only that. Maria owes nothing any more."
+T["help.ledger.alts"] = "Paying from another character of yours? The addon cannot know it is you, and does not record the payment. Ask the person to press “Settled”."
+T["help.ledger.holds"] = "Why is everything to one person one transfer? Very frequent transfers can briefly trigger the game's protection against bought gold. So the addon adds up your debts to one person into one sum."
+
 -- Rules book: coming soon
-T["help.soon.p"] = "Coming soon: playing for a stake with a ledger of debts."
-T["help.soon.example"] = "For now all the games in the tavern are for fun: Tic-tac-toe, Death Roll, Santase, Belot, Backgammon and Texas Hold'em. When stakes are ready, their rules will appear here, in the book."
+T["help.soon.p"] = "For now there are stakes on Tic-tac-toe and Death Roll. Santase, Belot, Backgammon and Hold'em are coming soon."
+T["help.soon.example"] = "Want to play Belot for gold? Not yet. For now Santase, Belot, Backgammon and Texas Hold'em are just for fun. When stakes for them are ready, their rules will appear here, in the book."
 
 -- First-run intro
 T["intro.hall.text"] = "This is the guild's tavern. Every round table is a game. On the right you see who is here now."
 T["intro.sit.title"] = "Sitting down"
 T["intro.sit.text"] = "See an empty dashed chair? Click it and you are playing. At a table that is already playing, you can watch."
-T["intro.invite.title"] = "Invites"
-T["intro.invite.text"] = "Open your own table and click a name on the right. Press “Invite”. Ivan sees the invitation and sits with you in one click."
+T["intro.pay.title"] = "Accounts and paying"
+T["intro.pay.text"] = "Played for gold? On the right, under “Accounts”, you see whom you owe and who owes you. Press “Pay” and the addon fills in the trade or the letter for you."
 T["intro.book.title"] = "The rules book"
 T["intro.book.text"] = "See an ⓘ? Click it. The rules book opens, with simple examples. This intro is in there too, if you want to see it again."
 

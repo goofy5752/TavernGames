@@ -100,8 +100,28 @@ Help.topics = {
     { kind = "p", key = "help.fair.verify" },
     { kind = "p", key = "help.fair.dealer" },
     { kind = "p", key = "help.fair.bad" },
+    { kind = "p", key = "help.fair.stakes" },
     { kind = "p", key = "help.fair.dice" },
     { kind = "p", key = "help.fair.sealed" },
+  } },
+  -- Playing for gold (Морски шах and Death Roll): the stake, its acceptance, the forfeit, the confirmation.
+  { id = "stakes", title = "help.stakes.title", blocks = {
+    { kind = "p", key = "help.stakes.p1" },
+    { kind = "p", key = "help.stakes.accept" },
+    { kind = "example", key = "help.stakes.example" },
+    { kind = "p", key = "help.stakes.deathroll" },
+    { kind = "p", key = "help.stakes.leave" },
+    { kind = "p", key = "help.stakes.honest" },
+  } },
+  -- The guild's ledger and paying a debt; the ⓘ of „Сметки“, „Плащане“ and „Тефтер“ opens it.
+  { id = "ledger", title = "tab.ledger", blocks = {
+    { kind = "p", key = "help.ledger.p1" },
+    { kind = "p", key = "help.ledger.pay.trade" },
+    { kind = "p", key = "help.ledger.pay.mail" },
+    { kind = "p", key = "help.ledger.settle" },
+    { kind = "example", key = "help.ledger.net" },
+    { kind = "p", key = "help.ledger.alts" },
+    { kind = "p", key = "help.ledger.holds" },
   } },
   { id = "soon", title = "games.soon", blocks = {
     { kind = "p", key = "help.soon.p" },
@@ -109,11 +129,11 @@ Help.topics = {
   } },
 }
 
--- First-run intro: hall -> sitting -> invites -> the ⓘ book.
+-- First-run intro (spec 5.3а): hall -> sitting -> paying („Сметки“ -> „Плати“) -> the ⓘ book.
 Help.intro = {
   { title = "hall.title", text = "intro.hall.text" },
   { title = "intro.sit.title", text = "intro.sit.text" },
-  { title = "intro.invite.title", text = "intro.invite.text" },
+  { title = "intro.pay.title", text = "intro.pay.text" },
   { title = "intro.book.title", text = "intro.book.text" },
 }
 

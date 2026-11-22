@@ -32,7 +32,7 @@ local function framed(w, border)
 end
 
 describe("ui: rules book", function()
-  it("opens 640x480 on „Залата“ for nil or an unknown topic, framed at 12/12, with eight topics", function()
+  it("opens 640x480 on „Залата“ for nil or an unknown topic, framed at 12/12, with eleven topics", function()
     local w = guildWow()
     local B, L = w.ns.HelpBook, w.ns.L
     B.open()
@@ -44,7 +44,7 @@ describe("ui: rules book", function()
     eq(B.paper.color, rgba(w, "cream"))
     local names = {}
     for i, t in ipairs(B.topics) do names[i] = t.id .. "=" .. t.button.text:GetText() end
-    eq(names, { "hall=Залата", "ttt=Морски шах", "deathroll=Death Roll", "santase=Сантасе", "belot=Белот", "tabla=Табла", "holdem=Тексас Холдем", "fair=Защо раздаването е честно", "soon=Скоро" })
+    eq(names, { "hall=Залата", "ttt=Морски шах", "deathroll=Death Roll", "santase=Сантасе", "belot=Белот", "tabla=Табла", "holdem=Тексас Холдем", "fair=Защо раздаването е честно", "stakes=Залози", "ledger=Тефтер", "soon=Скоро" })
     -- a long title wraps inside the list and its row grows to hold it
     for _, t in ipairs(B.topics) do
       local fs = t.button.text
@@ -92,10 +92,10 @@ describe("ui: rules book", function()
     local B, L = w.ns.HelpBook, w.ns.L
     B.open("hall")
     local hallPage = B.page
-    w:click(B.topics[9].button)
+    w:click(B.topics[11].button)
     eq(B.current, "soon"); eq(hallPage:IsShown(), false); ok(B.page:IsVisible(), "soon page hidden")
     eq(B.page.blocks[1].text:GetText(), L("help.soon.p"))
-    eq({ B.topics[9].button.text:GetTextColor() }, rgba(w, "red"))
+    eq({ B.topics[11].button.text:GetTextColor() }, rgba(w, "red"))
     w:click(B.topics[1].button); ok(hallPage:IsVisible(), "hall page not back")
     w:click(B.close); eq(B.frame:IsShown(), false)
   end)
@@ -109,6 +109,37 @@ describe("ui: rules book", function()
     w:advance(0)
     w:click(w.ns.TableFrame.view.info)
     eq(w.ns.HelpBook.current, "ttt")
+  end)
+
+  it("the stakes and ledger topics draw their blocks; the ⓘ of „Тефтер“ opens the ledger topic; the eleven rows fit above the intro link", function()
+    local w = guildWow()
+    local B, L, Help = w.ns.HelpBook, w.ns.L, w.ns.Help
+    for _, id in ipairs({ "stakes", "ledger" }) do
+      B.open(id)
+      eq(B.current, id)
+      local topic = Help.get(id)
+      eq(#B.page.blocks, #topic.blocks)
+      for i, b in ipairs(topic.blocks) do
+        eq(B.page.blocks[i].kind, b.kind); eq(B.page.blocks[i].text:GetText(), L(b.key)); ok(B.page.blocks[i].text:IsVisible(), b.key)
+      end
+    end
+    B.open("fair")
+    local keys = {}
+    for i, b in ipairs(B.page.blocks) do keys[i] = b.text:GetText() end
+    ok(w.ns.Util.contains(keys, L("help.fair.stakes")), "no stakes block in the fair topic")
+    B.frame:Hide()
+    w.ns.MainWindow.show("ledger")
+    w:click(w.ns.MainWindow.info)
+    eq(B.current, "ledger"); ok(B.frame:IsShown(), "book not open")
+    -- The list starts 62 px below the top; the body (and the list) end 56 px above the bottom.
+    for _, lang in ipairs({ "bg", "en" }) do
+      w.ns.Locale.set(lang)
+      B.open("hall")
+      local last = B.topics[#B.topics].button
+      local _, _, _, _, y = unpack(last.points[1])
+      ok(-y + last:GetHeight() <= B.HEIGHT - 56, lang .. ": the last topic row ends at " .. (-y + last:GetHeight()))
+    end
+    w.ns.Locale.set("bg")
   end)
 
   it("the Death Roll topic shows the ladder 1000 › 642 › 87 › 12 › 3 › 1 with the last number red", function()
@@ -241,7 +272,7 @@ describe("ui: rules book", function()
     B.open()
     local names = {}
     for i, t in ipairs(B.topics) do names[i] = t.id .. "=" .. t.button.text:GetText() end
-    eq(names, { "hall=Залата", "ttt=Морски шах", "deathroll=Death Roll", "santase=Сантасе", "belot=Белот", "tabla=Табла", "holdem=Тексас Холдем", "fair=Защо раздаването е честно", "soon=Скоро" })
+    eq(names, { "hall=Залата", "ttt=Морски шах", "deathroll=Death Roll", "santase=Сантасе", "belot=Белот", "tabla=Табла", "holdem=Тексас Холдем", "fair=Защо раздаването е честно", "stakes=Залози", "ledger=Тефтер", "soon=Скоро" })
     B.open("tabla")
     eq(B.current, "tabla")
     local topic = w.ns.Help.get("tabla")
@@ -333,6 +364,11 @@ describe("ui: first run", function()
     for step = 1, 4 do
       eq(I.counter:GetText(), step .. "/4")
       eq(I.title:GetText(), L(Help.intro[step].title)); eq(I.text:GetText(), L(Help.intro[step].text))
+      -- Spec 5.3а: hall, sitting, paying („Сметки“ -> „Плати“), the ⓘ book.
+      eq(I.title:GetText(), ({ "Залата", "Сядане", "Сметки и плащане", "Книжката с правила" })[step])
+      if step == 3 then
+        ok(I.text:GetText():find("„Сметки“", 1, true) and I.text:GetText():find("„Плати“", 1, true), "the payment step names „Сметки“ and „Плати“")
+      end
       if step < 4 then w:click(I.nextButton) end
     end
     w:click(I.back); eq(I.counter:GetText(), "3/4"); ok(I.back:IsShown(), "no Назад on 3/4")

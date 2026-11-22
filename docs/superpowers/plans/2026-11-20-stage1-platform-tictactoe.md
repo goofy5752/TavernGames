@@ -292,6 +292,71 @@ An invited player who asks for a taken seat is seated at the lowest free seat.
 
 **Table geometry as built (Task 9, fix round 1; supersedes the plan's table).** Frame 760 x 532, felt 732 x 440. The note is at TOPLEFT (12, -366), 270 wide, left-justified, in the close button's place; row 3 (y -388, 26 high): fold 56 wide at x 476, call 86 at x 536, raise 100 at x 626; a label wider than its button minus 6 px steps its font down from 13 to 10.
 
+#### Stage F1 additions
+
+Copied from the stage F1 plan (`docs/superpowers/plans/2026-11-23-stageF1-ledger-payments.md`, Global Constraints) and brought up to what was built: where the two differ, this section and Addendum 8 of `docs/superpowers/notes/engine-contract.md` win (the amendment lines of `.superpowers/sdd/2026-11-23-stageF1-ledger-payments/global-constraints.md` and the rulings log, section "Stage F1").
+
+**Engine, optional:** `E.stakes` (the engine takes a gold stake: Морски шах and Death Roll only); `E.idle` (no automatic move at a staked table; the host stands a seat on turn 180 s without an action, `why = "idle"`; its moves are judged by `Rolls.audit`, not by the forged-move check); `E.new(opts)` gets `opts.staked = true` at a staked table (Death Roll: `state.staked`, only `src = "seen"`, no `auto`).
+
+**Extension `stakes`** (`core/Stakes.lua`), called last by `Session:hook` / `Session:filterAct` at a staked table only. New hooks: `gone(s)` (before an `SNO "gone"` ends my seated session) and `ended(s, by) -> true` (my host's `END`, or its snapshot at another stake, while I sit in the running game). `forged` gains a fourth argument `auto`, `adopted` a fourth `how` (`asked`, `fresh`, `sit`). `Session:canStart` gains `"group"` and `"break"`; `Client:sit` refuses `"roll"` (no `env.roll` at a staked Death Roll) and `"stake"` (no ledger, or not the table's stake).
+
+**Protocol additions** (`v=1`, prefix `TAVG`, GUILD and WHISPER only; the complete list):
+
+| where | addition | meaning |
+|---|---|---|
+| `TBL`, `SNP.tbl` | `sk` | stake in copper (a multiple of 100, `STAKE_MIN = 100` .. `STAKE_MAX = 99999990000`); absent = for fun |
+| `SIT` | `sk` | the stake the sitter accepted; absent at a fun table |
+| `INV` | `sk` | the stake of the table the invitation is for |
+| `SNO.why` | `"stake"` | the `sk` of the `SIT` is not the table's |
+| `HI` | `ld` | 8 hex: the digest of my ledger (SHA-256 over the sorted `"<author>:<x>"`); absent on a client without a guild ledger (a bot). `HI` grows by at most 20 packed bytes (measured +13..+18) |
+| `EV` seat 0 | `{k="stand", seat, why="idle"}` | staked Death Roll: 180 s on turn without a roll. At a staked table the host also whispers a seat-0 stand (any `why` but `"left"`) to the player it stood up, with the same fields |
+| new `LEV` | G: `ev` (1-4 entries, at most 760 packed bytes, **all authored by the sender**); W: `ev` (1-`LEDGER_BATCH` = 6 entries, at most 1 140 packed bytes, any author, but an entry of another author than the sender is taken only inside an open exchange with the sender), `f = true` on a side's last batch | ledger entries |
+| new `LVC` | W: `a = {[author] = {n, x}}` (`n`: the highest k with 1..k all held; `x`: 12 hex, SHA-256 over the byte-sorted `"<id>:<h>"` of the author's bodies), `r = true` when it answers one, `m = true` when more pages follow | my per-author vector, in pages of at most 1 500 packed bytes and `LEDGER_PAGE_ITEMS = 120` authors |
+| new `LID` | W: `au`, `l = {"<n>.<h>", ...}` (`h` the full 16 hex), `r`, `m` | the bodies I hold of one author above the common `n`, at the ids I hold twins for and at the ids the other list names; when the lists are equal and `x` still differs, my whole list once; paged as `LVC` |
+| new `PAY` | W: `c` (copper), `how` = `"trade"`, `"mail"` or `"nudge"` | payer -> creditor: "I am paying you `c` now"; creditor -> debtor with `"nudge"`: a reminder (at most one per `NUDGE_GAP = 3600` s) |
+
+`LEV`, `LVC`, `LID` and `PAY` carry no `tid`; `core/Session.lua` ignores them (it returns on a message without a string `tid`). A peer at another protocol version gets the handling of before: listed as incompatible, nothing of the ledger or the payment is sent to it or taken from it, and its `HI.ld` is never read; an `ld` that is not 8 lowercase hex starts no exchange.
+
+**Ledger entry** (`core/Ledger.lua`; the wire form is the stored form minus the local fields `h`, `rl`, `dr`, `un`; a stored `X` keeps its target's hash as `rh` and gives it back as `h`). `i = "<author>:<n>"`, `n` an integer from 1 (at most 9 digits); the author is the text before the last colon. `at` = `env.epoch()` of the author, at most `LEDGER_FUTURE = 3600` s ahead of my clock. A name is at most 64 bytes without `|` or `,`; a canonical entry at most 600 bytes. Anything else is dropped without an error.
+
+| `k` | fields | who may author it |
+|---|---|---|
+| `R` result | `gid, g, n` (names by seat, `false` = empty), `w`, `l` (seat lists), `sk` (absent = fun), `why` (absent, or `"left"`, `"offline"`, `"idle"`) | the table's host (fun tables too: the one entry of a fun game) |
+| `D` debt | `gid, g, f` (debtor), `t` (creditor), `c` (a valid stake), `why` = `"lost"`, `"left"`, `"offline"` or `"idle"` | `f` or `t`; `f ~= t` |
+| `C` confirm | `r` (id of a `D`), `dh` (16 hex: the `h` of that exact `D` body) | counts only when the author is that `D`'s `f` and exactly one non-denied body under `r` has `h == dh` |
+| `N` contest | `r`, `dh` as `C`; `why` = `"forged"`, `"roll"`, `"stand"`, `"amount"` or `"no"` | as `C` |
+| `P` paid | `f` (debtor), `c` (any whole copper from 1 to 99 999 999 999), `how` = `"trade"`, `"mail"` or `"hand"` | the creditor (the author **is** the creditor) |
+| `X` deny | `r` (an id), `h` (16 hex, the hash of the denied body) | the author named in `r` |
+
+`gid = "<tid>/<q>"`, `q` the number of the table event that ended the game or stood the leaver up. `Ledger.canon(e)` = the fields in the order `i, k, at, gid, g, f, t, c, why, r, h, how, sk, n, w, l, dh` joined by `|` (absent = empty, `false` = `-`, a list joined by `,`); `Ledger.hash(e)` = the first 16 hex of SHA-256 of it. Up to 4 bodies per id are kept (over 4: a body denied by its author goes first, then the highest `h`). A logical debt is `gid|f|t`; only confirmed debts enter a balance; `net(a, b) = gross(a, b) - gross(b, a)`, `gross(f, t) = max(0, confirmed f->t - the c of t's P with that f)`.
+
+**`env` additions** (all optional; a client without `guild` runs no ledger and sends no `HI.ld`):
+
+| field | meaning |
+|---|---|
+| `guild` | the key of the ledger store, `guild .. "-" .. GetRealmName()` (local only, never sent); read when the client is created |
+| `db.ledger` | `{[guild] = store}`, account-wide (AceDB `global`); a store holds `ev`, `tw` (twins), `me[name] = {seq, born}` and `pending` (the login queue, each row naming its owner character) |
+| `db.stakeSeen`, `db.stakeLeft` | my outcome notes and my „Стани“ notes, per character (`STAKE_SEEN_KEEP` = 14 days) |
+| `db.stakeSat` | `{tid, sk}`: the stake of the table I sit at, per character; my staked seat exists only through it |
+| `db.stakeLog` | `{tid, no, log, st}`: what I sent at that table and the game state it was saved at, per character, dropped with `stakeSat` |
+| `member(name)` | true when the name is a guild member (the adapter's roster); absent = every name (the sim) |
+| `groupedWith(name)` | my own roster says that full name is in my party or raid (the staked Death Roll grouping checks) |
+| `date(t)` | `{d, m, day}` of epoch `t` in my zone (`day` = a local day number); the sim and the fallback use UTC (`Pay.utc`); core never calls `os.date` |
+| `noLedger(tid)` | true for a table `Bots:tableKind` calls a bot table; installed by `Bots.enable` |
+| `send(..., done)` | `done` is called when the message has left (AceComm's callback); the sim calls it at once |
+| `money()` | copper in my bags, or nil when the client cannot say (then Pay skips the "short" check) |
+| `trade.state(name)` | `"ok"` (a unit of that player is in trade range; `"ok"` in combat, where range cannot be asked), `"far"`, `"none"` (no unit: not targeted, not grouped), `"off"` (no trade API) |
+| `trade.open(name, copper)` | start a trade with that player (from a click) and fill the amount at its first `TRADE_SHOW` within 30 s -> `true` or nil |
+| `mail.state()` | `"open"`, `"closed"` or `"off"` |
+| `mail.fill(name, subject, body, copper)` | fill the send-mail frame (money, never COD; the player presses Send) -> `true` or nil |
+| `mail.fee()` | copper the post takes for one letter (`MAIL_FEE = 30` when the client cannot say) |
+
+The addon never calls `AcceptTrade`, `SendMail`, `TakeInboxMoney`, `AutoLootMailItem` or any COD function (`tests/wow` fails if it does).
+
+**Client events added:** `"ledger"()` (the log changed, once a moment), `"forfeit"({tid, game, q, seat, name, to, why, sk, at})`, `"stakeAsk"(tid, sk)` (my seat at that staked table is asked), `"payAsk"()`, `"debtAsk"()` and `"mineAsk"()` (the lists `client.pay:asks()`, `client.stakes:asks()` and `client.ledgerNet:asks()` changed), `"nudge"(name, copper)`; `"refused"` gains `"stake"` and `"roll"`. `"result"` gains `q` (the event number that ended the game) and `sk`.
+
+**Message budget (measured; the caps of the stage F1 plan hold).** A finished two-player staked game costs 2 GUILD `LEV` in the guild (the host's `R` + `D`, the loser's `C`), each one 255-byte part (`R` + `D` 186-196 packed bytes, `C` 123-127); its payment by trade one more (`P`, 123-125) and one `PAY` whisper; a fun game costs 1 (`R`). A five-player Death Roll's loser sends its four `C` in one `LEV` (under 600 packed bytes). The whole road of `tests/core/stakes_flow_test.lua` (a staked Морски шах, the payment, a member's catch-up after login) is 3 GUILD `LEV` (cap 5, at most 3 a sender), a catch-up of one exchange in 4 whispers (`LVC`, its answer, a `LEV` of four entries at 260-266 bytes, the closing `LEV`), and at most 2 778-2 856 packed bytes from any one client in any 10 s (cap 8 000; pinned at 3 400) in 1 GUILD part. Sync pages (Task 6): a vector of 45 authors with 25-byte names is one page (1 246-1 419 bytes), of 60 two; a `LID` of 50 / 60 / 70 / 300 items of 16-hex `h` is 830 / 959 / 1 113 / 4 414 bytes (about 95 items a page). AceSerializer writes keys in `pairs` order, which LuaJIT seeds per process, so a packed size moves by up to about 20 bytes between runs: every byte pin sits away from its cut. A fun-only guild's message log is the one of `82b0140` but for `HI.ld` and the host's one `LEV` of each result (pinned).
+
 ---
 
 ### Task 1: Tooling, test runner, TOC skeleton

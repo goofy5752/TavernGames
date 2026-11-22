@@ -22,11 +22,11 @@ describe("locale and help", function()
     end
   end)
 
-  it("every help block and intro key exists in both languages; topics are hall, ttt, deathroll, santase, belot, tabla, holdem, fair, soon", function()
+  it("every help block and intro key exists in both languages; topics are hall, ttt, deathroll, santase, belot, tabla, holdem, fair, stakes, ledger, soon", function()
     local H = ns.Help
     local ids = {}
     for i, t in ipairs(H.topics) do ids[i] = t.id end
-    eq(ids, { "hall", "ttt", "deathroll", "santase", "belot", "tabla", "holdem", "fair", "soon" })
+    eq(ids, { "hall", "ttt", "deathroll", "santase", "belot", "tabla", "holdem", "fair", "stakes", "ledger", "soon" })
     eq(#H.intro, 4)
     for _, t in ipairs(H.topics) do
       both(t.title, "topic title")
@@ -102,20 +102,31 @@ describe("locale and help", function()
     eq(H.get("nope"), nil)
   end)
 
-  it("every quoted label in the hall, ttt, deathroll, santase, belot, tabla, holdem, fair and soon help is a UI label, and no help title copies one", function()
+  it("every quoted label in the hall, ttt, deathroll, santase, belot, tabla, holdem, fair, stakes, ledger and soon help is a UI label, and no help title copies one", function()
     local QUOTES = { bg = { "„", "“" }, en = { "“", "”" } }
     for lang, q in pairs(QUOTES) do
-      local ui = {}
+      local ui, shapes = {}, {}
       for k, v in pairs(T[lang]) do
-        if not k:match("^help%.") and not k:match("^intro%.") then ui[v] = true end
+        if not k:match("^help%.") and not k:match("^intro%.") then
+          ui[v] = true
+          -- A UI text with %s / %d, as the stakes and ledger help quote it filled in („Дължиш на Мария Колева 1g“).
+          if v:find("%%[sd]") then
+            shapes[#shapes + 1] = "^" .. v:gsub("[%^%$%(%)%.%[%]%*%+%-%?%%]", "%%%0"):gsub("%%%%s", ".+"):gsub("%%%%d", "%%d+") .. "$"
+          end
+        end
       end
-      local checked, cards, belot, tabla, holdem = 0, 0, 0, 0, 0
+      local function filled(label)
+        for _, p in ipairs(shapes) do if label:find(p) then return true end end
+        return false
+      end
+      local checked, cards, belot, tabla, holdem, money = 0, 0, 0, 0, 0, 0
       for k, text in pairs(T[lang]) do
+        local isMoney = k:match("^help%.stakes%.") or k:match("^help%.ledger%.")
         local card = k:match("^help%.santase%.") or k:match("^help%.fair%.")
         local isBelot = k:match("^help%.belot%.")
         local isTabla = k:match("^help%.tabla%.")
         local isHoldem = k:match("^help%.holdem%.")
-        if card or isBelot or isTabla or isHoldem or k:match("^help%.hall%.") or k:match("^help%.ttt%.") or k:match("^help%.deathroll%.") or k == "help.soon.example" then
+        if card or isBelot or isTabla or isHoldem or isMoney or k:match("^help%.hall%.") or k:match("^help%.ttt%.") or k:match("^help%.deathroll%.") or k == "help.soon.example" then
           local pos = 1
           while true do
             local a, b = text:find(q[1], pos, true)
@@ -124,8 +135,9 @@ describe("locale and help", function()
             ok(c, lang .. " " .. k .. ": unclosed quote")
             if not c then break end
             local label = text:sub(b + 1, c - 1)
-            ok(ui[label], lang .. " " .. k .. ": „" .. label .. "“ is not a UI label")
+            ok(ui[label] or (isMoney and filled(label)), lang .. " " .. k .. ": „" .. label .. "“ is not a UI label")
             checked = checked + 1
+            if isMoney then money = money + 1 end
             if card then cards = cards + 1 end
             if isBelot then belot = belot + 1 end
             if isTabla then tabla = tabla + 1 end
@@ -139,17 +151,59 @@ describe("locale and help", function()
       ok(belot >= 12, lang .. ": only " .. belot .. " quoted labels in the belot help")
       ok(tabla >= 10, lang .. ": only " .. tabla .. " quoted labels in the tabla help")
       ok(holdem >= 12, lang .. ": only " .. holdem .. " quoted labels in the holdem help")
+      ok(money >= 20, lang .. ": only " .. money .. " quoted labels in the stakes and ledger help")
       for k, v in pairs(T[lang]) do
         if k:match("^help%.") and k:match("%.title$") then ok(not ui[v], lang .. " " .. k .. " copies a UI label") end
       end
     end
   end)
 
+  it("the stakes and ledger topics: their blocks, the pinned example, every label they must name; fair gains the stakes block; the intro's payment step", function()
+    local H = ns.Help
+    local function keys(id)
+      local out = {}
+      for i, b in ipairs(H.get(id).blocks) do out[i] = b.kind .. " " .. b.key end
+      return out
+    end
+    eq(H.get("stakes").title, "help.stakes.title"); eq(T.bg["help.stakes.title"], "Залози")
+    eq(keys("stakes"), { "p help.stakes.p1", "p help.stakes.accept", "example help.stakes.example", "p help.stakes.deathroll",
+      "p help.stakes.leave", "p help.stakes.honest" })
+    eq(H.get("ledger").title, "tab.ledger")
+    eq(keys("ledger"), { "p help.ledger.p1", "p help.ledger.pay.trade", "p help.ledger.pay.mail", "p help.ledger.settle",
+      "example help.ledger.net", "p help.ledger.alts", "p help.ledger.holds" })
+    eq(T.bg["help.stakes.example"], "Иван и Мария играят Морски шах за 1g. Мария печели. Иван вижда в „Сметки“: „Дължиш на Мария Колева 1g“ и натиска „Плати“.")
+    -- Each label below is the whole text of a UI key and is quoted in the two topics, in both languages.
+    local LABELS = { "accounts.title", "accounts.pay", "accounts.settle", "accounts.nudge", "table.stand", "dialog.stake.gold",
+      "dialog.stake.none", "stake.ask.yes", "ask.yes", "ask.no", "pay.trade", "pay.mail", "tab.ledger" }
+    eq(T.bg["accounts.title"] .. " " .. T.bg["dialog.stake.none"] .. " " .. T.bg["stake.ask.yes"], "Сметки Само за удоволствие Приемам и сядам")
+    for lang, q in pairs({ bg = { "„", "“" }, en = { "“", "”" } }) do
+      local text = {}
+      for _, id in ipairs({ "stakes", "ledger" }) do
+        for _, b in ipairs(H.get(id).blocks) do text[#text + 1] = T[lang][b.key] end
+      end
+      text = table.concat(text, " ")
+      for _, k in ipairs(LABELS) do
+        ok(text:find(q[1] .. T[lang][k] .. q[2], 1, true), lang .. ": the stakes and ledger help never quote " .. k)
+      end
+    end
+    local fb = {}
+    for i, b in ipairs(H.get("fair").blocks) do fb[i] = b.key end
+    eq(fb, { "help.fair.p1", "help.fair.example", "help.fair.how", "help.fair.verify", "help.fair.dealer", "help.fair.bad",
+      "help.fair.stakes", "help.fair.dice", "help.fair.sealed" })
+    ok(T.bg["help.fair.stakes"]:find("аддонът ти сам оспорва дълга", 1, true), "the fair stakes block")
+    eq(H.intro[3], { title = "intro.pay.title", text = "intro.pay.text" })
+    eq(T.bg["intro.invite.title"], nil); eq(T.en["intro.invite.text"], nil)
+  end)
+
   it("pinned texts are used verbatim", function()
     eq(T.bg["help.ttt.example"], "Иван е Х, Мария е О. Редуват се. Иван нарежда три Х в редица и печели играта. Който пръв спечели 3 игри, печели мача.")
     eq(T.bg["help.hall.example"], "Виждаш маса с празен стол с пунктир. Кликаш на стола и вече седиш. Ако масата е пълна, кликни на нея, за да гледаш.")
-    eq(T.bg["help.soon.p"], "Скоро идва игра на залог с тефтер на дълговете.")
-    eq(T.bg["help.soon.example"], "Засега всички игри в кръчмата са за удоволствие: Морски шах, Death Roll, Сантасе, Белот, Табла и Тексас Холдем. Когато залозите станат готови, правилата им ще се появят тук, в книжката.")
+    -- Pre-flight F17: Морски шах and Death Roll take stakes now; the four other games come later.
+    eq(T.bg["help.soon.p"], "Залози има засега на Морски шах и Death Roll. Сантасе, Белот, Табла и Холдем идват скоро.")
+    eq(T.bg["help.soon.example"], "Искаш да играеш Белот за злато? Още не може. Сантасе, Белот, Табла и Тексас Холдем засега са само за удоволствие. Когато залозите за тях станат готови, правилата им ще се появят тук, в книжката.")
+    ok(not T.bg["help.soon.example"]:find("всички игри", 1, true) and not T.en["help.soon.example"]:find("all the games", 1, true), "„soon“ still says every game is for fun")
+    ok(not T.bg["help.soon.example"]:find("Морски шах", 1, true) and not T.bg["help.soon.example"]:find("Death Roll", 1, true), "„soon“ lists a game that takes a stake")
+    eq(T.en["help.soon.p"], "For now there are stakes on Tic-tac-toe and Death Roll. Santase, Belot, Backgammon and Hold'em are coming soon.")
     eq(T.bg["help.holdem.limits"], "„Без лимит“: можеш да заложиш всичките си чипове по всяко време, с бутона за ва банк. „Пот лимит“: най-много колкото е потът, след като платиш. Пример при блайндове 5/10: пръв си на ход, потът е 15, плащаш 10 и може да вдигнеш до 35. Бутонът „Пот“ слага точно толкова.")
     eq(T.bg["help.holdem.sidepot"], "Иван влиза ва банк със 100 чипа. Мария има 300, Киро 600. Основният пот е 300: по 100 от тримата. За него играят и тримата. Мария и Киро залагат още по 200 помежду си. Това е страничен пот от 400 и е само за тях двамата. Иван може да спечели най-много основния пот.")
     ok(T.bg["help.holdem.fair"]:find("надписът под масата в златно казва кой.", 1, true), "the gold note")
