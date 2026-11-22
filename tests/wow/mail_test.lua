@@ -191,6 +191,52 @@ describe("wow mail: the click on the game's „Send“ (residual 27)", function(
     end)
   end)
 
+  it("the click reads the money box first: the game's money is stale before its own script ran", function()
+    local w = guildWow({ noHooks = true })
+    w.clickOrder = "hooks first"
+    local got = sentLog(w)
+    w:fireMail("MAIL_SHOW")
+    eq(w.ns.Mail.fill(M, SUBJECT, "Наздраве!", 50000), true)
+    w.G.SendMailMoney.copper = 20000 -- the player lowers the box to 2g
+    w.G.SendMailMailButton:Click()
+    w:fireMail("MAIL_SEND_SUCCESS")
+    eq(got, { { shown = M, c = 20000, how = "mail" } })
+    clean(w, "box first")
+  end)
+
+  it("the SendMail hook needs no send-money button; only a known COD is refused", function()
+    local w = guildWow()
+    local got = sentLog(w)
+    w:fireMail("MAIL_SHOW")
+    eq(w.ns.Mail.fill(M, SUBJECT, "Наздраве!", 50000), true)
+    w.G.SendMailSendMoneyButton = nil -- the client has no such button
+    w.G.SendMailMailButton:Click()
+    w:fireMail("MAIL_SEND_SUCCESS")
+    eq(got, { { shown = M, c = 50000, how = "mail" } })
+    got[1] = nil
+    w.G.GetSendMailCOD = function() return 10000 end -- a known COD letter
+    w.G.SendMailMailButton:Click()
+    w:fireMail("MAIL_SEND_SUCCESS")
+    eq(got, {})
+    clean(w, "no button")
+  end)
+
+  it("a SendMail hook consumes a pending click note: it is never reported for a later letter", function()
+    local w = guildWow()
+    local got = sentLog(w)
+    w:fireMail("MAIL_SHOW")
+    eq(w.ns.Mail.fill(M, SUBJECT, "Наздраве!", 50000), true)
+    -- A click whose SendMail never came (the money popup cancelled): the note stays.
+    w.G.SendMailMailButton.hooks[1](w.G.SendMailMailButton)
+    -- Another addon then sends a letter with no money at all; the game says it left.
+    w.G.SetSendMailMoney(0)
+    w.byPlayer = true
+    w.G.SendMail("Петър", "x", "y")
+    w.byPlayer = false
+    w:fireMail("MAIL_SEND_SUCCESS")
+    eq(got, {})
+  end)
+
   it("a COD letter sets no guard", function()
     for _, hooks in ipairs({ false, true }) do
       eachClick(hooks, function(opts, order, source, label)

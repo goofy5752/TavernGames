@@ -15,8 +15,8 @@ local _, ns = ...
 -- * "payAsk": gold that came from a debtor without proof (client.pay:asks): from
 --   one name „Да, към сметката“ / „Не“, from namesakes one button per name and „Не“.
 -- A row I owe has „Плати“ (ns.PayDialog); while gold of mine has left for that
--- creditor and no P of its has answered it yet (client.pay:guard, saved, 24 h; 30 days by letter), the
--- row says what left, how and when, and „Плати“ is off unless more is owed than
+-- creditor and no P of its has answered it yet (client.pay:guard, saved, 24 h; 30 days by
+-- letter), the row says what left, how and when, and „Плати“ is off unless more is owed than
 -- has left. A row owed to me has „Напомни“
 -- (online debtors only, the tooltip says why; „Напомнено“ for NUDGE_GAP s) and
 -- „Уредено“, which asks once more and records a P "hand" only for the amount it

@@ -71,9 +71,10 @@ function Wow:sendButton()
       self.byPlayer = true
     end
     self.byPlayer = true
-    local c = G.SendMailMoney.copper
-    if G.SendMailSendMoneyButton:GetChecked() then G.SetSendMailMoney(c) else G.SetSendMailCOD(c) end
+    -- Hooks first: the scripts run before the game sets the letter's money from the box.
     if self.clickOrder == "hooks first" then hooked() end
+    local c, check = G.SendMailMoney.copper, G.SendMailSendMoneyButton
+    if not check or check:GetChecked() then G.SetSendMailMoney(c) else G.SetSendMailCOD(c) end
     local body = G.SendMailBodyEditBox or G.MailEditBox
     G.SendMail(G.SendMailNameEditBox:GetText(), G.SendMailSubjectEditBox:GetText(), body and body:GetText() or "")
     if self.clickOrder ~= "hooks first" then hooked() end

@@ -531,10 +531,10 @@ Simulator tests:
       local okCheck, on = call(check, "GetChecked")
       if not (okCheck and on) then clickedNote = nil; return end -- a COD letter (money not checked) sets no guard
       local okTo, to = call(box, "GetText")
-      local okMoney, c = false, nil
+      local okMoney, c = false, nil -- the money box first: before the game ran its own script, GetSendMailMoney is stale
       local money, copper, frame = fn("GetSendMailMoney"), fn("MoneyInputFrame_GetCopper"), lookup("SendMailMoney")
-      if money then okMoney, c = pcall(money)
-      elseif copper and frame then okMoney, c = pcall(copper, frame) end
+      if copper and frame then okMoney, c = pcall(copper, frame) end
+      if not (okMoney and plain(c)) and money then okMoney, c = pcall(money) end
       clickedNote = okTo and type(to) == "string" and to ~= "" and okMoney and plain(c) and c > 0 and { to = to, c = c } or nil
     end
     ```

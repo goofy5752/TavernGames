@@ -590,6 +590,19 @@ describe("pay: the payer's guard against paying twice (final review I2)", functi
     eq(m.pay:waiting(I), false); eq(m.pay:left(I), G5)
   end)
 
+  it("a mail part keeps its thirty days when a trade part joins it, in either order", function()
+    local sim, _, m = setup()
+    eq(m.pay:sent({ name = I, c = 30000, how = "mail" }), true)
+    eq(m.pay:sent({ name = I, c = 20000, how = "trade" }), true)
+    eq(m.pay:guard(I).how, "mail")
+    m.env.db.paySent[I].at = EPOCH0 + sim.clock - 90000 -- 25 h
+    eq(m.pay:waiting(I), true)
+    m.env.db.paySent[I] = nil
+    eq(m.pay:sent({ name = I, c = 20000, how = "trade" }), true)
+    eq(m.pay:sent({ name = I, c = 30000, how = "mail" }), true)
+    eq(m.pay:guard(I).how, "mail")
+  end)
+
   it("a part payment guards only its part; a late P for an earlier payment does not end the wait for the next", function()
     local sim, i, m = setup()
     eq(m.pay:sent({ name = I, c = 20000, how = "trade" }), true)

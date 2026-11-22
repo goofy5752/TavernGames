@@ -59,31 +59,54 @@ function Mail.fill(name, subject, body, c)
   return done or nil
 end
 
--- The copper the letter being sent sends: the money the game holds for it
--- (GetSendMailMoney), else what the money box shows -> c > 0 | nil. Nil for a
--- COD letter (money not checked): its box asks for gold, it sends none.
-local function letterMoney()
-  local okCheck, on = call(lookup("SendMailSendMoneyButton"), "GetChecked")
-  if not (okCheck and on) then return nil end
-  local okMoney, c = false, nil
-  local money, copper, frame = fn("GetSendMailMoney"), fn("MoneyInputFrame_GetCopper"), lookup("SendMailMoney")
-  if money then okMoney, c = pcall(money)
-  elseif copper and frame then okMoney, c = pcall(copper, frame) end
-  return okMoney and plain(c) and c > 0 and c or nil
+-- The copper in the game's money box, or nil.
+local function boxMoney()
+  local copper, frame = fn("MoneyInputFrame_GetCopper"), lookup("SendMailMoney")
+  if not (copper and frame) then return nil end
+  local ok, c = pcall(copper, frame)
+  if ok and plain(c) then return c end
+  return nil
 end
 
--- After the game's SendMail (the player's click): the recipient, and the money the game holds for the letter.
+-- The copper the game holds for the letter (GetSendMailMoney), or nil.
+local function heldMoney()
+  local money = fn("GetSendMailMoney")
+  if not money then return nil end
+  local ok, c = pcall(money)
+  if ok and plain(c) then return c end
+  return nil
+end
+
+-- After the game's SendMail (the player's click): the recipient, and the money
+-- the game holds for the letter, else what the box shows. Only a known COD
+-- letter (GetSendMailCOD exists and says > 0) is refused: a missing button or
+-- box never fails the guard.
 local function sent(recipient)
-  local c = letterMoney()
-  sending = type(recipient) == "string" and c and { to = recipient, c = c } or nil
+  local cod = fn("GetSendMailCOD")
+  local okCod, due = false, nil
+  if cod then okCod, due = pcall(cod) end
+  local c = heldMoney() or boxMoney()
+  local isCod = okCod and plain(due) and due > 0
+  -- A button that is there and says money is not checked: COD (a missing button says nothing).
+  local button = lookup("SendMailSendMoneyButton")
+  local okCheck, on = call(button, "GetChecked")
+  if okCheck and not on then isCod = true end
+  sending = type(recipient) == "string" and not isCod and c and c > 0 and { to = recipient, c = c } or nil
+  clickedNote = nil -- the game's own send answers for this letter: no click note outlives it
 end
 
 -- A script after the game's „Send“ (its OnClick): the recipient and the money
--- the send frame shows, for a client whose SendMail cannot be hooked.
+-- the send frame shows, for a client whose SendMail cannot be hooked. The box
+-- is read first: with a client that confirms the money before it sends, the
+-- game has not set the letter's money from the box yet, so GetSendMailMoney
+-- still holds what the addon filled. A COD letter (money not checked) sets no guard.
 local function clicked()
+  clickedNote = nil
+  local okCheck, on = call(lookup("SendMailSendMoneyButton"), "GetChecked")
+  if not (okCheck and on) then return end
   local okTo, to = call(lookup("SendMailNameEditBox"), "GetText")
-  local c = letterMoney()
-  clickedNote = okTo and type(to) == "string" and to ~= "" and c and { to = to, c = c } or nil
+  local c = boxMoney() or heldMoney()
+  clickedNote = okTo and type(to) == "string" and to ~= "" and c and c > 0 and { to = to, c = c } or nil
 end
 
 -- The game says a letter left: the one seen at SendMail, else the one seen at

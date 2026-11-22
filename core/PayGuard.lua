@@ -60,7 +60,8 @@ function Pay:sent(m)
   local db, old = self.env.db, self:guard(name)
   if type(db.paySent) ~= "table" then db.paySent = {} end
   db.paySent[name] = { at = self.env.epoch(), c = (old and old.c or 0) + m.c,
-    paid = View.paid(self:view(), me, name), how = m.how }
+    paid = View.paid(self:view(), me, name),
+    how = (old and old.how == "mail") and "mail" or m.how } -- a letter part keeps its 30 days
   self.client.events:emit("paySent", name)
   return true
 end
