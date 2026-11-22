@@ -213,13 +213,14 @@ end
 -- The highest number held for an author, holes and denied entries included.
 function Store:seen(a) return self.top[a] or 0 end
 -- My counter is at least n -> true; false (it stays) when n is more than
--- LEDGER_JUMP above L.base (in the adoption window: above my live counter): a forgery to deny.
-function Store:bump(n)
+-- LEDGER_JUMP above L.base (in the adoption window: above my live counter): too far to
+-- move it unasked. With force (my „Мои са“, core/LedgerNet.lua) it goes there however far.
+function Store:bump(n, force)
   local rec = self:record()
   if self.adopting then
-    if n > rec.seq + C.LEDGER_JUMP then return false end
+    if n > rec.seq + C.LEDGER_JUMP and not force then return false end
     self.base = math.max(self.base, n)
-  elseif n > self.base + C.LEDGER_JUMP then
+  elseif n > self.base + C.LEDGER_JUMP and not force then
     return false
   end
   rec.seq = math.max(rec.seq, n)

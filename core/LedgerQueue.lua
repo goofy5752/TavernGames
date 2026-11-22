@@ -8,8 +8,9 @@ local _, ns = ...
 -- row is not made again when my store holds a body of mine above my saved seq
 -- with that content (made before a crash, it has come back while I waited);
 -- such a body still asked about is mine. One body stands for one row, and only
--- a live, undisputed one (not denied, no queued X of mine against it, not an asked twin).
-local Ledger, Util = ns.Ledger, ns.Util
+-- a live, undisputed one (not denied, no queued X of mine against it, not an asked twin,
+-- not asked and too far above my counter: residual 24, no crash of this computer made that).
+local Ledger, Util, C = ns.Ledger, ns.Util, ns.Const
 local Net = ns.LedgerNet
 
 -- The content of an entry, in either form: its canonical form without i and at.
@@ -54,8 +55,8 @@ function Net:settle()
   local disputed, back = {}, {}
   for _, q in ipairs(mine) do if q.k == "X" then disputed[tostring(q.f.r) .. "|" .. tostring(q.f.h)] = true end end
   for _, b in ipairs(L:above(L.me, self.saved)) do
-    local twins = select(2, L:get(b.i))
-    if not (L:denied(b) or disputed[b.i .. "|" .. b.h] or (b.un and twins and #twins > 0)) then back[#back + 1] = b end
+    local twins, far = select(2, L:get(b.i)), select(2, Ledger.author(b.i)) > L.base + C.LEDGER_JUMP
+    if not (L:denied(b) or disputed[b.i .. "|" .. b.h] or (b.un and (far or twins and #twins > 0))) then back[#back + 1] = b end
   end
   for _, q in ipairs(mine) do
     local found

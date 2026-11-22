@@ -16,15 +16,15 @@ local _, ns = ...
 --   in the adoption window (a store without my record at load, closed with the
 --   login queue) it is put to me like a crash's (below), never counted unasked
 --   (so is every body under my name such a store holds at my first login),
---   unless it is too far above my counter (then denied once the window closes).
+--   however far above my counter it is (residual 24: too far, only „Мои са“ moves it).
 --   Else, at an id I made in this run
 --   (a collision: a crash, another computer) it is put to me, and my own body,
 --   if it has not left yet, is made again under a fresh id. Else when its
---   number is at most my saved seq (the store's at login), I held its id or it
---   is too far, it is forged and I deny it (an X that points at the stored
---   body). Else a crash lost it: kept uncounted (`un`, a local field the view
---   and the denials skip) and put to me, one question per entry (net:asks,
---   net:answer, "mineAsk"); past LEDGER_MINE_ASK open questions it waits unshown.
+--   number is at most my saved seq (the store's at login) or I held its id,
+--   it is forged and I deny it (an X that points at the stored body). Else a
+--   crash or another computer of mine made it: kept uncounted (`un`, a local
+--   field the view and the denials skip) and put to me, one question per entry
+--   (net:asks, net:answer, "mineAsk"); past LEDGER_MINE_ASK open questions it waits unshown.
 local Ledger, C = ns.Ledger, ns.Const
 
 local Net = {}; Net.__index = Net
@@ -140,13 +140,13 @@ function Net:ask(b) b.un, self.L.rev, self.asked = true, self.L.rev + 1, true en
 -- The own-name check of body b, number n, new in my store (held: I held its id before).
 function Net:own(b, n, held)
   local L = self.L
-  local near, mine = L:bump(n), self.made[n] -- my counter is above it already (L:add), unless n is too far
-  if L.adopting then -- a new store: nothing is mine unasked; too far: denied once the window has closed (the login queue)
-    if near then self:ask(b) else self:deny(b) end
+  local mine = self.made[n] -- my counter is above it already (L:add), unless n is too far: then net:answer moves it
+  if L.adopting then -- a new store: nothing is mine unasked, near or far
+    self:ask(b)
   elseif mine and L:has(mine.i, mine.h) then
     self:ask(b)
     self:collide(mine)
-  elseif not near or held or n <= self.saved then
+  elseif held or n <= self.saved then
     self:deny(b)
   else
     self:ask(b)
@@ -197,8 +197,8 @@ function Net:asks()
 end
 
 -- The answer for one shown asked entry (a body of net:asks, or an id: its asked
--- bodies), or for all shown (answer(keep)): keep, it is mine and counts; else
--- one X -> true | nil (nothing of it was asked).
+-- bodies), or for all shown (answer(keep)): keep, it is mine and counts, and my
+-- counter goes above it; else one X -> true | nil (nothing of it was asked).
 function Net:answer(which, keep)
   if type(which) == "boolean" then which, keep = nil, which end
   local list = {}
@@ -208,7 +208,7 @@ function Net:answer(which, keep)
   if #list == 0 then return nil end
   for _, b in ipairs(list) do b.un = nil end
   self.L.rev, self.asked = self.L.rev + 1, true
-  if not keep then for _, b in ipairs(list) do self:deny(b) end end
+  for _, b in ipairs(list) do if keep then self.L:bump(select(2, Ledger.author(b.i)), true) else self:deny(b) end end
   self:changed()
   return true
 end
