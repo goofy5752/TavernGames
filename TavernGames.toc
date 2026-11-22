@@ -100,6 +100,7 @@ ui/HallPeers.lua
 ui/PayDialog.lua
 ui/Accounts.lua
 ui/Hall.lua
+ui/LedgerTab.lua
 ui/Minimap.lua
 ui/TableFrame.lua
 ui/TablePanels.lua
