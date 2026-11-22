@@ -131,14 +131,14 @@ function Sync:sending(x)
 end
 
 -- A page of kind t (part: its cells or items) came in exchange x -> true. Refused, and x
--- closed (capped) -> false: past LEDGER_PAGE_ITEMS items (counted no further) or PAGE packed
--- bytes, past LEDGER_EX_PAGES pages or LEDGER_EX_PAGES x LEDGER_PAGE_ITEMS items of a kind.
+-- closed (capped) -> false: past LEDGER_PAGE_ITEMS items (counted no further) or PAGE + SLACK packed
+-- bytes (a copy of a page packs differently by key order), past LEDGER_EX_PAGES pages or LEDGER_EX_PAGES x LEDGER_PAGE_ITEMS items of a kind.
 function Sync:page(x, t, msg, part)
   local n = 0
   for _ in pairs(part) do n = n + 1; if n > C.LEDGER_PAGE_ITEMS then break end end
   x.pages[t], x.items[t] = (x.pages[t] or 0) + 1, (x.items[t] or 0) + n
   if n > C.LEDGER_PAGE_ITEMS or x.pages[t] > C.LEDGER_EX_PAGES
-    or x.items[t] > C.LEDGER_EX_PAGES * C.LEDGER_PAGE_ITEMS or Net.size(msg) > Sync.PAGE then
+    or x.items[t] > C.LEDGER_EX_PAGES * C.LEDGER_PAGE_ITEMS or Net.size(msg) > Sync.PAGE + Net.SLACK then
     self:finish(x, true)
     return false
   end

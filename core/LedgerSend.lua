@@ -30,8 +30,10 @@ end
 -- How many of `max` items (at least 1) go in one message of at most `limit`
 -- packed bytes; build(k) is the message of the first k (a binary search).
 -- AceSerializer writes a table's keys in `pairs` order, so a copy of a message
--- may pack up to about 20 bytes longer: the cut keeps SLACK bytes in hand.
-Net.SLACK = 24
+-- may pack longer or shorter (measured: spreads of 28-36 bytes over 300 random
+-- key orders of pages near 1450 bytes): the cut keeps SLACK bytes in hand, and
+-- the receiver (Sync:page) allows a page up to PAGE + SLACK.
+Net.SLACK = 48
 function Net.fit(max, limit, build)
   limit = limit - Net.SLACK
   if max <= 1 or Net.size(build(max)) <= limit then return max end

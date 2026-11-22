@@ -940,6 +940,56 @@ describe("ledger sync: fix round 2", function()
   end)
 end)
 
+describe("ledger sync: a page packs differently by key order", function()
+  -- AceSerializer writes keys in pairs order, so the receiver's rebuilt copy of a page the sender
+  -- cut under PAGE - SLACK may pack longer (over PAGE). Sizes are made exact here with a filler
+  -- (a byte string of n random bytes) on the one table the receiver is handed: nothing depends on pairs.
+  seed = 5
+  local names = {}
+  for i = 1, 40 do names[named(10) .. i] = 100 + i end
+  local function msgOf(n)
+    seed = 7
+    local pad = {}
+    for i = 1, n do pad[i] = string.char(rnd(256)) end
+    return { t = "LVC", a = names, pad = table.concat(pad) }
+  end
+  local function recv(msg)
+    local capped = false
+    local fake = { finish = function(_, _, c) capped = c end, alive = function() end }
+    local got = ns.LedgerSync.page(fake, { pages = {}, items = {} }, "LVC", msg, msg.a)
+    return got, capped
+  end
+  -- the msg with the longest filler packing to at most `limit` bytes, and the next longer one
+  local function edge(limit)
+    local lo, hi = 0, 3000
+    while lo < hi do
+      local mid = math.ceil((lo + hi) / 2)
+      if packed(msgOf(mid)) <= limit then lo = mid else hi = mid - 1 end
+    end
+    return msgOf(lo), msgOf(lo + 1)
+  end
+
+  it("SLACK is 48 and the sync allows PAGE + SLACK", function()
+    eq(ns.LedgerNet.SLACK, 48)
+    eq(ns.LedgerSync.PAGE, 1500)
+  end)
+
+  it("a page packing over PAGE but within PAGE + SLACK at the receiver is accepted", function()
+    local m = edge(ns.LedgerSync.PAGE + ns.LedgerNet.SLACK)
+    local n = packed(m)
+    ok(n > ns.LedgerSync.PAGE and n <= ns.LedgerSync.PAGE + ns.LedgerNet.SLACK, "packs " .. n)
+    local got, capped = recv(m)
+    eq(got, true); ok(not capped)
+  end)
+
+  it("a page over PAGE + SLACK is still refused and closes the exchange capped", function()
+    local _, over = edge(ns.LedgerSync.PAGE + ns.LedgerNet.SLACK)
+    ok(packed(over) > ns.LedgerSync.PAGE + ns.LedgerNet.SLACK, "packs " .. packed(over))
+    local got, capped = recv(over)
+    eq(got, false); eq(capped, true)
+  end)
+end)
+
 ns.LedgerNet.size = stand
 
 
