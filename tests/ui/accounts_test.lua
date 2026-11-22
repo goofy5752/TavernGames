@@ -7,8 +7,9 @@ local ME, B, C, D = "Иван Петров", "Мария Стоянова", "Т�
 local K = "Мария Колева"
 
 -- In a guild, booted with the ui/ files, my login queue closed, the hall shown, gold in my bags.
-local function readyWow()
-  local w = Wow.new{ ui = true }
+-- `saved`: the TavernGamesDB of an earlier session (a relog).
+local function readyWow(saved)
+  local w = Wow.new{ ui = true, saved = saved }
   w.inGuild = true
   w.roster = { { name = ME .. "-Forever", online = true, guid = Wow.GUID } }
   w:boot()
@@ -548,7 +549,7 @@ describe("ui: the payment dialog „Плащане“", function()
     eq(#w:texts("Този клиент не позволява това"), 1)
   end)
 
-  it("after „Трейд“ the row says who is to confirm, until the P arrives; the amount to type stays shown", function()
+  it("„Трейд“ only opens the trade: the row waits once the gold has left, until the P arrives; the amount to type stays shown", function()
     local w, P = paying()
     w.units.target, w.near.target = "Player-1-" .. B, true
     redraw(w)
@@ -558,12 +559,55 @@ describe("ui: the payment dialog „Плащане“", function()
     local pays = w:sentOf("PAY")
     eq(#pays, 1); eq({ pays[1].target, pays[1].msg.how, pays[1].msg.c }, { B, "trade", 50000 })
     ok(P.tradeType:IsVisible(), "no amount to type"); eq(P.tradeType:GetText(), "Впиши сумата сам: 5g.")
+    eq(P.sent:IsVisible(), false)
     w:click(P.close)
     w:advance(0)
-    eq(shown(w)[1].sub, "чака Мария Стоянова да потвърди")
+    eq(shown(w)[1].sub, nil); ok(button(w, "Плати"):IsEnabled(), "an opened trade is no payment") -- final review I2
+    -- The trade completes on my side: the gold has left.
+    local at = w.G.GetServerTime()
+    w.ns.client.pay:traded({ name = B, gave = 50000, got = 0, items = false })
+    w:advance(0)
+    eq(shown(w)[1].text, "Дължиш на Мария Стоянова 5g")
+    eq(shown(w)[1].sub, "Даде 5g с трейд на " .. ddmm(at) .. ". Чака се аддонът на Мария Стоянова да го запише.")
+    eq(button(w, "Плати"):IsEnabled(), false)
+    w:hover(button(w, "Плати"))
+    eq(w.G.GameTooltip.lines[1], "Това плащане вече е тръгнало. Ако до 24 часа не бъде записано, „Плати“ се връща.")
     lev(w, B, "P", { f = ME, c = 20000, how = "trade" })
     eq(shown(w)[1].text, "Дължиш на Мария Стоянова 3g")
-    eq(shown(w)[1].sub, nil)
+    eq(shown(w)[1].sub, "Даде 3g с трейд на " .. ddmm(at) .. ". Чака се аддонът на Мария Стоянова да го запише.")
+    lev(w, B, "P", { f = ME, c = 30000, how = "trade" })
+    eq(#shown(w), 0)
+  end)
+
+  it("after a relog a debt whose letter has left does not show as payable again (final review I2)", function()
+    local w = paying()
+    w:fireMail("MAIL_SHOW")
+    redraw(w)
+    w:click(w.ns.PayDialog.mailButton)
+    w:advance(0)
+    ok(button(w, "Плати"):IsEnabled(), "a filled letter is no payment")
+    local at = w.G.GetServerTime()
+    w:playerCalls("SendMail", B, w.G.SendMailSubjectEditBox:GetText(), "")
+    w:fireMail("MAIL_SEND_SUCCESS")
+    w:advance(0)
+    local line = "Изпрати 5g по пощата на " .. ddmm(at) .. ". Чака се Мария Стоянова да ги вземе от писмото."
+    eq(shown(w)[1].sub, line); eq(button(w, "Плати"):IsEnabled(), false)
+    local P = w.ns.PayDialog
+    ok(P.frame:IsVisible(), "the dialog stays while I owe")
+    eq(P.amount:GetText(), "5g"); ok(P.sent:IsVisible(), "no sent line"); eq(P.sent:GetText(), "Вече тръгнали: 5g (" .. ddmm(at) .. ").")
+    eq(P.tradeButton:IsEnabled(), false); eq(P.mailButton:IsEnabled(), false)
+    eq(P.tradeLine:GetText(), "Цялата сума вече е тръгнала. Изчакай да бъде записана.")
+    w:fire("PLAYER_LOGOUT")
+    -- The next session, an hour later: the same saved variables.
+    local w2 = readyWow(w.G.TavernGamesDB)
+    eq(kinds(w2), { "owe" })
+    eq(shown(w2)[1].text, "Дължиш на Мария Стоянова 5g"); eq(shown(w2)[1].sub, line)
+    eq(button(w2, "Плати"):IsEnabled(), false)
+    eq(w2.ns.client.pay:left(B), 0); eq({ w2.ns.client.pay:byMail(B) }, { nil, "sent" })
+    -- Past 24 h with no P the row is payable again.
+    w2.ns.client.env.db.paySent[B].at = w2.G.GetServerTime() - w2.ns.Const.PAY_GUARD
+    w2.ns.Hall.refresh(); w2:advance(0)
+    eq(shown(w2)[1].sub, nil); ok(button(w2, "Плати"):IsEnabled(), "payable again")
   end)
 
   it("the dialog closes when the debt is gone", function()

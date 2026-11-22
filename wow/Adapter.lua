@@ -21,7 +21,7 @@ ns.Adapter = Adapter
 -- sat down for and what I sent at that table (core/StakesWatch.lua), never
 -- sent; ledger: the guild's gold ledger, account-wide.
 local CHAR_KEYS = { snoozeUntil = true, busy = true, debug = true, fairKeep = true, lastAt = true,
-  bookKeep = true, bookSpent = true, stakeSeen = true, stakeLeft = true, stakeSat = true, stakeLog = true }
+  bookKeep = true, bookSpent = true, stakeSeen = true, stakeLeft = true, stakeSat = true, stakeLog = true, paySent = true }
 local GLOBAL_KEYS = { lang = true, introDone = true, minimap = true, ledger = true }
 Adapter.CHAR_KEYS, Adapter.GLOBAL_KEYS = CHAR_KEYS, GLOBAL_KEYS
 Adapter.DEFAULTS = {

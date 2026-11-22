@@ -8,9 +8,11 @@ local _, ns = ...
 -- unit to trade with, no open mailbox, not enough gold (by mail the fee counts),
 -- or a client without the API (pay it by hand, the creditor presses „Уредено“).
 -- Nothing reports a failed fill, so once a trade is opened the amount to type
--- stays on screen. The fee and the economy-hold warning are always shown; ⓘ is
--- the ledger topic. The dialog redraws twice a second and on "ledger", and it
--- closes when nothing is owed any more.
+-- stays on screen. Gold that has left already and is not recorded yet
+-- (client.pay:guard) is said under the amount, and only the rest can be paid;
+-- when all of it has left both ways are off. The fee and the economy-hold
+-- warning are always shown; ⓘ is the ledger topic. The dialog redraws twice a
+-- second, on "ledger" and on "paySent", and it closes when nothing is owed any more.
 local Theme, W, L = ns.Theme, ns.W, ns.L
 local money = ns.Util.money
 
@@ -63,6 +65,9 @@ local function build()
   P.amount:SetTextColor(Theme.rgb("gold"))
   P.amount:SetJustifyH("CENTER")
   P.amount:SetPoint("TOP", f, "TOP", 0, -68)
+  P.sent = W.Label(f, "dim", "", 11)
+  P.sent:SetJustifyH("CENTER")
+  P.sent:SetPoint("TOP", f, "TOP", 0, -93)
 
   P.tradeButton = W.Button(f, L("pay.trade"), function() P.trade() end)
   P.tradeButton:SetSize(BTN_W, 26)
@@ -125,14 +130,22 @@ function P.render()
   local c = pay:owed(name)
   if c == 0 then return P.frame:Hide() end
   local o, who = pay:options(name), W.colored(client, name, name)
+  local left, g = pay:left(name), pay:guard(name) -- what has not left me yet; what has, unrecorded
   P.to:SetText(L("pay.to", who))
-  P.amount:SetText(money(c))
+  P.amount:SetText(money(left > 0 and left or c))
+  P.sent:SetShown(g ~= nil)
+  if g then
+    local t = (client.env.date or ns.Pay.utc)(g.at)
+    P.sent:SetText(L("pay.sent", money(g.c), string.format("%02d.%02d", t.d, t.m)))
+  end
   local text, on = tradeWay(o, who, math.max(0, o.short - o.fee))
+  if left == 0 then text, on = L("pay.sent.all"), false end
   P.tradeLine:SetText(text)
   enable(P.tradeButton, on)
-  P.tradeType:SetText(L("pay.trade.type", money(c)))
-  P.tradeType:SetShown(P.typed)
+  P.tradeType:SetText(L("pay.trade.type", money(left)))
+  P.tradeType:SetShown(P.typed and left > 0)
   text, on = mailWay(o, who)
+  if left == 0 then text, on = nil, false end
   P.mailLine:SetText(text or "")
   P.mailLine:SetShown(text ~= nil)
   enable(P.mailButton, on)
@@ -169,4 +182,5 @@ end
 
 ns.ready(function(client)
   client:on("ledger", P.render)
+  client:on("paySent", P.render)
 end)

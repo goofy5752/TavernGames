@@ -188,7 +188,9 @@ function Wow.new(opts)
   -- The money box of the trade frame and of the send-mail frame: {copper}.
   G.TradePlayerInputMoneyFrame, G.SendMailMoney = { copper = 0 }, { copper = 0 }
   G.MoneyInputFrame_SetCopper = api(self, "MoneyInputFrame_SetCopper", function(frame, c) frame.copper = c end)
-  G.SetSendMailMoney = api(self, "SetSendMailMoney")
+  -- The money of the letter being written (the game's „Send“ sets it from the money box).
+  G.SetSendMailMoney = api(self, "SetSendMailMoney", function(c) self.sendMoney = c end)
+  G.GetSendMailMoney = function() return self.sendMoney or 0 end
   G.SetSendMailCOD = api(self, "SetSendMailCOD")
   G.SendMail = api(self, "SendMail")
   G.GetSendMailPrice = function() return self.mailPrice end

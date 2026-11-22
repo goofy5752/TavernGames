@@ -92,7 +92,7 @@ describe("pay: by trade", function()
     local l = pays(sim, M, mark)
     eq(#l, 1); eq(l[1].channel, "WHISPER"); eq(l[1].target, I)
     eq(l[1].msg.c, G5); eq(l[1].msg.how, "trade")
-    eq(m.pay:waiting(I), true)
+    eq(m.pay:waiting(I), false) -- opened, not paid: no guard yet
     eq(#ps(i), 0); eq(#ps(m), 0) -- an announcement records nothing
   end)
 
@@ -274,7 +274,7 @@ describe("pay: by mail", function()
     eq(ns.L("pay.mail.body"), "Изплатено през Tavern Games. Наздраве!")
     local l = pays(sim, M, mark)
     eq(#l, 1); eq(l[1].target, I); eq(l[1].msg.c, G5); eq(l[1].msg.how, "mail")
-    eq(m.pay:waiting(I), true)
+    eq(m.pay:waiting(I), false) -- filled, not sent: no guard yet
     eq(#ps(i), 0)
     -- И is not listed online: the letter is filled, no PAY
     m.presence:remove(I)
@@ -530,6 +530,80 @@ describe("pay: gold that comes before the debt is confirmed on my client (final 
     -- М's own D (its creditor never claimed) arrives later: the credit has paid it
     owe(sim, M, I, G5)
     eq(net(i, M, I), 0); eq(net(m, M, I), 0)
+  end)
+end)
+
+describe("pay: the payer's guard against paying twice (final review I2)", function()
+  it("a trade that completed on my side guards the debt until the creditor's P arrives", function()
+    local sim, i, m = setup()
+    local seen = record(m, "paySent")
+    eq(m.pay:byTrade(I), true); sim:run(0)
+    eq(m.pay:guard(I), nil); eq(m.pay:left(I), G5)
+    m.pay:traded({ name = I, gave = G5, got = 0, items = false }) -- my side of the completed trade
+    eq(seen, { { I } })
+    local g = m.pay:guard(I)
+    eq({ g.c, g.how, g.at }, { G5, "trade", EPOCH0 + sim.clock })
+    eq(m.pay:waiting(I), true); eq(m.pay:left(I), 0); eq(m.pay:owed(I), G5)
+    eq({ m.pay:byTrade(I) }, { nil, "sent" }); eq({ m.pay:byMail(I) }, { nil, "sent" })
+    eq(#sim.trades, 1); eq(#sim.mails, 0)
+    i.pay:traded({ name = M, gave = 0, got = G5, items = false }); sim:run(2)
+    eq(#ps(i), 1); eq(m.pay:guard(I), nil); eq(m.pay:waiting(I), false); eq(m.env.db.paySent[I], nil)
+  end)
+
+  it("a letter that was sent guards the debt across a relog; one merely filled does not", function()
+    local sim, _, m = setup()
+    eq(m.pay:byMail(I), true); sim:run(0)
+    eq(m.pay:waiting(I), false)
+    m:stop(); m = sim:relog(M); sim:run(1)
+    eq(m.pay:waiting(I), false); eq(m.pay:left(I), G5) -- filled and never sent: payable again
+    eq(m.pay:sent({ shown = "Иван", c = G5, how = "mail" }), true) -- the game says the letter left
+    eq(m.pay:waiting(I), true); eq(m.pay:left(I), 0)
+    m:stop(); m = sim:relog(M); sim:run(40)
+    local g = m.pay:guard(I)
+    eq({ g.c, g.how }, { G5, "mail" }); eq(m.pay:left(I), 0); eq(m.pay:owed(I), G5)
+    eq({ m.pay:byMail(I) }, { nil, "sent" }); eq({ m.pay:byTrade(I) }, { nil, "sent" })
+    eq(#sim.mails, 1)
+  end)
+
+  it("the guard expires after 24 h", function()
+    local sim, _, m = setup()
+    eq(m.pay:sent({ name = I, c = G5, how = "mail" }), true)
+    m.env.db.paySent[I].at = EPOCH0 + sim.clock - ns.Const.PAY_GUARD + 1
+    eq(m.pay:waiting(I), true)
+    sim:run(1)
+    eq(m.pay:waiting(I), false); eq(m.pay:left(I), G5); eq(m.env.db.paySent[I], nil)
+    eq(ns.Const.PAY_GUARD, 86400)
+  end)
+
+  it("a part payment guards only its part; a late P for an earlier payment does not end the wait for the next", function()
+    local sim, i, m = setup()
+    eq(m.pay:sent({ name = I, c = 20000, how = "trade" }), true)
+    eq(m.pay:left(I), 30000); eq(m.pay:guard(I).c, 20000)
+    eq(m.pay:byMail(I), true); sim:run(0)
+    eq(sim.mails[1].c, 30000) -- only what has not left yet
+    eq(m.pay:sent({ shown = I, c = 30000, how = "mail" }), true)
+    eq(m.pay:guard(I).c, G5); eq(m.pay:left(I), 0)
+    eq(#i.pay:settle(M), 1); sim:run(2)
+    eq(m.pay:guard(I), nil) -- „Уредено“ recorded all 5g: both parts are answered
+    -- the same, the creditor's first P covering only the first part
+    local sim2, i2, m2 = setup()
+    eq(m2.pay:sent({ name = I, c = 20000, how = "trade" }), true)
+    eq(m2.pay:sent({ name = I, c = 30000, how = "mail" }), true)
+    i2.ledgerNet:make("P", { f = M, c = 20000, how = "trade" }); sim2:run(2)
+    eq(m2.pay:owed(I), 30000); eq(m2.pay:guard(I).c, 30000); eq(m2.pay:left(I), 0)
+  end)
+
+  it("gold that left for somebody I owe nothing, or a recipient that fits no one or two creditors, sets nothing", function()
+    local sim, i, m = setup(nil, { P })
+    eq(m.pay:sent({ name = P, c = G5, how = "trade" }), nil)
+    eq(m.pay:sent({ shown = "Петър", c = G5, how = "mail" }), nil)
+    eq(m.pay:sent({ shown = "Иван", c = 0, how = "mail" }), nil)
+    eq(m.pay:sent({ shown = "Иван", c = G5, how = "hand" }), nil)
+    eq(i.pay:sent({ name = M, c = G5, how = "trade" }), nil) -- the creditor gave its debtor gold
+    owe(sim, M, "Иван Колев", G5)
+    eq(m.pay:sent({ shown = "Иван", c = G5, how = "mail" }), nil) -- two creditors called Иван
+    eq(m.pay:sent({ shown = I, c = G5, how = "mail" }), true)
+    eq(m.env.db.paySent["Иван Колев"], nil); eq(m.pay:waiting(I), true)
   end)
 end)
 

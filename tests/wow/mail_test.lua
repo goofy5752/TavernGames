@@ -37,6 +37,91 @@ local function moneyTaken(w, i)
   w:fireMail("MAIL_INBOX_UPDATE")
 end
 
+-- What client.pay:sent was given.
+local function sentLog(w)
+  local got = {}
+  w.ns.client.pay.sent = function(_, m) got[#got + 1] = m end
+  return got
+end
+
+describe("wow mail: a letter that left (final review I2)", function()
+  it("the player's „Send“ and the game's MAIL_SEND_SUCCESS report the recipient and the money", function()
+    local w = guildWow()
+    local got = sentLog(w)
+    w:fireMail("MAIL_SHOW")
+    eq(w.ns.Mail.fill(M, SUBJECT, "Наздраве!", 50000), true)
+    eq(got, {}) -- filled: nothing has left
+    w:playerCalls("SendMail", M, SUBJECT, "Наздраве!")
+    eq(got, {}) -- the game has not answered yet
+    w:fireMail("MAIL_SEND_SUCCESS")
+    eq(got, { { shown = M, c = 50000, how = "mail" } })
+    w:fireMail("MAIL_SEND_SUCCESS") -- another letter, not seen through the hook: nothing
+    eq(#got, 1)
+    eq(w:called("SendMail"), 0) -- the addon itself never sends
+    for name in pairs(w.forbidden) do eq(w:called(name), 0, name) end
+  end)
+
+  it("a letter the game refused, one without money, and one filled but never sent report nothing", function()
+    local w = guildWow()
+    local got = sentLog(w)
+    w:fireMail("MAIL_SHOW")
+    eq(w.ns.Mail.fill(M, SUBJECT, "Наздраве!", 50000), true)
+    w:playerCalls("SendMail", M, SUBJECT, "Наздраве!")
+    w:fireMail("MAIL_FAILED")
+    w:fireMail("MAIL_SEND_SUCCESS") -- of some later letter
+    eq(got, {})
+    w.sendMoney = 0
+    w:playerCalls("SendMail", M, "Здрасти", "")
+    w:fireMail("MAIL_SEND_SUCCESS")
+    eq(got, {})
+    eq(w.ns.Mail.fill(M, SUBJECT, "Наздраве!", 50000), true)
+    w:fireMail("MAIL_CLOSED"); w:fireMail("MAIL_SHOW")
+    w:fireMail("MAIL_SEND_SUCCESS")
+    eq(got, {})
+  end)
+
+  it("the player may change the letter: what is reported is what was sent", function()
+    local w = guildWow()
+    local got = sentLog(w)
+    w:fireMail("MAIL_SHOW")
+    eq(w.ns.Mail.fill(M, SUBJECT, "Наздраве!", 50000), true)
+    w.sendMoney = 20000 -- the player lowered the amount; the game's „Send“ sets it
+    w:playerCalls("SendMail", "Мария", SUBJECT, "Наздраве!")
+    w:fireMail("MAIL_SEND_SUCCESS")
+    eq(got, { { shown = "Мария", c = 20000, how = "mail" } })
+  end)
+
+  it("without hooksecurefunc the letter the addon filled at this mailbox is the one reported", function()
+    local w = guildWow({ noHooks = true })
+    local got = sentLog(w)
+    w:fireMail("MAIL_SHOW")
+    w:fireMail("MAIL_SEND_SUCCESS") -- nothing filled
+    eq(got, {})
+    eq(w.ns.Mail.fill(M, SUBJECT, "Наздраве!", 50000), true)
+    w:fireMail("MAIL_SEND_SUCCESS")
+    eq(got, { { shown = M, c = 50000, how = "mail" } })
+    w:fireMail("MAIL_SEND_SUCCESS")
+    eq(#got, 1)
+  end)
+
+  it("end to end: the sent letter guards my debt", function()
+    local w = guildWow()
+    local client = w.ns.client
+    w:advance(w.ns.Const.LEDGER_ADOPT_WAIT + 1)
+    client.ledgerNet:make("D", { gid = "T#1/1", g = "ttt", f = ME, t = M, c = 50000, why = "lost" })
+    w:advance(3)
+    eq(client.pay:owed(M), 50000); eq(client.pay:waiting(M), false)
+    w.money = 1000000
+    w:fireMail("MAIL_SHOW")
+    eq(client.pay:byMail(M), true)
+    eq(client.pay:waiting(M), false)
+    w:playerCalls("SendMail", M, w.G.SendMailSubjectEditBox:GetText(), "")
+    w:fireMail("MAIL_SEND_SUCCESS")
+    eq(client.pay:waiting(M), true); eq(client.pay:left(M), 0)
+    eq(w.G.TavernGamesDB.char[next(w.G.TavernGamesDB.char)].paySent[M].c, 50000) -- saved per character
+  end)
+end)
+
 describe("wow mail: the send frame", function()
   it("state follows MAIL_SHOW and MAIL_CLOSED", function()
     local w = guildWow()

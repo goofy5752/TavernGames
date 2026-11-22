@@ -14,12 +14,14 @@ local _, ns = ...
 --   of mine, or a game I did not see whole); „Потвърждавам“ / „Оспорвам“.
 -- * "payAsk": gold that came from a debtor without proof (client.pay:asks): from
 --   one name „Да, към сметката“ / „Не“, from namesakes one button per name and „Не“.
--- A row I owe has „Плати“ (ns.PayDialog) and, while my announced payment has no
--- P of the creditor yet, „чака … да потвърди“. A row owed to me has „Напомни“
+-- A row I owe has „Плати“ (ns.PayDialog); while gold of mine has left for that
+-- creditor and no P of its has answered it yet (client.pay:guard, saved, 24 h), the
+-- row says what left, how and when, and „Плати“ is off unless more is owed than
+-- has left. A row owed to me has „Напомни“
 -- (online debtors only, the tooltip says why; „Напомнено“ for NUDGE_GAP s) and
 -- „Уредено“, which asks once more and records a P "hand" only for the amount it
 -- asked about (a due changed meanwhile is asked again). The column redraws on "ledger",
--- "payAsk", "debtAsk" and "mineAsk"; a reminder ("nudge") is said in the chat frame.
+-- "payAsk", "debtAsk", "mineAsk" and "paySent"; a reminder ("nudge") is said in the chat frame.
 local W, L, C = ns.W, ns.L, ns.Const
 local View, money = ns.LedgerView, ns.Util.money
 
@@ -47,7 +49,7 @@ end
 -- {{kind = "mine", entry, head} (one per asked body; head: the first, under
 --  „Тези записи …“) | {kind = "mine", more} (how many more wait unshown)
 --  | {kind = "ask", debt, note} | {kind = "payAsk", ask}
---  | {kind = "owe", name, c, waiting} | {kind = "owed", name, c}}: questions first,
+--  | {kind = "owe", name, c, sent (my live guard or nil), left} | {kind = "owed", name, c}}: questions first,
 -- then what I owe, then what I am owed (each largest first).
 function A.rows(client)
   local out, owed = {}, {}
@@ -60,7 +62,7 @@ function A.rows(client)
   for _, q in ipairs(pay:asks()) do out[#out + 1] = { kind = "payAsk", ask = q } end
   for _, a in ipairs(View.accounts(View.of(client.ledger), client.env.me)) do
     if a.net > 0 then
-      out[#out + 1] = { kind = "owe", name = a.name, c = a.net, waiting = pay:waiting(a.name) }
+      out[#out + 1] = { kind = "owe", name = a.name, c = a.net, sent = pay:guard(a.name), left = pay:left(a.name) }
     elseif pay:due(a.name) > 0 then
       owed[#owed + 1] = { kind = "owed", name = a.name, c = pay:due(a.name) }
     end
@@ -159,9 +161,11 @@ local SPEC = {
     return { text = L("ask.pay.who", money(q.c)), buttons = buttons }
   end,
   owe = function(client, r)
-    return { text = L("accounts.owe", who(client, r.name), money(r.c)), inline = true,
-      sub = r.waiting and L("accounts.waiting", who(client, r.name)) or nil,
-      buttons = { { L("accounts.pay"), function() ns.PayDialog.open(r.name) end } } }
+    local g = r.sent
+    local sub = g and L(g.how == "mail" and "accounts.sent.mail" or "accounts.sent.trade", money(g.c), ddmm(client, g.at), who(client, r.name)) or nil
+    local gone = r.left == 0 and function(tip) tip:SetText(L("accounts.sent.tip")) end or nil
+    return { text = L("accounts.owe", who(client, r.name), money(r.c)), inline = true, sub = sub,
+      buttons = { { L("accounts.pay"), function() ns.PayDialog.open(r.name) end, r.left > 0, gone } } }
   end,
   owed = function(client, r)
     local done, on = nudgedNow(client, r.name), online(client, r.name)
@@ -347,7 +351,7 @@ function A.askSettle(name, c)
 end
 
 ns.ready(function(client)
-  for _, event in ipairs({ "ledger", "payAsk", "debtAsk", "mineAsk" }) do client:on(event, refresh) end
+  for _, event in ipairs({ "ledger", "payAsk", "debtAsk", "mineAsk", "paySent" }) do client:on(event, refresh) end
   client:on("nudge", function(name, c)
     if ns.Adapter and ns.Adapter.say then ns.Adapter.say(L("nudge.say", who(client, name), money(c))) end
   end)

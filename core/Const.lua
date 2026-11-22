@@ -81,6 +81,7 @@ ns.Const = {
   LEDGER_PAGE_ITEMS = 120,   -- authors in one LVC page, ids in one LID page (a bigger page is refused)
 
   PAY_WINDOW = 300, -- a trade completes a payment when the payer's PAY came within this long
+  PAY_GUARD = 86400, -- gold that left me guards its debt against a second payment this long, or until the creditor's P
   NUDGE_GAP = 3600, -- a debtor is reminded at most this often
   MAIL_FEE = 30,    -- copper: the postage of one letter
 }

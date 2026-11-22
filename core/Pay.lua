@@ -16,7 +16,8 @@ local _, ns = ...
 -- letter of a full name the guild knows is put to me as well (credit: yes records
 -- the whole amount); anything else is ignored. „Уредено“ (settle): P "hand" for
 -- the whole due; over the gold cap a P splits. „Напомни“ (nudge): PAY "nudge",
--- once per NUDGE_GAP s. The login queue keeps a P.
+-- once per NUDGE_GAP s. The login queue keeps a P; the payer's guard against
+-- paying twice (guard, waiting, left, sent) is in core/PayGuard.lua.
 local C, Names, View, Util = ns.Const, ns.Names, ns.LedgerView, ns.Util
 local floor, min, max = math.floor, math.min, math.max
 
@@ -30,7 +31,7 @@ local HOW = { trade = true, mail = true, nudge = true }
 local function copper(v) return type(v) == "number" and v >= 1 and v <= PAID_MAX and v == floor(v) end
 
 function Pay.new(client)
-  return setmetatable({ client = client, env = client.env, said = {}, heard = {}, nudged = {}, nudgeHeard = {},
+  return setmetatable({ client = client, env = client.env, heard = {}, nudged = {}, nudgeHeard = {},
     questions = {}, seq = 0 }, Pay)
 end
 
@@ -69,9 +70,9 @@ end
 
 -- The ways to pay `name`: {trade = "ok" | "far" | "none" | "off", mail = "open" |
 -- "closed" | "off", fee, short} ("off": the client lacks the API; short: the
--- copper I lack for the amount plus the fee of a letter, 0 when I have enough).
+-- copper I lack for what is left to pay plus the fee of a letter, 0 when I have enough).
 function Pay:options(name)
-  local env, c = self.env, self:owed(name)
+  local env, c = self.env, self:left(name)
   local fee = env.mail and env.mail.fee() or C.MAIL_FEE
   local money = env.money and env.money()
   return { trade = env.trade and env.trade.state(name) or "off", mail = env.mail and env.mail.state() or "off",
@@ -86,17 +87,15 @@ function Pay:whisper(name, c, how)
   return true
 end
 
--- I pay `name`: noted for waiting(), announced to it.
-function Pay:paying(name, c, how)
-  self.said[name] = View.paid(self:view(), self.env.me, name)
-  return self:whisper(name, c, how) or true
-end
+-- I am about to pay `name`: announced to it (the creditor's client waits for the trade).
+function Pay:paying(name, c, how) return self:whisper(name, c, how) or true end
 
--- „Трейд“: opens a trade with `name` for what I owe -> true | nil, code ("none":
--- nothing owed; "far", "nounit" (trade state "none") or "off"; "short": not enough gold).
+-- „Трейд“: opens a trade with `name` for what I owe and has not left me yet -> true | nil,
+-- code ("none": nothing owed; "sent": all of it has left already (Pay:guard); "far",
+-- "nounit" (trade state "none") or "off"; "short": not enough gold).
 function Pay:byTrade(name)
-  local env, c = self.env, self:owed(name)
-  if c == 0 then return nil, "none" end
+  local env, c = self.env, self:left(name)
+  if c == 0 then return nil, self:owed(name) > 0 and "sent" or "none" end
   local state = env.trade and env.trade.state(name) or "off"
   if state ~= "ok" then return nil, state == "none" and "nounit" or state end
   local money = env.money and env.money()
@@ -105,21 +104,16 @@ function Pay:byTrade(name)
   return self:paying(name, c, "trade")
 end
 
--- „Поща“: fills a letter to `name` for what I owe -> true | nil, code ("none",
--- "closed", "off", "short": not enough gold for the amount and the fee).
+-- „Поща“: fills a letter to `name` for the same amount -> true | nil, code ("none",
+-- "sent", "closed", "off", "short": not enough gold for the amount and the fee).
 function Pay:byMail(name)
-  local env, c = self.env, self:owed(name)
-  if c == 0 then return nil, "none" end
+  local env, c = self.env, self:left(name)
+  if c == 0 then return nil, self:owed(name) > 0 and "sent" or "none" end
   local o = self:options(name)
   if o.mail ~= "open" then return nil, o.mail == "closed" and "closed" or "off" end
   if o.short > 0 then return nil, "short" end
   if not env.mail.fill(name, Pay.subject(self:view(), env.me, name, env.date), ns.L("pay.mail.body"), c) then return nil, "off" end
   return self:paying(name, c, "mail")
-end
-
--- Did I announce a payment to `name` that no P of its has answered yet?
-function Pay:waiting(name)
-  return self.said[name] ~= nil and View.paid(self:view(), self.env.me, name) == self.said[name]
 end
 
 -- My P for debtor `name`: min(gold, room) (whole: all of it, credit), split at the gold cap
@@ -144,10 +138,12 @@ function Pay:ask(q)
 end
 
 -- A completed trade with guild member t.name: the copper I gave and got, items =
--- an item on either side (anything but false is put to me).
+-- an item on either side (anything but false is put to me). Gold I gave a creditor
+-- has left me (Pay:sent).
 function Pay:traded(t)
   if type(t) ~= "table" or type(t.name) ~= "string" or type(t.got) ~= "number" or type(t.gave) ~= "number" then return end
   local name, gold = t.name, t.got - t.gave
+  if copper(-gold) then self:sent({ name = name, c = -gold, how = "trade" }) end
   if not copper(gold) then return end
   local heard, room, any = self.heard[name], self:room(name)
   self.heard[name] = nil
