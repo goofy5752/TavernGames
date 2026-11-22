@@ -44,6 +44,7 @@ local P = {
 ns.StakePanels = P
 
 local ASK_W, ASK_H, WARN_H = 380, 200, 44
+local BUY_H, BUY_STEP = 34, 10 -- a cash table's buy-in stepper, in big blinds (MIN_BB to MAX_BB)
 local BILL_W, BILL_TOP, BILL_ROW, BILL_Y, BILL_LINES = 500, 32, 18, 6, 6
 local MARK_W = 112 -- the row's mark, right of its text
 
@@ -56,8 +57,12 @@ local function first(client, name) return W.colored(client, name, W.firstWord(na
 -- What I owe if I lose at a table of game `game`, stake `sk` (a team game:
 -- one stake to one opponent, Stake.worst when I leave).
 local function askText(game, sk)
-  local worst = ns.Stake.worst(game, sk)
   local engine = ns.Games.engine(game)
+  if engine and engine.stakeOf then -- a cash table: its stake is its big blind
+    local HC = ns.HoldemCash
+    return L("stake.ask.cash", money(sk / 2), money(sk), money(HC.MIN_BB * sk), money(HC.MAX_BB * sk))
+  end
+  local worst = ns.Stake.worst(game, sk)
   if engine and engine.teams then return L("stake.ask.team", money(sk), money(sk), money(sk), money(worst)) end
   if worst > sk then return L("stake.ask.each", money(sk), money(sk), money(worst)) end
   return L("stake.ask.text", money(sk), money(sk))
@@ -94,6 +99,21 @@ local function buildAsk()
   P.askWarn:SetWordWrap(true)
   P.askWarn:SetPoint("TOPLEFT", P.askLeave, "BOTTOMLEFT", 0, -10)
   P.askWarn:Hide()
+  local row = CreateFrame("Frame", nil, f) -- a cash table's buy-in: „−“ the amount „+“
+  P.buyRow = row
+  row:SetSize(ASK_W - 48, 24)
+  row:SetPoint("TOPLEFT", P.askWarn, "BOTTOMLEFT", 0, -10)
+  P.buyMinus = W.Button(row, L("holdem.minus"), function() P.stepBuy(-BUY_STEP) end, true)
+  P.buyMinus:SetSize(30, 24)
+  P.buyMinus:SetPoint("LEFT", row, "LEFT", 0, 0)
+  P.buyPlus = W.Button(row, L("holdem.plus"), function() P.stepBuy(BUY_STEP) end, true)
+  P.buyPlus:SetSize(30, 24)
+  P.buyPlus:SetPoint("RIGHT", row, "RIGHT", 0, 0)
+  P.buyText = W.Label(row, "ui", "", 13)
+  P.buyText:SetJustifyH("CENTER")
+  P.buyText:SetPoint("LEFT", P.buyMinus, "RIGHT", 6, 0)
+  P.buyText:SetPoint("RIGHT", P.buyPlus, "LEFT", -6, 0)
+  row:Hide()
   P.askYes = W.Button(f, L("stake.ask.yes"), function() P.answer(true) end)
   P.askYes:SetSize(170, 28)
   P.askYes:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -24, 20)
@@ -101,6 +121,23 @@ local function buildAsk()
   P.askNo:SetSize(110, 28)
   P.askNo:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 24, 20)
   f:Hide()
+end
+
+-- The buy-in I chose in big blinds, moved by `d` between MIN_BB and MAX_BB.
+function P.stepBuy(d)
+  local HC, q = ns.HoldemCash, P.question
+  P.buyBB = math.max(HC.MIN_BB, math.min(HC.MAX_BB, (P.buyBB or HC.MAX_BB) + d))
+  if q then P.buyText:SetText(L("stake.ask.buy", P.buyBB, money(P.buyBB * q.sk))) end
+end
+
+-- The rebuy line of a cash table's mode (the lobby's record or my own table; nothing when unknown).
+local function rebuyLine(q)
+  local client = ns.client
+  local rec = client and client.lobby:get(q.tid)
+  local s = client and client.session
+  local mode = rec and rec.opt and rec.opt.rebuy or (s and s.tid == q.tid and s.opt and s.opt.rebuy)
+  if mode == "top" then return L("stake.ask.rebuy.top", money(ns.HoldemCash.MAX_BB * q.sk)) end
+  return mode and L("stake.ask.rebuy." .. mode) or ""
 end
 
 local function showAsk(q)
@@ -114,10 +151,19 @@ local function showAsk(q)
   P.askText:SetText(askText(q.game, q.sk))
   local engine = ns.Games.engine(q.game)
   local cards = engine ~= nil and engine.view ~= nil
+  local cash = engine ~= nil and engine.stakeOf ~= nil
+  local stepper = cash and q.kind ~= "keep" -- a seat I am asked about keeps the buy-in it has
+  q.cash = stepper
+  -- a cash table has no forfeit: its line is the rebuy mode; its warning has the void of a silent dealer too
+  P.askLeave:SetText(cash and rebuyLine(q) or L("stake.ask.leave"))
+  P.askWarn:SetText(cash and (L("stake.ask.cards") .. " " .. L("stake.ask.void")) or L("stake.ask.cards"))
   P.askWarn:SetShown(cards)
+  P.buyRow:SetShown(stepper)
+  if stepper then P.buyBB = nil; P.stepBuy(ns.HoldemCash.MAX_BB) end
   -- the frame grows with its text: 52 above, 68 below (a 20 gap, 28 of buttons, a 20 margin)
-  local need = 52 + P.askText:GetStringHeight() + 10 + P.askLeave:GetStringHeight() + (cards and 10 + P.askWarn:GetStringHeight() or 0) + 68
-  local h = math.max(ASK_H + (cards and WARN_H or 0), need)
+  local need = 52 + P.askText:GetStringHeight() + 10 + P.askLeave:GetStringHeight() + (cards and 10 + P.askWarn:GetStringHeight() or 0)
+    + (stepper and BUY_H or 0) + 68
+  local h = math.max(ASK_H + (cards and WARN_H or 0) + (stepper and BUY_H or 0), need)
   P.askFrame:SetHeight(h)
   P.askWood:SetTexCoord(0, (ASK_W - 8) / Theme.texSize.wood, 0, (h - 8) / Theme.texSize.wood)
   P.askFrame:Show()
@@ -148,11 +194,15 @@ function P.answer(yes)
   local q, client = P.question, ns.client
   hideAsk()
   if not (q and client) then return end
-  if q.kind == "invite" then return ns.InviteToast.acceptStaked(q.tid, q.sk, yes) end
+  local buy = q.cash and P.buyBB * q.sk / ns.HoldemCash.CHIP -- chips: a big blind of the table is `blinds` chips
+  if q.kind == "invite" then
+    if yes and buy then client:wantBuy(q.tid, buy) end
+    return ns.InviteToast.acceptStaked(q.tid, q.sk, yes)
+  end
   if not yes then return end
   if q.kind == "keep" then
     client:acceptStake()
-  elseif client:sit(q.tid, q.seat, q.sk) == nil and not client.ledger then
+  elseif client:sit(q.tid, q.seat, q.sk, buy) == nil and not client.ledger then
     ns.Hall.say(L("refused.stake")) -- a client without a ledger sits at no staked table
   end
 end

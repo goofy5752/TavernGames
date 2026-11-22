@@ -887,3 +887,213 @@ describe("ui: the staked table of Сантасе, Белот and Табла (F2)
     eq(TF.countTimer, nil)
   end)
 end)
+
+-- Stage F3, Task 10: a cash table (staked Холдем) in the dialog, the question with the buy-in, the hall.
+describe("ui: a cash table in the dialog and the question", function()
+  local Play = require("play")
+  local SEATS = 6
+
+  -- A guild world where Холдем takes a stake (Play.staked, undone after the test).
+  local function cash(fn)
+    local w = guildWow()
+    Play.staked(w.ns, "holdem")
+    w.ns.MainWindow.show()
+    local ok_, err = pcall(fn, w)
+    Play.restore()
+    if not ok_ then error(err, 0) end
+  end
+
+  local function cashTable(w, hostName, o)
+    local seats = { hostName }
+    for i = 2, SEATS do seats[i] = false end
+    local tid = hostName .. "#1"
+    w:member(hostName)
+    w:deliver("GUILD", hostName, { v = 1, t = "TBL", tid = tid, g = "holdem", h = hostName, e = 1, ac = "guild", tn = 45,
+                                   st = "open", s = seats, w = 0, sk = 1000, o = o or { betting = "nl", blinds = 10, rebuy = "top" } })
+    w:advance(0)
+    return tid
+  end
+
+  local function stakeChosen(w, Dlg)
+    Dlg.open("holdem")
+    w:click(Dlg.stake.options[2].frame)
+  end
+
+  it("the dialog of a staked Холдем hides the amount and the stack and offers the rebuy mode", function()
+    cash(function(w)
+      local Dlg, L = w.ns.NewTableDialog, w.ns.L
+      Dlg.open("holdem")
+      eq(#Dlg.stake.options, 2)
+      stakeChosen(w, Dlg)
+      eq(Dlg.stake.value, "gold")
+      eq(Dlg.amount:IsVisible(), false); eq(Dlg.goldBox:IsVisible(), false)
+      local ids = {}
+      for id in pairs(Dlg.options) do ids[#ids + 1] = id end
+      table.sort(ids)
+      eq(ids, { "betting", "blinds", "rebuy" }); eq(Dlg.options.rebuy.value, "bust")
+      eq(#w:texts("Докупуване"), 1); eq(#w:texts("Стек"), 0)
+      eq(#w:texts("Когато свършат чиповете"), 1); eq(#w:texts("Винаги до входа"), 1)
+      eq(Dlg.rangeText:GetText(), L("dialog.cash.range", "5s", "10s", "4g", "10g"))
+      eq(Dlg.rangeText:GetText(), "Блайндове 5s/10s. Всеки сяда с вход между 4g и 10g.")
+      w:click(Dlg.options.blinds.options[2].frame)
+      eq(Dlg.rangeText:GetText(), "Блайндове 10s/20s. Всеки сяда с вход между 8g и 20g.")
+    end)
+  end)
+
+  it("its table opens at the stake of its blinds", function()
+    cash(function(w)
+      local Dlg = w.ns.NewTableDialog
+      stakeChosen(w, Dlg)
+      w:click(Dlg.options.blinds.options[2].frame)
+      w:click(Dlg.options.rebuy.options[3].frame)
+      local sent, client = nil, w.ns.client
+      local real = client.openTable
+      client.openTable = function(self, o) sent = o; return real(self, o) end
+      w:click(Dlg.openButton)
+      eq(sent.stake, 2000); eq(sent.opt, { betting = "nl", blinds = 20, rebuy = "top" })
+      eq(sent.opt.stack, nil)
+      ok(client.session, "no table"); eq(client.session.stake, 2000)
+      eq(lastSent(w, "TBL").msg.sk, 2000)
+      w:advance(0)
+      local meta = w.ns.TableFrame.view.meta:GetText()
+      ok(has(meta, "Докупуване Винаги до входа"), meta)
+      eq(has(meta, "opt.holdem"), false); eq(has(meta, "optv.holdem"), false)
+    end)
+  end)
+
+  it("a fun Холдем dialog is unchanged", function()
+    cash(function(w)
+      local Dlg = w.ns.NewTableDialog
+      Dlg.open("holdem")
+      local ids = {}
+      for id in pairs(Dlg.options) do ids[#ids + 1] = id end
+      table.sort(ids)
+      eq(ids, { "betting", "blinds", "stack" }); eq(Dlg.set.count, 3)
+      eq(Dlg.rangeText, nil)
+      eq(Dlg.frame:GetHeight(), 330 + 34 * 3)
+      local sent
+      w.ns.client.openTable = function(_, o) sent = o; return nil, "busy" end
+      w:click(Dlg.openButton)
+      eq(sent.opt, { betting = "nl", blinds = 10, stack = 100 }); eq(sent.stake, nil)
+      -- to the stake and back: the stack is there again, the rebuy gone
+      w:click(Dlg.stake.options[2].frame); w:click(Dlg.stake.options[1].frame)
+      eq(Dlg.stake.value, "none"); eq(Dlg.options.stack.value, 100); eq(Dlg.options.rebuy, nil)
+      w:click(Dlg.openButton)
+      eq(sent.opt, { betting = "nl", blinds = 10, stack = 100 }); eq(sent.stake, nil)
+    end)
+  end)
+
+  it("the question shows the range, the mode and the dealer warning, and steps the buy-in from 40 to 100", function()
+    cash(function(w)
+      local P, L = w.ns.StakePanels, w.ns.L
+      local tid = cashTable(w, B)
+      w:click(w.ns.Hall.view.tables[1].chairs[2].button)
+      ok(P.askFrame:IsShown(), "no question")
+      eq(P.askText:GetText(), L("stake.ask.cash", "5s", "10s", "4g", "10g"))
+      eq(P.askLeave:GetText(), L("stake.ask.rebuy.top", "10g"))
+      ok(P.askWarn:IsShown(), "no dealer warning")
+      ok(has(P.askWarn:GetText(), L("stake.ask.cards")), "S1 missing")
+      ok(has(P.askWarn:GetText(), L("stake.ask.void")), "C9 missing")
+      ok(P.buyRow:IsShown(), "no stepper")
+      eq(P.buyText:GetText(), "Вход: 100 големи блайнда = 10g")
+      for _ = 1, 4 do w:click(P.buyMinus) end
+      eq(P.buyText:GetText(), "Вход: 60 големи блайнда = 6g")
+      for _ = 1, 5 do w:click(P.buyMinus) end
+      eq(P.buyText:GetText(), L("stake.ask.buy", 40, "4g"))
+      for _ = 1, 9 do w:click(P.buyPlus) end
+      eq(P.buyText:GetText(), L("stake.ask.buy", 100, "10g"))
+      ok(P.askFrame:GetHeight() >= 52 + P.askText:GetStringHeight() + P.askLeave:GetStringHeight() + P.askWarn:GetStringHeight() + 68)
+      -- the rebuy line of each mode
+      w:click(P.askNo)
+      for mode, host in pairs({ none = C, bust = D }) do
+        local other = cashTable(w, host, { betting = "nl", blinds = 10, rebuy = mode })
+        for _, t in ipairs(w.ns.Hall.view.tables) do
+          if t.tid == other and t.frame:IsVisible() then w:click(t.chairs[2].button) end
+        end
+        eq(P.askLeave:GetText(), L("stake.ask.rebuy." .. mode))
+        w:click(P.askNo)
+      end
+    end)
+  end)
+
+  it("its yes sits with the stake and the buy-in", function()
+    cash(function(w)
+      local P = w.ns.StakePanels
+      local tid = cashTable(w, B)
+      local got
+      w.ns.client.sit = function(_, ...) got = { ... } end
+      w:click(w.ns.Hall.view.tables[1].chairs[2].button)
+      for _ = 1, 4 do w:click(P.buyMinus) end
+      w:click(P.askYes)
+      eq(got, { tid, 2, 1000, 600 }); eq(P.askFrame:IsShown(), false)
+      -- the next question starts at 100 again
+      w:click(w.ns.Hall.view.tables[1].chairs[2].button)
+      eq(P.buyText:GetText(), "Вход: 100 големи блайнда = 10g")
+      w:click(P.askYes)
+      eq(got, { tid, 2, 1000, 1000 })
+    end)
+  end)
+
+  it("an invitation's yes keeps the wish", function()
+    cash(function(w)
+      local P, client = w.ns.StakePanels, w.ns.client
+      local tid = cashTable(w, B)
+      local calls = {}
+      client.wantBuy = function(_, t, n) calls[#calls + 1] = { "want", t, n } end
+      client.answerInvite = function(_, t, a) calls[#calls + 1] = { "answer", t, a } end
+      client.invites.received = { tid = tid, game = "holdem", host = B, seats = 6, expires = 1e9, stake = 1000 }
+      P.askInvite({ tid = tid, game = "holdem", stake = 1000 })
+      ok(P.buyRow:IsShown(), "no stepper")
+      for _ = 1, 2 do w:click(P.buyMinus) end
+      w:click(P.askYes)
+      eq(calls, { { "want", tid, 800 }, { "answer", tid, "yes" } })
+      calls = {}
+      P.askInvite({ tid = tid, game = "holdem", stake = 1000 })
+      w:click(P.askNo)
+      eq(calls, { { "answer", tid, "no" } })
+    end)
+  end)
+
+  it("the question of an asked seat has no stepper and no wish", function()
+    cash(function(w)
+      local P, client = w.ns.StakePanels, w.ns.client
+      local tid = assert(client:openTable{ game = "holdem", access = "guild", turn = 45, stake = 1000, opt = { blinds = 10 } })
+      w:advance(0)
+      local s = client.session
+      s.stakeAsk = true
+      local accepted, wished = 0, 0
+      client.acceptStake = function() accepted = accepted + 1; return true end
+      client.wantBuy = function() wished = wished + 1 end
+      client.events:emit("stakeAsk", tid, 1000); w:advance(0)
+      ok(P.askFrame:IsShown(), "no question")
+      eq(P.buyRow:IsShown(), false)
+      w:click(P.askYes)
+      eq({ accepted, wished }, { 1, 0 })
+    end)
+  end)
+
+  it("the hall writes the blinds of a cash table", function()
+    cash(function(w)
+      local view = w.ns.Hall.view
+      local staked = cashTable(w, B)
+      for i = 1, 8 do tbl(w, "Гост " .. i) end
+      eq(w.ns.Hall.mode, "list")
+      local found
+      for _, r in ipairs(view.rows) do if r.frame:IsVisible() and r.tid == staked then found = r end end
+      ok(found, "no row")
+      ok(has(found.sub:GetText(), "5s/10s"), found.sub:GetText()); eq(has(found.sub:GetText(), "Залог"), false)
+    end)
+  end)
+
+  it("the rebuy labels are read from opt.holdem.rebuy and optv.holdem.rebuy.*, none shows its key", function()
+    local w = guildWow()
+    local L = w.ns.L
+    eq(L("opt.holdem.rebuy"), "Докупуване")
+    eq(L("optv.holdem.rebuy.none"), "Без"); eq(L("optv.holdem.rebuy.bust"), "Когато свършат чиповете"); eq(L("optv.holdem.rebuy.top"), "Винаги до входа")
+    eq(w.ns.W.optionText("holdem", "rebuy", "top"), "Винаги до входа")
+    for _, k in ipairs({ "dialog.cash.range", "stake.ask.cash", "stake.ask.buy", "stake.ask.void", "hall.blinds",
+                         "stake.ask.rebuy.none", "stake.ask.rebuy.bust", "stake.ask.rebuy.top" }) do
+      ok(L(k) ~= k, "no text for " .. k)
+    end
+  end)
+end)

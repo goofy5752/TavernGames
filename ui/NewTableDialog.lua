@@ -9,6 +9,7 @@ local _, ns = ...
 -- „Отвори“ → client:openTable (the stake in copper, ns.Stake.fromParts; a bad
 -- amount keeps the dialog open with the reason).
 local Theme, W, L, C = ns.Theme, ns.W, ns.L, ns.Const
+local money = ns.Util.money
 
 local D = {
   options = {}, -- option id -> choice group, for the game the dialog is open on
@@ -18,6 +19,7 @@ ns.NewTableDialog = D
 local WIDTH, HEIGHT, EDGE = 400, 330, 12
 local LABEL_X, VALUE_X = 24, 170
 local OPTION_H = 34 -- one row per engine option, below the turn row
+local RANGE_H = 34 -- the range line of a cash table, under its blinds
 local AMOUNT_H = 34 -- the row „Залог на човек“, below the stake row while „Със залог“ is chosen
 local CHOICE_GAP, RIGHT_MARGIN = 10, 24
 
@@ -65,16 +67,31 @@ local function rowLabel(f, key, y)
   return fs
 end
 
--- The option rows of game `id` (built once, on a layer over the rows below the stake).
-local function optionSet(id)
-  if optionSets[id] then return optionSets[id] end
+-- The range line of a cash table: its blinds and what a buy-in may be.
+local function rangeLine(engine, set)
+  local sk = engine.stakeOf({ blinds = set.groups.blinds.value })
+  local HC = ns.HoldemCash
+  set.range:SetText(L("dialog.cash.range", money(sk / 2), money(sk), money(HC.MIN_BB * sk), money(HC.MAX_BB * sk)))
+end
+
+-- The option rows of game `id` for a table of `mode` ("fun" | "stake": an option with `at` is
+-- only in its own mode, as Games.resolve has it), built once, on a layer over the rows below
+-- the stake. A cash table (engine.stakeOf) has a line under its blinds: the range.
+local function optionSet(id, mode)
   local engine = ns.Games.engine(id)
+  local split = false
+  for _, o in ipairs(engine and engine.options or {}) do split = split or o.at ~= nil end
+  local key = split and (id .. ":" .. mode) or id
+  if optionSets[key] then return optionSets[key] end
   local frame = CreateFrame("Frame", nil, D.body)
   frame:SetAllPoints(D.body)
-  local options = {} for _, o in ipairs(engine and engine.options or {}) do if o.at ~= "stake" then options[#options + 1] = o end end
-  local set = { frame = frame, groups = {}, width = WIDTH, count = #options }
-  for i, o in ipairs(options) do
-    local y = D.optionsY - (i - 1) * OPTION_H
+  local options = {}
+  for _, o in ipairs(engine and engine.options or {}) do
+    if o.at == nil or o.at == mode then options[#options + 1] = o end
+  end
+  local set = { frame = frame, groups = {}, width = WIDTH, count = #options, extra = 0, id = id }
+  local y = D.optionsY
+  for _, o in ipairs(options) do
     rowLabel(frame, "opt." .. id .. "." .. o.id, y)
     local group, x = choiceGroup(), VALUE_X
     group.default = o.default
@@ -84,8 +101,20 @@ local function optionSet(id)
     end
     set.width = math.max(set.width, x - CHOICE_GAP + RIGHT_MARGIN)
     set.groups[o.id] = group
+    y = y - OPTION_H
+    if mode == "stake" and engine.stakeOf and o.id == "blinds" then
+      set.range = W.Label(frame, "dim", "", 12)
+      set.range:SetWidth(WIDTH - 2 * LABEL_X)
+      set.range:SetWordWrap(true)
+      set.range:SetJustifyH("LEFT")
+      set.range:SetPoint("TOPLEFT", frame, "TOPLEFT", LABEL_X, y + 4)
+      set.extra = RANGE_H
+      y = y - RANGE_H
+      group.changed = function() rangeLine(engine, set) end
+    end
   end
-  optionSets[id] = set
+  for _, group in pairs(set.groups) do group.set(group.default) end
+  optionSets[key] = set
   return set
 end
 
@@ -97,17 +126,31 @@ local function resize(w, h)
 end
 
 -- The stake row as chosen: „Залог на човек“ and the rows below it AMOUNT_H
--- lower while „Със залог“ is; the dialog as wide as its widest row.
+-- lower while „Със залог“ is (a cash table has no amount: its stake is its
+-- blinds); the option rows of that mode; the dialog as wide as its widest row.
 local function layout()
-  if not D.set then return end
-  local gold = D.stake.value == "gold"
+  if not D.gameId then return end
+  local chosen = D.stake.value == "gold"
+  local engine = ns.Games.engine(D.gameId)
+  local gold = chosen and not (engine and engine.stakeOf)
+  local set = optionSet(D.gameId, chosen and "stake" or "fun")
+  if set ~= D.set then
+    for _, other in pairs(optionSets) do other.frame:Hide() end
+    if D.set and D.set.id == set.id then -- the choices both modes share carry over
+      for id, group in pairs(D.set.groups) do
+        if set.groups[id] and group.value ~= nil then set.groups[id].set(group.value) end
+      end
+    end
+    set.frame:Show()
+    D.set, D.options, D.rangeText = set, set.groups, set.range
+  end
   D.amount:SetShown(gold)
   D.body:ClearAllPoints()
   D.body:SetPoint("TOPLEFT", D.frame, "TOPLEFT", 0, gold and -AMOUNT_H or 0)
   D.body:SetPoint("BOTTOMRIGHT", D.frame, "BOTTOMRIGHT", 0, 0)
   local width = D.set.width
   if D.stake == D.stakeGold then width = math.max(width, D.stakeW) end
-  resize(width, HEIGHT + OPTION_H * D.set.count + (gold and AMOUNT_H or 0))
+  resize(width, HEIGHT + OPTION_H * D.set.count + D.set.extra + (gold and AMOUNT_H or 0))
   if gold then
     D.goldBox:SetFocus()
   else
@@ -128,14 +171,19 @@ local function submit()
     D.error:SetText(L(ns.noGuild and "hall.noguild" or "hall.wait"))
     return
   end
-  local stake
-  if D.stake.value == "gold" then
-    local gold, silver = part(D.goldBox), part(D.silverBox)
-    stake = gold and silver and ns.Stake.fromParts(gold, silver)
-    if not stake then return D.error:SetText(L("dialog.stake.bad")) end
-  end
   local opt = {}
   for id, group in pairs(D.options) do opt[id] = group.value end
+  local stake
+  if D.stake.value == "gold" then
+    local engine = ns.Games.engine(D.gameId)
+    if engine and engine.stakeOf then
+      stake = engine.stakeOf(opt) -- a cash table: its stake is its big blind
+    else
+      local gold, silver = part(D.goldBox), part(D.silverBox)
+      stake = gold and silver and ns.Stake.fromParts(gold, silver)
+      if not stake then return D.error:SetText(L("dialog.stake.bad")) end
+    end
+  end
   local tid, code = client:openTable{ game = D.gameId, access = D.access.value, turn = D.turn.value, opt = opt, stake = stake }
   if tid then
     D.frame:Hide()
@@ -273,12 +321,11 @@ function D.open(gameId)
   D.silverBox:SetText("")
   D.access.set("guild")
   D.turn.set(C.TURN_DEFAULT)
-  for id, set in pairs(optionSets) do set.frame:SetShown(id == D.gameId) end
-  local set = optionSet(D.gameId)
-  set.frame:Show()
-  D.options = set.groups
-  for _, group in pairs(D.options) do group.set(group.default) end
-  D.set = set
+  D.set = nil
+  for _, set in pairs(optionSets) do
+    set.frame:Hide()
+    for _, group in pairs(set.groups) do group.set(group.default) end
+  end
   D.stake.set("none")
   layout()
   D.error:SetText("")

@@ -77,9 +77,12 @@ end
 
 local function color(fs, token) fs:SetTextColor(Theme.rgb(token)) end
 
--- „Залог: 5g“ of a staked table, nil for fun.
+-- „Залог: 5g“ of a staked table, the blinds („5s/10s“) of a cash table, nil for fun.
 local function stakeText(rec)
-  return rec.stake ~= nil and L("table.stake", ns.Util.money(rec.stake)) or nil
+  if rec.stake == nil then return nil end
+  local engine = ns.Games.engine(rec.game)
+  if engine and engine.stakeOf then return L("hall.blinds", ns.Util.money(rec.stake / 2), ns.Util.money(rec.stake)) end
+  return L("table.stake", ns.Util.money(rec.stake))
 end
 
 -- Sits in `seat` of table rec; a staked table asks first.
