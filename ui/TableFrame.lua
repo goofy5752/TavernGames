@@ -536,7 +536,8 @@ end
 ns.ready(function(client)
   client:on("session", TableFrame.refresh)
   client:on("cashGoing", function(tid) -- my cash-out waits, or went: my table ended
-    if tid == nil and not client.session then ns.MainWindow.show("hall") end; TableFrame.refresh()
+    local open = TableFrame.frame and TableFrame.frame:IsShown() -- a window I closed stays closed
+    if tid == nil and not client.session and open then ns.MainWindow.show("hall") end; TableFrame.refresh()
   end)
   client:on("peers", TableFrame.refresh)
   client:on("desync", TableFrame.resynced)

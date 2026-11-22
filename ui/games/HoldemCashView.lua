@@ -181,9 +181,17 @@ local function stepBuy(f, d)
   c.amount:SetText(cash(c.n))
 end
 
+-- The words of a refusal code of client:buy (a short line per code; any other code is named).
+local function refusal(code)
+  local key = "cash.buy.no." .. tostring(code)
+  local text = L(key)
+  return text ~= key and text or L("cash.buy.no", tostring(code))
+end
+
 function V.build(f)
   local c = { tab = 1, rows = {} }
   f.cash = c
+  V.board = f
   c.button = W.GhostButton(f, L("cash.button"), "brassLight", function() show(c, "panel"); again(f) end)
   c.button:SetSize(84, 22)
   c.button:SetPoint("TOPRIGHT", f, "TOPRIGHT", -8, -8)
@@ -238,7 +246,9 @@ function V.build(f)
   c.plus:SetPoint("LEFT", c.amount, "RIGHT", 4, 0)
   c.confirm = W.Button(box, L("cash.buy.ok"), function()
     local client = ns.client
-    if client and c.n then client:buy(c.n) end
+    local done, code
+    if client and c.n then done, code = client:buy(c.n) end
+    if client and c.n and not done then ns.TableFrame.say(refusal(code)) end
     box:Hide()
   end, true)
   c.confirm:SetSize(84, 22)
@@ -274,4 +284,14 @@ end
 
 ns.ready(function(client)
   client:on("hand", function(ev) hear(client, ev) end)
+  client:on("buyLow", function(lo) -- a floor above my pick: the stepper opens at the floor
+    local f = V.board
+    local c = f and f.cash
+    if not (c and c.range and lo) then return end
+    c.panel:Hide(); c.buyBox:Show(); c.n = lo; stepBuy(f, 0)
+    ns.TableFrame.say(L("cash.buy.low", cash(c.n)))
+  end)
+  client:on("session", function(s) -- a table that ended frees its hands
+    for tid in pairs(kept) do if not (s and s.tid == tid) then kept[tid] = nil end end
+  end)
 end)

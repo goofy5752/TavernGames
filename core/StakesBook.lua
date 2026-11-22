@@ -84,6 +84,7 @@ function Book:start()
       if type(n) == "table" and (type(n.at) ~= "number" or n.at < old) then list[k] = nil elseif type(n) == "table" then n.wait = nil end
     end
   end
+  self:armOwing()
   self.client:after(C.LEDGER_ADOPT_WAIT, function() self:review() end) -- my login queue has closed
   self:review()
 end
@@ -106,7 +107,7 @@ end
 function Book:last(tid)
   local best
   for _, n in pairs(self:seen()) do
-    if type(n) == "table" and n.tid == tid and next(n.pairs or {}) and (not best or n.at > best.at or (n.at == best.at and (n.q or 0) > (best.q or 0))) then best = n end
+    if type(n) == "table" and n.tid == tid and type(n.pairs) == "table" and next(n.pairs) and (not best or n.at > best.at or (n.at == best.at and (n.q or 0) > (best.q or 0))) then best = n end
   end
   return best
 end

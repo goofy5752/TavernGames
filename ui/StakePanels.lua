@@ -377,7 +377,7 @@ function P.bill(v, s)
     if note.why == "cash" then -- one sitting: who stood up (or the close), then the pairs, then the keys' line
       local h = hs[i]
       items[#items + 1] = { h.why == "close" and L("bill.cash.close") or L("bill.cash", first(client, h.who or "?")) }
-      waits = waits or note.wait == true
+      if note.wait == true and not waits then waits = true; items[#items + 1] = { L("bill.cash.wait") } end -- before any overflow
     else
       local leaver = note.why ~= "lost" and note.pairs[1] and note.pairs[1].f
       local why = note.why == "idle" and "bill.idle" or team and "bill.left.team" or "bill.left"
@@ -387,7 +387,6 @@ function P.bill(v, s)
       items[#items + 1] = { L("bill.row", first(client, r.f), first(client, r.t), money(r.c)), r.status }
     end
   end
-  if waits then items[#items + 1] = { L("bill.cash.wait") } end
   local n, rows = math.min(#items, BILL_LINES), 0
   for i = 1, n do
     local item = items[i]
@@ -410,10 +409,24 @@ function P.bill(v, s)
   return left
 end
 
+-- My own cash-out applied and my table gone: my bill once, from my own note, in the hall's line.
+function P.sayMine(client)
+  local gid, note = P.mine, P.mine and client.stakes and client.stakes:seen()[P.mine]
+  P.mine = nil
+  if type(note) ~= "table" or type(note.pairs) ~= "table" or #note.pairs == 0 then return end
+  local out = {}
+  for _, r in ipairs(P.billRows(client, note)) do out[#out + 1] = L("bill.row", first(client, r.f), first(client, r.t), money(r.c)) end
+  if #out > 0 then ns.Hall.say(L("bill.cash.mine", table.concat(out, "; "))) end
+end
+
 ns.ready(function(client)
   client:on("result", function(r) if r.sk ~= nil then hear(r.tid, r.q) end end)
   client:on("forfeit", function(f) if f.sk ~= nil then hear(f.tid, f.q) end end)
-  client:on("cashout", function(e) hear(e.tid, tonumber(tostring(e.gid):match("/(%d+)$")), e.name, e.why) end)
+  client:on("cashout", function(e)
+    hear(e.tid, tonumber(tostring(e.gid):match("/(%d+)$")), e.name, e.why)
+    if e.name == client.env.me and e.why == nil then P.mine = e.gid end -- my own „Стани“: my bill is shown when it ends
+  end)
+  client:on("cashGoing", function(tid) if tid == nil then P.sayMine(client) end end)
   client:on("ledger", function() if P.shown then ns.TableFrame.refresh() end end)
   -- Drawn on the next frame (a drawing error never breaks Member.adopt), while the seat is still asked.
   client:on("stakeAsk", function(tid, sk)

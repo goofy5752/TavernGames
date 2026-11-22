@@ -356,8 +356,8 @@ describe("ui: the bill of a cash table", function()
     local w, b = bill({ wait = true }, "left")
     ok(b:IsShown(), "no bill")
     eq(plain(b.lines[1].text:GetText()), "Мария стана от масата. Сметката по двойки:")
-    eq(plain(b.lines[2].text:GetText()), "Иван дължи на Мария 15s")
-    eq(plain(b.lines[3].text:GetText()), "Ръцете се проверяват с ключовете. Остани на масата, за да се потвърди сметката ти сама.")
+    eq(plain(b.lines[2].text:GetText()), "Ръцете се проверяват с ключовете. Остани на масата, за да се потвърди сметката ти сама.")
+    eq(plain(b.lines[3].text:GetText()), "Иван дължи на Мария 15s")
     eq(b:GetHeight(), 32 + 18 * 4) -- the keys' line is long: it takes two rows
   end)
 
@@ -374,5 +374,74 @@ describe("ui: the bill of a cash table", function()
     local client = w.ns.client
     client.stakes:seen(true)["t#1/6"] = { at = 0, g = "holdem", sk = 1000, why = "cash", tid = "t#1", q = 6, pairs = { { f = A, t = B, c = 1500 } } }
     eq(client.stakes:last("t#1").q, 6)
+  end)
+end)
+
+describe("ui: the buy-in asks again, and says why it did not go", function()
+  it("a floor above my pick (buyLow) opens the stepper at the floor and says so", function()
+    local w, View, f = setup()
+    local TF = w.ns.TableFrame
+    local said = {}
+    TF.say = function(text) said[#said + 1] = text; return true end
+    View.update(f, sess(table3({ [1] = 400 }), 1)) -- the range is 1..600
+    w.ns.client.events:emit("buyLow", 200, 100)
+    ok(f.cash.buyBox:IsShown(), "no stepper")
+    eq(f.cash.amount:GetText(), "2g")
+    eq(plain(said[1]), "Минимумът е вече над избраното: 2g. Избери отново.")
+  end)
+
+  it("„Потвърди“ says the refusal of client:buy", function()
+    local w, View, f = setup()
+    local said = {}
+    w.ns.TableFrame.say = function(text) said[#said + 1] = text; return true end
+    View.update(f, sess(table3({ [1] = 400 }), 1))
+    w.ns.client.buy = function() return nil, "stake" end
+    w:click(f.cash.buy); w:click(f.cash.confirm)
+    eq(plain(said[1]), "Първо приеми залога на масата.")
+    w.ns.client.buy = function() return nil, "zzz" end
+    w:click(f.cash.buy); w:click(f.cash.confirm)
+    eq(plain(said[2]), "Покупката не мина („zzz“).")
+  end)
+end)
+
+describe("ui: the end of my own cash-out", function()
+  it("a window I closed stays closed; my own bill is said once from my own note", function()
+    local w, client, shown, restore
+    do
+      w = guildWow()
+      restore = Play.staked(w.ns, "holdem")
+      w.ns.MainWindow.show()
+      client = w.ns.client
+      assert(client:openTable{ game = "holdem", access = "guild", turn = 45, stake = 1000, opt = { blinds = 10 } })
+      w:advance(0)
+    end
+    local said, tid = {}, client.session.tid
+    w.ns.Hall.say = function(text) said[#said + 1] = plain(text) end
+    local calls = {}
+    local real = w.ns.MainWindow.show
+    w.ns.MainWindow.show = function(tab) calls[#calls + 1] = tab or false; return real(tab) end
+    local gid = tid .. "/7"
+    client.stakes:seen(true)[gid] = { at = 1, g = "holdem", sk = 1000, why = "cash", tid = tid, q = 7,
+      pairs = { { f = client.env.me, t = B, c = 1500 } } }
+    client.events:emit("cashout", { tid = tid, gid = gid, seat = 1, name = client.env.me, chips = 0, bought = 0,
+      pairs = {}, why = nil, at = 1 })
+    w.ns.TableFrame.frame:Hide() -- I closed the window
+    client.session = nil
+    client.events:emit("cashGoing", nil)
+    eq(calls, {})
+    eq(#said, 1)
+    ok(said[1]:find("Сметката ти: ", 1, true) == 1 and said[1]:find("15s", 1, true), said[1])
+    client.events:emit("cashGoing", nil)
+    eq(#said, 1) -- once
+    restore()
+  end)
+
+  it("the hands of a table that ended are freed", function()
+    local w, View, f = setup()
+    local client = w.ns.client
+    client.events:emit("hand", { tid = "t#9", n = 1, last = { void = true, hand = 1 }, opt = { rebuy = "top" }, names = {} })
+    eq(#w.ns.HoldemCashView.lines("t#9"), 1)
+    client.events:emit("session", nil)
+    eq(#w.ns.HoldemCashView.lines("t#9"), 0)
   end)
 end)

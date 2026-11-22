@@ -62,3 +62,16 @@ function Book:admit(key, yes)
   end
   return nil
 end
+
+-- One wake-up ("debtAsk") per unseen final cash note, at its due time (Book:owing); a due one needs none.
+function Book:armOwing()
+  local now = self.env.epoch()
+  self.owingArmed = self.owingArmed or {}
+  for gid, n in pairs(self:seen()) do
+    if type(n) == "table" and n.why == "cash" and n.foul == "unseen" and not n.wait and not n.open and not self.owingArmed[gid]
+        and type(n.at) == "number" and n.at + C.STAKE_OWE_WAIT > now then
+      self.owingArmed[gid] = true
+      self.client:after(n.at + C.STAKE_OWE_WAIT - now + 1, function() self.client.events:emit("debtAsk") end)
+    end
+  end
+end

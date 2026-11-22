@@ -434,6 +434,30 @@ describe("a cash settlement becomes pair debts", function()
     eq(cl[M].stakes:admit(key, true), nil)
   end)
 
+  it("the owing question comes at its due time, with no other event to wake it", function()
+    local sim, cl = cash({ 1, 2, 3, 4 })
+    local host, got = cl[A], outs(cl)
+    hands(sim, host, 1)
+    cl[M] = sim:relog(M); sim:run(3)
+    watch(got, M .. "+", cl[M])
+    calm(sim, host)
+    local book = cl[B].stakes
+    local make = book.make
+    book.make = function(self, key, kind, f)
+      if kind == "D" and f.t == B then return nil end
+      return make(self, key, kind, f)
+    end
+    setTook(cl, { [2] = { [3] = 15, [4] = 12 } })
+    ok(cl[M]:act{ k = "cashout" }); ok(cl[G]:act{ k = "cashout" }); sim:run(1)
+    close(sim, host)
+    local asks = 0
+    cl[M]:on("debtAsk", function() asks = asks + 1 end)
+    eq(cl[M].stakes:owing(), {})
+    sim:run(C.STAKE_OWE_WAIT + 15)
+    ok(asks > 0, "no debtAsk at the due time")
+    eq(#cl[M].stakes:owing(), 1)
+  end)
+
   it("a settlement my client saw only in a snapshot writes no note", function()
     local sim, cl = Play.cash(3)
     local host, got = cl[A], outs(cl)

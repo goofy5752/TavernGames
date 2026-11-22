@@ -138,7 +138,7 @@ local function settled(s, seat, a)
     end
   end
   if bot or not any then return end
-  if #mine > 0 then return book:outcome(s, gid, mine, "lost", "cash") end -- H3: one note per event
+  if #mine > 0 then book:outcome(s, gid, mine, "lost", "cash"); return book:armOwing() end -- H3: one note per event
   -- An event I applied that settled others only: my note owes nobody (H13: the judge wrap reads it).
   local note = { at = env.epoch(), g = s.game, sk = s.stake, pairs = {}, why = "cash", tid = s.tid, q = s.seq }
   book:seen(true)[gid] = note
@@ -205,6 +205,7 @@ local function finals(client, done)
     book:final(gid)
     local note = book:seen()[gid]
     if type(note) == "table" and type(note.owe) == "number" and note.owe <= now then book:owe(gid) end
+    book:armOwing()
   end
   client.events:emit("debtAsk")
 end
