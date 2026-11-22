@@ -252,6 +252,58 @@ describe("ui: the tab „Тефтер“", function()
     ok(renders >= 1, "not rendered on show")
   end)
 
+  it("two 64-byte names and a long mark never reach the amount; the tooltip has the whole line", function()
+    local w = readyWow()
+    local F, T2 = string.rep("Я", 32), string.rep("Ж", 32) -- 64 bytes each, the longest name
+    eq({ #F, #T2 }, { 64, 64 })
+    w:member(F); w:member(T2)
+    local g = gid()
+    local own = entry(w, F, "D", { gid = g, g = "ttt", f = F, t = T2, c = 50000, why = "lost" })
+    entry(w, T2, "D", { gid = g, g = "ttt", f = F, t = T2, c = 60000, why = "lost" }) -- another amount: clash
+    contest(w, own)
+    debt(w, T2, F, 999900); paid(w, T2, F, 100) -- „остават 99g 98s от 99g 99s“
+    local v = open(w)
+    local rows = {}
+    for _, r in ipairs(v.rows) do if r.frame:IsVisible() then rows[#rows + 1] = r end end
+    eq(#rows, 2)
+    -- The horizontal extent of a font string in its row: its box when it has a
+    -- width, else its text, from its one anchor (on the row or on another label).
+    local edges
+    function edges(fs, r)
+      local p = fs.points[1]
+      local size = (fs.width or 0) > 0 and fs.width or fs:GetStringWidth()
+      local base
+      if p[2] == r.frame then
+        base = p[3]:find("RIGHT") and v.rowW or 0
+      else
+        local l, rt = edges(p[2], r)
+        base = p[3]:find("RIGHT") and rt or l
+      end
+      local x = base + (p[4] or 0)
+      if p[1]:find("RIGHT") then return x - size, x end
+      return x, x + size
+    end
+    for _, r in ipairs(rows) do
+      local wl, wr = edges(r.who, r)
+      local ml, mr = r.mark:IsVisible() and edges(r.mark, r) or wr, r.mark:IsVisible() and select(2, edges(r.mark, r)) or wr
+      local al, ar = edges(r.amount, r)
+      local gl = edges(r.age, r)
+      ok(wr <= ml, "the names run into the mark: " .. wr .. " > " .. ml)
+      ok(mr <= al, "the mark runs into the amount: " .. mr .. " > " .. al)
+      ok(ar <= gl, "the amount runs into the age")
+      ok(wl >= 0 and select(2, edges(r.age, r)) <= v.rowW, "out of the row")
+      for _, fs in ipairs({ r.who, r.mark, r.amount }) do eq(fs.wordWrap, false) end
+      ok(r.amount:GetStringWidth() <= r.amount:GetWidth(), "the amount is clipped: " .. r.amount:GetText())
+      w:hover(r.frame)
+      local tip = table.concat(w.G.GameTooltip.lines, "\n")
+      ok(plain(tip):find(plain(r.who:GetText()), 1, true), "the tooltip lacks the whole line: " .. tip)
+    end
+    local marks = {}
+    for _, l in ipairs(shown(w)) do marks[#marks + 1] = l[4] or "-" end
+    eq(marks, { "-", "оспорен · спор за сумата" })
+    eq(shown(w)[1][2], "остават 99g 98s от 99g 99s")
+  end)
+
   it("two hundred rows scroll and build only the visible widgets", function()
     local w = readyWow()
     local names = {}

@@ -8,7 +8,8 @@ local _, ns = ...
 -- from that author), each group newest first. A partly paid debt shows what is
 -- left of it. Each line: „длъжник → кредитор“ (names in a darkened class colour
 -- when presence knows the class, else in the ink of the page), its mark, the
--- amount and the age in calendar days; its tooltip names the game and the day,
+-- amount and the age in calendar days, each in a fixed one-line column (a long
+-- name is clipped); its tooltip gives the whole line, the game and the day,
 -- and says „пренесено“ when an entry it rests on reached me only through a
 -- third player. The head counts the open debts, the foot names the biggest
 -- debtor (hidden when nobody owes). The lines are ordered once per redraw (one
@@ -28,6 +29,8 @@ ns.LedgerTab = LedgerTab
 
 local BOOK_W, PAD, HEAD_H, ROW_H, ROWS, FOOT_H = 760, 14, 52, 26, 16, 24
 local AGE_W, MARGIN = 56, 22
+-- Fixed columns, one line each (clipped, never wrapped): 22 + 300 + 8 + 120 + 170 + 10 + 56 + 6 <= the row.
+local WHO_W, MARK_W, AMOUNT_W = 300, 120, 170
 local GROUP = { open = 1, pending = 2, contested = 3, paid = 4, denied = 5 }
 local MARK = { pending = "ledger.pending", contested = "ledger.contested" }
 local HOW = { trade = "pay.trade", mail = "pay.mail", hand = "accounts.settle" }
@@ -152,9 +155,13 @@ local function rowWidget(v, j)
   rule:SetHeight(1)
   local who = W.Label(f, "paperItalic", "", 14)
   who:SetPoint("LEFT", f, "LEFT", MARGIN, 0)
+  who:SetWidth(WHO_W)
+  who:SetWordWrap(false)
   local mark = W.Label(f, "paperItalic", "", 11)
   mark:SetTextColor(Theme.rgb("felt"))
-  mark:SetPoint("LEFT", who, "RIGHT", 8, 0)
+  mark:SetPoint("LEFT", f, "LEFT", MARGIN + WHO_W + 8, 0)
+  mark:SetWidth(MARK_W)
+  mark:SetWordWrap(false)
   local age = W.Label(f, "paper", "", 11)
   age:SetTextColor(AGE[1], AGE[2], AGE[3])
   age:SetJustifyH("RIGHT")
@@ -163,6 +170,8 @@ local function rowWidget(v, j)
   local amount = W.Label(f, "paper", "", 13)
   amount:SetFont(Theme.font.uiBold, 13, "")
   amount:SetJustifyH("RIGHT")
+  amount:SetWidth(AMOUNT_W)
+  amount:SetWordWrap(false)
   amount:SetPoint("RIGHT", age, "LEFT", -10, 0)
   local strike = f:CreateTexture(nil, "OVERLAY")
   strike:SetColorTexture(Theme.color.felt[1], Theme.color.felt[2], Theme.color.felt[3], 1)
@@ -172,7 +181,8 @@ local function rowWidget(v, j)
   r = { frame = f, who = who, mark = mark, age = age, amount = amount, strike = strike }
   W.tooltip(f, function(tip)
     local l, t = r.line, date(ns.client, r.line.at)
-    tip:SetText(l.what .. " · " .. string.format("%02d.%02d", t.d, t.m))
+    tip:SetText(l.who)
+    tip:AddLine(l.what .. " · " .. string.format("%02d.%02d", t.d, t.m))
     if l.mark then tip:AddLine(l.mark) end
     if l.relayed then tip:AddLine(L("ledger.relayed")) end
   end)
