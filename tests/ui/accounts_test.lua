@@ -75,7 +75,7 @@ local function shown(w)
     if r.frame:IsVisible() then
       local labels = {}
       for _, b in ipairs(r.buttons) do if b:IsVisible() then labels[#labels + 1] = plain(b.text:GetText()) end end
-      out[#out + 1] = { text = plain(r.text:GetText()), sub = r.sub:IsVisible() and plain(r.sub:GetText()) or nil, buttons = labels }
+      out[#out + 1] = { text = r.text:IsVisible() and plain(r.text:GetText()) or nil, sub = r.sub:IsVisible() and plain(r.sub:GetText()) or nil, buttons = labels }
     end
   end
   return out
@@ -236,28 +236,66 @@ describe("ui: the questions of „Сметки“", function()
     eq(shown(w2)[1].text, "Дара Колева казва, че му дължиш 3g от Морски шах (" .. ddmm(c2.at) .. "). Не видях цялата игра.")
   end)
 
-  it("the own-entries question: „Мои са“ keeps them, „Не са мои“ denies them; the row goes", function()
-    for _, keep in ipairs({ true, false }) do
-      local w = readyWow()
-      local client, L = w.ns.client, w.ns.L
-      debt(w, B, ME, 50000)
-      hello(w, B)
-      -- My P of a session that crashed before its logout, relayed back to me by Мария.
-      local p = { i = ME .. ":1", k = "P", at = w.G.GetServerTime(), f = B, c = 50000, how = "trade" }
-      eq(client.ledgerNet:take(p, B), "new")
-      settle(w)
-      eq(kinds(w), { "mine", "owed" })
-      local row = shown(w)[1]
-      eq(row.text, L("ask.mine"))
-      eq(row.text, "Тези записи на твое име не са запазени на този компютър. Твои ли са?")
-      ok(row.sub and row.sub:find("Трейд", 1, true) and row.sub:find("5g", 1, true), "the entry is not listed: " .. tostring(row.sub))
-      eq(row.buttons, { "Мои са", "Не са мои" })
-      local calls = spy(client.ledgerNet, "answer")
-      w:click(button(w, keep and "Мои са" or "Не са мои"))
-      eq(calls, { { keep } })
-      settle(w)
-      eq(kinds(w), keep and {} or { "owed" })
+  it("the own-entries question: one „Мои са“ / „Не са мои“ per entry, each answering its own body", function()
+    local w = readyWow()
+    local client, net = w.ns.client, w.ns.client.ledgerNet
+    debt(w, B, ME, 50000)
+    debt(w, C, ME, 20000)
+    hello(w, B)
+    -- My real P of a session that crashed before its logout, and a forged one, both relayed back by Мария.
+    local now = w.G.GetServerTime()
+    eq(net:take({ i = ME .. ":1", k = "P", at = now, f = B, c = 50000, how = "trade" }, B), "new")
+    eq(net:take({ i = ME .. ":2", k = "P", at = now, f = C, c = 20000, how = "hand" }, B), "new")
+    settle(w)
+    local asked = net:asks()
+    eq(#asked, 2)
+    eq(kinds(w), { "mine", "mine", "owed", "owed" })
+    local rows = shown(w)
+    eq(rows[1].text, "Тези записи на твое име не са запазени на този компютър. Твои ли са?")
+    ok(rows[1].sub:find("Трейд", 1, true) and rows[1].sub:find("Мария Стоянова", 1, true) and rows[1].sub:find("5g", 1, true), rows[1].sub)
+    eq(rows[1].buttons, { "Мои са", "Не са мои" })
+    eq(rows[2].text, nil)
+    ok(rows[2].sub:find("Уредено", 1, true) and rows[2].sub:find("Тодор Ангелов", 1, true) and rows[2].sub:find("2g", 1, true), rows[2].sub)
+    eq(rows[2].buttons, { "Мои са", "Не са мои" })
+    local calls = spy(net, "answer")
+    w:click(button(w, "Мои са", 1))
+    eq(#calls, 1); ok(calls[1][1] == asked[1], "not the first body"); eq(calls[1][2], true)
+    settle(w)
+    eq(kinds(w), { "mine", "owed" })
+    eq(shown(w)[1].text, "Тези записи на твое име не са запазени на този компютър. Твои ли са?")
+    w:click(button(w, "Не са мои", 1))
+    eq(#calls, 2); ok(calls[2][1] == asked[2], "not the second body"); eq(calls[2][2], false)
+    w:advance(3)
+    settle(w)
+    -- The net counts my P to Мария only; Тодор still owes 2g; one X went out, for :2 only.
+    eq(kinds(w), { "owed" })
+    eq(shown(w)[1].text, "Тодор Ангелов ти дължи 2g")
+    local xs = {}
+    for _, s in ipairs(w:sentOf("LEV")) do
+      for _, e in ipairs(s.msg.ev or {}) do if e.k == "X" then xs[#xs + 1] = e end end
     end
+    eq(#xs, 1); eq(xs[1].r, ME .. ":2"); eq(xs[1].h, asked[2].h)
+  end)
+
+  it("the own-entries question tells twins apart: each answer names its body", function()
+    local w = readyWow()
+    local client, net = w.ns.client, w.ns.client.ledgerNet
+    hello(w, B)
+    local now = w.G.GetServerTime()
+    eq(net:take({ i = ME .. ":1", k = "P", at = now, f = B, c = 50000, how = "trade" }, B), "new")
+    -- A twin under the same id, both put to me (as after a collision).
+    local _, twin = client.ledger:add({ i = ME .. ":1", k = "P", at = now, f = B, c = 90000, how = "trade" }, B)
+    twin.un = true
+    client.ledger.rev = client.ledger.rev + 1
+    client.events:emit("mineAsk")
+    settle(w)
+    eq(#net:asks(), 2); eq(kinds(w), { "mine", "mine" })
+    local first = net:asks()[1]
+    local row = first == twin and 1 or 2
+    w:click(button(w, "Не са мои", row))
+    settle(w)
+    local left = net:asks()
+    eq(#left, 1); ok(left[1] ~= twin, "the twin is still asked"); ok(left[1].un, "the other body was answered")
   end)
 
   it("the own-entries question lists what waits beyond the shown ones; \"mineAsk\" redraws the column", function()
@@ -269,10 +307,24 @@ describe("ui: the questions of „Сметки“", function()
     net.asks = function() return { { i = ME .. ":7", k = "P", at = at, f = B, c = 10000, how = "hand" } }, 3 end
     w.ns.client.events:emit("mineAsk")
     w:advance(0)
-    local row = shown(w)[1]
-    eq(row.text, "Тези записи на твое име не са запазени на този компютър. Твои ли са?")
-    ok(row.sub:find("Уредено", 1, true) and row.sub:find("1g", 1, true), row.sub)
-    ok(row.sub:find("… и още 3", 1, true), row.sub)
+    local rows = shown(w)
+    eq(#rows, 2)
+    eq(rows[1].text, "Тези записи на твое име не са запазени на този компютър. Твои ли са?")
+    ok(rows[1].sub:find("Уредено", 1, true) and rows[1].sub:find("1g", 1, true), rows[1].sub)
+    eq(rows[2], { sub = "… и още 3", buttons = {} })
+  end)
+
+  it("a denial of mine in the question says what it denies", function()
+    local w = readyWow()
+    local net = w.ns.client.ledgerNet
+    local p = net:make("P", { f = B, c = 30000, how = "mail" })
+    settle(w)
+    local at = w.G.GetServerTime()
+    net.asks = function() return { { i = ME .. ":9", k = "X", at = at, r = p.i, rh = p.h } }, 0 end
+    w.ns.client.events:emit("mineAsk")
+    w:advance(0)
+    local sub = shown(w)[1].sub
+    ok(sub:find("отрича: Поща", 1, true) and sub:find("Мария Стоянова", 1, true) and sub:find("3g", 1, true), sub)
   end)
 
   it("a payment question with one name has „Да, към сметката“ / „Не“; with several, one button per name and „Не“", function()
@@ -335,6 +387,30 @@ describe("ui: „Уредено“ and „Напомни“", function()
     eq({ P.f, P.c, P.how }, { B, 50000, "hand" })
   end)
 
+  it("„Уредено“ records only the amount it asked about: a debt that grew meanwhile is asked again", function()
+    local w = readyWow()
+    local client, Acc = w.ns.client, w.ns.Accounts
+    debt(w, B, ME, 50000)
+    local calls = spy(client.pay, "settle")
+    w:click(button(w, "Уредено"))
+    eq(plain(Acc.sureText:GetText()), "Получи ли 5g от Мария Стоянова? Това изчиства сметката.")
+    debt(w, B, ME, 30000) -- her own D of another game arrives while the question is open
+    w:click(Acc.sureYes)
+    eq(#calls, 0)
+    local paid = 0
+    client.ledger:each(function(e) if e.k == "P" then paid = paid + 1 end end)
+    eq(paid, 0)
+    ok(Acc.sure:IsVisible(), "not asked again")
+    eq(plain(Acc.sureText:GetText()), "Получи ли 8g от Мария Стоянова? Това изчиства сметката.")
+    w:click(Acc.sureYes)
+    eq(calls, { { B } })
+    settle(w)
+    local P
+    client.ledger:each(function(e) if e.k == "P" then P = e end end)
+    eq({ P.f, P.c }, { B, 80000 })
+    eq(#shown(w), 0)
+  end)
+
   it("„Уредено“ says that gold which came early is not recorded by itself", function()
     local w = readyWow()
     debt(w, B, ME, 50000)
@@ -356,7 +432,9 @@ describe("ui: „Уредено“ and „Напомни“", function()
     w:advance(w.ns.Const.NUDGE_GAP - 2)
     eq(button(w, "Напомнено"):IsEnabled(), false)
     w:advance(3)
-    hello(w, B) -- she said nothing for an hour: listed again
+    -- Only the timer redraws now (her presence ran out long ago): „Напомни“, off while she is away.
+    eq(button(w, "Напомни"):IsEnabled(), false)
+    hello(w, B)
     ok(button(w, "Напомни"):IsEnabled(), "still reminded")
 
     -- The debtor's side.
@@ -377,6 +455,8 @@ describe("ui: „Уредено“ and „Напомни“", function()
     local w = readyWow()
     debt(w, B, ME, 50000)
     eq(button(w, "Напомни"):IsEnabled(), false)
+    w:hover(button(w, "Напомни"))
+    eq(plain(w.G.GameTooltip.lines[1]), "Мария Стоянова не е на линия с Tavern Games. Ще можеш да напомниш, когато влезе.")
     hello(w, B)
     ok(button(w, "Напомни"):IsEnabled(), "not enabled online")
   end)

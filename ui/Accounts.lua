@@ -6,7 +6,9 @@ local _, ns = ...
 -- transfer). The questions:
 -- * "mine": my own entries the guild holds that a crash kept off my saved
 --   variables (client.ledgerNet:asks, the first LEDGER_MINE_ASK and how many
---   more wait): one row lists them, „Мои са“ keeps them, „Не са мои“ denies them.
+--   more wait): one line each under one heading, each with its own „Мои са“
+--   (keeps that body) and „Не са мои“ (denies it), so a forgery mixed in among
+--   my lost entries is denied alone; „… и още N“ for those waiting.
 -- * "ask": a claim against me my client could not decide (client.stakes:asks):
 --   who claims what from which game and day, and why it is put to me (a forfeit
 --   of mine, or a game I did not see whole); „Потвърждавам“ / „Оспорвам“.
@@ -14,8 +16,9 @@ local _, ns = ...
 --   one name „Да, към сметката“ / „Не“, from namesakes one button per name and „Не“.
 -- A row I owe has „Плати“ (ns.PayDialog) and, while my announced payment has no
 -- P of the creditor yet, „чака … да потвърди“. A row owed to me has „Напомни“
--- (online debtors only; „Напомнено“ for NUDGE_GAP s) and „Уредено“, which asks
--- once more before it records a P "hand". The column redraws on "ledger",
+-- (online debtors only, the tooltip says why; „Напомнено“ for NUDGE_GAP s) and
+-- „Уредено“, which asks once more and records a P "hand" only for the amount it
+-- asked about (a due changed meanwhile is asked again). The column redraws on "ledger",
 -- "payAsk", "debtAsk" and "mineAsk"; a reminder ("nudge") is said in the chat frame.
 local W, L, C = ns.W, ns.L, ns.Const
 local View, money = ns.LedgerView, ns.Util.money
@@ -41,7 +44,9 @@ end
 -- The rows
 ---------------------------------------------------------------------------
 
--- {{kind = "mine", list, more} | {kind = "ask", debt, note} | {kind = "payAsk", ask}
+-- {{kind = "mine", entry, head} (one per asked body; head: the first, under
+--  „Тези записи …“) | {kind = "mine", more} (how many more wait unshown)
+--  | {kind = "ask", debt, note} | {kind = "payAsk", ask}
 --  | {kind = "owe", name, c, waiting} | {kind = "owed", name, c}}: questions first,
 -- then what I owe, then what I am owed (each largest first).
 function A.rows(client)
@@ -49,7 +54,8 @@ function A.rows(client)
   if not (client and client.ledger and client.pay and client.stakes) then return out end
   local pay = client.pay
   local mine, more = client.ledgerNet:asks()
-  if #mine > 0 then out[#out + 1] = { kind = "mine", list = mine, more = more or 0 } end
+  for i, b in ipairs(mine) do out[#out + 1] = { kind = "mine", entry = b, head = i == 1 } end
+  if #mine > 0 and (more or 0) > 0 then out[#out + 1] = { kind = "mine", more = more } end
   for _, d in ipairs(client.stakes:asks()) do out[#out + 1] = { kind = "ask", debt = d, note = client.stakes:seen()[d.gid] } end
   for _, q in ipairs(pay:asks()) do out[#out + 1] = { kind = "payAsk", ask = q } end
   for _, a in ipairs(View.accounts(View.of(client.ledger), client.env.me)) do
@@ -63,8 +69,9 @@ function A.rows(client)
   return out
 end
 
--- One line about my own entry e: what it is, the day, the names, the amount.
-local function entryLine(client, e)
+-- One line about my own entry e: what it is, the day, the names, the amount;
+-- an X says what it denies (the body it names, when I hold it).
+local function entryLine(client, e, deep)
   local parts = {}
   if e.k == "P" then
     parts = { L(HOW[e.how] or "accounts.settle"), ddmm(client, e.at), who(client, e.f), money(e.c) }
@@ -76,6 +83,13 @@ local function entryLine(client, e)
     if d and d.k == "D" then parts[3] = L("bill.row", who(client, d.f), who(client, d.t), money(d.c)) end
   elseif e.k == "R" then
     parts = { W.gameName(e.g), ddmm(client, e.at) }
+  elseif e.k == "X" then
+    local a, n = ns.Ledger.author(e.r)
+    local what = tostring(e.r)
+    for _, t in ipairs(a and not deep and client.ledger:bodies(a, n) or {}) do
+      if t.h == e.rh then what = entryLine(client, t, true) end
+    end
+    parts = { ddmm(client, e.at), L("ask.mine.deny", what) }
   else
     parts = { ddmm(client, e.at) }
   end
@@ -95,11 +109,16 @@ local function nudgedNow(client, name)
   return at ~= nil and client.env.now() - at < C.NUDGE_GAP
 end
 
+local timers = {} -- name -> the redraw when its „Напомнено“ ends
 local function nudge(client, name)
   local done, why = client.pay:nudge(name)
   if done or why == "wait" then
     A.nudged[name] = client.env.now()
-    C_Timer.After(C.NUDGE_GAP, refresh)
+    if timers[name] then timers[name]:Cancel() end
+    timers[name] = C_Timer.NewTimer(C.NUDGE_GAP, function()
+      timers[name] = nil
+      refresh()
+    end)
   end
   refresh()
 end
@@ -109,16 +128,14 @@ local function online(client, name)
   return p ~= nil and not p.incompatible
 end
 
--- The row's content: {text, sub, inline (its one button right of the text), buttons = {{label, act, on, tip}}}.
+-- The row's content: {text (nil: none), sub, inline (its one button right of the text), buttons = {{label, act, on, tip}}}.
 local SPEC = {
-  mine = function(client, r)
-    local lines = {}
-    for i, e in ipairs(r.list) do lines[i] = entryLine(client, e) end
-    if r.more > 0 then lines[#lines + 1] = L("bill.more", r.more) end
-    local net = client.ledgerNet
-    return { text = L("ask.mine"), sub = table.concat(lines, "\n"), buttons = {
-      { L("ask.mine.yes"), function() net:answer(true) end },
-      { L("ask.mine.no"), function() net:answer(false) end } } }
+  mine = function(client, r) -- each body answered alone (a forgery mixed in is denied, my own kept)
+    if not r.entry then return { sub = L("bill.more", r.more), buttons = {} } end
+    local net, b = client.ledgerNet, r.entry
+    return { text = r.head and L("ask.mine") or nil, sub = entryLine(client, b), buttons = {
+      { L("ask.mine.yes"), function() net:answer(b, true) end },
+      { L("ask.mine.no"), function() net:answer(b, false) end } } }
   end,
   ask = function(client, r)
     local key, stakes = r.debt.key, client.stakes
@@ -144,9 +161,10 @@ local SPEC = {
       buttons = { { L("accounts.pay"), function() ns.PayDialog.open(r.name) end } } }
   end,
   owed = function(client, r)
-    local done = nudgedNow(client, r.name)
+    local done, on = nudgedNow(client, r.name), online(client, r.name)
+    local away = not on and function(tip) tip:SetText(L("accounts.nudge.offline", who(client, r.name))) end or nil
     return { text = L("accounts.owed", who(client, r.name), money(r.c)), buttons = {
-      { L(done and "accounts.nudged" or "accounts.nudge"), function() nudge(client, r.name) end, not done and online(client, r.name) },
+      { L(done and "accounts.nudged" or "accounts.nudge"), function() nudge(client, r.name) end, not done and on, away },
       { L("accounts.settle"), function() A.askSettle(r.name, r.c) end, true,
         function(tip) tip:SetText(L("accounts.settle")); tip:AddLine(L("accounts.settle.tip")) end } } }
   end,
@@ -211,9 +229,13 @@ local function place(acc, r, spec, y)
   end
   for j = #spec.buttons + 1, #r.buttons do r.buttons[j]:Hide() end
   local textW = spec.inline and rowW - widths[1] - BTN_GAP or rowW
-  r.text:SetWidth(textW)
-  r.text:SetText(spec.text)
-  local h = r.text:GetStringHeight()
+  local h = 0
+  r.text:SetShown(spec.text ~= nil)
+  if spec.text then
+    r.text:SetWidth(textW)
+    r.text:SetText(spec.text)
+    h = r.text:GetStringHeight()
+  end
   if spec.inline then
     r.buttons[1]:SetPoint("TOPRIGHT", f, "TOPRIGHT", 0, 2)
     h = math.max(h, BTN_H - 2)
@@ -221,10 +243,11 @@ local function place(acc, r, spec, y)
   r.sub:SetShown(spec.sub ~= nil)
   if spec.sub then
     r.sub:ClearAllPoints()
-    r.sub:SetPoint("TOPLEFT", f, "TOPLEFT", 0, -(h + 2))
+    local top = h > 0 and h + 2 or 0
+    r.sub:SetPoint("TOPLEFT", f, "TOPLEFT", 0, -top)
     r.sub:SetWidth(textW)
     r.sub:SetText(spec.sub)
-    h = h + 2 + r.sub:GetStringHeight()
+    h = top + r.sub:GetStringHeight()
   end
   if not spec.inline then -- the buttons under the text, in rows as they fit
     local x, top = 0, h + 4
@@ -295,15 +318,18 @@ local function buildSure()
   A.sureText:SetWordWrap(true)
   A.sureText:SetPoint("TOPLEFT", f, "TOPLEFT", 24, -24)
   A.sureYes = W.Button(f, L("accounts.settle"), function()
-    local client, name = ns.client, A.sureName
+    local client, name, c = ns.client, A.sureName, A.sureC
     f:Hide()
-    if client and client.pay and name then client.pay:settle(name) end
+    if not (client and client.pay and name) then return end
+    local due = client.pay:due(name)
+    if due == c then client.pay:settle(name)
+    elseif due > 0 then A.askSettle(name, due) end -- the debt changed meanwhile: asked again, nothing recorded
     refresh()
   end)
   A.sureYes:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -24, 20)
   A.sureNo = W.Button(f, L("stake.ask.no"), function() f:Hide() end)
   A.sureNo:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 24, 20)
-  f:SetScript("OnHide", function() A.sureName = nil end)
+  f:SetScript("OnHide", function() A.sureName, A.sureC = nil, nil end)
   f:Hide()
 end
 
@@ -311,7 +337,7 @@ end
 function A.askSettle(name, c)
   if not A.sure then buildSure() end
   A.sure:Hide()
-  A.sureName = name
+  A.sureName, A.sureC = name, c
   A.sureText:SetText(L("accounts.settle.sure", money(c), who(ns.client, name)))
   A.sure:Show()
   A.sure:Raise()

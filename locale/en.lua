@@ -593,3 +593,5 @@ T["pay.fee"] = "A trade has no fee. Mail takes %s, and a letter may take up to a
 T["pay.hold"] = "Very frequent transfers can briefly trigger the protection against bought gold. That is why you pay everything to one person at once."
 T["pay.short"] = "You are %s short."
 T["pay.off"] = "This client does not allow it. Pay by hand and ask %s to press “Settled”."
+T["ask.mine.deny"] = "denies: %s"
+T["accounts.nudge.offline"] = "%s is not online with Tavern Games. You can remind them once they log in."
