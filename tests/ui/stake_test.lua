@@ -70,6 +70,7 @@ local function host(w, game, sk, others)
   for i, name in ipairs(others or {}) do
     hello(w, name)
     w.partyNames[name] = true
+    w.group["Player-1-" .. name] = true -- in my group: a staked Death Roll starts only so
     w:deliver("WHISPER", name, { v = 1, t = "SIT", tid = tid, seat = i + 1, sk = sk })
     w:advance(0)
   end
@@ -384,7 +385,7 @@ describe("ui: the bill", function()
     ok(bill.lines[1].text:GetText():find("|c", 1, true), "names not in class colour")
     eq(bill.lines[1].mark:GetText(), L("bill.pending")); ok(bill.lines[1].mark:IsVisible(), "no pending mark")
     eq(bill.lines[2] == nil or not bill.lines[2].text:IsVisible(), true)
-    eq(bill:GetHeight(), 48 + 22); eq(bill:GetWidth(), 360)
+    eq(bill:GetHeight(), 32 + 18); eq(bill:GetWidth(), 500)
     local d = myClaim(w, B)
     ok(d, "no claim of mine")
     word(w, B, 1, d, "C")
@@ -413,7 +414,7 @@ describe("ui: the bill", function()
     eq(plain(bill.lines[1].text:GetText()), "Мария напусна играта и губи служебно.")
     eq(bill.lines[1].mark:IsVisible(), false)
     eq(plain(bill.lines[2].text:GetText()), "Мария дължи на Иван 5g")
-    eq(bill:GetHeight(), 48 + 2 * 22)
+    eq(bill:GetHeight(), 32 + 2 * 18)
     -- bill.idle comes from the note's why (the host's own idle forfeit has a D "left").
     w.ns.client.stakes:last(tid).why = "idle"
     w.ns.TableFrame.render()
@@ -467,13 +468,13 @@ describe("ui: the start of a staked game", function()
     local w = readyWow()
     local TF, L = w.ns.TableFrame, w.ns.L
     local _, s = host(w, "deathroll", 10000, { B })
-    w.partyNames[B] = nil
+    w.partyNames[B], w.group["Player-1-" .. B] = nil, nil
     w:advance(0)
     ok(TF.view.startButton:IsVisible() and TF.view.startButton:IsEnabled(), "„Започни“ cannot be clicked")
     w:click(TF.view.startButton)
     eq(TF.view.line:GetText(), L("start.group"))
     eq(L("start.group"), "Всички на масата трябва да са в групата ти, преди да започнете.")
-    w.partyNames[B] = true
+    w.partyNames[B], w.group["Player-1-" .. B] = true, true
     w:click(TF.view.startButton); w:advance(0)
     eq(s.status, "live")
     s:play(s.state.turn, { k = "roll", n = 1, max = s.state.max, src = "seen" }); w:advance(0)
@@ -495,5 +496,190 @@ describe("ui: the start of a staked game", function()
     eq(w.ns.Hall.view.footer:GetText(), "Залогът на масата е друг. Виж го и седни отново.")
     w.ns.client.events:emit("refused", "x#1", "roll")
     eq(w.ns.Hall.view.footer:GetText(), L("refused.roll"))
+  end)
+end)
+
+-- Fix round 1 (task-11-review.md): the bill's geometry, the invitation's question, the minors.
+local E = "Яна Жекова"
+
+-- How far above the felt's bottom the top of the bill reaches.
+local function billTop(v) return v.bill.points[1][5] + v.bill:GetHeight() end
+
+-- How far above the felt's bottom `y` px under the top of the board frame `f` is.
+local function boardY(v, f, y) return v.areaH / 2 + f.points[1][5] + f:GetHeight() / 2 - y end
+
+describe("ui: the bill keeps clear of the board (fix round 1)", function()
+  it("a Морски шах bill never reaches the board's bottom row", function()
+    local w = readyWow()
+    wonMatch(w)
+    local v, f = w.ns.TableFrame.view, w.ns.TableFrame.built.ttt
+    local cell = f.cells[7].button
+    local bottomRow = boardY(v, f, -cell.points[1][5] + cell:GetHeight())
+    eq(v.bill.points[1], { "BOTTOM", v.area, "BOTTOM", 0, 6 })
+    ok(billTop(v) < bottomRow, "the bill reaches " .. billTop(v) .. ", the bottom row starts at " .. bottomRow)
+    -- The header strip: the title left, the buttons right.
+    eq(v.bill.title.points[1], { "TOPLEFT", v.bill, "TOPLEFT", 12, -6 })
+    eq(v.bill.rematch.points[1], { "TOPRIGHT", v.bill, "TOPRIGHT", -8, -4 })
+    eq(v.bill.toHall.points[1], { "RIGHT", v.bill.rematch, "LEFT", -6, 0 })
+  end)
+
+  it("a Death Roll bill of five players keeps 6 lines, the last „… и още 3“, below the ladder and the caption", function()
+    local w = readyWow()
+    local TF, L = w.ns.TableFrame, w.ns.L
+    eq(L("bill.more", 3), "… и още 3")
+    local tid, s = host(w, "deathroll", 10000, { B, C, D, E })
+    w:advance(0)
+    w:click(TF.view.startButton); w:advance(0)
+    eq(s.status, "live")
+    w:deliver("WHISPER", E, { v = 1, t = "STD", tid = tid }); w:advance(0) -- a forfeit to the four of us: 5 lines
+    s:play(s.state.turn, { k = "roll", n = 1, max = s.state.max, src = "seen" }); w:advance(0) -- 3 more rows
+    ok(s:gameOver(), "not over")
+    local v, f = TF.view, TF.built.deathroll
+    local shown = 0
+    for _, line in ipairs(v.bill.lines) do if line.text:IsVisible() then shown = shown + 1 end end
+    eq(shown, 6)
+    eq(plain(v.bill.lines[1].text:GetText()), "Яна напусна играта и губи служебно.")
+    eq(plain(v.bill.lines[6].text:GetText()), "… и още 3"); eq(v.bill.lines[6].mark:IsVisible(), false)
+    eq(v.bill:GetHeight(), 32 + 6 * 18)
+    local ladder = boardY(v, f, -f.cells[1].frame.points[1][5] + f.cells[1].frame:GetHeight())
+    local under = boardY(v, f, -f.caption.points[1][5] + f.caption:GetStringHeight())
+    if f.group:IsVisible() then under = under - 6 - f.group:GetStringHeight() end
+    ok(billTop(v) <= ladder and billTop(v) <= under, "the bill reaches " .. billTop(v) .. " (ladder " .. ladder .. ", text " .. under .. ")")
+  end)
+end)
+
+describe("ui: the invitation to a staked table asks first (fix round 1)", function()
+  -- Мария invites me to her staked table of `game`.
+  local function invited(w, game, sk)
+    local seats = game == "deathroll" and { B, false, false, false, false } or { B, false }
+    local tid = tbl(w, B, sk, game, seats)
+    w:deliver("WHISPER", B, { v = 1, t = "INV", tid = tid, g = game, h = B, s = seats, sk = sk })
+    w:advance(0)
+    return tid
+  end
+
+  it("„Приемам“ sends no SIT; the question names Death Roll's worst case and the leave; its yes sits at the stake", function()
+    local w = guildWow()
+    local T, P = w.ns.InviteToast, w.ns.StakePanels
+    local tid = invited(w, "deathroll", 10000)
+    local sits = #w:sentOf("SIT")
+    w:click(T.accept)
+    eq(#w:sentOf("SIT"), sits); eq(T.frame:IsShown(), false)
+    ok(P.askFrame:IsShown(), "no question")
+    eq(P.askText:GetText(), "Залогът е 1g. Който хвърли 1, плаща по 1g на всеки от останалите, най-много 4g.")
+    eq(P.askLeave:GetText(), w.ns.L("stake.ask.leave"))
+    w:click(P.askYes)
+    local sit = lastSent(w, "SIT")
+    eq({ sit.target, sit.msg.tid, sit.msg.seat, sit.msg.sk }, { B, tid, 2, 10000 })
+    eq(lastSent(w, "INR").msg.a, "yes")
+  end)
+
+  it("„Отказ“ declines the invitation", function()
+    local w = guildWow()
+    local T, P = w.ns.InviteToast, w.ns.StakePanels
+    invited(w, "ttt", 50000)
+    local sits = #w:sentOf("SIT")
+    w:click(T.accept); w:click(P.askNo)
+    eq(#w:sentOf("SIT"), sits); eq(lastSent(w, "INR").msg.a, "no")
+  end)
+
+  it("an invitation gone while the question was open: its yes sits at the stake all the same", function()
+    local w = guildWow()
+    local T, P = w.ns.InviteToast, w.ns.StakePanels
+    local tid = invited(w, "ttt", 50000)
+    w:click(T.accept)
+    w.ns.client.invites:drop(true)
+    w:click(P.askYes)
+    local sit = lastSent(w, "SIT")
+    ok(sit, "no SIT"); eq({ sit.msg.tid, sit.msg.seat, sit.msg.sk }, { tid, 2, 50000 })
+  end)
+
+  it("a fun invitation's „Приемам“ sits at once, as today", function()
+    local w = guildWow()
+    local T = w.ns.InviteToast
+    invited(w, "ttt", nil)
+    w:click(T.accept)
+    eq({ lastSent(w, "SIT").msg.seat, lastSent(w, "SIT").msg.sk }, { 2, nil })
+    eq(w.ns.StakePanels.askFrame == nil or not w.ns.StakePanels.askFrame:IsShown(), true)
+  end)
+end)
+
+describe("ui: the stake, the minors of fix round 1", function()
+  it("a sit question does not replace the question about my asked seat (M1); „Отказ“ there accepts nothing (M5)", function()
+    local w = readyWow()
+    w.ns.MainWindow.show()
+    local P, client = w.ns.StakePanels, w.ns.client
+    local accepted = 0
+    client.acceptStake = function() accepted = accepted + 1; return true end
+    local tid, s = host(w, "deathroll", 20000)
+    s.stakeAsk = true
+    client.events:emit("stakeAsk", tid, 20000); w:advance(0)
+    P.ask({ tid = C .. "#1", game = "ttt", stake = 50000, seats = { C, false } }, 2)
+    eq(P.question.kind, "keep"); ok(has(P.askText:GetText(), "2g"), "the keep question was replaced")
+    w:click(P.askNo)
+    eq(accepted, 0); eq(P.askFrame:IsShown(), false)
+  end)
+
+  it("a client without a ledger is told why it cannot sit (M2)", function()
+    local w = guildWow()
+    w.ns.MainWindow.show()
+    local P = w.ns.StakePanels
+    tbl(w, B, 50000)
+    w.ns.client.ledger = nil
+    w:click(w.ns.Hall.view.tables[1].chairs[2].button)
+    w:click(P.askYes)
+    eq(w.ns.Hall.view.footer:GetText(), w.ns.L("refused.stake"))
+  end)
+
+  it("the „Стани“ question follows the roster while it is open (M3)", function()
+    local w = readyWow()
+    local TF = w.ns.TableFrame
+    local tid, s = host(w, "deathroll", 50000, { B, C, D })
+    w:advance(0)
+    w:click(TF.view.startButton); w:advance(0)
+    eq(s.status, "live")
+    w:click(TF.view.standButton)
+    eq(TF.view.confirm.text:GetText(), "Ако станеш сега, губиш служебно и дължиш 15g.")
+    w:deliver("WHISPER", D, { v = 1, t = "STD", tid = tid }); w:advance(0)
+    ok(TF.view.confirm:IsShown(), "the question went")
+    eq(TF.view.confirm.text:GetText(), "Ако станеш сега, губиш служебно и дължиш 10g.")
+  end)
+
+  it("a sit question goes when its table leaves the hall (M4)", function()
+    local w = guildWow()
+    w.ns.MainWindow.show()
+    local P = w.ns.StakePanels
+    local tid = tbl(w, B, 50000)
+    w:click(w.ns.Hall.view.tables[1].chairs[2].button)
+    ok(P.askFrame:IsShown(), "no question")
+    w:deliver("GUILD", B, { v = 1, t = "END", tid = tid, e = 1 }); w:advance(0)
+    eq(P.askFrame:IsShown(), false)
+  end)
+
+  it("the gold box takes up to STAKE_MAX; a letter or more is a bad amount (M5)", function()
+    local w = guildWow()
+    w.ns.MainWindow.show()
+    local Dlg, L = w.ns.NewTableDialog, w.ns.L
+    for _, parts in ipairs({ { "5a", "" }, { "9999999", "99" }, { "5", "-1" } }) do
+      Dlg.open("ttt"); w:click(Dlg.stake.options[2].frame)
+      Dlg.goldBox:SetText(parts[1]); Dlg.silverBox:SetText(parts[2])
+      w:click(Dlg.openButton)
+      eq(w.ns.client.session, nil); eq(Dlg.error:GetText(), L("dialog.stake.bad"))
+    end
+    Dlg.goldBox:SetText("9999999"); Dlg.silverBox:SetText("")
+    w:click(Dlg.openButton)
+    eq(w.ns.client.session.stake, w.ns.Const.STAKE_MAX)
+  end)
+
+  it("the break's redraw goes with the table (M6)", function()
+    local w = readyWow()
+    local TF = w.ns.TableFrame
+    local _, s = host(w, "deathroll", 10000, { B })
+    w:advance(0)
+    w:click(TF.view.startButton); w:advance(0)
+    s:play(s.state.turn, { k = "roll", n = 1, max = s.state.max, src = "seen" }); w:advance(0)
+    ok(TF.breakTimer, "no break timer")
+    w.ns.client:stand(); w:advance(0)
+    eq(TF.breakTimer, nil)
   end)
 end)

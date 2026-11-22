@@ -319,6 +319,7 @@ function TableFrame.render()
   local client = ns.client
   local s = client and client.session
   if not s then
+    if TableFrame.breakTimer then TableFrame.breakTimer:Cancel(); TableFrame.breakTimer = nil end
     if TableFrame.frame then
       TableFrame.view.confirm:Hide()
       TableFrame.frame:Hide()
@@ -355,7 +356,7 @@ function TableFrame.render()
   if key then v.bannerText:SetText(L(key)) end
   v.banner:SetShown(key ~= nil)
   v.standButton.text:SetText(L(s.role == "watcher" and "table.toHall" or "table.stand"))
-  if not TableFrame.standCosts(s) then v.confirm:Hide() end -- the match ended meanwhile
+  if not TableFrame.standCosts(s) then v.confirm:Hide() elseif v.confirm:IsShown() then TableFrame.panels.confirm(v, s) end -- ended, or the cost moved
   local canInvite = s.role == "host" and firstFree(s.seats) ~= nil
   v.inviteButton:SetShown(canInvite)
   if not canInvite then

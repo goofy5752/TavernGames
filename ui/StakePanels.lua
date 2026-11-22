@@ -5,16 +5,23 @@ local _, ns = ...
 --   or a row of the hall): „Маса със залог“, what I owe if I lose (Death Roll:
 --   to each of the others, the most it can come to: ns.Stake.worst) and what a
 --   leave costs; „Приемам и сядам“ sits with that stake (client:sit), „Отказ“
---   sends nothing. The same question keeps a seat my client was asked about
+--   sends nothing (a sit question goes when its table leaves the hall). An
+--   invitation to a staked table asks it too (StakePanels.askInvite, from the
+--   toast's „Приемам“): yes accepts the invitation (ns.InviteToast.acceptStaked),
+--   „Отказ“ declines it. The same question keeps a seat my client was asked about
 --   after a crash or a fresh login ("stakeAsk"): its yes is client:acceptStake;
---   unanswered, the game's end stands me up (core/Stake.lua) and the question goes.
--- * The bill „Сметката“ (StakePanels.bill, from the table frame's render), over
---   the lower part of the felt once the staked game I played is over: for each
+--   unanswered, the game's end stands me up (core/Stake.lua) and the question
+--   goes. No other question replaces that one while it is open.
+-- * The bill „Сметката“ (StakePanels.bill, from the table frame's render), a
+--   strip at the bottom of the felt (BILL_W wide, BILL_TOP + BILL_ROW per line,
+--   BILL_Y above the felt's bottom, at most BILL_LINES lines, the last of them
+--   „… и още N“ when more would come: below the bottom row of the Морски шах
+--   board and the Death Roll ladder) once the staked game I played is over: for each
 --   outcome of that game my client noted (the "result" and the "forfeit"s of
 --   it, client.stakes' notes), why a forfeit was one (the note's why: „idle“,
 --   else a leave), then who owes whom, the names in class colour, each row
---   marked „чака потвърждение“ or „оспорен“ as the ledger has it; „Към
---   залата“ and „Реванш на същата маса“ (Морски шах: the engine's rematch;
+--   marked „чака потвърждение“ or „оспорен“ as the ledger has it; in its
+--   header „Към залата“ and „Реванш на същата маса“ (Морски шах: the engine's rematch;
 --   Death Roll: the host's next game, none for a guest). StakePanels.shown says
 --   whether it is up, so the game views hide their own result line.
 local Theme, W, L = ns.Theme, ns.W, ns.L
@@ -22,12 +29,13 @@ local money = ns.Util.money
 
 local P = {
   shown = false,  -- the bill is up (read by the game views)
-  question = nil, -- {kind = "sit" | "keep", tid, seat, sk, game}: the question shown
+  question = nil, -- {kind = "sit" | "invite" | "keep", tid, seat, sk, game}: the question shown
 }
 ns.StakePanels = P
 
 local ASK_W, ASK_H = 380, 200
-local BILL_W, BILL_BASE, BILL_ROW = 360, 48, 22
+local BILL_W, BILL_TOP, BILL_ROW, BILL_Y, BILL_LINES = 500, 32, 18, 6, 6
+local MARK_W = 112 -- the row's mark, right of its text
 
 local function first(client, name) return W.colored(client, name, W.firstWord(name)) end
 
@@ -77,6 +85,8 @@ end
 
 local function showAsk(q)
   if not P.askFrame then buildAsk() end
+  local open = P.question
+  if open and open.kind == "keep" and q.kind ~= "keep" and P.askFrame:IsShown() then return end -- the asked seat first
   P.question = q
   P.askText:SetText(askText(q.game, q.sk))
   P.askFrame:Show()
@@ -94,15 +104,22 @@ function P.ask(rec, seat)
   showAsk({ kind = "sit", tid = rec.tid, seat = seat, sk = rec.stake, game = rec.game })
 end
 
+-- The question before accepting the invitation inv ({tid, game, stake}) to a staked table.
+function P.askInvite(inv)
+  showAsk({ kind = "invite", tid = inv.tid, sk = inv.stake, game = inv.game })
+end
+
 -- „Приемам и сядам“ (yes) or „Отказ“.
 function P.answer(yes)
   local q, client = P.question, ns.client
   hideAsk()
-  if not (yes and q and client) then return end
+  if not (q and client) then return end
+  if q.kind == "invite" then return ns.InviteToast.acceptStaked(q.tid, q.sk, yes) end
+  if not yes then return end
   if q.kind == "keep" then
     client:acceptStake()
-  else
-    client:sit(q.tid, q.seat, q.sk)
+  elseif client:sit(q.tid, q.seat, q.sk) == nil and not client.ledger then
+    ns.Hall.say(L("refused.stake")) -- a client without a ledger sits at no staked table
   end
 end
 
@@ -156,7 +173,7 @@ local MARK = { pending = { "bill.pending", "inkDim" }, contested = { "bill.conte
 local function lineWidget(b, i)
   local line = b.lines[i]
   if line then return line end
-  local y = -24 - (i - 1) * BILL_ROW
+  local y = -(BILL_TOP - 4) - (i - 1) * BILL_ROW
   local text = W.Label(b, "ui", "", 12)
   text:SetWordWrap(false)
   text:SetPoint("TOPLEFT", b, "TOPLEFT", 14, y)
@@ -171,7 +188,7 @@ end
 -- One line of the bill: `text`, and a row's mark for `status` (nil: a reason line).
 local function setLine(b, i, text, status)
   local line, mark = lineWidget(b, i), MARK[status]
-  line.text:SetWidth(BILL_W - 28 - (status and 112 or 0))
+  line.text:SetWidth(BILL_W - 28 - (status and MARK_W or 0))
   line.text:SetText(text)
   line.text:Show()
   line.mark:SetText(mark and L(mark[1]) or "")
@@ -182,23 +199,23 @@ end
 local function buildBill(v)
   local b = W.Panel(v.area)
   b.fill:SetColorTexture(20 / 255, 10 / 255, 5 / 255, 0.92)
-  b:SetSize(BILL_W, BILL_BASE + BILL_ROW)
-  b:SetPoint("BOTTOM", v.area, "BOTTOM", 0, 12)
+  b:SetSize(BILL_W, BILL_TOP + BILL_ROW)
+  b:SetPoint("BOTTOM", v.area, "BOTTOM", 0, BILL_Y)
   b:SetFrameLevel(v.area:GetFrameLevel() + 12)
   b:EnableMouse(true)
+  -- The header strip: the title left, „Към залата“ and „Реванш на същата маса“ right.
   b.title = W.Label(b, "heading", L("bill.title"), 14)
-  b.title:SetJustifyH("CENTER")
-  b.title:SetPoint("TOP", b, "TOP", 0, -6)
+  b.title:SetPoint("TOPLEFT", b, "TOPLEFT", 12, -6)
   b.lines = {}
-  b.toHall = W.Button(b, L("table.toHall"), function() ns.TableFrame.stand() end, true)
-  b.toHall:SetSize(110, 20)
-  b.toHall:SetPoint("BOTTOMLEFT", b, "BOTTOMLEFT", 10, 4)
   b.rematch = W.Button(b, L("bill.rematch"), function() P.rematch() end, true)
   b.rematch:SetSize(180, 20)
-  b.rematch:SetPoint("BOTTOMRIGHT", b, "BOTTOMRIGHT", -10, 4)
-  b.waiting = W.Label(b, "dim", "", 12)
+  b.rematch:SetPoint("TOPRIGHT", b, "TOPRIGHT", -8, -4)
+  b.toHall = W.Button(b, L("table.toHall"), function() ns.TableFrame.stand() end, true)
+  b.toHall:SetSize(110, 20)
+  b.toHall:SetPoint("RIGHT", b.rematch, "LEFT", -6, 0)
+  b.waiting = W.Label(b, "dim", "", 12) -- in the place of „Реванш“ once I asked for it
   b.waiting:SetJustifyH("RIGHT")
-  b.waiting:SetPoint("BOTTOMRIGHT", b, "BOTTOMRIGHT", -12, 8)
+  b.waiting:SetPoint("RIGHT", b, "TOPRIGHT", -12, -14)
   b:Hide()
   v.bill = b
 end
@@ -236,20 +253,22 @@ function P.bill(v, s)
     return
   end
   if not v.bill then buildBill(v) end
-  local b, n = v.bill, 0
+  local b, items = v.bill, {}
   for _, note in ipairs(notes) do
     local leaver = note.why ~= "lost" and note.pairs[1] and note.pairs[1].f
-    if leaver then
-      n = n + 1
-      setLine(b, n, L(note.why == "idle" and "bill.idle" or "bill.left", first(client, leaver)), nil)
-    end
+    if leaver then items[#items + 1] = { L(note.why == "idle" and "bill.idle" or "bill.left", first(client, leaver)) } end
     for _, r in ipairs(P.billRows(client, note)) do
-      n = n + 1
-      setLine(b, n, L("bill.row", first(client, r.f), first(client, r.t), money(r.c)), r.status)
+      items[#items + 1] = { L("bill.row", first(client, r.f), first(client, r.t), money(r.c)), r.status }
     end
   end
+  local n = math.min(#items, BILL_LINES)
+  for i = 1, n do
+    local item = items[i]
+    if i == BILL_LINES and #items > BILL_LINES then item = { L("bill.more", #items - BILL_LINES + 1) } end
+    setLine(b, i, item[1], item[2])
+  end
   for i = n + 1, #b.lines do b.lines[i].text:Hide(); b.lines[i].mark:Hide() end
-  b:SetHeight(BILL_BASE + BILL_ROW * n)
+  b:SetHeight(BILL_TOP + BILL_ROW * n)
   local what, other = rematchState(s, client)
   b.rematch:SetShown(what == "ask" or what == "start")
   b.waiting:SetText(what == "asked" and L("ttt.waitingFor", W.colored(client, other)) or "")
@@ -272,5 +291,9 @@ ns.ready(function(client)
   client:on("session", function(s)
     local q = P.question
     if q and q.kind == "keep" and not (s and s.tid == q.tid and s.stakeAsk) then hideAsk() end
+  end)
+  client:on("tables", function()
+    local q = P.question
+    if q and q.kind == "sit" and not client.lobby:get(q.tid) then hideAsk() end
   end)
 end)

@@ -9,7 +9,9 @@ local _, ns = ...
 -- by itself (combat, instance, busy, snooze).
 --
 -- A „Приемам“ that is refused (the table is gone or full, or its record has not
--- arrived yet) shows the refusal on the toast for NOTICE_SECONDS instead.
+-- arrived yet) shows the refusal on the toast for NOTICE_SECONDS instead. At a
+-- staked table „Приемам“ first asks the stake question (ns.StakePanels.askInvite);
+-- its answer comes back through InviteToast.acceptStaked.
 --
 -- Host side: each "inviteAnswer" becomes one line on the table frame (or in the
 -- hall footer): accepted, declined, or why the addon declined for them.
@@ -113,7 +115,7 @@ function InviteToast.show(inv)
   if not InviteToast.frame then build() end
   InviteToast.hide()
   local t, game = InviteToast, W.gameName(inv.game)
-  t.tid, t.expires, t.game = inv.tid, inv.expires, game
+  t.tid, t.expires, t.game, t.inv = inv.tid, inv.expires, game, inv
   t.title:SetText(L("invite.title", game))
   t.text:SetText(L("invite.text", W.colored(ns.client, inv.host), game))
   t.stake:SetText(inv.stake ~= nil and L("invite.stake", ns.Util.money(inv.stake)) or "")
@@ -143,14 +145,39 @@ local function notice(text)
   end)
 end
 
--- "yes" | "no" | "snooze" for the invitation shown.
+-- "yes" | "no" | "snooze" for the invitation shown. A "yes" to a staked
+-- table asks the stake question first.
 function InviteToast.answer(kind)
   local t, client = InviteToast, ns.client
-  local tid = t.tid
+  local tid, inv = t.tid, t.inv
   t.hide()
   if not tid or not client then return end
+  if kind == "yes" and inv and inv.tid == tid and inv.stake ~= nil then return ns.StakePanels.askInvite(inv) end
   if kind == "yes" then t.accepting = { tid = tid, untilTime = now() + ACCEPT_WATCH } end
   client:answerInvite(tid, kind)
+end
+
+-- The answer to the stake question of an invitation to table tid (stake sk):
+-- yes accepts it (expired meanwhile: I sit at that stake, as from a chair),
+-- else it is declined while it still stands.
+function InviteToast.acceptStaked(tid, sk, yes)
+  local client = ns.client
+  if not client then return end
+  local r = client.invites.received
+  local open = r ~= nil and r.tid == tid
+  if not yes then
+    if open then client:answerInvite(tid, "no") end
+    return
+  end
+  InviteToast.accepting = { tid = tid, untilTime = now() + ACCEPT_WATCH }
+  if open then return client:answerInvite(tid, "yes") end
+  local rec = client.lobby:get(tid)
+  local seat
+  for i = 1, rec and #rec.seats or 0 do
+    if rec.seats[i] == false then seat = seat or i end
+  end
+  if not seat then return client.events:emit("refused", tid, rec and "taken" or "gone") end
+  client:sit(tid, seat, sk)
 end
 
 local function refused(tid, why)
