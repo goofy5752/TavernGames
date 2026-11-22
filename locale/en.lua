@@ -523,3 +523,6 @@ T["seal.bad"] = "Irregular hands: %d"
 T["seal.tip"] = "In Hold'em the shuffle is shown only when the table closes, so that the cards of those who folded stay unseen. Until then every hand stays sealed. At the end the addon checks them all at once."
 T["seal.tip.bad"] = "Irregular hands: %d. A card was shown that is not from the deck. Tell the others."
 T["seal.tip.open"] = "%s left without leaving their key. The hands they played cannot be checked."
+
+-- Плащане (core/Pay.lua): the body of a letter
+T["pay.mail.body"] = "Paid through Tavern Games. Cheers!"

@@ -38,6 +38,8 @@ function Sim.new(ns)
     nextRolls = {},   -- results for env.roll, first to last; when empty: hi
     rolled = {},      -- every env.roll: { from, lo, hi, n }
     groupInvites = {}, -- every env.groupInvite: { from, name }
+    trades = {},      -- every env.trade.open: { from, name, c }
+    mails = {},       -- every env.mail.fill: { from, to, subject, body, c }
     stopped = {},     -- name -> the CRASH_KEYS of its db at sim:add or its last client:stop()
   }, Sim)
   -- Whose server rolls `to` sees in chat, and the name it sees for `from`.
@@ -128,8 +130,27 @@ end
 -- the roller, as sim.rollName for the others.
 -- env.group() reports opts.party (default: not in a group); env.groupInvite
 -- records into sim.groupInvites.
+-- Payment (core/Pay.lua), read at call time: env.money() = opts.money (default
+-- the gold cap); env.trade.state(who) "ok" for a name in opts.near, else
+-- "far"; env.mail.state() "open" while opts.mailbox; env.mail.fee() = opts.fee
+-- (default 30); env.trade.open and env.mail.fill record into sim.trades and
+-- sim.mails. env.date(t): UTC arithmetic (core never calls os.date).
 function Sim:addFakes(env, opts)
   local sim, name = self, env.me
+  env.money = function() return opts.money or 99999999999 end
+  env.trade = {
+    state = function(who) return sim.ns.Util.contains(opts.near or {}, who) and "ok" or "far" end,
+    open = function(who, c) sim.trades[#sim.trades + 1] = { from = name, name = who, c = c }; return true end,
+  }
+  env.mail = {
+    state = function() return opts.mailbox and "open" or "closed" end,
+    fill = function(to, subject, body, c)
+      sim.mails[#sim.mails + 1] = { from = name, to = to, subject = subject, body = body, c = c }
+      return true
+    end,
+    fee = function() return opts.fee or 30 end,
+  }
+  env.date = function(t) return sim.ns.Pay.utc(t) end
   local party = opts.party or { grouped = false, leader = false, raid = false, size = 0 }
   env.group = function()
     return { grouped = party.grouped, leader = party.leader, raid = party.raid, size = party.size }

@@ -25,6 +25,7 @@ function Client.new(env)
     self.ledgerNet = ns.LedgerNet.new(self, self.ledger)
     self.ledgerSync = ns.LedgerSync.new(self, self.ledger, self.ledgerNet)
     self.stakes = ns.Stakes.new(self) -- outcomes to the ledger, claims against me (core/StakesBook.lua)
+    self.pay = ns.Pay.new(self) -- trade, mail, „Уредено“, „Напомни“ (core/Pay.lua)
   elseif not env.guild and env.log then
     env.log("ledger", nil, nil, "no guild: no ledger")
   end
@@ -174,4 +175,5 @@ function Client:receive(channel, sender, msg)
   if self.ledgerSync and channel == "WHISPER" and (msg.t == "LVC" or msg.t == "LEV" or msg.t == "LID") then
     self.ledgerSync:receive(sender, msg)
   end
+  if self.pay and channel == "WHISPER" and msg.t == "PAY" then self.pay:receive(sender, msg) end
 end
