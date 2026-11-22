@@ -83,6 +83,7 @@ RULES
     clockwise after it (nil without a button).
 19. A street or the showdown on a state that lacks one of its faces (a view): E.system returns
     {k="street"/"showdown", need="faces"}, 0; the faces come from whoever holds the deck.
+20. A staked table (opts.staked): see engines/holdem_cash.lua.
 
 HAND HANDSHAKE (the deck comes from the fairness layer, so the engine cannot deal on its own)
  - phase "idle"/"done": E.system returns {k="hand"} once 2+ seats can play. The host applies it: the button
@@ -107,6 +108,7 @@ HAND HANDSHAKE (the deck comes from the fairness layer, so the engine cannot dea
 local _, ns = ...
 ns.Engines = ns.Engines or {}
 local H = ns.HoldemEval
+local HC = ns.HoldemCash
 
 -- maxSeats is what a table offers (the message budget of the sealed deal, see the stage E plan); the
 -- engine itself plays any seats it is given on its 9 chairs.
@@ -188,6 +190,7 @@ function E.new(opts)
   for i = 1, CHAIRS do
     s.seats[i] = (type(opts.seats) == "table" and opts.seats[i]) and { chips = stack, out = false, leaving = false } or false
   end
+  if opts.staked == true then s.cash = HC.new((o.rebuy == "none" or o.rebuy == "top") and o.rebuy or "bust") end
   return s
 end
 
@@ -265,7 +268,7 @@ local function finish(s, scores, cats, showOrder)
     if c[i] > 0 and not seenL[c[i]] then seenL[c[i]] = true; levels[#levels + 1] = c[i] end
   end
   table.sort(levels)
-  local pots, refund, prev = {}, {}, 0
+  local pots, refund, prev, cash = {}, {}, 0, s.cash
   for _, L in ipairs(levels) do
     local payers, eligible = {}, {}
     for _, i in ipairs(s.order) do
@@ -274,17 +277,21 @@ local function finish(s, scores, cats, showOrder)
         if live(s, i) then eligible[#eligible + 1] = i end
       end
     end
-    local amt, top = (L - prev) * #payers, pots[#pots]
+    local amt, top, into = (L - prev) * #payers, pots[#pots], nil
     if #payers == 1 then
       refund[payers[1]] = (refund[payers[1]] or 0) + amt       -- uncalled
     elseif #eligible == 0 and top then
-      top.amount = top.amount + amt                             -- dead chips join the pot below
+      top.amount, into = top.amount + amt, top                  -- dead chips join the pot below
     else
       if #eligible == 0 then
         for _, i in ipairs(s.order) do if live(s, i) then eligible[#eligible + 1] = i end end
       end
-      if top and sameSet(top.eligible, eligible) then top.amount = top.amount + amt
-      else pots[#pots + 1] = { amount = amt, eligible = eligible } end
+      if top and sameSet(top.eligible, eligible) then top.amount, into = top.amount + amt, top
+      else into = { amount = amt, eligible = eligible }; pots[#pots + 1] = into end
+    end
+    if cash and into then                                        -- a staked table: whose chips the layer holds
+      into.from = into.from or {}
+      for _, i in ipairs(payers) do into.from[i] = (into.from[i] or 0) + L - prev end
     end
     prev = L
   end
@@ -315,6 +322,7 @@ local function finish(s, scores, cats, showOrder)
   for _, i in ipairs(showOrder or {}) do s.shown[i] = true end
   s.last = { hand = s.hand, contrib = contrib, won = won, pots = pots, shown = showOrder or {},
     cat = cats or {}, left = {} }
+  if cash then s.last.took = HC.attribute(pots); HC.add(cash, s.last.took) end
   settle(s)
 end
 
