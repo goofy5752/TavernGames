@@ -16,6 +16,7 @@ function Client.new(env)
   self.invites = ns.Invites.new(self)
   self.stakeNoted = false -- a db.stakeSat note was written in this run (see ns.Stake.note)
   ns.Stake.watch(self)
+  ns.CashOut.watch(self) -- my buy-in after my sit, „Стани“ as a cash-out (core/CashOut.lua)
   -- The guild's gold ledger (env.db.ledger[env.guild]); a client without a guild has none.
   if env.guild and env.db then
     local ledgers = env.db.ledger or {}

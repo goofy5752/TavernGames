@@ -98,7 +98,7 @@ Stake.over = over
 function Stake.standUp(client, s)
   local tid = s.tid
   s.stakeAsk = nil
-  client:stand()
+  client:stand(true) -- at once, never a cash-out (core/CashOut.lua)
   client.events:emit("refused", tid, "stake")
 end
 

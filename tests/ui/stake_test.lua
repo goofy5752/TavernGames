@@ -1072,6 +1072,33 @@ describe("ui: a cash table in the dialog and the question", function()
     end)
   end)
 
+  -- Stage F3, Task 8: the real client behind the question (no spy): the chair's yes and an invitation's yes.
+  it("the real client takes the buy-in of a chair's yes and of an invitation's yes", function()
+    cash(function(w)
+      local P, client = w.ns.StakePanels, w.ns.client
+      local tid = cashTable(w, B)
+      w:click(w.ns.Hall.view.tables[1].chairs[2].button)
+      for _ = 1, 4 do w:click(P.buyMinus) end
+      w:click(P.askYes)
+      local sit = lastSent(w, "SIT")
+      eq({ sit.msg.tid, sit.msg.seat, sit.msg.sk }, { tid, 2, 1000 })
+      eq(client.cashWant, { tid = tid, n = 600 })
+      client:stand(); w:advance(0)
+      eq(client.cashWant, nil)
+      local seats = { B, false, false, false, false, false }
+      w:deliver("WHISPER", B, { v = 1, t = "INV", tid = tid, g = "holdem", h = B, s = seats, sk = 1000 })
+      w:advance(0)
+      w:click(w.ns.InviteToast.accept)
+      ok(P.buyRow:IsShown(), "no stepper")
+      for _ = 1, 2 do w:click(P.buyMinus) end
+      w:click(P.askYes)
+      sit = lastSent(w, "SIT")
+      eq({ sit.msg.tid, sit.msg.sk }, { tid, 1000 })
+      eq(lastSent(w, "INR").msg.a, "yes")
+      eq(client.cashWant, { tid = tid, n = 800 })
+    end)
+  end)
+
   it("the hall writes the blinds of a cash table", function()
     cash(function(w)
       local view = w.ns.Hall.view

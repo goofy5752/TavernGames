@@ -478,7 +478,7 @@ describe("a cash settlement becomes pair debts", function()
     end
     ok(U.contains(E.players(hs.state), 4), "Гошо is dealt in")
     setTook(cl, { [4] = { [1] = 10 } }) -- Иван owes Гошо 10 chips (and the hand adds its own)
-    cl[G]:stand(); sim:run(1)
+    cl[G]:stand(true); sim:run(1) -- at once, mid-hand (core/CashOut.lua)
     cl[K]:sit(tid, 4, SK); sim:run(1)
     watch(got, K, cl[K])
     ok(hs.state.seats[4].leaving and hs.state.seats[4].takenWho == K, "Kiro takes the leaving chair")

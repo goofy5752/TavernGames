@@ -263,7 +263,7 @@ describe("stakes at a cash table", function()
     local host = cl[A]
     inHand(sim, host)
     ok(ns.Util.contains(E.players(host.session.state), 3), "Мария is dealt in")
-    cl[M]:stand(); sim:run(1)
+    cl[M]:stand(true); sim:run(1) -- at once, mid-hand (core/CashOut.lua)
     ok(E.inHand(host.session.state) and host.session.state.seats[3].leaving, "her chair is still hers")
     cl[G]:sit(tid, 3, SK); sim:run(1)
     eq(cl[G].session.mySeat, 3)
@@ -286,7 +286,7 @@ describe("stakes at a cash table", function()
       inHand(sim, host)
       local hst = host.session.state
       ok(ns.Util.contains(E.players(hst), 4) and hst.seats[4].bought == 1000, "Гошо is dealt in with 1000 bought")
-      cl[G]:stand(); sim:run(1)
+      cl[G]:stand(true); sim:run(1) -- at once, mid-hand (core/CashOut.lua)
       ok(E.inHand(host.session.state) and host.session.state.seats[4].leaving, "his record still leaves")
       if forge then -- the host adds 900 to the matrix of his old record
         sim.bus.filter = function(from, to, _, m)

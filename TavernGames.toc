@@ -74,6 +74,7 @@ core/DiceCheck.lua
 core/DiceLine.lua
 core/Invites.lua
 core/Client.lua
+core/CashOut.lua
 core/Bots.lua
 core/Locale.lua
 core/Help.lua
