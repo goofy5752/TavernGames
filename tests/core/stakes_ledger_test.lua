@@ -287,6 +287,27 @@ describe("stakes: from a game to the ledger", function()
     eq(View.net(view(cl[P]), B, A), SK)
   end)
 
+  it("a left claim far past my stand is asked while my stand's own claim has not come: in-flight timing is never contested", function()
+    local sim, cl = setup()
+    local tid = ttt(sim, cl, SK)
+    ok(cl[A]:act({ k = "mark", c = 1 })); sim:run(0)
+    local held = {}
+    sim.bus.filter = function(from, to, _, m)
+      if from == A and to == B and m.t == "LEV" then held[#held + 1] = m; return {} end
+      return { m }
+    end
+    local mark = #sim.sent
+    cl[B]:stand(); sim:run(10)
+    local lq = cl[B].env.db.stakeLeft[tid].q
+    -- As if my host had ordered many events while my STD was in flight: my stand's claim at lq + 6.
+    eq(cl[B].ledgerNet:take(cl[A].ledgerNet:make("D", { gid = tid .. "/" .. (lq + 6), g = "ttt", f = B, t = A, c = SK, why = "left" }), A, true), "new")
+    sim:run(10)
+    eq(#sentOf(sim, B, mark), 0)
+    local asks = cl[B].stakes:asks()
+    eq(#asks, 1); eq(asks[1].gid, tid .. "/" .. (lq + 6))
+    sim.bus.filter = nil
+  end)
+
   it("my „Стани“ confirms only its own claim, whatever comes first (review probe A)", function()
     local sim, cl = setup()
     local tid = ttt(sim, cl, SK)

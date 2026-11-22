@@ -5,8 +5,9 @@ local _, ns = ...
 --   (its gid, why "left", the table's stake, within STAKE_LEFT_WINDOW of it,
 --   a creditor I left behind) -> C, once per creditor; another amount there
 --   -> N "amount", any other claim at that gid -> put to me; a "left" claim
---   at that table more than LEAVE_SLACK events after it (a game I was not
---   in), with no note of mine for its gid -> N "forged";
+--   at that table more than LEAVE_SLACK events after it, with no note of mine
+--   for its gid: a game I was not in (N "forged") once that creditor's claim
+--   of my stand was taken, else put to me (in-flight timing is no foul);
 --   my note of its gid: roll part pending -> wait, a foul forged/roll/stand
 --   -> N with it, another amount -> N "amount", my pair clean and the claim
 --   written within STAKE_LEFT_WINDOW of my note -> C (my own D when its id
@@ -47,7 +48,10 @@ function Book:judge(b, taken)
     if b.c ~= (p and p.c or note.sk) then return "N", "amount" end
     return (p and not note.foul and near(b.at, note.at)) and "C" or "ask"
   end
-  if lq and b.why == "left" and q > lq + LEAVE_SLACK then return "N", "forged" end
+  if lq and b.why == "left" and q > lq + LEAVE_SLACK then -- a game after I left, once my stand's own claim was taken
+    local used = (type(left.used) == "table" and left.used[b.t]) or taken[b.t]
+    if used and used ~= b.h then return "N", "forged" end
+  end
   local s = self.client.session
   if s and s.tid == tid and q > s.seq then self.held = true; return "wait" end -- again at each change of my table
   local open
