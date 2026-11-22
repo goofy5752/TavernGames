@@ -60,7 +60,7 @@ ns.Const = {
 
   LEDGER_FUTURE = 3600,      -- an entry's `at` may be this far ahead of my clock
   LEDGER_AUTHOR_MAX = 5000,  -- R entries kept per author
-  LEDGER_JUMP = 1000,        -- an id under my name this far above my counter is forged: it never moves the counter
+  LEDGER_JUMP = 1000,        -- an id under my name this far above my counter is asked; only my „Мои са“ moves the counter to it
   LEDGER_CLAIMS_OPEN = 20,   -- pending claims per creditor shown or asked about
   LEDGER_MINE_ASK = 20,      -- own entries the guild holds and my store lost, shown at once; the rest wait unshown
   LEDGER_ADOPT_WAIT = 30,    -- the adoption window of a new store; my own entries wait this long after login

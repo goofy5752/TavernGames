@@ -13,7 +13,8 @@ local _, ns = ...
 -- version of an entry under my name that I made myself (no dr, no rl) is never
 -- evicted from my store.
 -- My counter: L.base is my saved seq at load plus my own makes; an id of mine
--- more than LEDGER_JUMP above it never moves the counter. While L.adopting
+-- more than LEDGER_JUMP above it is asked and moves the counter only on my „Мои са“
+-- (not near ID_MAX: there never). While L.adopting
 -- (L.fresh: the store held no sound record of mine at load, the adoption window
 -- of a new store; the caller sets L.adopting = false when the window closes) an
 -- id of mine is adopted when it is at most LEDGER_JUMP above my live counter, and
@@ -165,7 +166,7 @@ function Store:record()
   return me[self.me]
 end
 -- My next entry of `kind`, added -> entry | nil, reason ("full": no number is left).
--- A number already held under my name (a refused far forgery) is skipped.
+-- A number already held under my name (a kept far id) is skipped.
 function Store:make(kind, fields)
   local rec = self:record()
   local n = rec.seq + 1
@@ -214,8 +215,10 @@ end
 function Store:seen(a) return self.top[a] or 0 end
 -- My counter is at least n -> true; false (it stays) when n is more than
 -- LEDGER_JUMP above L.base (in the adoption window: above my live counter): too far to
--- move it unasked. With force (my „Мои са“, core/LedgerNet.lua) it goes there however far.
+-- move it unasked. With force (my „Мои са“, core/LedgerNet.lua) it goes there however far,
+-- except above ID_MAX - 1000000: there nothing moves (the entry stays kept, make skips held numbers).
 function Store:bump(n, force)
+  if force and n > Ledger.ID_MAX - 1000000 then return true end
   local rec = self:record()
   if self.adopting then
     if n > rec.seq + C.LEDGER_JUMP and not force then return false end
