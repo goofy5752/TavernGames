@@ -86,9 +86,9 @@ RULES
 20. A staked table (opts.staked; engines/holdem_cash.lua): option rebuy = "none" / "bust" / "top" (default "bust")
     instead of stack. A seat sits with 0 chips and sits out until its own {k="buy", n} (40-100 BB; a name that left
     this game with c chips buys at least min(c, 100 BB)); "none": no later buy, nor a first one after leaving with 0;
-    "bust": a new 40-100 BB only at 0 chips; "top": up to 100 BB. No buy and no {k="cashout"} while dealt in.
-    A seat is settled (an out record in state.cash.outs, emptied by the next hand) at its cashout (it stays seated),
-    its removal (a stand between hands, or the end of the hand it left), and for every seat when the game closes.
+    "bust": 40-100 BB only at 0 chips; "top": up to 100 BB. No buy, no {k="cashout"} while dealt in or my name
+    leaves another chair. Settled (an out record in state.cash.outs, emptied by the next hand) at a cashout (it stays
+    seated), a removal (a stand between hands; a hand's end: every leaver, then the newcomers sit), and a close.
 
 HAND HANDSHAKE (the deck comes from the fairness layer, so the engine cannot deal on its own)
  - phase "idle"/"done": E.system returns {k="hand"} once 2+ seats can play. The host applies it: the button
@@ -174,6 +174,7 @@ local function countPlaying(s)
 end
 
 local function inHand(s) return s.phase == "deal" or s.phase == "bet" or s.phase == "street" or s.phase == "showdown" end
+HC.inHand = inHand
 local function live(s, i) local p = s.p[i]; return p ~= nil and not p.folded end
 local function canAct(s, i) local p = s.p[i]; return p ~= nil and not p.folded and not p.allin end
 local function needs(s, i)
@@ -196,8 +197,9 @@ function E.new(opts)
   }
   local staked, names = opts.staked == true, type(opts.names) == "table" and opts.names or {}
   for i = 1, CHAIRS do
+    local who = type(names[i]) == "string" and names[i] or nil
     s.seats[i] = (type(opts.seats) == "table" and opts.seats[i])
-      and (staked and HC.seat(names[i] or nil) or { chips = stack, out = false, leaving = false }) or false
+      and (staked and HC.seat(who) or { chips = stack, out = false, leaving = false }) or false
   end
   if staked then s.cash = HC.new(choice("rebuy", o.rebuy)) end
   return s
@@ -254,8 +256,9 @@ local function sameSet(a, b)
 end
 
 -- The end of a hand once the chips are paid out and s.last is written: leavers go with their chips
--- (a taken chair gets the newcomer's fresh stack), a seat with 0 chips sits out. Staked: a leaver is
--- settled before its chair empties or changes hands, the newcomer sits as a staked seat; a close settles all.
+-- (a taken chair gets the newcomer's fresh stack), a seat with 0 chips sits out. Staked: every leaver is
+-- settled before any chair empties or changes hands (a newcomer may be the leaver of a higher chair), the
+-- newcomer sits as a staked seat; a close settles all.
 local function settle(s)
   local cash = s.cash
   for i = 1, CHAIRS do
@@ -263,11 +266,16 @@ local function settle(s)
     if st and st.leaving then
       s.last.left[i] = st.chips
       if cash and st.bought > 0 then HC.settle(s, i) end
+    elseif st then
+      st.out = st.chips == 0
+    end
+  end
+  for i = 1, CHAIRS do
+    local st = s.seats[i]
+    if st and st.leaving then
       s.seats[i] = st.taken and (cash and HC.seat(st.takenWho, cash.left[st.takenWho or ""])
         or { chips = s.stack, out = false, leaving = false }) or false
       s.p[i].gone = true          -- kept for the table display, no longer anyone's own hand
-    elseif st then
-      st.out = st.chips == 0
     end
   end
   s.phase, s.turn = s.closing and "closed" or "done", nil
@@ -749,7 +757,7 @@ E.inHand = inHand
 
 -- rule 20: a staked table's chip is HC.CHIP copper; its stake (TBL.sk) is the big blind in copper
 E.cashGame, E.CHIP = true, HC.CHIP
-function E.stakeOf(opt) return opt.blinds * HC.CHIP end
+function E.stakeOf(opt) return choice("blinds", type(opt) == "table" and opt.blinds or nil) * HC.CHIP end
 
 -- what the seat may buy now: lo, hi | nil, code (the code buy refuses with)
 function E.buyRange(s, seat)

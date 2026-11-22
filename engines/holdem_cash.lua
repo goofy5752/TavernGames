@@ -74,19 +74,22 @@ end
 -- ------------------------------------------------------------------ the seats of a staked table
 
 -- a staked seat: no chips, sitting out until its own buy; back = the chips `who` left this game with
+-- (when it sat; range reads cash.left[who] itself, as a leaving chair writes it only when its hand ends)
 function HC.seat(who, back)
   return { chips = 0, out = true, leaving = false, who = who, bought = 0, cleared = 0, back = back }
 end
 
-local function running(s)
-  local ph = s.phase
-  return ph == "deal" or ph == "bet" or ph == "street" or ph == "showdown"
-end
-
--- the seat is dealt into the running hand (a leaving chair is the leaver's until the hand ends)
+-- the seat is dealt into the running hand (a leaving chair is the leaver's until the hand ends), or its
+-- name still leaves another chair of it; HC.inHand is the engine's own (engines/holdem.lua)
 local function dealtIn(s, seat)
-  local p = s.p[seat]
-  return running(s) and (s.seats[seat].leaving or (p ~= nil and not p.gone))
+  if not HC.inHand(s) then return false end
+  local st, p = s.seats[seat], s.p[seat]
+  if st.leaving or (p ~= nil and not p.gone) then return true end
+  for j = 1, CHAIRS do
+    local o = s.seats[j]
+    if j ~= seat and o and o.leaving and st.who ~= nil and o.who == st.who then return true end
+  end
+  return false
 end
 
 -- the chips the seat may buy now: lo, hi | nil, code
@@ -98,8 +101,10 @@ function HC.range(s, seat)
   local mode, c = s.cash.rebuy, st.chips
   local min, max = HC.MIN_BB * s.bb, HC.MAX_BB * s.bb
   if st.bought == 0 then
-    if st.back == 0 and mode == "none" then return nil, "rebuy" end
-    return math.max(min, math.min(st.back or 0, max)), max
+    local back = st.back
+    if st.who then back = s.cash.left[st.who] end
+    if back == 0 and mode == "none" then return nil, "rebuy" end
+    return math.max(min, math.min(back or 0, max)), max
   end
   if mode == "none" or (mode == "bust" and c > 0) then return nil, "rebuy" end
   if c == 0 then return min, max end

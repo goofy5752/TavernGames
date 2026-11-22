@@ -477,6 +477,43 @@ describe("holdem cash: buy-in, rebuy, table stakes, cash-out", function()
     apply(s, 0, { k = "leave", seat = 2 }); eq(s.seats[2].takenWho, nil)
     checkdown(s); eq(s.seats[2], false); eq(s.cash.outs[1].who, "B"); identity(s)
   end)
+  it("a leaver who sits again elsewhere in its own hand buys nothing until it ends, then what it left with", function()
+    local s = twoHands()                                   -- A has 1090 (109 BB)
+    apply(s, 0, { k = "hand" }); apply(s, 0, { k = "deal", deck = deckFor(s, {}) })
+    apply(s, 0, { k = "leave", seat = 1 }); apply(s, 0, { k = "join", seat = 5, who = "A" })
+    eq({ E.buyRange(s, 5) }, { nil, "hand" }); eq(codes(E.apply(s, 5, { k = "buy", n = 400 })), { nil, "hand" })
+    checkdown(s)
+    eq(s.cash.left.A, s.cash.outs[1].chips); ok(s.cash.left.A >= 1000, "left " .. s.cash.left.A)
+    eq({ E.buyRange(s, 5) }, { 1000, 1000 }); eq(codes(E.apply(s, 5, { k = "buy", n = 400 })), { nil, "amount" })
+    eq(E.apply(s, 5, { k = "buy", n = 1000 }), true); identity(s)
+    s = T({ rebuy = "none" }); buy(s, 1, 400); buy(s, 2, 1000); buy(s, 3, 1000)
+    apply(s, 0, { k = "hand" }); apply(s, 0, { k = "deal", deck = deckFor(s, {}) })
+    while s.turn ~= 1 do apply(s, s.turn, { k = "call" }) end
+    apply(s, 1, { k = "allin" }); apply(s, 0, { k = "leave", seat = 1 }); apply(s, 0, { k = "join", seat = 5, who = "A" })
+    eq({ E.buyRange(s, 5) }, { nil, "hand" })
+    checkdown(s)
+    eq(s.cash.left.A, 0); eq({ E.buyRange(s, 5) }, { nil, "rebuy" }); identity(s)
+  end)
+  it("a newcomer who leaves a higher chair of the same hand sits with what it left with", function()
+    local s = E.new({ staked = true, seats = { true, true, true, true }, names = { "A", "B", "C", "D" } })
+    for i = 1, 4 do buy(s, i, 1000) end
+    s.seats[3].chips, s.seats[2].chips, s.cash.took = 1800, 200, { [3] = { [2] = 800 } }
+    identity(s)
+    apply(s, 0, { k = "hand" }); apply(s, 0, { k = "deal", deck = deckFor(s, {}) })
+    apply(s, 0, { k = "leave", seat = 1 }); apply(s, 0, { k = "leave", seat = 3 })
+    apply(s, 0, { k = "join", seat = 1, who = "C" })      -- C takes A's leaving chair (1 < 3)
+    eq({ E.buyRange(s, 1) }, { nil, "hand" })
+    checkdown(s)
+    eq(s.seats[1].who, "C"); eq(s.seats[3], false); ok(s.cash.left.C >= 1000, "left " .. s.cash.left.C)
+    eq({ s.cash.outs[1].who, s.cash.outs[2].who }, { "A", "C" })
+    eq({ E.buyRange(s, 1) }, { 1000, 1000 }); eq(codes(E.apply(s, 1, { k = "buy", n = 400 })), { nil, "amount" })
+    identity(s)
+  end)
+  it("a staked state takes only string names; the stake is the engine's own big blind", function()
+    local s = E.new({ staked = true, seats = { true, true, true }, names = { "A", true, 7 } })
+    eq({ s.seats[1].who, s.seats[2].who, s.seats[3].who }, { "A", nil, nil })
+    eq({ E.stakeOf({ blinds = 15 }), E.stakeOf({}), E.stakeOf({ blinds = 50 }) }, { 1000, 1000, 5000 })
+  end)
   it("a newcomer on a leaving chair owes nothing of the leaver's hand", function()
     local s = T(); buy(s, 1, 1000); buy(s, 2, 1000); buy(s, 3, 1000)
     apply(s, 0, { k = "hand" })
@@ -530,7 +567,7 @@ describe("holdem cash: session fuzz", function()
   it("fuzz: 200 random sessions", function()
     local MODES, LEVELS = { "none", "bust", "top" }, { 10, 20, 50, 100, 200 }
     local stats = { buys = 0, rebuys = 0, cashouts = 0, refused = 0, amount = 0, inHand = 0, taken = 0,
-      back = 0, closeInHand = 0, hands = 0, voids = 0, deal = 0, handOut = 0 }
+      back = 0, closeInHand = 0, hands = 0, voids = 0, deal = 0, handOut = 0, resit = 0, resitHand = 0 }
     for seed = 1, 200 do
       local rnd = lcg(seed * 7919)
       local seats, names, want = {}, {}, rnd(2, 6)
@@ -541,10 +578,22 @@ describe("holdem cash: session fuzz", function()
       local s = E.new({ staked = true, seats = seats, names = names, first = rnd(1, 9),
         opt = { rebuy = MODES[rnd(1, 3)], blinds = LEVELS[rnd(1, 5)] } })
       local boughtAll, tookOut = 0, 0
+      -- a name on a chair it is not leaving, or taking one (the leaver of a running hand may sit again)
       local function seatedName(nm)
-        for i = 1, 9 do local st = s.seats[i]; if st and (st.who == nm or st.takenWho == nm) then return true end end
+        for i = 1, 9 do
+          local st = s.seats[i]
+          if st and ((st.who == nm and not st.leaving) or st.takenWho == nm) then return true end
+        end
       end
+      -- the leaver of a running hand half the time when there is one, else any name not seated
       local function pickName()
+        for i = 1, 9 do
+          local st = s.seats[i]
+          if st and st.leaving and st.who and not seatedName(st.who) and rnd(1, 2) == 1 then
+            stats.resit = stats.resit + 1
+            return st.who
+          end
+        end
         while true do local nm = "P" .. rnd(1, 12); if not seatedName(nm) then return nm end end
       end
       local function conserved(msg)
@@ -576,6 +625,10 @@ describe("holdem cash: session fuzz", function()
         if not st then return end
         local lo, hi = E.buyRange(s, i)
         if not lo then
+          for j = 1, 9 do
+            local o = s.seats[j]
+            if j ~= i and o and o.leaving and st.who and o.who == st.who and hi == "hand" then stats.resitHand = stats.resitHand + 1 end
+          end
           eq(codes(step(i, { k = "buy", n = rnd(1, 30000) })), { nil, hi }); stats.refused = stats.refused + 1
           return
         end
@@ -585,9 +638,32 @@ describe("holdem cash: session fuzz", function()
           return
         end
         local n = rnd(lo, hi)
+        for j = 1, 9 do                                    -- no buy while my name still leaves a running hand
+          local o = s.seats[j]
+          ok(not (j ~= i and o and o.leaving and st.who and o.who == st.who), "seed " .. seed .. ": a buy while leaving")
+        end
+        if st.bought == 0 then                             -- no fresh stack
+          ok(n >= math.min(s.cash.left[st.who or ""] or 0, 100 * s.bb), "seed " .. seed .. ": a fresh stack")
+        end
         if st.bought > 0 then stats.rebuys = stats.rebuys + 1 end
-        if st.bought == 0 and (st.back or 0) > 0 then stats.back = stats.back + 1 end
+        if st.bought == 0 and (s.cash.left[st.who or ""] or 0) > 0 then stats.back = stats.back + 1 end
         eq(step(i, { k = "buy", n = n }), true); stats.buys = stats.buys + 1
+      end
+      -- in a hand: seat i stands and its name sits again at once on an empty chair, and tries to buy
+      local function resit(i)
+        local st = s.seats[i]
+        if not st or s.closing then return end
+        step(0, { k = "leave", seat = i })
+        if not (s.seats[i] == st and st.leaving and st.who) or seatedName(st.who) then return end
+        local j0 = rnd(1, 9)
+        for d = 0, 8 do
+          local j = (j0 + d - 1) % 9 + 1
+          if not s.seats[j] then
+            eq(step(0, { k = "join", seat = j, who = st.who }), true); stats.resit = stats.resit + 1
+            tryBuy(j)
+            return
+          end
+        end
       end
       -- something a player or the host does at any time
       local function event(inside)
@@ -636,7 +712,8 @@ describe("holdem cash: session fuzz", function()
               local r = rnd(1, 40)
               if r <= 8 then event(true)
               elseif r == 9 and rnd(1, 3) == 1 then step(0, { k = "void" })
-              elseif r == 10 and rnd(1, 8) == 1 and not s.closing then step(0, { k = "close" }); stats.closeInHand = stats.closeInHand + 1 end
+              elseif r == 10 and rnd(1, 8) == 1 and not s.closing then step(0, { k = "close" }); stats.closeInHand = stats.closeInHand + 1
+              elseif r == 11 then resit(s.order[rnd(1, #s.order)]) end
             end
           end
           stats.hands = stats.hands + 1
@@ -653,7 +730,7 @@ describe("holdem cash: session fuzz", function()
       eq(s.cash.took, {}, "seed " .. seed .. ": the matrix is settled"); eq(tookOut, boughtAll)
     end
     for k, floor in pairs({ buys = 700, rebuys = 100, cashouts = 100, refused = 300, amount = 100, inHand = 15,
-      taken = 8, back = 70, closeInHand = 10, hands = 500, voids = 15, deal = 60, handOut = 20 }) do
+      taken = 8, back = 70, closeInHand = 10, hands = 500, voids = 15, deal = 60, handOut = 20, resit = 25, resitHand = 20 }) do
       ok(stats[k] >= floor, k .. " " .. stats[k])
     end
   end)
