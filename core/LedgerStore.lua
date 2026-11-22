@@ -3,7 +3,8 @@ local _, ns = ...
 -- The per-guild store of the gold ledger (core/Ledger.lua has the entries).
 -- The store is a plain table the caller owns (saved variables):
 --   ev[author][n] = the first body of an id; tw[author][n] = its further
---   versions (at most 3); me[name] = {seq, born}, my counter. An author's x, the
+--   versions (at most 3); me[name] = {seq, born}, my counter; rf = the entries I
+--   refused (core/LedgerRefused.lua). An author's x, the
 --   vector and the digest: core/LedgerHash.lua (L.xc, cached per author until that
 --   author's bodies change; hashed in slices).
 -- A load files every sound body again (hashing nothing); a
@@ -56,6 +57,7 @@ function Ledger.new(store, me, epoch)
     and type(rec.born) == "number") then rec, store.me[me] = nil, nil end
   local L = setmetatable({ store = store, me = me, epoch = epoch, rev = 0, top = {}, run = {}, rc = {}, deny = {}, xc = {}, dirty = {},
     fresh = rec == nil, adopting = rec == nil, base = rec and rec.seq or 0 }, Store)
+  L:refusedLoad()
   for a, byN in pairs(ev) do
     for n, b in pairs(type(byN) == "table" and byN or {}) do
       local all, t = { b }, type(tw[a]) == "table" and tw[a][n]

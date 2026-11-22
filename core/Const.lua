@@ -80,6 +80,9 @@ ns.Const = {
   LEDGER_EX_PAGES = 10,      -- ... or past this many pages of one kind (LVC, LID) got in it
   LEDGER_PAGE_ITEMS = 120,   -- authors in one LVC page, ids in one LID page (a bigger page is refused)
   LEDGER_HASH_ITEMS = 300,   -- bodies fed to an author's x hash in one frame (core/LedgerHash.lua)
+  LEDGER_REFUSED_TTL = 86400, -- an entry I refused is remembered, and not asked for again, this long (core/LedgerRefused.lua)
+  LEDGER_REFUSED_MAX = 50,    -- refused entries remembered per author
+  LEDGER_REFUSED_AUTHORS = 200, -- authors with remembered refusals
 
   PAY_WINDOW = 300, -- a trade completes a payment when the payer's PAY came within this long
   PAY_GUARD = 86400, -- gold that left me guards its debt against a second payment this long, or until the creditor's P

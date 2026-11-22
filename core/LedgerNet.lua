@@ -10,6 +10,8 @@ local _, ns = ...
 -- * net:take: a valid entry whose author and names in f/t/n are guild members
 --   (env.member; absent = all) or authors in my store. A live GUILD LEV is 1..4
 --   entries of its sender, else dropped whole. "ledger" is emitted once a moment.
+--   An entry I refuse is remembered for a day and counted as held by my vector
+--   meanwhile (core/LedgerRefused.lua); offered again, it is taken if acceptable by then.
 -- * An entry under my name that I did not hold moves my counter above it, and:
 --   in the adoption window (a store without my record at load, closed with the
 --   login queue) it is put to me like a crash's (below), never counted unasked
@@ -69,6 +71,7 @@ function Net:start()
   self:pending()
   self:arm("settleTimer", C.LEDGER_ADOPT_WAIT, Net.settle)
   if L:hashing() then L.kick() end -- a load hashes nothing: the x values are hashed from now on, in slices
+  self:sweep() -- the refusals that expired while I was away (core/LedgerRefused.lua)
   if #self:asks() > 0 then self.asked = true; self:changed() end -- still unanswered from before
 end
 
@@ -79,6 +82,7 @@ function Net:stop()
   self.running = false
   self.out, self.denials = {}, {}
   self.outTimer, self.denyTimer, self.emitTimer, self.settleTimer, self.hashTimer, self.freshly = nil, nil, nil, nil, nil, nil
+  self.sweepTimer = nil
 end
 
 -- Is the adoption window of a new store open?
@@ -154,12 +158,13 @@ end
 function Net:take(e, from, live)
   if not self.running or type(e) ~= "table" or type(from) ~= "string" then return nil end
   local L = self.L
-  if not Ledger.valid(e, L.epoch()) then return nil end
   local author, n = Ledger.author(e.i)
-  if (live and author ~= from) or not self:allowed(e, author) then return nil end
+  if not author or (live and author ~= from) then return nil end
+  if not Ledger.valid(e, L.epoch()) or not self:allowed(e, author) then return self:refuse(e, author, n) end
   local rev, held = L.rev, author == L.me and L:has(e.i)
   local status, b = L:add(e, from)
-  if not status then return nil end
+  if not status then return b ~= "twins" and self:refuse(e, author, n) or nil end -- a fifth twin is dropped everywhere alike
+  if L.store.rf[author] then L:forget(author, n, b.h) end -- refused before, acceptable now
   if status ~= "dup" and author == L.me then self:own(b, n, held) end
   if L.rev ~= rev then self:changed() end
   return status

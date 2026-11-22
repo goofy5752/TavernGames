@@ -6,7 +6,9 @@ local _, ns = ...
 -- planted bodies cancels out. Hashing a long author costs tens of ms, so it is
 -- done in slices: a change marks the author stale (Store:stale, L.dirty) and
 -- L:work(n) feeds at most n items to a running SHA-256, one author after
--- another, giving the same x as one hash over the whole list. The client hashes
+-- another, giving the same x as one hash over the whole list. A body I refused
+-- and still remember (core/LedgerRefused.lua) counts as held in x, and in n where
+-- it fills a hole below the highest body I hold. The client hashes
 -- LEDGER_HASH_ITEMS items a frame (Net:hash, core/LedgerSend.lua; L.kick asks for
 -- it), and whoever needs fresh values waits for them (Net:fresh): a vector, the
 -- GUILD HI with my digest, the sync's comparisons. L:vector() and L:digest()
@@ -16,7 +18,7 @@ local Ledger, Sha256 = ns.Ledger, ns.Sha256
 local Store = Ledger.Store
 local concat, sort, byteLess, min = table.concat, table.sort, ns.Util.byteLess, math.min
 
--- Author a's x is stale: its bodies changed.
+-- Author a's x is stale: its bodies (or the refusals I remember of it) changed.
 function Store:stale(a)
   self.xc[a], self.dirty[a] = nil, true
   if self.job and self.job.a == a then self.job = nil end
@@ -26,12 +28,20 @@ end
 -- Is an x still to be hashed?
 function Store:hashing() return next(self.dirty) ~= nil end
 
--- The sorted "<id>:<h>" of author a's bodies.
+-- The sorted "<id>:<h>" of author a's bodies and of its bodies I refused.
 function Store:items(a)
   local items = {}
   for j, b in ipairs(self:above(a, 0)) do items[j] = b.i .. ":" .. b.h end
+  for _, r in ipairs(self:refusals(a)) do items[#items + 1] = a .. ":" .. r.n .. ":" .. r.h end
   sort(items, byteLess)
   return items
+end
+
+-- The highest k with 1..k all held or refused, a refused number counting only below the highest held one.
+function Store:reach(a)
+  local k, ev, rn, top = self.run[a] or 0, self.store.ev[a] or {}, self.rn[a], self.top[a] or 0
+  while rn and k < top and (ev[k + 1] or rn[k + 1]) do k = k + 1 end
+  return k
 end
 
 -- Hashes at most n items (all that is stale when nil) -> true when every x is fresh.
@@ -59,13 +69,15 @@ function Store:work(n)
   end
 end
 
--- {[author] = {n, x}}: n the highest k with 1..k all held, x as in the header (12 hex).
+-- {[author] = {n, x}}: n the highest k with 1..k all held (Store:reach), x as in the header (12 hex);
+-- an author of whom I only remember refusals has n = 0.
 function Store:vector()
   if self:hashing() then self:work() end
   local out = {}
   for a, byN in pairs(self.store.ev) do
-    if next(byN) then out[a] = { n = self.run[a] or 0, x = self.xc[a] } end
+    if next(byN) then out[a] = { n = self:reach(a), x = self.xc[a] } end
   end
+  for a in pairs(self.store.rf) do out[a] = out[a] or { n = 0, x = self.xc[a] } end
   return out
 end
 

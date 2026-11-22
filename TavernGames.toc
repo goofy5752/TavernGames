@@ -36,6 +36,7 @@ core/LedgerView.lua
 core/LedgerNet.lua
 core/LedgerSend.lua
 core/LedgerQueue.lua
+core/LedgerRefused.lua
 core/LedgerSync.lua
 core/LedgerSyncPage.lua
 core/Pay.lua

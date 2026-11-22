@@ -52,6 +52,10 @@ end
 function Sync:lid(x, au, n, at, answer, all)
   local list, set = {}, {}
   for _, b in ipairs(self:scope(au, n, at, all)) do list[#list + 1] = item(b); set[item(b)] = true end
+  for _, r in ipairs(self.L:refusals(au)) do -- what I refused counts as held: the partner does not send it again
+    local it = r.n .. "." .. r.h
+    if (all or r.n > n or at[r.n]) and not set[it] then list[#list + 1] = it; set[it] = true end
+  end
   if not answer then x.lidN[au], x.lidMine[au], x.lidAll[au] = n, set, all end
   self:pages(x, { v = C.PROTOCOL, t = "LID", au = au, r = answer or nil }, "l", list, false)
 end
@@ -68,19 +72,39 @@ function Sync:lacks(x, au, n, l)
   return at, #send, set
 end
 
+-- What my complete exchanges with `peer` left as it was: sig[author] = {s, n}, the
+-- two cells ("<their n>:<x>|<my n>:<x>") I acted on and in how many exchanges in a
+-- row; kept LEDGER_REFUSED_TTL s, at most FIX_MAX authors. With `acted` (an
+-- exchange's x.acted) those are noted.
+local FIX_MAX = 500
+function Sync:fixed(peer, acted)
+  local f, now = self.fix[peer], self.client.env.now()
+  if not f or now - f.at >= C.LEDGER_REFUSED_TTL then f = { at = now, n = 0, sig = {} }; self.fix[peer] = f end
+  for a, s in pairs(acted or {}) do
+    local old = f.sig[a]
+    if old or f.n < FIX_MAX then f.n, f.sig[a] = f.n + (old and 0 or 1), { s = s, n = old and old.s == s and old.n + 1 or 1 } end
+  end
+  return f.sig
+end
+
 -- The partner's whole vector came. P: what A lacks goes, and my answer (where A
--- is not behind). A: what P lacks where I am ahead; equal n: LID.
+-- is not behind). A: what P lacks where I am ahead; equal n: LID. An author whose
+-- two cells are as two complete exchanges in a row left them is not acted on again.
 function Sync:vector(x)
   x.hold = self.L:hashing() or nil
   if x.hold then return self:later(function() if self.by[x.peer] == x then self:vector(x) end end) end
-  local L, mine, back = self.L, self.L:vector(), {}
+  local L, mine, back, fix = self.L, self.L:vector(), {}, self:fixed(x.peer)
+  x.acted = {}
   for _, a in ipairs(sorted(x.ask and x.v or mine)) do
     local m, t = mine[a], x.v[a]
-    if not x.ask and (not t or t.x ~= m.x) then self:queue(x, L:above(a, t and t.n or 0)) end
+    local sig = (t and t.n .. ":" .. t.x or "-") .. "|" .. (m and m.n .. ":" .. m.x or "-")
+    local was = fix[a]
+    local go = not (t and m and t.x == m.x) and not (was and was.s == sig and was.n >= 2) -- they differ, and not as twice before
+    if go and not x.ask then x.acted[a] = sig; self:queue(x, L:above(a, t and t.n or 0)) end
     if not x.ask and t and t.x ~= m.x and t.n >= m.n then back[a] = m end
-    if x.ask and m and m.x ~= t.x and m.n > t.n then self:queue(x, L:above(a, t.n)) end
-    if x.ask and m and m.x ~= t.x and m.n == t.n and x.lidOut < C.LEDGER_LID_AUTHORS then
-      x.lidOut = x.lidOut + 1
+    if go and x.ask and m and m.n > t.n then x.acted[a] = sig; self:queue(x, L:above(a, t.n)) end
+    if go and x.ask and m and m.n == t.n and x.lidOut < C.LEDGER_LID_AUTHORS then
+      x.acted[a], x.lidOut = sig, x.lidOut + 1
       self:lid(x, a, m.n, {})
     end
   end

@@ -21,7 +21,14 @@ local _, ns = ...
 -- An asked exchange that ended with both f does net:settle(). A changed digest
 -- gives one GUILD HI (one per LEDGER_HI_GAP s). <= LEDGER_EXCHANGE_MAX entries sent
 -- and taken. A LEV of another author than its sender only inside an exchange with
--- it. Nothing goes out in an instance; an unlisted sender is ignored. My x values
+-- it. Nothing goes out in an instance; an unlisted sender is ignored. An exchange
+-- that ended with both f and sent all it had notes the two cells of each author it
+-- acted on (Sync:fixed). Two such exchanges in a row that left both cells as they
+-- were (the first may have been lost on its way: nothing here is acknowledged)
+-- mean the partner cannot take what I have: nothing of that author is sent or
+-- listed to that peer again until a cell changes, our digests agree, or a day has
+-- passed (an entry one side refuses and could not remember, core/LedgerRefused.lua,
+-- would otherwise be offered forever). My x values
 -- are hashed in slices (core/LedgerHash.lua): a comparison of digests, my vector and
 -- what I do with the partner's wait until they are fresh (net:fresh).
 local Ledger, C, Util = ns.Ledger, ns.Const, ns.Util
@@ -35,7 +42,7 @@ Sync.arm = Net.arm -- fn(self) in seconds, unless the timer `field` is armed
 
 function Sync.new(client, ledger, net)
   return setmetatable({ client = client, L = ledger, net = net, by = {}, wait = {}, last = {}, out = {}, missed = {},
-    stats = { sent = 0, got = 0 } }, Sync)
+    fix = {}, stats = { sent = 0, got = 0 } }, Sync)
 end
 
 function Sync.sorted(t) local out = {} for k in pairs(t) do out[#out + 1] = k end table.sort(out, byteLess) return out end
@@ -52,7 +59,7 @@ function Sync:peer(peer, ld)
   local L = self.L
   if not self.client.running or self.wait[peer] or not byteLess(L.me, peer) then return end
   if L:hashing() then return self:later(function() self:again(peer) end) end
-  if ld == L:digest() then return end
+  if ld == L:digest() then self.fix[peer] = nil; return end -- we agree: whatever differs later is new
   local sum = 0
   for _, s in ipairs({ L.me, peer, ld }) do for j = 1, #s do sum = sum + s:byte(j) end end
   self.wait[peer] = self.client:after(C.LEDGER_JITTER_MIN + sum % 16, function() self.wait[peer] = nil; self:begin(peer) end)
@@ -145,6 +152,7 @@ function Sync:finish(x, capped)
   x.life.cancel()
   x.v, x.lin, x.q = nil, nil, {} -- stored pages dropped
   if capped then self.last[x.peer] = self.client.env.now() end
+  if x.fMine and x.fTheirs and not capped and not x.cut then self:fixed(x.peer, x.acted) end
   if x.ask and x.fMine and x.fTheirs then self.net:settle() end
   self:later(function() if self.L:digest() ~= x.d0 then self:announce() end end)
   local missed = self.missed -- the differences seen meanwhile
@@ -188,7 +196,7 @@ function Sync:receive(sender, msg)
     local l = x.lin[au]; x.lin[au] = nil
     if theirs then -- P: I queue what A lacks and answer with my list of that scope
       local v = x.v[au]
-      local n = math.min(v and v.n or 0, self.L.run[au] or 0)
+      local n = math.min(v and v.n or 0, self.L:reach(au))
       x.lids = x.lids + 1
       return self:lid(x, au, n, (self:lacks(x, au, n, l)), true)
     end
@@ -214,7 +222,7 @@ function Sync:lev(sender, msg, x)
   if not x then for _, e in ipairs(ev) do self.net:take(e, sender, true) end return end
   if count == 0 and msg.f ~= true then return end -- no word
   for _, e in ipairs(ev) do
-    if x.took >= C.LEDGER_EXCHANGE_MAX then break end
+    if x.took >= C.LEDGER_EXCHANGE_MAX then x.cut = true; break end
     x.took = x.took + 1
     local status = self.net:take(e, sender, false)
     if status == "new" or status == "twin" then self.stats.got = self.stats.got + 1 end
@@ -251,7 +259,7 @@ function Sync:pump()
   local msg = lev(room > 0 and Net.fit(room, Sync.BATCH_BYTES, lev) or 0)
   for _ = 1, #msg.ev do table.remove(x.q, 1) end
   x.sent, self.stats.sent = x.sent + #msg.ev, self.stats.sent + #msg.ev
-  if x.sent >= C.LEDGER_EXCHANGE_MAX then x.q = {} end -- the next exchange continues
+  if x.sent >= C.LEDGER_EXCHANGE_MAX then x.cut, x.q = x.cut or #x.q > 0, {} end -- the next exchange continues
   msg.f = (#x.q == 0 and last(x)) or nil
   x.fMine, self.turn = msg.f, x
   local s = self.client.session
