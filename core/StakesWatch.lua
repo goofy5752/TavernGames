@@ -3,12 +3,13 @@ local _, ns = ...
 -- What my client checks of a staked table's host (core/Stakes.lua notes the
 -- fouls): the log of what I sent, the stand of my seat, a snapshot against my
 -- game, a start no honest host plays. The rules:
---   (a) My clock is mine. s.stakeTurn.at is my env.now() when my client first
---       saw that seat on turn, by an event or on receipt of a snapshot; at a
---       staked table a snapshot sets s.turnAt (Member.timedOut) from it, never
---       from the host's `left`. A snapshot keeps the clock only of the very
---       turn I hold (turnKey). Only a fresh adopt (a login: no clock of mine
---       ran) brings a turn "unseen": what my clock cannot tell is a question. It restarts with the host's turn timer (core/StakesFair.lua).
+--   (a) My clock is mine, on the turn length I accepted (Member.adopt: a
+--       snapshot with another is forged). s.stakeTurn.at is my env.now() when
+--       my client first saw that seat on turn, by an event or on receipt of a
+--       snapshot, anew with the host's turn timer (core/StakesFair.lua); a
+--       snapshot sets s.turnAt (Member.timedOut) from it, never from the
+--       host's `left`, and keeps the clock only of the very turn I hold
+--       (turnKey). A login (no clock of mine ran) brings the turn "unseen".
 --   (b) My roll is tied to its turn (Rolls: s.myRoll) through every host
 --       change. The first other host is not charged with it and the turn gets
 --       a fresh clock, once; without a roll of mine every other host does.
@@ -205,12 +206,12 @@ end
 -- is "unseen". Its Death Roll state must say staked (Member.adopt set mine).
 -- The foul of a game that was running here stays, whatever the snapshot (the
 -- host can make me ask for one at will: a TCK or a gap); Rolls' adopted
--- judged the rolls it brought in my name. The clock of my turn is my own (a).
+-- judged the rolls it brought in my name. The clock of my turn is my own (a; how.tn).
 ns.Ext.stakes.adopted = function(s, prev, m, how)
   local st, was, on, me = s.state, s.stakeLive, running(s), s.client.env.me
   if how.fresh then Stakes.restore(s) end -- a login back to my table: what I sent there before
   local kept = was and s.stakeFoul or nil
-  if s:engine().idle and type(m.st) == "table" and m.st.staked ~= true then pend(s, "forged") end
+  if how.tn or (s:engine().idle and type(m.st) == "table" and m.st.staked ~= true) then pend(s, "forged") end
   local identical = prev ~= nil and st ~= nil and same(prev, st) and was == on
   local forward = leadsTo(prev, st)
   local prefix = not forward and how.changed and ((how.moved and Stakes.judged(s)) or leadsTo(st, prev)) -- a judged game: the same match

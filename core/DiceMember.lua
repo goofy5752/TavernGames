@@ -100,6 +100,13 @@ local function closed(s, prev, held, p, x, y)
   return trial
 end
 
+-- A throw `t` I had said my part to died unheard (a snapshot or a host change
+-- dropped it): counted against the host, and robbed (s.diceRobbed, a staked
+-- match's "dice") when my seed had left for it, the host knowing the dice (D2).
+local function dropped(s, t)
+  if int.unheard(s, true) and t and t.sent and not t.done then s.diceRobbed = (s.diceRobbed or 0) + 1 end
+end
+
 -- Is SNP.fr of snapshot m a throw I take -> true, false (not well formed, not
 -- opened by my host's seat, or the state asks for no dice) or "old" (I did
 -- not just log in, and my host used that number before).
@@ -143,13 +150,13 @@ ns.Ext.dice.adopted = function(s, prev, m, how)
   local kept = good == true and held ~= nil and not held.done and held.h == fr.h
   if good ~= "old" and held and not held.done and not kept and (held.asked or held.sent or held.foul) then
     -- A throw I had said my part to is gone or another one: unasked, or under
-    -- an epoch its opener (still my host) raised, a second try; else unheard.
+    -- an epoch its opener (still my host) raised, a second try; else dropped.
     local why = held.foul or ((how.changed or not how.asked) and "dodge") or nil
-    if why then int.close(s, held.h, "bad", why, held) else int.unheard(s, true) end
+    if why then int.close(s, held.h, "bad", why, held) else dropped(s, held) end
   elseif unseen and s.mySeat then
     -- Never passed over: pushed on me (by whoever hosts) or under an epoch my
-    -- host raised a second try, else (I asked for the snapshot) unheard.
-    if not how.asked or (sameHost and how.changed) then int.close(s, p.h, "bad", "dodge") else int.unheard(s, true) end
+    -- host raised a second try, else (I asked for the snapshot) dropped.
+    if not how.asked or (sameHost and how.changed) then int.close(s, p.h, "bad", "dodge") else dropped(s, not kept and held or nil) end
   end
   -- The dice a snapshot brings of a throw I did not see close are unseen on
   -- my line (amber), whatever was counted: it never stays green over them.
@@ -174,15 +181,15 @@ ns.Ext.dice.adopted = function(s, prev, m, how)
 end
 
 -- The throw died with its host. A running one whose opener hosts on (it raised
--- its own epoch) was a second try; else, my part said, it went unheard (my
--- seed had left: robbed, s.diceRobbed, core/Dice.lua's close).
+-- its own epoch) was a second try; else, my part said, it was dropped (my
+-- seed had left: robbed).
 -- s.diceNew: another player hosts now, so the next snapshot is not held
 -- against my state.
 ns.Ext.dice.hostChanged = function(s)
   local t = s.throw
   if s.diceHost ~= s.host then s.diceNew = true end
   local why = t and not t.done and (t.foul or (s.seats[t.d] == s.host and "dodge"))
-  if why then int.close(s, t.h, "bad", why, t) elseif t and not t.done and (t.asked or t.sent) and int.unheard(s, true) and t.sent then s.diceRobbed = (s.diceRobbed or 0) + 1 end
+  if why then int.close(s, t.h, "bad", why, t) elseif t and not t.done and (t.asked or t.sent) then dropped(s, t) end
   s.throw, s.diceMine = nil, nil
   Dice.forget(s)
   int.stopTimer(s)

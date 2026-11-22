@@ -368,22 +368,84 @@ describe("stakes: a staked Табла table (F2 Task 5)", function()
     Play.restore()
   end)
 
+  -- The very state I hold sent to the guest again, its table's turn length tn (asked: the guest asked for it).
+  local function resend(sim, cl, tn, asked)
+    local hs = cl[I].session
+    if asked then cl[P].session.asked = true end
+    local rec = hs:record(); rec.tn = tn
+    cl[P]:receive("WHISPER", I, ns.Session.message("SNP", {
+      tid = hs.tid, e = hs.epoch, q = hs.seq, tbl = rec, st = E.snapshot(hs.state),
+      left = hs:left(), inv = hs:invitedList(), fr = hs:hook("snap"),
+    }))
+  end
+
+  it("my turn length is the table's I accepted: a snapshot with another is forged (review C1)", function()
+    for _, asked in ipairs({ false, true }) do
+      local sim, cl = staked()
+      ok(stepUntil(sim, cl[I], function() return guestMoves(cl) end), "the guest's move")
+      resend(sim, cl, 1, asked)
+      sim:run(2)
+      local gs = cl[P].session
+      eq(gs.turn, 45); eq(gs.stakeFoul, "forged")
+      local hs = cl[I].session
+      local a = E.auto(hs.state, 2)
+      eq(ns.Member.timedOut(gs, { auto = true, seat = 2, a = a }), false) -- my own clock has not run out
+      hs:play(2, a, true); sim:run(0)
+      eq(gs.stakeFoul, "forged")
+      Play.restore()
+    end
+    -- The same snapshot at the table's own turn length changes nothing.
+    local sim, cl = staked()
+    ok(stepUntil(sim, cl[I], function() return guestMoves(cl) end), "the guest's move")
+    resend(sim, cl, 45, true)
+    sim:run(2)
+    eq(cl[P].session.turn, 45); eq(cl[P].session.stakeFoul, nil)
+    Play.restore()
+  end)
+
+  it("a throw my seed left for that an asked snapshot of my own host drops is robbed (review C2)", function()
+    local lift
+    local sim, cl, gid = untilGuestLoses(function(sim, cl)
+      local hs, gs = cl[I].session, cl[P].session
+      ok(gs.throw and gs.throw.sent, "my seed went out")
+      lift()
+      -- The host opens another throw and keeps its EV from me, then makes me ask.
+      local env = sim.envs[I]
+      local send = env.send
+      env.send = function(ch, target, msg)
+        if target == P and msg.t == "EV" then return end
+        return send(ch, target, msg)
+      end
+      ns.Dice.open(hs)
+      env.send = send
+      gs:requestSync(); sim:run(0)
+      eq(gs.diceRobbed, 1); eq(gs.stakeFoul, "dice")
+    end, function(sim) lift = mute(sim, P, "seed", true) end)
+    local n = wordsAt(sim, P, "N", gid)
+    eq(#n, 1); eq(n[1].why, "dice"); eq(#wordsAt(sim, P, "C", gid), 0)
+    Play.restore()
+  end)
+
   it("a fun tabla table runs no stakes code", function()
     local calls, saved = 0, {}
     for name, f in pairs(ns.Ext.stakes) do
       saved[name] = f
       ns.Ext.stakes[name] = function(...) calls = calls + 1; return f(...) end
     end
-    ns.Ext.dice.need = NEED
-    local sim, cl = Play.guild(2)
-    local back = Play.short("tabla")
-    mute(sim, P, "seed", true)
-    Play.open(sim, cl, "tabla", nil, 2)
-    sim:run(C.DICE_WAIT + 1)
-    local s = cl[P].session
-    for _ = 1, 4 do Play.step(sim, cl[I]) end
-    back()
+    local s
+    local done, err = pcall(function()
+      ns.Ext.dice.need = NEED
+      local sim, cl = Play.guild(2)
+      local back = Play.short("tabla")
+      mute(sim, P, "seed", true)
+      Play.open(sim, cl, "tabla", nil, 2)
+      sim:run(C.DICE_WAIT + 1)
+      s = cl[P].session
+      for _ = 1, 4 do Play.step(sim, cl[I]) end
+      back()
+    end)
     for name, f in pairs(saved) do ns.Ext.stakes[name] = f end
+    if not done then error(err, 0) end
     eq(calls, 0)
     eq(s.diceRobbed, 1) -- counted, shown nowhere
     eq({ ns.Dice.status(s) }, { "dice.ok", "good" }) -- as 88a48e7 gives for this script

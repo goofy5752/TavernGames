@@ -947,6 +947,29 @@ describe("stakes: play, fix round 3 (structural)", function()
     eq(b.session.state.board[2], 2); eq(b.session.stakeFoul, "unseen")
   end)
 
+  it("(a) my turn length is the table's I accepted: a snapshot with another is forged, never my clock (review C1)", function()
+    local function tn1(sim)
+      sim.bus.filter = function(from, to, _, m)
+        if from == A and to == B and m.t == "SNP" then m.tbl = Util.copy(m.tbl); m.tbl.tn = 1 end
+        return { m }
+      end
+    end
+    local sim, a, b, _, tid = tttMariaOnTurn(SK)
+    tn1(sim); tick(sim, a, tid, a.session.seq + 1); sim.bus.filter = nil
+    eq(b.session.turn, 45); eq(b.session.stakeFoul, "forged")
+    sim:run(2)
+    eq(ns.Member.timedOut(b.session, { auto = true, seat = 2, a = TTT.auto(b.session.state, 2) }), false)
+    -- My stake note keeps it through a /reload.
+    sim, a, b, _, tid = tttMariaOnTurn(SK)
+    b = sim:relog(B); sim:run(1)
+    tn1(sim); tick(sim, a, tid, a.session.seq + 1); sim.bus.filter = nil
+    eq(b.session.turn, 45); eq(b.session.stakeFoul, "forged")
+    -- A fun table takes the host's word, as before.
+    sim, a, b, _, tid = tttMariaOnTurn(nil)
+    tn1(sim); tick(sim, a, tid, a.session.seq + 1); sim.bus.filter = nil
+    eq(b.session.turn, 1); eq(b.session.stakeFoul, nil)
+  end)
+
   it("(b) my roll is tied to its turn: a host that bounces the table away and back is charged with it", function()
     local sim, a, b, _, tid = drTable({ B }, SK)
     roll(sim, a, 50)

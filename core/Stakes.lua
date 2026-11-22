@@ -9,8 +9,8 @@ local _, ns = ...
 --   forged  an event for my seat I did not send and that is no timeout due by
 --           my own clock (Member.onEvent, Member.timedOut), an event of my
 --           host my engine refused, a pushed snapshot that changes the game I
---           hold, a staked flag in a snapshot that is not my accepted stake
---           (Member.adopt), a start no honest host plays (a member's checks):
+--           hold, a staked flag or a turn length in a snapshot that is not
+--           the one I accepted (Member.adopt), a start no honest host plays (a member's checks):
 --           one while a game runs, one of Морски шах (whose matches begin
 --           when sits fill the table, or by both players' „Реванш“) while the
 --           table is live, before my client saw a seat empty and filled again
@@ -56,7 +56,8 @@ local _, ns = ...
 --   stakePend    the foul of the event being handled, set at the end of the hook
 --   stakeTurn    {seat, at, seen, was}: the seat on turn and my env.now() when my client
 --                first saw it on turn, or when another host took over (was: the first
---                clock then); seen false: a login brought the turn, no clock of mine saw it begin; anew with the host's turn timer (core/StakesFair.lua)
+--                clock then); seen false: a login brought the turn, no clock of mine
+--                saw it begin; anew with the host's turn timer (core/StakesFair.lua)
 --   stakeStood   my seat's stand was judged in this game
 --   stakeRefill  "empty" | "filled": since the last game my client saw a seat
 --                empty, then filled by a sit (Морски шах's next start)

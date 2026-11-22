@@ -45,8 +45,9 @@ end
 -- The stake I accepted (Member.adopt checks every snapshot that seats me)
 ---------------------------------------------------------------------------
 
--- A staked seat is mine only through my own note {tid, sk} in db.stakeSat
--- (sk nil: for fun). It is written when I send a SIT with that sk to that
+-- A staked seat is mine only through my own note {tid, sk, tn} in db.stakeSat
+-- (sk nil: for fun; tn: the turn length of the table I accepted, kept by
+-- Member.adopt). It is written when I send a SIT with that sk to that
 -- table (Session.request) or open it (Session.open), and by Stake.accept;
 -- Stake.ask writes {tid} with no stake ("asked here, nothing accepted": a
 -- /reload while asked finds it and gives the seat up);
@@ -56,8 +57,8 @@ end
 -- client.stakeNoted: the note was written or cleared in this run of the
 -- client, so no note for a table means I accepted no stake there (only the
 -- note loaded at login can be missing or stale, after a crash).
-function Stake.note(client, tid, sk)
-  client.env.db.stakeSat = { tid = tid, sk = sk }
+function Stake.note(client, tid, sk, tn)
+  client.env.db.stakeSat = { tid = tid, sk = sk, tn = tn }
   client.stakeNoted = true
 end
 
@@ -107,7 +108,7 @@ function Stake.accept(client)
   local s = client.session
   if not (s and s.stakeAsk and seated(client, s)) then return nil end
   s.stakeAsk = nil
-  Stake.note(client, s.tid, s.stake)
+  Stake.note(client, s.tid, s.stake, s.turn)
   return true
 end
 

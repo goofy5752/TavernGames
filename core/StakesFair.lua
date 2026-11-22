@@ -35,7 +35,7 @@ local _, ns = ...
 -- s.diceUnheard is): a throw my host made alone after my client had sent its
 -- commit or seed for it, in its own event and not excused by my loading
 -- screen (D3); a running throw my seed had left for that died with a host
--- change (D2). A throw made alone while my client had said nothing is no foul.
+-- change or that a snapshot of my own host dropped (D2, core/DiceMember.lua). A throw made alone while my client had said nothing is no foul.
 --
 -- My turn clock (s.stakeTurn, and Member.timedOut's s.turnAt) at a staked
 -- table whose engine has no `idle` restarts at every event after which an
