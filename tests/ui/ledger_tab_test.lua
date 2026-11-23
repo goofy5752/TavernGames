@@ -96,6 +96,13 @@ describe("ui: the tab „Тефтер“", function()
     MW.show("settings"); eq(MW.info.topic, "hall")
   end)
 
+  it("the book carries the wax seal at the top right", function()
+    local w = readyWow()
+    local v = open(w)
+    ok(v.seal); eq({ v.seal:GetSize() }, { 56, 56 })
+    eq(v.seal.points[1][1], "TOPRIGHT"); eq(v.seal.disc.vertex, { w.ns.Theme.color.banner[1], w.ns.Theme.color.banner[2], w.ns.Theme.color.banner[3], 1 })
+  end)
+
   it("an empty ledger says so", function()
     local w = readyWow()
     local v = open(w)

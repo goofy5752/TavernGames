@@ -3,8 +3,9 @@ local Wow = require("wow")
 -- The tab „Класация“ (ui/BoardTab.lua) and its virtual list (ui/BookList.lua).
 local ME, B, C = "Иван Петров", "Мария Стоянова", "Тодор Ангелов"
 
-local function readyWow(guild)
+local function readyWow(guild, faction)
   local w = Wow.new{ ui = true }
+  if faction then w.faction = faction end
   w.inGuild = guild ~= false
   w.roster = { { name = ME .. "-Forever", online = true, guid = Wow.GUID } }
   w:boot()
@@ -91,6 +92,36 @@ describe("ui: the tab „Класация“", function()
     w:advance(8 * 86400)
     eq(Bd(w).lines(w.ns.client, "week", nil).king, "Тронът е празен.")
     eq(plain(Bd(w).lines(w.ns.client, "month", nil).king), "Кралят/Кралицата на механата: " .. ME)
+  end)
+
+  it("the Horde crowns a chieftain, the Alliance a king or queen", function()
+    local w = readyWow(true, "Horde")
+    owe(w, B, ME, 50000)
+    eq(plain(Bd(w).lines(w.ns.client, "all", nil).king), "Вождът на механата: " .. ME)
+    eq(w.ns.L("board.king.horde", "X"), "Вождът на механата: X")
+    local a = readyWow()
+    owe(a, B, ME, 50000)
+    eq(plain(Bd(a).lines(a.ns.client, "all", nil).king), "Кралят/Кралицата на механата: " .. ME)
+  end)
+
+  it("every line of the leaderboard has a portrait; the first is ringed in gold", function()
+    local w = readyWow()
+    result(w); result(w)
+    owe(w, B, ME, 50000)
+    local v = open(w)
+    local rows = shown(w)
+    eq(#rows, 2)
+    local T = w.ns.Theme
+    for _, r in ipairs(rows) do
+      ok(r.portrait, "no portrait")
+      eq(r.portrait.frame:GetWidth(), 22)
+      ok(r.portrait.source ~= nil)
+    end
+    eq(rows[1].portrait.ring.vertex, { T.color.goldHi[1], T.color.goldHi[2], T.color.goldHi[3], 1 })
+    eq(rows[2].portrait.ring.vertex, { T.color.brass[1], T.color.brass[2], T.color.brass[3], 1 })
+    local COL = Bd(w).COL
+    ok(COL.name[1] >= 34 + 22, "the name starts at " .. COL.name[1])
+    ok(v.seal, "no seal")
   end)
 
   it("the period buttons and the game button redraw the rows", function()
