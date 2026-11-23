@@ -224,6 +224,11 @@ local function bots(arg)
     if got == "nofill" then say(L("bots.nofill")) end
     return
   end
+  if verb == "clear" then return say(L(Adapter.clearBots() and "bots.cleared" or "bots.noclear")) end
+  if verb == "close" then
+    local n = Adapter.closeBots()
+    return say(n > 0 and L("bots.closed", n) or L("bots.noclose"))
+  end
   if verb == "host" or verb == "invite" then
     if game == "" then game = "ttt" end
     game = GAME_ALIAS[game] or game

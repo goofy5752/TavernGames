@@ -343,6 +343,79 @@ function Bots:fill(n)
   return asked
 end
 
+-- Which of my bots sit at session `s` (not me) -> array of bot Clients.
+function Bots:seatedAt(s)
+  local out = {}
+  for i = 1, #self.list do
+    local bs = self.list[i].session
+    if bs and bs.tid == s.tid and bs.mySeat then out[#out + 1] = self.list[i] end
+  end
+  return out
+end
+
+-- May my bots be removed from session `s` -> bool: I host it, it is not staked,
+-- no game runs (not live, or over) and at least one of my bots is seated.
+function Bots.canClear(s)
+  local bots = ns.bots
+  if not bots or bots.disabled or not s or s.role ~= "host" or s.stake then return false end
+  if s.status == "live" and not s:gameOver() then return false end
+  return #bots:seatedAt(s) > 0
+end
+
+-- My bots stand up from my table -> how many left | nil (see Bots.canClear).
+function Bots:clear()
+  local s = self.client.session
+  if self.disabled or not Bots.canClear(s) then return nil end
+  self.wanted = nil
+  local gone = self:seatedAt(s)
+  for i = 1, #gone do gone[i]:stand() end
+  self.bus:flush()
+  return #gone
+end
+
+-- The bot that hosts table record `rec` when it is a bot-only table of mine (a
+-- bot host, every seated player one of my bots) -> bot Client | nil.
+function Bots:botOnly(rec)
+  if self.disabled or not rec or not self.isBot[rec.host] then return nil end
+  for i = 1, #(rec.seats or {}) do
+    if rec.seats[i] and not self.isBot[rec.seats[i]] then return nil end
+  end
+  for i = 1, #self.list do
+    local bot = self.list[i]
+    local bs = bot.session
+    if bot.env.me == rec.host and bs and bs.tid == rec.tid and bs.role == "host" then return bot end
+  end
+  return nil
+end
+
+-- A bot-only table closes: its guests stand, then the host, alone, closes it
+-- -> true | nil (not a bot-only table of mine).
+function Bots:closeTable(tid)
+  local host = self:botOnly(self.client.lobby:get(tid))
+  if not host then return nil end
+  for i = 1, #self.list do
+    local bot = self.list[i]
+    if bot ~= host and bot.session and bot.session.tid == tid then bot:stand() end
+  end
+  self.bus:flush()
+  host:stand()
+  self.bus:flush()
+  return true
+end
+
+-- Closes every bot-only table of mine -> how many.
+function Bots:closeAll()
+  local tids = {}
+  for _, rec in ipairs(self.client.lobby:tables()) do
+    if self:botOnly(rec) then tids[#tids + 1] = rec.tid end
+  end
+  local n = 0
+  for i = 1, #tids do
+    if self:closeTable(tids[i]) then n = n + 1 end
+  end
+  return n
+end
+
 -- My env.inGroup while bot mode is on: a bot's GUID is in my group.
 local function humanInGroup(self)
   local orig = self.origInGroup

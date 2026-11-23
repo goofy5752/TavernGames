@@ -563,6 +563,13 @@ function Adapter.fillBots(n)
   return ns.bots:fill(n) or "nofill", started
 end
 
+-- My bots stand up from my table (/tavern bots clear, „Махни ботовете“) -> how
+-- many left, or nil (bot mode off, or Bots.canClear says no).
+function Adapter.clearBots() return ns.bots and ns.bots:clear() or nil end
+
+-- Every bot-only table of mine closes (/tavern bots close, „Закрий“) -> how many.
+function Adapter.closeBots() return ns.bots and ns.bots:closeAll() or 0 end
+
 -- /tavern bots: "on", "off", or "wait" while the own name is still unknown.
 -- Outside a guild the bots get a local-only client named after UnitName.
 function Adapter.toggleBots()

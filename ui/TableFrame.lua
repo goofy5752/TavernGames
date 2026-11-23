@@ -141,6 +141,11 @@ function TableFrame.addBots()
   TableFrame.say(L(got == "nofill" and "bots.nofill" or started and "bots.on" or "table.addBots.asked"))
 end
 
+-- „Махни ботовете“: my bots stand up; what it says goes on the news line.
+function TableFrame.clearBots()
+  TableFrame.say(L(ns.Adapter.clearBots() and "bots.cleared" or "bots.noclear"))
+end
+
 function TableFrame.invite(name)
   local client = ns.client
   TableFrame.view.picker:Hide()
@@ -227,15 +232,20 @@ local function renderStart(v, s, engine, client)
     b:ClearAllPoints()
     b:SetPoint("LEFT", v.inviteButton:IsShown() and v.inviteButton or v.standButton, "RIGHT", 6, 0)
   end
-  local bots = v.botsButton
-  local canBots = ns.Bots.canFill(s)
+  -- One slot for both bots buttons (they would not leave the news line 120 px): „Махни ботовете“
+  -- while one of my bots is seated (an „Добави ботове“ click fills every free seat anyway), else „Добави ботове“.
+  local bots, clear = v.botsButton, v.clearButton
+  local canClear = ns.Bots.canClear(s)
+  local canBots = not canClear and ns.Bots.canFill(s)
   bots:SetShown(canBots)
-  if canBots then
-    bots:ClearAllPoints()
-    bots:SetPoint("LEFT", shown and b or v.inviteButton:IsShown() and v.inviteButton or v.standButton, "RIGHT", 6, 0)
+  clear:SetShown(canClear)
+  local slot = canClear and clear or canBots and bots
+  if slot then
+    slot:ClearAllPoints()
+    slot:SetPoint("LEFT", shown and b or v.inviteButton:IsShown() and v.inviteButton or v.standButton, "RIGHT", 6, 0)
   end
   v.line:ClearAllPoints()
-  v.line:SetPoint("LEFT", canBots and bots or shown and b or v.inviteButton, "RIGHT", 8, 0)
+  v.line:SetPoint("LEFT", slot or shown and b or v.inviteButton, "RIGHT", 8, 0)
   v.line:SetPoint("RIGHT", TableFrame.frame, "BOTTOMRIGHT", -(EDGE + 24), EDGE + 20) -- clear of the resize grip
 end
 
@@ -489,6 +499,12 @@ function TableFrame.build()
   W.tooltip(bots, function(tip) tip:SetText(L("table.addBots.tip"), Theme.rgb("inkDim")) end)
   bots:Hide()
   v.botsButton = bots
+  local clear = W.Button(f, L("table.clearBots"), TableFrame.clearBots)
+  clear:SetSize(96, 26)
+  W.fit(clear.text, L("table.clearBots"), 84)
+  W.tooltip(clear, function(tip) tip:SetText(L("table.clearBots.tip"), Theme.rgb("inkDim")) end)
+  clear:Hide()
+  v.clearButton = clear
   local line = W.Label(f, "ui", "", 12)
   line:SetTextColor(Theme.rgb("gold"))
   line:SetJustifyH("RIGHT")

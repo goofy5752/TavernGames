@@ -124,9 +124,20 @@ function Hall.clickTable(t)
   if rec.state == "live" then client:watch(rec.tid) end
 end
 
+-- A bot-only table of mine (bot host, only my bots seated): I may close it.
+local function closable(rec)
+  return ns.bots ~= nil and ns.bots:botOnly(rec) ~= nil
+end
+
+function Hall.closeBotTable(rec)
+  if rec and ns.bots then ns.bots:closeTable(rec.tid) end
+  Hall.refresh()
+end
+
 function Hall.clickRow(r)
   local client, rec = ns.client, r.rec
   if not client or not rec then return end
+  if r.act == "close" then return Hall.closeBotTable(rec) end
   if r.act == "sit" then
     sit(client, rec, firstFree(rec.seats))
   elseif r.act == "watch" then
@@ -167,6 +178,7 @@ function Hall.tableTooltip(tip, rec)
   end
   tip:AddLine(L("access." .. tostring(rec.access)) .. " · " .. L("hall.turn", rec.turn), Theme.rgb("inkDim"))
   if stakeText(rec) then tip:AddLine(stakeText(rec), Theme.rgb("gold")) end
+  if closable(rec) then tip:AddLine(L("hall.tip.closeBots"), Theme.rgb("inkDim")) end
   if here(client, rec) then return tip:AddLine(L("hall.tip.mine"), Theme.rgb("good")) end
   if firstFree(rec.seats) then
     tip:AddLine(L("hall.tip.sit"), Theme.rgb("good"))
@@ -237,7 +249,12 @@ local function tableWidget(v, i)
   label:SetJustifyH("CENTER")
   label:SetPoint("TOP", f, "BOTTOM", 0, -14)
 
-  t = { frame = f, glow = glow, top = top, icon = icon, game = game, host = host, state = state, label = label, chairs = {} }
+  local close = W.Button(f, L("hall.close"), function() Hall.closeBotTable(t.rec) end)
+  close:SetSize(64, 20)
+  close:SetPoint("TOP", f, "BOTTOM", 0, -28)
+  close:Hide()
+
+  t = { frame = f, closeButton = close, glow = glow, top = top, icon = icon, game = game, host = host, state = state, label = label, chairs = {} }
   top:SetScript("OnClick", function() Hall.clickTable(t) end)
   W.tooltip(top, function(tip) Hall.tableTooltip(tip, t.rec) end)
   v.tables[i] = t
@@ -307,6 +324,7 @@ local function fillTable(t, rec, client)
     t.chairs[i].label:Hide()
   end
   t.glow:SetShown(mine)
+  t.closeButton:SetShown(closable(rec))
   t.frame:SetScript("OnUpdate", mine and pulse or nil)
 end
 
@@ -357,14 +375,16 @@ local function fillRow(r, rec, client)
   r.state:SetText(L(rec.state == "live" and "hall.live" or "hall.waiting"))
   local mine = here(client, rec)
   r.mark:SetShown(mine)
-  if mine then
+  if closable(rec) then
+    r.act = "close"
+  elseif mine then
     r.act = "open"
   elseif firstFree(rec.seats) then
     r.act = "sit"
   else
     r.act = "watch"
   end
-  r.action.text:SetText(L(r.act == "sit" and "hall.sit" or r.act == "open" and "hall.toTable" or "hall.watch"))
+  r.action.text:SetText(L(r.act == "sit" and "hall.sit" or r.act == "open" and "hall.toTable" or r.act == "close" and "hall.close" or "hall.watch"))
   r.action:SetShown(r.act ~= nil)
 end
 

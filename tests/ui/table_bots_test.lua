@@ -117,3 +117,133 @@ describe("ui: the table's bottom row with all four buttons", function()
     ok(w.ns.Hall.view.sign:IsVisible(), "sign not shown")
   end)
 end)
+
+local function botsAtMyTable(w, n)
+  local _, v = hostTable(w)
+  w:slash("bots fill " .. (n or 1)); w:advance(8)
+  return v
+end
+
+describe("ui: „Махни ботовете“ at my table", function()
+  it("shown (in the place of „Добави ботове“) with a bot seated at my fun table; the news line stays at 120 px", function()
+    local w = guildWow()
+    local v = botsAtMyTable(w)
+    ok(w.ns.client.session:seatedCount() == 2, "no bot sat")
+    ok(v.clearButton:IsVisible(), "button hidden")
+    eq(v.clearButton.text:GetText(), "Махни ботовете")
+    eq(v.botsButton:IsVisible(), false) -- one slot: clear takes the place of fill
+    local x = 16
+    for _, b in ipairs({ v.standButton, v.inviteButton, v.startButton, v.botsButton, v.clearButton }) do
+      if b:IsVisible() then x = x + b:GetWidth() + (b == v.standButton and 0 or b.points[1][4]) end
+    end
+    local lineLeft = x + v.line.points[1][4]
+    local lineRight = w.ns.TableFrame.frame:GetWidth() - 12 - 24
+    ok(lineRight - lineLeft >= 120, "news line only " .. (lineRight - lineLeft) .. " px")
+  end)
+
+  it("hidden with no bots, as a guest, at a staked table and in a live game", function()
+    local w = guildWow()
+    local _, v = hostTable(w)
+    w:slash("bots"); w:advance(0)
+    w.ns.client.events:emit("session", w.ns.client.session); w:advance(0)
+    eq(v.clearButton:IsVisible(), false)
+    w:slash("bots fill 1"); w:advance(8)
+    ok(v.clearButton:IsVisible(), "no button with a bot")
+    local sess = w.ns.client.session
+    sess.status = "live"
+    w.ns.client.events:emit("session", sess); w:advance(0)
+    eq(v.clearButton:IsVisible(), false)
+    eq(w.ns.Bots.canClear(sess), false)
+    sess.status = "open"
+    sess.stake = 1000
+    eq(w.ns.Bots.canClear(sess), false)
+    sess.stake = nil
+    sess.role = "player"
+    eq(w.ns.Bots.canClear(sess), false)
+  end)
+
+  it("a click stands the bots up and says so on the table's line", function()
+    local w = guildWow()
+    local v = botsAtMyTable(w, 2)
+    eq(w.ns.client.session:seatedCount(), 3)
+    w:click(v.clearButton); w:advance(0)
+    eq(w.ns.client.session:seatedCount(), 1)
+    eq(#w:texts(w.ns.L("bots.cleared")), 1)
+    eq(v.clearButton:IsVisible(), false)
+    w:advance(8)
+    eq(w.ns.client.session:seatedCount(), 1) -- the fill was cancelled, nobody sits again
+  end)
+
+  it("/tavern bots clear does the same", function()
+    local w = guildWow()
+    botsAtMyTable(w)
+    w:slash("bots clear"); w:advance(0)
+    eq(w.ns.client.session:seatedCount(), 1)
+    w:slash("bots clear")
+    eq(#w:chatWith(w.ns.L("bots.noclear")), 1)
+  end)
+end)
+
+describe("ui: „Закрий“ for a table of bots only", function()
+  local function botTable(w, n)
+    w:slash("bots"); w:advance(0); w:advance(0)
+    for _ = 1, n or 1 do w:slash("bots host dr") end
+    w:advance(0); w:advance(0)
+    local bots, tid = w.ns.bots, nil
+    local rec = w.ns.client.lobby:tables()[1]
+    for _ = 1, 8 do w:advance(1) end
+    return rec and rec.tid
+  end
+
+  it("the floor plan: a Close button under a bot-hosted bot-only table; a click closes it", function()
+    local w = guildWow()
+    w.ns.MainWindow.show()
+    local tid = botTable(w)
+    ok(tid, "no bot table")
+    w:advance(0)
+    local t = w.ns.Hall.view.tables[1]
+    ok(t.closeButton:IsVisible(), "no Close button")
+    eq(t.closeButton.text:GetText(), "Закрий")
+    w:click(t.closeButton); w:advance(0); w:advance(0)
+    eq(#w.ns.client.lobby:tables(), 0)
+    for _, bot in ipairs(w.ns.bots.list) do eq(bot.session, nil) end
+  end)
+
+  it("not offered while a human sits there", function()
+    local w = guildWow()
+    w.ns.MainWindow.show()
+    local tid = botTable(w)
+    w.ns.client:sit(tid, 2); w:advance(2); w:advance(0)
+    eq(w.ns.client.session.tid, tid)
+    ok(not w.ns.Hall.view.tables[1].closeButton:IsVisible(), "offered with me seated")
+    ok(not w.ns.bots:botOnly(w.ns.client.lobby:get(tid)), "botOnly")
+  end)
+
+  it("not for a table hosted by a real player", function()
+    local w = guildWow()
+    w:slash("bots"); w:advance(0)
+    local rec = { tid = "x", host = "Мария Стоянова", seats = { "Мария Стоянова", false } }
+    eq(w.ns.bots:botOnly(rec), nil)
+  end)
+
+  it("the list mode gets a Close row action", function()
+    local w = guildWow()
+    w.ns.MainWindow.show()
+    botTable(w, 9)
+    eq(w.ns.Hall.mode, "list")
+    local r = w.ns.Hall.view.rows[1]
+    eq(r.action.text:GetText(), "Закрий")
+    w:click(r.action); w:advance(0); w:advance(0)
+    eq(#w.ns.client.lobby:tables(), 8)
+  end)
+
+  it("/tavern bots close closes them all", function()
+    local w = guildWow()
+    botTable(w, 3)
+    eq(#w.ns.client.lobby:tables(), 3)
+    w:slash("bots close"); w:advance(0)
+    eq(#w.ns.client.lobby:tables(), 0)
+    w:slash("bots close")
+    eq(#w:chatWith(w.ns.L("bots.noclose")), 1)
+  end)
+end)
