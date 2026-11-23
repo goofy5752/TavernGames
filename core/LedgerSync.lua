@@ -20,8 +20,8 @@ local _, ns = ...
 -- more than LEDGER_EX_PAGES pages of a kind (then that peer waits a full peer gap).
 -- No side sends more: a vector that does not fit goes in part, marked p = true (the
 -- authors the partner differs on first), and each exchange does some of the work.
--- Of an author I hold stubs of, what my LEVs carried a peer before is not sent it
--- again (Sync:tail, core/LedgerSyncTail.lua).
+-- Of an author I hold stubs of, an R or S my heard exchanges carried a peer is not
+-- sent it again (Sync:tail, core/LedgerSyncTail.lua).
 -- An asked exchange that ended with both f does net:settle(). A changed digest
 -- gives one GUILD HI (one per LEDGER_HI_GAP s). <= LEDGER_EXCHANGE_MAX entries sent
 -- and taken. A LEV of another author than its sender only inside an exchange with
@@ -46,7 +46,7 @@ Sync.arm = Net.arm -- fn(self) in seconds, unless the timer `field` is armed
 
 function Sync.new(client, ledger, net)
   return setmetatable({ client = client, L = ledger, net = net, by = {}, wait = {}, last = {}, out = {}, missed = {},
-    fix = {}, cur = {}, want = {}, high = Sync.marks(ledger), since = {}, stats = { sent = 0, got = 0 } }, Sync)
+    fix = {}, cur = {}, want = {}, high = Sync.marks(ledger), hot = {}, since = {}, owe = {}, stats = { sent = 0, got = 0 } }, Sync)
 end
 
 function Sync.sorted(t) local out = {} for k in pairs(t) do out[#out + 1] = k end table.sort(out, byteLess) return out end
@@ -101,7 +101,7 @@ end
 
 function Sync:open(peer, ask)
   local x = { peer = peer, ask = ask, q = {}, qs = {}, sent = 0, took = 0, d0 = self.L:digest(true), lidOut = 0,
-    lids = 0, lidN = {}, lidMine = {}, lidAll = {}, lin = {}, pages = {}, items = {} }
+    lids = 0, lidN = {}, lidMine = {}, lidAll = {}, lin = {}, pages = {}, items = {}, hw = {}, left = {} }
   self.by[peer], self.last[peer] = x, self.client.env.now()
   if ask then self.ask = x else self.serve = x end
   x.life = self.client:after(C.LEDGER_EX_MAX, function() self:finish(x, true) end)
@@ -154,10 +154,10 @@ function Sync:finish(x, capped)
   self.by[x.peer], self[self.ask == x and "ask" or "serve"] = nil, nil
   if x.timer then x.timer.cancel() end
   x.life.cancel()
+  self:ended(x, capped) -- what it sent and what it owes the peer (Sync:tail)
   x.v, x.lin, x.q = nil, nil, {} -- stored pages dropped
   if capped then self.last[x.peer] = self.client.env.now() end
   if x.fMine and x.fTheirs and not capped and not x.cut then self:fixed(x.peer, x.acted) end
-  if x.fMine and not x.cut then self:sentAll(x) end -- all I queued left (Sync:tail)
   if x.ask and x.fMine and x.fTheirs then self.net:settle() end
   self:later(function() if self.L:digest() ~= x.d0 then self:announce() end end)
   local missed = self.missed -- the differences seen meanwhile
@@ -265,7 +265,7 @@ function Sync:pump()
   local msg = lev(room > 0 and Net.fit(room, Sync.BATCH_BYTES, lev) or 0)
   for _ = 1, #msg.ev do self:mark(x, table.remove(x.q, 1)) end -- the high-water marks (Sync:tail)
   x.sent, self.stats.sent = x.sent + #msg.ev, self.stats.sent + #msg.ev
-  if x.sent >= C.LEDGER_EXCHANGE_MAX then x.cut, x.q = x.cut or #x.q > 0, {} end -- the next exchange continues
+  if x.sent >= C.LEDGER_EXCHANGE_MAX then x.cut, x.rest, x.q = x.cut or #x.q > 0, x.q, {} end -- the next exchange continues
   msg.f = (#x.q == 0 and last(x)) or nil
   x.fMine, self.turn = msg.f, x
   local s = self.client.session

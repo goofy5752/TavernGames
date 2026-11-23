@@ -57,7 +57,7 @@ function Ledger.new(store, me, epoch)
   local rec = store.me[me]
   if not (type(rec) == "table" and whole(rec.seq) and rec.seq >= 0 and rec.seq <= Ledger.ID_MAX
     and type(rec.born) == "number") then rec, store.me[me] = nil, nil end
-  local L = setmetatable({ store = store, me = me, epoch = epoch, rev = 0, top = {}, run = {}, rc = {}, deny = {}, xc = {}, il = {}, dirty = {}, act = {}, sn = {}, sx = {},
+  local L = setmetatable({ store = store, me = me, epoch = epoch, rev = 0, top = {}, run = {}, rc = {}, deny = {}, xc = {}, il = {}, dirty = {}, act = {}, sn = {}, sx = {}, sl = {},
     fresh = rec == nil, adopting = rec == nil, base = rec and rec.seq or 0 }, Store)
   L:refusedLoad()
   for a, byN in pairs(ev) do
@@ -201,11 +201,12 @@ end
 function Store:each(fn)
   for _, a in ipairs(keys(self.store.ev, byteLess)) do for _, e in ipairs(self:above(a, 0)) do fn(e) end end
 end
--- Every body of the author numbered above n, ascending, twins after their sibling.
-function Store:above(a, n)
+-- Every body of the author numbered above n, ascending, twins after their sibling (with
+-- `keep`: those for which keep(number, body) is true).
+function Store:above(a, n, keep)
   local out = {}
   for _, k in ipairs(keys(self.store.ev[a], nil, function(k) return k > n end)) do
-    for _, b in ipairs(self:bodies(a, k)) do out[#out + 1] = b end
+    for _, b in ipairs(self:bodies(a, k)) do if not keep or keep(k, b) then out[#out + 1] = b end end
   end
   return out
 end

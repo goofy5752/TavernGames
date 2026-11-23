@@ -23,6 +23,7 @@ local function note(L, a, n)
   L.sn[a], sn[n] = sn, (sn[n] or 0) + 1
   if n > (L.top[a] or 0) then L.top[a] = n end
   if n > (L.sx[a] or 0) then L.sx[a] = n end
+  L.sl[a] = nil -- Store:stubs lists them again
 end
 
 -- After a load (the bodies filed): the saved stubs, a malformed row or one whose body is held dropped.
@@ -47,13 +48,15 @@ function Store:stubbed(a, n, h)
   return set ~= nil and set[n .. "." .. h] == true
 end
 
--- The stubs of author a as {n, h}, in no order.
+-- The stubs of author a as {n, h}, in no order (kept in L.sl until a stub of a is added: not to be changed).
 function Store:stubs(a)
+  if self.sl[a] then return self.sl[a] end
   local out = {}
   for it in pairs(self.store.st[a] or {}) do
     local n, h = it:match("^(%d+)%.(%x+)$")
     out[#out + 1] = { n = tonumber(n), h = h }
   end
+  self.sl[a] = out
   return out
 end
 

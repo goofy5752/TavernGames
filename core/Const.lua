@@ -92,7 +92,7 @@ ns.Const = {
   LEDGER_PRUNE_STEP = 500,    -- bodies one prune call visits
   LEDGER_IL_IDLE = 2592000,   -- an author whose newest entry is older than this keeps no sorted list once hashed
   LEDGER_HW_PEERS = 200,      -- peers whose high-water marks of my sends I keep (core/LedgerSyncTail.lua, Sync:tail)
-  LEDGER_HW_KEEP = 2592000,   -- ... a peer's marks are dropped this long after the last
+  LEDGER_HW_KEEP = 604800,    -- ... a peer's row of marks goes this long after its first commit
 
   PAY_WINDOW = 300, -- a trade completes a payment when the payer's PAY came within this long
   PAY_GUARD = 86400, -- gold that left me guards its debt against a second payment this long, or until the creditor's P
