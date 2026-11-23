@@ -134,6 +134,13 @@ function TableFrame.startGame()
   if not started then TableFrame.say(L(START_WHY[code] or "start.failed")) end
 end
 
+-- „Добави ботове“: the shared Adapter.fillBots; what it says goes on the news line.
+function TableFrame.addBots()
+  local got, started = ns.Adapter.fillBots()
+  if got == "wait" then return TableFrame.say(L("bots.wait")) end
+  TableFrame.say(L(got == "nofill" and "bots.nofill" or started and "bots.on" or "table.addBots.asked"))
+end
+
 function TableFrame.invite(name)
   local client = ns.client
   TableFrame.view.picker:Hide()
@@ -218,10 +225,17 @@ local function renderStart(v, s, engine, client)
     b:SetEnabled(can == true or code == "group" or code == "break")
     b:SetAlpha(can and 1 or 0.5)
     b:ClearAllPoints()
-    b:SetPoint("LEFT", v.inviteButton:IsShown() and v.inviteButton or v.standButton, "RIGHT", 8, 0)
+    b:SetPoint("LEFT", v.inviteButton:IsShown() and v.inviteButton or v.standButton, "RIGHT", 6, 0)
+  end
+  local bots = v.botsButton
+  local canBots = ns.Bots.canFill(s)
+  bots:SetShown(canBots)
+  if canBots then
+    bots:ClearAllPoints()
+    bots:SetPoint("LEFT", shown and b or v.inviteButton:IsShown() and v.inviteButton or v.standButton, "RIGHT", 6, 0)
   end
   v.line:ClearAllPoints()
-  v.line:SetPoint("LEFT", shown and b or v.inviteButton, "RIGHT", 14, 0)
+  v.line:SetPoint("LEFT", canBots and bots or shown and b or v.inviteButton, "RIGHT", 8, 0)
   v.line:SetPoint("RIGHT", TableFrame.frame, "BOTTOMRIGHT", -(EDGE + 24), EDGE + 20) -- clear of the resize grip
 end
 
@@ -308,7 +322,7 @@ function TableFrame.render()
   if key then v.bannerText:SetText(secs and L(key, secs) or L(key)) end
   v.banner:SetShown(key ~= nil)
   countdown(left or billLeft)
-  v.standButton.text:SetText(L(TableFrame.cashGoing(client, s) and "cash.standNow" or s.role == "watcher" and "table.toHall" or "table.stand"))
+  W.fit(v.standButton.text, L(TableFrame.cashGoing(client, s) and "cash.standNow" or s.role == "watcher" and "table.toHall" or "table.stand"), 84)
   if not TableFrame.standCosts(s) then v.confirm:Hide() elseif v.confirm:IsShown() then TableFrame.panels.confirm(v, s) end -- ended, or the cost moved
   local canInvite = s.role == "host" and firstFree(s.seats) ~= nil
   v.inviteButton:SetShown(canInvite)
@@ -320,6 +334,17 @@ function TableFrame.render()
   TableFrame.panels.renderFair(v, s)
   renderStart(v, s, engine, client)
   TableFrame.tick()
+end
+
+-- Brings my table window up in front of the tavern window (built, drawn and
+-- shown even when I had closed it) -> true, or false without a session.
+function TableFrame.focus()
+  local client = ns.client
+  if not (client and client.session) then return false end
+  TableFrame.render()
+  TableFrame.frame:Show()
+  TableFrame.frame:Raise()
+  return true
 end
 
 -- Redraws on the next frame; several calls in one frame draw once.
@@ -358,6 +383,7 @@ function TableFrame.build()
   f:SetMovable(true)
   f:SetClampedToScreen(true)
   f:EnableMouse(true)
+  W.dragBy(f)
   ns.Resize.attach(f, "table", 6)
   local v = { plates = {} }
   TableFrame.view = v
@@ -371,9 +397,7 @@ function TableFrame.build()
   bar:SetPoint("TOPRIGHT", f, "TOPRIGHT", -EDGE, -EDGE)
   bar:SetHeight(TITLE_H)
   bar:EnableMouse(true)
-  bar:RegisterForDrag("LeftButton")
-  bar:SetScript("OnDragStart", function() f:StartMoving() end)
-  bar:SetScript("OnDragStop", function() f:StopMovingOrSizing() end)
+  W.dragBy(bar, f)
   v.title = W.Label(bar, "heading", "", 16)
   v.title:SetPoint("LEFT", bar, "LEFT", 8, 0)
   v.crest = W.crest(bar, 20)
@@ -446,17 +470,24 @@ function TableFrame.build()
 
   -- Bottom: „Стани“, „Покани“ and the news line.
   local stand = W.Button(f, L("table.stand"), TableFrame.stand)
+  stand:SetSize(96, 26)
   stand:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", EDGE + 4, EDGE + 7)
   v.standButton = stand
   local invite = W.Button(f, L("hall.invite"), TableFrame.togglePicker)
-  invite:SetSize(100, 26)
-  invite:SetPoint("LEFT", stand, "RIGHT", 8, 0)
+  invite:SetSize(80, 26)
+  invite:SetPoint("LEFT", stand, "RIGHT", 6, 0)
   v.inviteButton = invite
   local start = W.Button(f, L("table.start"), TableFrame.startGame)
-  start:SetSize(110, 26)
-  start:SetPoint("LEFT", invite, "RIGHT", 8, 0)
+  start:SetSize(88, 26)
+  start:SetPoint("LEFT", invite, "RIGHT", 6, 0)
   start:Hide()
   v.startButton = start
+  local bots = W.Button(f, L("table.addBots"), TableFrame.addBots)
+  bots:SetSize(96, 26)
+  W.fit(bots.text, L("table.addBots"), 84)
+  W.tooltip(bots, function(tip) tip:SetText(L("table.addBots.tip"), Theme.rgb("inkDim")) end)
+  bots:Hide()
+  v.botsButton = bots
   local line = W.Label(f, "ui", "", 12)
   line:SetTextColor(Theme.rgb("gold"))
   line:SetJustifyH("RIGHT")

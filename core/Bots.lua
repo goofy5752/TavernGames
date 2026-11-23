@@ -323,12 +323,19 @@ local function fillMine(self)
   end)
 end
 
+-- May bots fill session `s` -> bool: I host it, it is not staked, a seat is
+-- free, and its game does not run (or its engine takes players in: botFill).
+-- Needs no bot mode: the „Добави ботове“ button asks before turning it on.
+function Bots.canFill(s)
+  if not s or s.role ~= "host" or s.stake or s:seatedCount() >= #s.seats then return false end
+  return s.status ~= "live" or s:gameOver() or s:engine().botFill ~= nil
+end
+
 -- Fills a table I host with idle bots -> how many are asked | nil (bot mode
--- off, I host no table, it is staked, or its game runs and the engine takes
--- nobody in then: no botFill). See the header.
+-- off, or Bots.canFill says no). See the header.
 function Bots:fill(n)
   local s = self.client.session
-  if self.disabled or not s or s.role ~= "host" or s.stake or (s.status == "live" and not s:gameOver() and not s:engine().botFill) then return nil end
+  if self.disabled or not Bots.canFill(s) then return nil end
   local free = #s.seats - s:seatedCount()
   local asked = math.min(n or free, free)
   self.wanted = { tid = s.tid, left = asked }
