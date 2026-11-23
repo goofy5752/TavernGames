@@ -10,7 +10,7 @@ local _, ns = ...
 --   the range's ends (both always reachable) and „Потвърди“, which is client:buy(n).
 -- `line(client, ev)` is the words of one finished hand (the client event "hand"), one row per winner.
 local W, L, Theme = ns.W, ns.L, ns.Theme
-local money, Names = ns.Util.money, ns.Names
+local money, Names = ns.W.money, ns.Names
 
 local V = {}
 ns.HoldemCashView = V

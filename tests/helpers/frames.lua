@@ -117,8 +117,11 @@ function FontString:SetWordWrap(on) self.wordWrap = on end
 function FontString:SetShadowOffset(x, y) self.shadow = { x, y } end
 function FontString:SetShadowColor(...) self.shadowColor = { ... } end
 function FontString:SetDrawLayer(layer, sub) self.layer, self.sublayer = layer, sub end
+-- Half the font size per character; an inline texture or atlas tag (a coin)
+-- is one square of the font size, as the client draws it.
 function FontString:GetStringWidth()
-  local _, n = (self.text or ""):gsub("[^\128-\191]", "")
+  local text = (self.text or ""):gsub("|T.-|t", "MM"):gsub("|A.-|a", "MM")
+  local _, n = text:gsub("[^\128-\191]", "")
   return n * (self.font and self.font[2] or 12) * 0.5
 end
 -- Wrapped height: as many lines as the text needs at the width set (one line

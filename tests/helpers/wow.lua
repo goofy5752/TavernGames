@@ -344,6 +344,14 @@ function Wow:hasFile(path)
 end
 function Wow:hasAtlas(name) self.art.atlases[name] = true end
 
+-- `text` with each amount's letters ("12g 34s") turned into the coin tags of
+-- this sandbox (ns.W.coinTag), the way the ui shows money: for expected values.
+local COIN_OF = { g = "gold", s = "silver", c = "copper" }
+function Wow:coins(text)
+  local W = self.ns.W
+  return (text:gsub("(%d+)([gsc])", function(n, letter) return n .. W.coinTag(COIN_OF[letter]) end))
+end
+
 -- The first run is over (language chosen, intro seen): the main window opens
 -- directly instead of the language dialog.
 function Wow:firstRunDone() self.ns.db.lang, self.ns.db.introDone = "bg", true end

@@ -11,7 +11,7 @@ local _, ns = ...
 -- exists. The page redraws on "ledger", on the next frame and at most once per 2 s,
 -- only while it is shown (J3); the buttons and OnShow redraw at once.
 local Theme, W, L = ns.Theme, ns.W, ns.L
-local Stats, money = ns.LedgerStats, ns.Util.money
+local Stats, money = ns.LedgerStats, ns.W.money
 
 local BoardTab = {
   view = nil,

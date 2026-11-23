@@ -202,7 +202,7 @@ end
 -- The question before „Стани“, with its text for my table s (a staked team
 -- game: the stake to each opponent and the sum); the panel grows with it.
 local function confirm(v, s)
-  local cost, money = s and forfeitCost(s), ns.Util.money
+  local cost, money = s and forfeitCost(s), ns.W.money
   local text = L("table.standWarn")
   if cost and s:engine().teams then
     text = L("stand.stake.team", money(s.stake), money(cost))

@@ -121,17 +121,17 @@ describe("ui: the line of a hand", function()
     local w = setup()
     local V = w.ns.HoldemCashView
     local e = ev({ hand = 36, took = { [3] = { [1] = 40, [2] = 80 } }, cat = { [3] = 3 }, shown = { 3, 1 }, won = { [3] = 150 } })
-    eq(V.line(w.ns.client, e), "#36 Kiro взе 1g 20s с две двойки (40s от теб, 80s от Nadya)")
+    eq(V.line(w.ns.client, e), w:coins("#36 Kiro взе 1g 20s с две двойки (40s от теб, 80s от Nadya)"))
     -- everybody else folded: no hand to name
     e = ev({ hand = 37, took = { [2] = { [1] = 10, [3] = 5 } }, cat = {}, shown = {}, won = { [2] = 30 } })
-    eq(V.line(w.ns.client, e), "#37 Nadya взе 15s (10s от теб, 5s от Kiro)")
+    eq(V.line(w.ns.client, e), w:coins("#37 Nadya взе 15s (10s от теб, 5s от Kiro)"))
   end)
 
   it("a split pot gives one line per winner", function()
     local w = setup()
     local V = w.ns.HoldemCashView
     local e = ev({ hand = 8, took = { [1] = { [3] = 25 }, [2] = { [3] = 25 } }, cat = { [1] = 5, [2] = 5 }, shown = { 1, 2 } })
-    eq(V.line(w.ns.client, e), "#8 Иван взе 25s с кента (25s от Kiro)\n#8 Nadya взе 25s с кента (25s от Kiro)")
+    eq(V.line(w.ns.client, e), w:coins("#8 Иван взе 25s с кента (25s от Kiro)\n#8 Nadya взе 25s с кента (25s от Kiro)"))
   end)
 
   it("a voided hand says so", function()
@@ -147,7 +147,7 @@ describe("ui: the line of a hand", function()
       client.events:emit("hand", ev({ hand = n, took = { [3] = { [1] = 10 } }, cat = { [3] = 2 }, shown = { 3, 1 } }))
     end
     local lines = V.lines("t#1")
-    eq(#lines, 30); eq(lines[1], "#33 Kiro взе 10s с двойка (10s от теб)"); eq(lines[30]:sub(1, 3), "#4 ")
+    eq(#lines, 30); eq(lines[1], w:coins("#33 Kiro взе 10s с двойка (10s от теб)")); eq(lines[30]:sub(1, 3), "#4 ")
     eq(V.lines("other#1"), {})
     -- a fun table's hand (no matrix, no rebuy mode) leaves no line
     local fun = ev({ hand = 1, cat = { [1] = 2 }, shown = { 1 } })
@@ -186,14 +186,14 @@ describe("ui: „Сметка“ and the buy-in on the felt", function()
     local w, View, f, bought = setup()
     View.update(f, sess(table3({ [1] = 400 }), 1)) -- may buy 1..600; a step is 10 big blinds = 100 chips
     w:click(f.cash.buy)
-    ok(f.cash.buyBox:IsShown(), "no stepper"); eq(f.cash.amount:GetText(), "6g")
-    w:click(f.cash.minus); eq(f.cash.amount:GetText(), "5g")
+    ok(f.cash.buyBox:IsShown(), "no stepper"); eq(f.cash.amount:GetText(), w:coins("6g"))
+    w:click(f.cash.minus); eq(f.cash.amount:GetText(), w:coins("5g"))
     for _ = 1, 9 do w:click(f.cash.minus) end
-    eq(f.cash.amount:GetText(), "1s") -- the low end is reached
+    eq(f.cash.amount:GetText(), w:coins("1s")) -- the low end is reached
     for _ = 1, 3 do w:click(f.cash.plus) end
-    eq(f.cash.amount:GetText(), "3g 1s")
+    eq(f.cash.amount:GetText(), w:coins("3g 1s"))
     for _ = 1, 9 do w:click(f.cash.plus) end
-    eq(f.cash.amount:GetText(), "6g") -- and the high end
+    eq(f.cash.amount:GetText(), w:coins("6g")) -- and the high end
     w:click(f.cash.minus); w:click(f.cash.minus)
     w:click(f.cash.confirm)
     eq(bought, { 400 })
@@ -201,9 +201,9 @@ describe("ui: „Сметка“ and the buy-in on the felt", function()
     -- the first buy: 40 big blinds up to 100
     View.update(f, sess(table3(), 1))
     w:click(f.cash.buy)
-    eq(f.cash.amount:GetText(), "10g")
+    eq(f.cash.amount:GetText(), w:coins("10g"))
     for _ = 1, 9 do w:click(f.cash.minus) end
-    eq(f.cash.amount:GetText(), "4g")
+    eq(f.cash.amount:GetText(), w:coins("4g"))
     w:click(f.cash.confirm)
     eq(bought, { 400, 400 })
   end)
@@ -212,9 +212,9 @@ describe("ui: „Сметка“ and the buy-in on the felt", function()
     local w, View, f = setup()
     View.update(f, sess(table3({ [1] = 400 }), 1))
     w:click(f.cash.buy)
-    eq(f.cash.amount:GetText(), "6g")
+    eq(f.cash.amount:GetText(), w:coins("6g"))
     View.update(f, sess(table3({ [1] = 800 }), 1))
-    eq(f.cash.amount:GetText(), "2g")
+    eq(f.cash.amount:GetText(), w:coins("2g"))
     View.update(f, sess(table3({ [1] = 1000 }), 1))
     eq(f.cash.buyBox:IsShown(), false)
   end)
@@ -239,18 +239,18 @@ describe("ui: „Сметка“ and the buy-in on the felt", function()
       return out
     end
     eq(rows()[1], { "", "взел от теб", "взел си", "нето" })
-    eq(rows()[2], { "Мария", "0c", "10s", "10s" })
-    eq(rows()[3], { "Kiro", "0c", "10s", "10s" })
+    eq(rows()[2], { "Мария", w:coins("0c"), w:coins("10s"), w:coins("10s") })
+    eq(rows()[3], { "Kiro", w:coins("0c"), w:coins("10s"), w:coins("10s") })
     w:click(f.cash.tabs[2])
     eq(rows()[1], { "", "вход", "чипове", "нето" })
-    eq(rows()[2], { "Иван", "10g", "10g 20s", "20s" })
-    eq(rows()[3], { "Мария", "10g", "9g 90s", "-10s" })
+    eq(rows()[2], { "Иван", w:coins("10g"), w:coins("10g 20s"), w:coins("20s") })
+    eq(rows()[3], { "Мария", w:coins("10g"), w:coins("9g 90s"), w:coins("-10s") })
     w:click(f.cash.tabs[3])
     eq(rows(), { { "" } }) -- no hand heard yet
     w.ns.client.events:emit("hand", { tid = "t#1", game = "holdem", opt = { rebuy = "top" }, n = 1, at = 1, chips = {}, names = { A, B, C },
       last = { hand = 1, took = { [1] = { [2] = 10, [3] = 10 } }, cat = { [1] = 6 }, shown = { 1, 2, 3 } } })
     View.update(f, sess(st, 1))
-    eq(rows()[1], { "#1 Иван взе 20s с флош (10s от Мария, 10s от Kiro)" })
+    eq(rows()[1], { w:coins("#1 Иван взе 20s с флош (10s от Мария, 10s от Kiro)") })
     w:click(f.cash.button)
     eq(f.cash.panel:IsShown(), false)
   end)
@@ -317,14 +317,14 @@ describe("ui: the stake of a cash table in the headers", function()
     assert(client:openTable{ game = "holdem", access = "guild", turn = 45, stake = 2000, opt = { blinds = 20 } })
     w:advance(0)
     local v = w.ns.TableFrame.view
-    eq(v.stake:GetText(), "Блайндове: 10s/20s")
+    eq(v.stake:GetText(), w:coins("Блайндове: 10s/20s"))
     ok(not v.meta:GetText():find("Блайндове", 1, true), "the blinds twice: " .. v.meta:GetText()) -- F3-F Minor 13
     client.stand(client, true); w:advance(0)
     w:member(B)
     w:deliver("WHISPER", B, { v = 1, t = "INV", tid = B .. "#1", g = "holdem", h = B, s = { B, false, false, false, false, false }, sk = 1000 })
     w:advance(0)
     local T = w.ns.InviteToast
-    ok(T.frame:IsShown(), "no toast"); eq(T.stake:GetText(), "Блайндове: 5s/10s")
+    ok(T.frame:IsShown(), "no toast"); eq(T.stake:GetText(), w:coins("Блайндове: 5s/10s"))
     w:click(T.accept)
     local P = w.ns.StakePanels
     ok(P.askFrame:IsShown(), "no question")
@@ -375,14 +375,14 @@ describe("ui: the bill of a cash table", function()
     ok(b:IsShown(), "no bill")
     eq(plain(b.lines[1].text:GetText()), "Мария стана от масата. Сметката по двойки:")
     eq(plain(b.lines[2].text:GetText()), "Ръцете се проверяват с ключовете. Остани на масата, за да се потвърди сметката ти сама.")
-    eq(plain(b.lines[3].text:GetText()), "Иван дължи на Мария 15s")
+    eq(plain(b.lines[3].text:GetText()), w:coins("Иван дължи на Мария 15s"))
     eq(b:GetHeight(), 32 + 18 * 4) -- the keys' line is long: it takes two rows
   end)
 
   it("a close says the game is over; a note that no longer waits has no keys line", function()
     local w, b = bill({}, "close")
     eq(plain(b.lines[1].text:GetText()), "Играта приключи. Сметката по двойки:")
-    eq(plain(b.lines[2].text:GetText()), "Иван дължи на Мария 15s")
+    eq(plain(b.lines[2].text:GetText()), w:coins("Иван дължи на Мария 15s"))
     eq(b.lines[3] == nil or not b.lines[3].text:IsVisible(), true)
   end)
 
@@ -404,8 +404,8 @@ describe("ui: the buy-in asks again, and says why it did not go", function()
     View.update(f, sess(table3({ [1] = 400 }), 1)) -- the range is 1..600
     w.ns.client.events:emit("buyLow", 200, 100)
     ok(f.cash.buyBox:IsShown(), "no stepper")
-    eq(f.cash.amount:GetText(), "2g")
-    eq(plain(said[1]), "Минимумът е вече над избраното: 2g. Избери отново.")
+    eq(f.cash.amount:GetText(), w:coins("2g"))
+    eq(plain(said[1]), w:coins("Минимумът е вече над избраното: 2g. Избери отново."))
   end)
 
   it("„Потвърди“ says the refusal of client:buy", function()
@@ -463,7 +463,7 @@ describe("ui: the end of my own cash-out", function()
     client.events:emit("cashGoing", nil)
     eq(calls, {})
     eq(#said, 1)
-    ok(said[1]:find("Сметката ти: ", 1, true) == 1 and said[1]:find("15s", 1, true), said[1])
+    ok(said[1]:find("Сметката ти: ", 1, true) == 1 and said[1]:find(w:coins("15s"), 1, true), said[1])
     client.events:emit("cashGoing", nil)
     eq(#said, 1) -- once
   end)

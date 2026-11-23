@@ -115,7 +115,7 @@ function InviteToast.show(inv)
   t.title:SetText(L("invite.title", game))
   t.text:SetText(L("invite.text", W.colored(ns.client, inv.host), game))
   local blinds = inv.stake ~= nil and ns.StakePanels.blinds(inv.game, inv.stake) -- a cash table: its blinds
-  t.stake:SetText(blinds and L("table.blinds", blinds) or inv.stake ~= nil and L("invite.stake", ns.Util.money(inv.stake)) or "")
+  t.stake:SetText(blinds and L("table.blinds", blinds) or inv.stake ~= nil and L("invite.stake", ns.W.money(inv.stake)) or "")
   t.stake:SetShown(inv.stake ~= nil)
   t.frame:SetHeight(t.HEIGHT + (inv.stake ~= nil and t.STAKE_H or 0))
   setButtons(true)

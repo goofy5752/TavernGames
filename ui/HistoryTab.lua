@@ -12,7 +12,7 @@ local _, ns = ...
 -- virtual (ui/BookList.lua): a line gets its text when it first comes on screen. The page
 -- redraws on "ledger", on the next frame and at most once per 2 s, only while shown (J3).
 local Theme, W, L = ns.Theme, ns.W, ns.L
-local Stats, money = ns.LedgerStats, ns.Util.money
+local Stats, money = ns.LedgerStats, ns.W.money
 
 local HistoryTab = {
   view = nil,

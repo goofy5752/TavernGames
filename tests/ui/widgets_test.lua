@@ -9,6 +9,9 @@ local function boot()
   return w
 end
 
+-- `s` with every magic character escaped, for gsub.
+local function esc(s) return (s:gsub("%p", "%%%0")) end
+
 local function rgba(T, token) return { T.color[token][1], T.color[token][2], T.color[token][3], 1 } end
 
 describe("ui: widgets", function()
@@ -71,5 +74,62 @@ describe("ui: widgets", function()
     b.scripts.OnLeave(b); eq(b.edges[1].vertex, rgba(T, "brass"))
     b.lit = true; b.scripts.OnLeave(b); eq(b.edges[1].vertex, rgba(T, "gold"))
     w:click(b); eq(clicks, 1)
+  end)
+
+  it("W.money is Util.money with coins for letters, amount for amount", function()
+    local w = boot(); local W = w.ns.W
+    local function back(text)
+      return (text:gsub(esc(W.coinTag("gold")), "g"):gsub(esc(W.coinTag("silver")), "s"):gsub(esc(W.coinTag("copper")), "c"))
+    end
+    for _, c in ipairs({ 0, 1, 99, 100, 10000, 10001, 123456, 99999999999, 50000.7, 1090909 }) do
+      local shown = W.money(c)
+      ok(not shown:find("%d[gsc]"), "a letter left in " .. shown)
+      eq(back(shown), w.ns.Util.money(c), tostring(c))
+    end
+    local T = w.ns.Theme
+    local gold, silver, copper = W.coinTag("gold"), W.coinTag("silver"), W.coinTag("copper")
+    eq(W.money(123456), "12" .. gold .. " 34" .. silver .. " 56" .. copper)
+    eq(W.money(0), "0" .. copper)
+    eq(W.money(50000), "5" .. gold)
+    eq(W.money(10203), "1" .. gold .. " 2" .. silver .. " 3" .. copper)
+    eq(w:coins("12g 34s"), "12" .. gold .. " 34" .. silver)
+    eq(w:coins("Дължиш 5g, не 50s"), "Дължиш 5" .. gold .. ", не 50" .. silver)
+    eq(gold, "|T" .. T.tex.coins .. ":0:0:0:0:128:32:0:32:0:32|t")
+  end)
+
+  it("the client's coin icons are used when the client has them, ours otherwise", function()
+    local w = boot(); local W, T = w.ns.W, w.ns.Theme
+    eq(T.tex.coins, "Interface\\AddOns\\TavernGames\\media\\skin\\coins")
+    eq(W.coinTag("gold"), "|T" .. T.tex.coins .. ":0:0:0:0:128:32:0:32:0:32|t")
+    eq(W.coinTag("silver"), "|T" .. T.tex.coins .. ":0:0:0:0:128:32:32:64:0:32|t")
+    eq(W.coinTag("copper"), "|T" .. T.tex.coins .. ":0:0:0:0:128:32:64:96:0:32|t")
+    w:hasFile("Interface\\MoneyFrame\\UI-GoldIcon"); w:hasFile("Interface\\MoneyFrame\\UI-CopperIcon"); w.ns.Art.reset()
+    eq(W.coinTag("gold"), "|TInterface\\MoneyFrame\\UI-GoldIcon:0|t")
+    eq(W.coinTag("silver"), "|T" .. T.tex.coins .. ":0:0:0:0:128:32:32:64:0:32|t")
+    eq(W.coinTag("copper"), "|TInterface\\MoneyFrame\\UI-CopperIcon:0|t")
+    eq(W.money(1020304), "102|TInterface\\MoneyFrame\\UI-GoldIcon:0|t 3" .. W.coinTag("silver") .. " 4|TInterface\\MoneyFrame\\UI-CopperIcon:0|t")
+    eq(w:coins("102g 3s 4c"), W.money(1020304))
+    local bare = Wow.new{ ui = true, noArt = true }
+    bare:boot(); bare:firstRunDone(); bare:fire("PLAYER_LOGIN")
+    eq(bare.ns.W.coinTag("gold"), "|T" .. T.tex.coins .. ":0:0:0:0:128:32:0:32:0:32|t")
+    eq(bare.ns.W.money(5), "5|T" .. T.tex.coins .. ":0:0:0:0:128:32:64:96:0:32|t")
+  end)
+
+  it("no ui file formats gold with letters any more", function()
+    local seen = 0
+    for p in io.lines("tests/.files.txt") do
+      p = p:gsub("\\r", "")
+      if p:match("^ui/.+%.lua$") then
+        local n = 0
+        for line in io.lines(p) do
+          local code = line:gsub("%-%-.*$", "")
+          if code:find("Util.money", 1, true) then n = n + 1 end
+        end
+        -- W.money itself is the one pass over Util.money's text.
+        eq(n, p == "ui/Widgets.lua" and 1 or 0, p)
+        seen = seen + 1
+      end
+    end
+    ok(seen > 20, "ui files scanned: " .. seen)
   end)
 end)

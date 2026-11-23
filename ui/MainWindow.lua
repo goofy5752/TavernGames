@@ -28,7 +28,7 @@ MainWindow.BODY_H = MainWindow.HEIGHT - (EDGE + TITLE_H + 4) - INSET
 local function inCombat() return InCombatLockdown() and true or false end
 
 local function refreshGold()
-  if MainWindow.gold then MainWindow.gold:SetText(ns.Util.money(GetMoney())) end
+  if MainWindow.gold then MainWindow.gold:SetText(ns.W.money(GetMoney())) end
 end
 
 -- Keys go on to the game again after an Escape held them (`keysHeld`).

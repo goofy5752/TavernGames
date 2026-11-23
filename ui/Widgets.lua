@@ -176,6 +176,22 @@ function W.optionText(game, id, value)
   return s
 end
 
+-- The inline tag of a coin ("gold" | "silver" | "copper"): the client's icon
+-- when it has one (ns.Art), else our cell of the `coins` strip.
+local COIN_CELL = { gold = "0:32", silver = "32:64", copper = "64:96" }
+function W.coinTag(kind)
+  return ns.Art.tag("coin", kind) or "|T" .. Theme.tex.coins .. ":0:0:0:0:128:32:" .. COIN_CELL[kind] .. ":0:32|t"
+end
+
+-- An amount of real money for the screen: Util.money's text with each
+-- letter turned into its coin (123456 -> 12[gold] 34[silver] 56[copper]).
+-- One pass over Util.money's text, so the numbers are its numbers and a
+-- tag put in is never read again. Mail, wire and core keep the letters.
+local COIN_OF = { g = "gold", s = "silver", c = "copper" }
+function W.money(copper)
+  return (ns.Util.money(copper):gsub("(%d+)([gsc])", function(n, letter) return n .. W.coinTag(COIN_OF[letter]) end))
+end
+
 -- The first word of a player's name ("Иван Петров" -> "Иван").
 function W.firstWord(name) return ns.Names.first(name) end
 

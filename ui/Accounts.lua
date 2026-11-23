@@ -26,7 +26,7 @@ local _, ns = ...
 -- asked about (a due changed meanwhile is asked again). The column redraws on "ledger",
 -- "payAsk", "debtAsk", "mineAsk" and "paySent"; a reminder ("nudge") is said in the chat frame.
 local W, L, C = ns.W, ns.L, ns.Const
-local View, money = ns.LedgerView, ns.Util.money
+local View, money = ns.LedgerView, ns.W.money
 
 local A = {
   nudged = {}, -- name -> env.now() of my last „Напомни“ (this session)

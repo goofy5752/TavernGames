@@ -37,7 +37,7 @@ local _, ns = ...
 --   closed), then its pairs, and `bill.cash.wait` while a note still waits for the keys; a note with
 --   no pair of mine is no bill. P.blinds: the „5s/10s“ a cash table shows in place of a stake.
 local Theme, W, L = ns.Theme, ns.W, ns.L
-local money = ns.Util.money
+local money = ns.W.money
 
 local P = {
   shown = false,  -- the bill is up (read by the game views)
