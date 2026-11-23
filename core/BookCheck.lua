@@ -106,11 +106,15 @@ end
 -- A key is committed: one that gives none of those commits is a lie, not a gap, and those hands
 -- are bad (book.cashBad too); one that gives some is published under those seats. The open hands
 -- are then tried again and the book ends again ("book") -> true when it changed.
-function Book.late(s, book, name, key)
+-- `soft`: a key the game published under another chair of that name (a player stood up offline who
+-- sat again elsewhere with his kept key): it says nothing about the old chair, so one that gives
+-- none of those commits changes nothing. At most LATE_KEYS keys of one name are tried on a book.
+Book.LATE_KEYS = 4
+function Book.late(s, book, name, key, soft)
   local tag = name .. "|" .. key
-  book.lateSeen = book.lateSeen or {}
-  if not book.final or book.lateSeen[tag] then return false end
-  book.lateSeen[tag] = true
+  book.lateSeen, book.lateN = book.lateSeen or {}, book.lateN or {}
+  if not book.final or book.lateSeen[tag] or (book.lateN[name] or 0) >= Book.LATE_KEYS then return false end
+  book.lateSeen[tag], book.lateN[name] = true, (book.lateN[name] or 0) + 1
   local his, seats, hit = {}, {}, false
   for _, h in ipairs(book.open) do
     local rec, hid = book.rec[h], Fair.handId(s.tid, h)
@@ -124,7 +128,7 @@ function Book.late(s, book, name, key)
       end
     end
   end
-  if not next(his) then return false end
+  if not next(his) or (soft and not hit) then return false end
   local i = 1
   while book.open[i] do
     local h = book.open[i]

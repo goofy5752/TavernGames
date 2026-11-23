@@ -278,7 +278,7 @@ function V.update(f, s, m)
   else
     c.buyBox:Hide()
   end
-  if not cash_ then c.panel:Hide() end
+  if not cash_ then c.panel:Hide() elseif not m.seated and c.tab == 1 then c.tab = 2 end -- a watcher has no „Ти срещу всеки“
   if c.panel:IsShown() then fillPanel(f, s, m) end
 end
 

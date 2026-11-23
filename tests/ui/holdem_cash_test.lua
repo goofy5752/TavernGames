@@ -87,6 +87,30 @@ describe("ui: the model of a cash Холдем", function()
   end)
 end)
 
+-- F3-F Minor 12: a chair that changed hands shows its record's own name, not the last hand's.
+describe("ui: the names of „Сметка“", function()
+  it("a newcomer's zeros are under the newcomer's name before the next hand", function()
+    local w = setup()
+    local M = w.ns.HoldemModel
+    local st = played()
+    ok(E.apply(st, 0, { k = "leave", seat = 3 })); ok(E.apply(st, 0, { k = "join", seat = 3, who = "Нов Играч" }))
+    local s = sess(st, 1, { seats = { A, B, "Нов Играч", false, false, false }, handNames = { A, B, C } })
+    local m = M.build(s)
+    eq(m.cash.all[3], { seat = 3, name = "Нов Играч", bought = 0, chips = 0, net = 0 })
+    eq(m.cash.mine[2], { seat = 3, name = "Нов Играч", took = 0, gave = 0, net = 0 })
+    eq(m.cash.all[2].name, B)
+  end)
+
+  it("a watcher's panel opens on „Всички“: „Ти срещу всеки“ is empty for it", function()
+    local w, View, f = setup()
+    View.update(f, sess(played(), nil))
+    w:click(f.cash.button)
+    ok(f.cash.panel:IsShown()); eq(f.cash.tab, 2)
+    View.update(f, sess(played(), 1)) -- a seated player's stays where it is
+    eq(f.cash.tab, 2)
+  end)
+end)
+
 describe("ui: the line of a hand", function()
   local function ev(last, names)
     return { tid = "t#1", game = "holdem", opt = { rebuy = "top" }, n = last.hand, last = last, chips = {},
@@ -294,6 +318,7 @@ describe("ui: the stake of a cash table in the headers", function()
     w:advance(0)
     local v = w.ns.TableFrame.view
     eq(v.stake:GetText(), "Блайндове: 10s/20s")
+    ok(not v.meta:GetText():find("Блайндове", 1, true), "the blinds twice: " .. v.meta:GetText()) -- F3-F Minor 13
     client.stand(client, true); w:advance(0)
     w:member(B)
     w:deliver("WHISPER", B, { v = 1, t = "INV", tid = B .. "#1", g = "holdem", h = B, s = { B, false, false, false, false, false }, sk = 1000 })

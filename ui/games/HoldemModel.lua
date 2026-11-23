@@ -115,11 +115,12 @@ local function cashOf(s, st, m)
   local function took(a, b) return cash.took[a] and cash.took[a][b] or 0 end
   for i, chair in ipairs(st.seats) do
     if chair then
+      local name = type(chair.who) == "string" and chair.who or nameOf(s, i) -- the record's own name: a chair may have changed hands
       if m.seated and i ~= m.me then
         local t, g = took(m.me, i), took(i, m.me)
-        mine[#mine + 1] = { seat = i, name = nameOf(s, i), took = t, gave = g, net = t - g }
+        mine[#mine + 1] = { seat = i, name = name, took = t, gave = g, net = t - g }
       end
-      all[#all + 1] = { seat = i, name = nameOf(s, i), bought = chair.bought, chips = chair.chips, net = chair.chips - chair.bought }
+      all[#all + 1] = { seat = i, name = name, bought = chair.bought, chips = chair.chips, net = chair.chips - chair.bought }
     end
   end
   local lo, hi

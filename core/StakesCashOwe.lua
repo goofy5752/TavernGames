@@ -127,7 +127,7 @@ local function settled(s, seat, a)
   local cash, book, env = st and st.cash, client.stakes, client.env
   if type(cash) ~= "table" or type(cash.outs) ~= "table" then return end
   local seen = s.cashOutSeen
-  if seen == nil then s.cashOutSeen = cash.outN; return end -- no count of mine yet: nothing I can call mine
+  if seen == nil then s.cashOutSeen = type(cash.outN) == "number" and cash.outN or nil; return end -- no count of mine yet: nothing I can call mine
   local gid, mine, bot, any = s.tid .. "/" .. s.seq, {}, not book or book:bot(s.tid), false
   for _, rec in ipairs(cash.outs) do
     if type(rec) == "table" and type(rec.n) == "number" and rec.n > seen then
@@ -183,7 +183,7 @@ ext.adopted = function(s, prev, m, how)
   adopted(s, prev, m, how)
   dealt(s)
   local cash = s.state and s.state.cash
-  s.cashOutSeen = type(cash) == "table" and cash.outN or nil
+  s.cashOutSeen = type(cash) == "table" and type(cash.outN) == "number" and cash.outN or nil -- a count that is no number is none
 end
 
 -- F1's open note (f: the hook `gone` or `ended`) at a cash table: no stake in it, and my note of that event stays.
@@ -215,8 +215,8 @@ local function finals(client, done)
     book:final(gid)
     local note = book:seen()[gid]
     if type(note) == "table" and type(note.owe) == "number" and note.owe <= now then book:owe(gid) end
-    book:armOwing()
   end
+  book:armOwing()
   client.events:emit("debtAsk")
 end
 

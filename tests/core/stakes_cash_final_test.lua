@@ -253,3 +253,166 @@ describe("F3-F I2: no late key while the lobby still seats me", function()
     eq(keys(sim, mark), {})
   end)
 end)
+
+describe("F3-F Minors: the late key and the notes' registry", function()
+  -- Иван, Петър, Мария and Kiro (chair 5) play two hands; Петър owes Иван 20 chips; Kiro's link
+  -- drops and the host stands him up -> sim, cl, tid.
+  local function vanished()
+    local sim, cl, tid = cash({ 1, 2, 3, 5 })
+    calm(sim, cl[A]); calm(sim, cl[A])
+    for _ = 1, 3 do if not E.inHand(cl[A].session.state) then break end; calm(sim, cl[A]) end
+    sim:offline(K); sim.envs[K].dead = true
+    for _ = 1, C.OFFLINE_STAND_SECONDS + C.SILENT_AFTER + 600 do
+      local s = cl[A].session
+      if s.seats[5] == false then break end
+      local st = s.state
+      local c = st.phase == "bet" and st.turn and st.turn ~= 5 and sim.clients[s.seats[st.turn]]
+      if c then c:act{ k = st.bet > st.p[st.turn].bet and "call" or "check" } end
+      sim:run(1)
+    end
+    eq(cl[A].session.seats[5], false)
+    for _ = 1, 3 do if not E.inHand(cl[A].session.state) then break end; calm(sim, cl[A]) end
+    return sim, cl, tid
+  end
+
+  -- The host's „Приключи“, the hand played out, the keys out and the owe wait over.
+  local function close(sim, cl)
+    setTook(cl, { [1] = { [2] = 20 } }) -- Петър owes Иван 20 chips
+    assert(ns.Cash.close(cl[A])); sim:run(1)
+    if E.inHand(cl[A].session.state) then calm(sim, cl[A]) end
+    sim:run(C.BOOK_WAIT + C.STAKE_OWE_WAIT + 30)
+  end
+
+  local function own(sim, name)
+    local n = 0
+    for _, e in ipairs(Play.entries(sim, name, "D")) do if e.f == name and e.why == "cash" then n = n + 1 end end
+    return n
+  end
+
+  -- Minor 1: his kept key is published under the new chair; it is tried under his name for the old one.
+  it("a player stood up offline who sits again in another chair: his key covers his old chair's hands", function()
+    local sim, cl, tid = vanished()
+    local key = sim.envs[K].db.bookKeep.key
+    cl[K] = sim:relog(K); sim:run(2)
+    cl[K]:sit(tid, 6, SK, 1000); sim:run(3)
+    eq(cl[A].session.seats[6], K)
+    calm(sim, cl[A])
+    close(sim, cl)
+    local sent = 0
+    for _, m in ipairs(sim.sent) do if m.msg.t == "KEY" then sent = sent + 1 end end
+    eq(sent, 0) -- he sits in that game again: no late key
+    local book = cl[B].session.book
+    local his = false
+    for _, k in ipairs(book.keys) do his = his or (k.m == key and k.seat == 6) end
+    ok(his, "his kept key was published under chair 6")
+    eq({ #book.open, book.seen.bad }, { 0, 0 })
+    ok(own(sim, B) >= 1, "Петър confirms by his own D: no question")
+    eq(#cl[B].stakes:asks(), 0); eq(#cl[B].stakes:owing(), 0)
+  end)
+
+  -- ... while a new key of an honest player who lost his old one says nothing about the old chair.
+  it("... a new key under the new chair leaves the old chair's hands open, not bad", function()
+    local sim, cl, tid = vanished()
+    sim.envs[K].db.bookKeep = nil
+    cl[K] = sim:relog(K); sim:run(2)
+    cl[K]:sit(tid, 6, SK, 1000); sim:run(3)
+    calm(sim, cl[A])
+    close(sim, cl)
+    local book = cl[B].session.book
+    ok(#book.open > 0, "his old hands stay open")
+    eq(book.seen.bad, 0)
+    eq(own(sim, B), 0)
+  end)
+
+  -- Minor 5: a flood of keys from one name grows nothing.
+  it("the keys of one name tried on a book are capped", function()
+    local sim, cl = vanished()
+    close(sim, cl)
+    local s = cl[B].session
+    local book = s.book
+    ok(book.final and #book.open > 0, "Kiro's hands are open")
+    for i = 1, 40 do ns.Book.late(s, book, K, string.format("%032x", i)) end
+    local n = 0
+    for tag in pairs(book.lateSeen) do if tag:sub(1, #K + 1) == K .. "|" then n = n + 1 end end
+    eq(n, ns.Book.LATE_KEYS)
+    eq(#book.open, 0); ok(book.seen.bad > 0, "the first wrong key closed his hands")
+  end)
+
+  -- Minor 2: a note that is final and not unseen leaves the registry; an unseen one stays for a late key.
+  it("client.cashLate keeps only the notes a late key could still judge", function()
+    local sim, cl = cash({ 1, 2, 3 })
+    calm(sim, cl[A])
+    setTook(cl, { [1] = { [2] = 20 } })
+    assert(ns.Cash.close(cl[A])); sim:run(C.BOOK_WAIT + C.STAKE_OWE_WAIT + 30)
+    for _, name in ipairs({ A, B, M }) do eq(count(cl[name].cashLate), 0, name) end
+    local sim2, cl2 = vanished()
+    close(sim2, cl2)
+    local n = 0
+    for gid in pairs(cl2[B].cashLate or {}) do
+      n = n + 1
+      eq(cl2[B].stakes:seen()[gid].foul, "unseen", gid)
+    end
+    ok(n > 0, "Петър's unseen note still waits for Kiro's key")
+  end)
+
+  -- Minor 4: a snapshot's count of out records that is no number is no count.
+  it("a snapshot whose cash.outN is a string breaks no later settlement", function()
+    local sim, cl = cash({ 1, 2, 3 })
+    calm(sim, cl[A])
+    for _ = 1, 3 do if not E.inHand(cl[A].session.state) then break end; calm(sim, cl[A]) end
+    sim.bus.filter = function(from, to, _, m)
+      if from == A and to == M and m.t == "SNP" and type(m.st) == "table" and type(m.st.cash) == "table" then
+        m = U.copy(m); m.st.cash.outN = tostring(m.st.cash.outN)
+      end
+      return { m }
+    end
+    cl[A].session:snapshotTo(M); sim:run(1)
+    sim.bus.filter = nil
+    eq(type(cl[M].session.state.cash.outN), "string")
+    eq(cl[M].session.cashOutSeen, nil)
+    ok(cl[B]:act{ k = "cashout" }); sim:run(2)
+    ok(cl[M].session, "Мария's client still runs")
+    eq(type(cl[M].session.cashOutSeen), "number")
+  end)
+end)
+
+-- F3-F Minor 6: past LEDGER_REFUSED_MAX refused entries of one author an F1/F2 client remembers
+-- no more of them, so its digest differs from the guild's for good; Sync:fixed stops the resends.
+describe("F3-F Minor 6: an F2 client and more refused cash entries than it remembers", function()
+  it("over LEDGER_REFUSED_MAX refused S of one author: the exchanges settle on vectors only", function()
+    local sim, cl = Play.guild(2)
+    local D = "Дара Маринова"
+    local d = sim:add(D); sim:run(1); sim:settle()
+    local take = d.ledgerNet.take
+    d.ledgerNet.take = function(self, e, from, live) -- as F2's Ledger.valid: an S is no kind it knows
+      if type(e) == "table" and (e.k == "S" or (e.k == "D" and e.why == "cash")) then
+        local author, n = ns.Ledger.author(e.i)
+        if author then return self:refuse(e, author, n) end
+      end
+      return take(self, e, from, live)
+    end
+    local n = C.LEDGER_REFUSED_MAX + 10
+    for i = 1, n do
+      ok(cl[A].ledgerNet:make("S", { gid = "t#1/" .. i, g = "holdem", f = A, c = 40000, sk = SK, n = { A, B }, w = {}, l = {}, why = "left" }), "S " .. i)
+      sim:run(3)
+    end
+    sim:run(600)
+    eq(#Play.entries(sim, A, "S"), n)
+    ok(d.ledger:digest() ~= cl[A].ledger:digest(), "the digests differ for good")
+    local mark = #sim.sent
+    sim:run(20 * C.LEDGER_PEER_GAP)
+    local ev, late, exchanges, half = 0, 0, 0, sim.clock - 10 * C.LEDGER_PEER_GAP
+    for i = mark + 1, #sim.sent do
+      local m = sim.sent[i]
+      if m.channel == "WHISPER" and (m.target == D or m.from == D) then
+        if m.msg.t == "LEV" then ev = ev + #(m.msg.ev or {}) end
+        if m.msg.t == "LEV" and m.at >= half then late = late + #(m.msg.ev or {}) end
+        if m.msg.t == "LVC" and not m.msg.r then exchanges = exchanges + 1 end
+      end
+    end
+    ok(ev <= 2 * n, "entries resent to or by the F2 client: " .. ev) -- two exchanges with no change, then no more
+    eq(late, 0, "entries still resent ten peer gaps later") -- vectors only
+    ok(exchanges <= 2 * 20, "exchanges: " .. exchanges) -- at most one a peer gap and peer, each a vector page
+    eq(#ns.LedgerView.of(d.ledger).debts, 0)
+  end)
+end)

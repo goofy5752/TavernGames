@@ -16,6 +16,13 @@ local _, ns = ...
 --     debt of mine at its gid not pending (a C, D or N of mine stands).
 --   What a note waits on (client.cashLate[gid] = {s, book, base, read}) lives
 --     in memory only: a /reload since the close forgets it (the note stays).
+--     An entry goes once its note is gone, CASH_BOOK_WAIT old, or final with
+--     another verdict than unseen (no key can change it): at every new entry
+--     and at every "book" and "session".
+--   Another chair: at the end of my table's book every key the game published
+--     is tried under its player's name too (Book.late, soft), before the
+--     waiting notes read the book: a player stood up offline who sat again in
+--     another chair with his kept key covers his old chair's hands.
 local Stakes, C = ns.Stakes, ns.Const
 local Book, View, worse = Stakes.Book, ns.LedgerView, Stakes.worse
 local Late = {}
@@ -28,10 +35,21 @@ function Stakes.sealedAudit(s, gid)
   return a
 end
 
+-- The entries no key can change any more go (see the header).
+local function prune(client)
+  local reg, seen, now = client.cashLate, client.stakes and client.stakes:seen(), client.env.epoch()
+  for gid in pairs(reg and seen and reg or {}) do
+    local note = seen[gid]
+    if type(note) ~= "table" or type(note.at) ~= "number" or note.at + C.CASH_BOOK_WAIT < now
+        or (not note.wait and note.foul ~= "unseen") then reg[gid] = nil end
+  end
+end
+
 local pending = Book.pending
 function Book:pending(gid, note, base, a)
   if a and a.late then
     local c = self.client
+    prune(c)
     c.cashLate = c.cashLate or {}
     c.cashLate[gid] = { s = a.late.s, book = a.late.book, base = base, read = a.read }
   end
@@ -122,13 +140,23 @@ end
 
 local new = Stakes.new
 function Stakes.new(client)
+  client:on("book", function(v) -- before the notes' finals (core/StakesCashOwe.lua): the keys under their players' names
+    local s = client.session
+    local book = s and s.tid == v.tid and Stakes.cash(s) and s.book
+    if not (book and book.final) then return end
+    local keys = {}
+    for i, k in ipairs(book.keys) do keys[i] = k end
+    for _, k in ipairs(keys) do if type(k.who) == "string" then ns.Book.late(s, book, k.who, k.m, true) end end
+  end)
   local self = new(client)
   client:on("book", function(v)
     for _, at in ipairs(sorted(client.cashKeys)) do
       local x = client.cashKeys[at]
       if x.tid == v.tid then apply(client, x.tid, x.g) end
     end
+    prune(client)
   end)
+  client:on("session", function() prune(client) end)
   return self
 end
 

@@ -69,7 +69,7 @@ function Book.addKeys(s, map, g)
   for q in pairs(map) do seats[#seats + 1] = q end
   table.sort(seats)
   for _, q in ipairs(seats) do
-    book.keys[#book.keys + 1] = { seat = q, q = s.seq, m = map[q] }
+    book.keys[#book.keys + 1] = { seat = q, q = s.seq, m = map[q], who = s.stake and s.seats[q] or nil } -- who (a staked table): local, never sent (Book.late)
     book.given[q] = true -- this seat's player's key is in (a sit renews it)
     if q == s.mySeat then mine(s, book, map[q], true) end
   end

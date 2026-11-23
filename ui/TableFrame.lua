@@ -316,7 +316,7 @@ local function metaText(s, engine)
   local options, opt = engine.options or {}, s.opt or {}
   for i = 1, #options do
     local id = options[i].id
-    if opt[id] ~= nil then
+    if opt[id] ~= nil and not (id == "blinds" and s.stake and engine.cashGame) then -- a cash table's blinds are its stake line
       text = text .. " · " .. L("opt." .. s.game .. "." .. id) .. " " .. W.optionText(s.game, id, opt[id])
     end
   end
