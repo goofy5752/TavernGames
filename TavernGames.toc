@@ -76,6 +76,7 @@ core/Invites.lua
 core/Client.lua
 core/CashOut.lua
 core/StakesCashLate.lua
+core/StakesCashKey.lua
 core/Bots.lua
 core/Locale.lua
 core/Help.lua

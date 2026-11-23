@@ -170,3 +170,86 @@ describe("F3-F I1: a settlement that moved nothing writes nothing", function()
     eq(far, 0, "a 24 h timer of a final note still armed")
   end)
 end)
+
+-- Every KEY message of the sim from sim.sent[mark + 1] on -> {{from, channel, m}, ...}.
+local function keys(sim, mark)
+  local out = {}
+  for i = (mark or 0) + 1, #sim.sent do
+    local m = sim.sent[i]
+    if m.msg.t == "KEY" then out[#out + 1] = { m.from, m.channel, m.msg.m } end
+  end
+  return out
+end
+
+describe("F3-F I2: no late key while the lobby still seats me", function()
+  -- Heads-up, a hand runs; Петър relogs inside it and the host's snapshot never reaches him
+  -- -> sim, cl, the mark before his relog, the key his running hand is committed to.
+  local function relogged()
+    local sim, cl = cash({ 1, 2 })
+    calm(sim, cl[A])
+    inHand(sim, cl[A])
+    for _ = 1, 30 do if cl[A].session.state.phase == "bet" then break end; sim:run(1) end
+    eq(cl[A].session.state.phase, "bet")
+    local kept = sim.envs[B].db.bookKeep
+    ok(kept and kept.sk and ns.Book.isKey(kept.key), "Петър's kept key of the staked table")
+    sim.bus.filter = function(from, to, _, m)
+      if from == A and to == B and m.t == "SNP" then return {} end
+      return { m }
+    end
+    local mark = #sim.sent
+    cl[B] = sim:relog(B)
+    return sim, cl, mark, kept.key
+  end
+
+  it("a relog inside a hand with the snapshot lost: no key goes while the host still seats me", function()
+    local sim, cl, mark = relogged()
+    local seated = 0
+    for _ = 1, 4 * C.LEDGER_ADOPT_WAIT + 10 do -- the first check at 30 s and three more
+      sim:run(1)
+      if cl[A].session and cl[A].session.seats[2] == B then
+        seated = seated + 1
+        eq(keys(sim, mark), {}, "a live key on GUILD at " .. sim.clock)
+      end
+    end
+    ok(seated > C.LEDGER_ADOPT_WAIT + 5, "the host seated me past the first check: " .. seated .. " s")
+    eq(cl[B].session, nil) -- no snapshot ever came
+    ok(cl[B].lobby:get(cl[A].session.tid), "the lobby lists the table")
+  end)
+
+  -- A client that runs is never stood up as offline (its guild messages are heard): his link drops.
+  it("... and once the host has stood me up, the check after my next login sends it: once", function()
+    local sim, cl, mark, key = relogged()
+    local tid = cl[A].session.tid
+    sim:run(C.LEDGER_ADOPT_WAIT + 5)
+    eq(keys(sim, mark), {})
+    sim:offline(B); sim.envs[B].dead = true
+    for _ = 1, C.OFFLINE_STAND_SECONDS + C.SILENT_AFTER + 60 do
+      if not (cl[A].session and cl[A].session.seats[2] == B) then break end
+      sim:run(1)
+      if cl[A].session and cl[A].session.seats[2] == B then eq(keys(sim, mark), {}, "a live key on GUILD at " .. sim.clock) end
+    end
+    ok(not (cl[A].session and cl[A].session.seats[2] == B), "the host stood Петър up")
+    sim.bus.filter = nil
+    eq(keys(sim, mark), {})
+    cl[B] = sim:relog(B)
+    sim:run(2 * C.LEDGER_ADOPT_WAIT + 5)
+    eq(keys(sim, mark), { { B, "GUILD", key } })
+    local rec = cl[B].lobby:get(tid)
+    ok(not rec or not U.contains(rec.seats, B), "the lobby seats me no more")
+    sim:run(10 * C.LEDGER_ADOPT_WAIT)
+    eq(#keys(sim, mark), 1) -- no check runs on after the send
+  end)
+
+  it("the checks stop with the 24 h window: the kept key is given up, nothing is sent", function()
+    local sim, cl, mark = relogged()
+    sim:run(C.LEDGER_ADOPT_WAIT + 5)
+    local db = sim.envs[B].db
+    ok(type(db.bookKeep.late) == "number", "the first check stamped the window")
+    db.bookKeep.late = db.bookKeep.late - C.CASH_BOOK_WAIT
+    sim:run(C.LEDGER_ADOPT_WAIT + 5)
+    eq(db.bookKeep, nil)
+    sim.bus.filter = nil
+    sim:run(C.OFFLINE_STAND_SECONDS + C.SILENT_AFTER + 120)
+    eq(keys(sim, mark), {})
+  end)
+end)

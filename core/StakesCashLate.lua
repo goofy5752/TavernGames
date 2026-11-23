@@ -3,11 +3,7 @@ local _, ns = ...
 -- The late key of a cash table (Stakes.cash). A player stood up while its
 -- client was gone never sent its table key, so every hand it was dealt into
 -- stays open in the books and every note at or after such a hand reads unseen.
---   Mine: my kept key of a staked table (db.bookKeep, its sk set by Book.key)
---     goes out once a login, LEDGER_ADOPT_WAIT after it, unless I sit in that
---     game again (then its own keys path): GUILD {v, t = "KEY", tid, g, m}.
---     It is spent first (db.bookSpent: it never deals again), and given up
---     CASH_BOOK_WAIT after its first late send.
+--   Mine: core/StakesCashKey.lua (GUILD {v, t = "KEY", tid, g, m}).
 --   Theirs: a key from the sender's own name for a book of that table and
 --     game I hold (my table's, or one a note of mine waits on) is kept
 --     (client.cashKeys, one per name, only a name in an open hand there), and
@@ -122,38 +118,6 @@ function Late.heard(client, sender, m)
   client.cashKeys[at] = client.cashKeys[at] or { tid = m.tid, g = m.g, by = {} }
   client.cashKeys[at].by[sender] = m.m
   apply(client, m.tid, m.g)
-end
-
--- My kept key of a staked table -> bool.
-local function due(env, kept)
-  return type(kept) == "table" and kept.sk ~= nil and kept.me == env.me and type(kept.tid) == "string"
-    and type(kept.g) == "number" and ns.Book.isKey(kept.key)
-end
-
--- My kept key goes out late (see the header).
-function Late.send(client)
-  local env = client.env
-  local db, now = env.db, env.epoch()
-  local kept, s = db.bookKeep, client.session
-  if not due(env, kept) then return end
-  if type(kept.late) ~= "number" then kept.late = now end
-  if now > kept.late + C.CASH_BOOK_WAIT then db.bookKeep = nil; return end
-  if s and s.tid == kept.tid and s.mySeat and s.state and s.state.g == kept.g then return end
-  local spent, have = type(db.bookSpent) == "table" and db.bookSpent or {}, false
-  db.bookSpent = spent
-  for _, x in ipairs(spent) do have = have or (x.tid == kept.tid and x.me == env.me and x.key == kept.key) end
-  if not have then
-    spent[#spent + 1] = { tid = kept.tid, me = env.me, key = kept.key }
-    while #spent > ns.Book.SPENT_KEPT do table.remove(spent, 1) end
-  end
-  client:send("GUILD", nil, { v = C.PROTOCOL, t = "KEY", tid = kept.tid, g = kept.g, m = kept.key })
-end
-
-local start = Book.start
-function Book:start()
-  start(self)
-  local client = self.client
-  if due(self.env, self.env.db.bookKeep) then client:after(C.LEDGER_ADOPT_WAIT, function() Late.send(client) end) end
 end
 
 local new = Stakes.new
