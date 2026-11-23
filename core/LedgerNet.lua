@@ -25,6 +25,9 @@ local _, ns = ...
 --   crash or another computer of mine made it: kept uncounted (`un`, a local
 --   field the view and the denials skip) and put to me, one question per entry
 --   (net:asks, net:answer, "mineAsk"); past LEDGER_MINE_ASK open questions it waits unshown.
+-- * "paid" {id, from, to, c, how, at}: a P naming me (its author or its f) became a
+--   counted body of my store live: my make (not queued, not quiet), or a live take
+--   whose status is "new" and whose body is neither `un` nor denied. Never the sync's.
 local Ledger, C = ns.Ledger, ns.Const
 
 local Net = {}; Net.__index = Net
@@ -91,7 +94,8 @@ function Net:adopting() return self.L.adopting == true end
 
 -- My new entry -> entry | "queued" | nil, reason ("stopped", or a reason of L:make).
 -- The entry may still move to a fresh id before it leaves (Net:collide): keep its content, not its i.
-function Net:make(kind, fields)
+-- `quiet`: no "paid" (a remade body that was announced already).
+function Net:make(kind, fields, quiet)
   if not self.running then return nil, "stopped" end
   if self.waiting then self:queue(kind, fields); return "queued" end
   local e, why = self.L:make(kind, fields)
@@ -102,7 +106,15 @@ function Net:make(kind, fields)
   list[#list + 1] = Ledger.wire(e)
   self:arm(deny and "denyTimer" or "outTimer", C.LEDGER_COALESCE, deny and Net.pump or Net.flush)
   self:changed()
+  if not quiet then self:paid(e) end
   return e
+end
+
+-- "paid" for body b when it is a counted P naming me.
+function Net:paid(b)
+  local L, to = self.L, Ledger.author(b.i)
+  if b.k ~= "P" or b.un or (to ~= L.me and b.f ~= L.me) or L:denied(b) then return end
+  self.client.events:emit("paid", { id = b.i, from = b.f, to = to, c = b.c, how = b.how, at = b.at })
 end
 
 -- My X of body b.
@@ -130,7 +142,7 @@ function Net:collide(mine)
       self.made[n] = nil
       local fields = Ledger.wire(mine)
       fields.i, fields.k, fields.at = nil, nil, nil
-      return self:make(mine.k, fields)
+      return self:make(mine.k, fields, true)
     end
   end
 end
@@ -168,6 +180,7 @@ function Net:take(e, from, live)
   if L.store.rf[author] then L:forget(author, n, b.h) end -- refused before, acceptable now
   if status ~= "dup" and author == L.me then self:own(b, n, held) end
   if L.rev ~= rev then self:changed() end
+  if live and status == "new" then self:paid(b) end
   return status
 end
 
