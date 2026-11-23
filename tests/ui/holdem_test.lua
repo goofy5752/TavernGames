@@ -2,9 +2,10 @@ local Wow = require("wow")
 
 local A, B, C = "Иван Петров", "Мария Стоянова", "Kiro Barley"
 
--- In a guild, booted with the ui/ files, own name resolved, PLAYER_LOGIN fired.
-local function guildWow()
+-- In a guild, booted with the ui/ files, own name resolved, PLAYER_LOGIN fired; `faction` (default Alliance) picks the skin.
+local function guildWow(faction)
   local w = Wow.new{ ui = true }
+  w.faction = faction or w.faction
   w.inGuild = true
   w.roster = { { name = A .. "-Forever", online = true, guid = Wow.GUID } }
   w.G.RAID_CLASS_COLORS.PRIEST = { r = 1, g = 1, b = 1 }
@@ -41,8 +42,8 @@ end
 local current -- the view of the running test's sandbox, for draw()
 
 -- The view's frame over a 732 x 440 parent; every action is recorded in `acts`.
-local function setup()
-  local w = guildWow()
+local function setup(faction)
+  local w = guildWow(faction)
   local parent = w.G.CreateFrame("Frame", nil, w.G.UIParent)
   parent:SetSize(732, 440)
   local View = w.ns.TableFrame.views.holdem
@@ -96,6 +97,26 @@ describe("ui: the Холдем view", function()
     -- the shuffle: nobody holds a card yet, so none is drawn
     local sh = E.new{ seats = { true, true, true } }; ok(E.apply(sh, 0, { k = "hand" })); draw(f, sh, 2)
     eq({ faces(f.seat[1]), faces(f.seat[2]), faces(f.seat[3]), f.text:GetText() }, { { "-", "-" }, { "-", "-" }, { "-", "-" }, "Разбъркваме заедно…" })
+  end)
+
+  it("a fun table counts chips: plain numbers, a chip in the faction's colour, never a coin", function()
+    for _, faction in ipairs({ "Alliance", "Horde" }) do
+      local w, View, f = setup(faction); local T = w.ns.Theme; local st = hand3(); draw(f, st, 1)
+      local skin = faction == "Horde" and "horde" or "alliance"
+      eq({ T.skin, f.oval:GetTexture(), f.oval:GetTexture() == T.tex["oval_" .. skin] }, { skin, T.tex.oval, true })
+      eq({ View.seatNote(sess(st, 1), 1), View.seatNote(sess(st, 1), 2), f.pot:GetText(), f.seat[2].bet:GetText(), f.seat[3].bet:GetText() },
+         { "1000", "995", "Пот 15", "5", "10" })
+      eq({ f.callButton.text:GetText(), f.raiseButton.text:GetText(), f.allinButton.text:GetText(), f.text:GetText() },
+         { "Плащам 10", "Вдигам до 20", "Ва банк 1000", "Твой ход: 10 за плащане" })
+      local bannerHi = { T.color.bannerHi[1], T.color.bannerHi[2], T.color.bannerHi[3], 1 }
+      eq({ f.seat[2].chip:IsVisible(), f.seat[2].chip:GetTexture(), { f.seat[2].chip:GetVertexColor() }, { f.seat[3].chip:GetVertexColor() } },
+         { true, T.tex.chip, bannerHi, bannerHi })
+      eq({ T.SKINS[skin].color.bannerHi[1], { f.seat[1].mark.disc:GetVertexColor() } }, { T.color.bannerHi[1], { T.color.cream[1], T.color.cream[2], T.color.cream[3], 1 } })
+      -- the chip and its bet side by side, the pair centred on the bet's place
+      local p, sw = f.seat[2], f.seat[2].bet:GetStringWidth()
+      eq({ p.chip.points[1], p.bet.points[1] }, { { "LEFT", f, "TOPLEFT", 250 - (16 + 3 + sw) / 2, -272 }, { "LEFT", f, "TOPLEFT", 250 - (16 + 3 + sw) / 2 + 19, -272 } })
+      eq(#w:texts("|T"), 0)
+    end
   end)
 
   it("„Пот“ and „+“ never leave the engine's range; the raise button sends what it shows", function()

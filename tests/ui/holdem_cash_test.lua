@@ -34,7 +34,8 @@ local function played()
 end
 local function sess(st, seat, extra)
   local s = { game = "holdem", status = "live", mySeat = seat, role = seat == 1 and "host" or "player",
-    seats = { A, B, C, false, false, false }, state = st and E.view(st, seat or 0), tid = "t#1", epoch = 1, seq = 1, stake = 1000 }
+    seats = { A, B, C, false, false, false }, state = st and E.view(st, seat or 0), tid = "t#1", epoch = 1, seq = 1, stake = 1000,
+    engine = function() return E end }
   for k, v in pairs(extra or {}) do s[k] = v end
   return s
 end
@@ -108,6 +109,96 @@ describe("ui: the names of „Сметка“", function()
     ok(f.cash.panel:IsShown()); eq(f.cash.tab, 2)
     View.update(f, sess(played(), 1)) -- a seated player's stays where it is
     eq(f.cash.tab, 2)
+  end)
+end)
+
+-- Task 11: coins only where the amount is real money (a staked table); a fun table keeps chips.
+describe("ui: the amounts on the felt", function()
+  -- Each coin tag of this sandbox back to its letter (the inverse of w:coins).
+  local function letters(w, text)
+    for kind, letter in pairs({ gold = "g", silver = "s", copper = "c" }) do
+      local tag = w.ns.W.coinTag(kind)
+      local i = text:find(tag, 1, true)
+      while i do text = text:sub(1, i - 1) .. letter .. text:sub(i + #tag); i = text:find(tag, 1, true) end
+    end
+    return text
+  end
+  -- Every amount the felt shows for seat `me`: plates, bets or wins, the pot, the buttons, the words, the log.
+  local function felt(View, f, s)
+    View.update(f, s)
+    local out = {}
+    for seat = 1, 3 do
+      out[#out + 1] = View.seatNote(s, seat)
+      local p = f.seat[seat]
+      out[#out + 1] = p.bet:IsVisible() and p.bet:GetText() or "-"
+    end
+    for _, x in ipairs({ f.pot, f.callButton.text, f.raiseButton.text, f.allinButton.text, f.text, f.log }) do
+      out[#out + 1] = x:IsVisible() and plain(x:GetText()) or "-"
+    end
+    return out
+  end
+  -- A table of three seats with 400 chips each, dealt from E.DECK; `staked`: bought, else a fun table's chips.
+  local function dealt(staked)
+    local st = staked and table3({ 400, 400, 400 }) or E.new{ seats = { true, true, true }, opt = { blinds = 10 } }
+    if not staked then for i = 1, 3 do st.seats[i].chips = 400 end end
+    ok(E.apply(st, 0, { k = "hand" })); ok(E.apply(st, 0, { k = "deal", deck = E.DECK }))
+    return st
+  end
+  local function funSess(st, seat) local s = sess(st, seat); s.stake = nil; return s end -- no stake: a fun table
+
+  it("a cash table counts money: every amount is coins of chips x CHIP", function()
+    local w, View, f = setup()
+    local st = dealt(true); local s = sess(st, 1)
+    eq({ w.ns.HoldemCash.CHIP, View.cash(s), View.cash(funSess(st, 1)) }, { 100, true, false })
+    eq({ View.amount(s, 200), View.amount(s, 15), View.amount(s, 0), w.ns.HoldemCashView.coins(200) }, { w:coins("2g"), w:coins("15s"), w:coins("0c"), w:coins("2g") })
+    eq(felt(View, f, s), { w:coins("4g"), "-", w:coins("3g 95s"), w:coins("5s"), w:coins("3g 90s"), w:coins("10s"),
+      w:coins("Пот 15s"), w:coins("Плащам 10s"), w:coins("Вдигам до 20s"), w:coins("Ва банк 4g"), w:coins("Твой ход: 10s за плащане"), "-" })
+    -- the coin is in the text: no chip picture beside a bet, and the bet alone is centred on its place
+    local p, sw = f.seat[2], f.seat[2].bet:GetStringWidth()
+    eq({ p.bet:IsVisible(), p.chip:IsVisible(), p.bet.points[1] }, { true, false, { "LEFT", f, "TOPLEFT", 250 - sw / 2, -272 } })
+    -- after the showdown: the win beside the plate, the words and the log in coins
+    H.checkdown(st); View.update(f, sess(st, 1))
+    eq({ f.seat[1].bet:GetText(), f.seat[1].chip:IsVisible(), plain(f.text:GetText()), f.log:GetText() },
+       { "+" .. w:coins("30s"), false, w:coins("Иван Петров взе 30s с флош"), w:coins("#1 Иван Петров взе 30s с флош") })
+    -- the same table for fun (no stake): numbers and the chip again
+    View.update(f, funSess(dealt(false), 1))
+    eq({ f.pot:GetText(), f.seat[2].bet:GetText(), f.seat[2].chip:IsVisible() }, { "Пот 15", "5", true })
+  end)
+
+  it("the same hand reads the same amounts either way", function()
+    local w, View, f = setup()
+    local Util, CHIP = w.ns.Util, w.ns.HoldemCash.CHIP
+    -- The fun table's text with each amount (a number not after „#“) as Util.money of its chips x CHIP.
+    local function money(text)
+      return (text:gsub("(#?)(%d+)", function(hash, n) return hash == "#" and hash .. n or Util.money(tonumber(n) * CHIP) end))
+    end
+    local fun, cash = dealt(false), dealt(true)
+    local function both(seat)
+      local a, b = felt(View, f, funSess(fun, seat)), felt(View, f, sess(cash, seat))
+      for i = 1, #a do eq(letters(w, b[i]), money(a[i])) end
+      return a
+    end
+    eq(both(1)[7], "Пот 15")
+    for _, x in ipairs({ { 1, { k = "raise", to = 30 } }, { 2, { k = "call" } }, { 3, { k = "fold" } } }) do
+      ok(E.apply(fun, x[1], x[2])); ok(E.apply(cash, x[1], x[2])); both(x[1] % 3 + 1)
+    end
+    ok(E.apply(fun, 0, E.system(fun))); ok(E.apply(cash, 0, E.system(cash)))
+    eq(both(2)[7], "Пот 70")
+    H.checkdown(fun); H.checkdown(cash)
+    local after = both(1)
+    eq({ after[2], after[11], after[12] }, { "+70", "Иван Петров взе 70 с флош", "#1 Иван Петров взе 70 с флош" })
+    -- a hand won when the others fold, then a pot split three ways (all play the board): the same words either way
+    local function deal(deckOf)
+      for _, st in ipairs({ fun, cash }) do ok(E.apply(st, 0, { k = "hand" })); ok(E.apply(st, 0, { k = "deal", deck = deckOf(st) })) end
+    end
+    deal(function() return E.DECK end)
+    for _ = 1, 2 do local seat = fun.turn; ok(E.apply(fun, seat, { k = "fold" })); ok(E.apply(cash, seat, { k = "fold" })) end
+    after = both(1)
+    eq({ after[11], after[12] }, { "Иван Петров взе 10. Останалите се отказаха.", "#2 Иван Петров взе 10 без показване" })
+    deal(function(st) return H.deckFor(st, { [1] = "2C 3D", [2] = "2D 3C", [3] = "2H 3S" }, "TC JD QH KS AD") end)
+    H.checkdown(fun); H.checkdown(cash)
+    after = both(1)
+    eq({ after[11], after[12] }, { "Потът се дели: по 10 с кента", "#3 потът се раздели: по 10 с кента" })
   end)
 end)
 
