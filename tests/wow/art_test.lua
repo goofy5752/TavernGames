@@ -71,8 +71,10 @@ describe("art: the check", function()
     eq(A.candidates("crest", "horde"), { { file = "Interface\\Timer\\Horde-Logo" }, { atlas = "FactionIcon-Horde" } })
     eq(A.candidates("leader", "tauren"), { { file = "Interface\\Icons\\Achievement_Leader_Cairne Bloodhoof" },
       { file = "Interface\\Icons\\Achievement_Leader_Cairne_Bloodhoof" } })
-    eq(A.candidates("leader", "gnome"), { { file = "Interface\\Icons\\Achievement_Leader_Gelbin_Mekkatorque" } })
-    eq(A.candidates("leader", "troll"), { { file = "Interface\\Icons\\Achievement_Leader_Voljin" } })
+    eq(A.candidates("leader", "gnome")[1], { file = "Interface\\Icons\\Achievement_Leader_Gelbin_Mekkatorque" })
+    eq(A.candidates("leader", "orc")[1], { file = "Interface\\Icons\\Achievement_Leader_ Thrall" })
+    eq(A.candidates("leader", "troll"), { { file = "Interface\\Icons\\Achievement_Leader_Voljin" },
+      { file = "Interface\\Icons\\Achievement_Leader_Vol'jin" } })
     eq(A.candidates("race", "bloodelf", "female"), { { atlas = "raceicon128-bloodelf-female" },
       { atlas = "raceicon-bloodelf-female" }, { file = "Interface\\Icons\\Achievement_Character_Bloodelf_Female" } })
     eq(A.candidates("race", "undead", "male")[3], { file = "Interface\\Icons\\Achievement_Character_Undead_Male" })
@@ -161,8 +163,8 @@ describe("art: report", function()
     local coinRows = 0
     for _, r in ipairs(rows) do if r[1] == "LOOT_WINDOW_COIN_SOUND" then coinRows = coinRows + 1 end end
     eq(coinRows, 1) -- a sound name named by two keys is one row
-    -- 2 crests x 2, 11 leader files, 10 races x 2 sexes x 3, 2 classes x 2, 3 coins
-    eq(found, 2); eq(total, 4 + 11 + 60 + 4 + 3)
+    -- 2 crests x 2, 17 leader files, 10 races x 2 sexes x 3, 2 classes x 2, 3 coins
+    eq(found, 2); eq(total, 4 + 17 + 60 + 4 + 3)
   end)
 
   it("a client without the check APIs reports every asset missing", function()

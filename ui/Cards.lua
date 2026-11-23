@@ -77,7 +77,9 @@ function CARD:court(info, fac)
   self.chairBack:SetVertexColor(CHAIR[fac][1], CHAIR[fac][2], CHAIR[fac][3], 1)
   local ok = false
   if ns.Art then
-    if info.role == "king" then ok = ns.Art.set(self.portrait, "leader", info.race)
+    if info.role == "king" then -- the leader, else a hero of the race from the client
+      ok = ns.Art.set(self.portrait, "leader", info.race)
+        or ns.Art.set(self.portrait, "race", info.race, ns.Art.LEADER_SEX[info.race] or "male")
     else ok = ns.Art.set(self.portrait, "race", info.race, SEX[info.role]) end
   end
   self.art = ok and "client" or "standin"

@@ -316,7 +316,7 @@ describe("/tavern probe", function()
     ok(probeLine(w, said .. logo .. ": -", n + 1), "logo missing")
     ok(probeLine(w, said .. "GetFileIDFromPath: function", n + 1), "GetFileIDFromPath")
     local total = select(3, w.ns.Art.report())
-    eq(total, 4 + 11 + 60 + 2 + 3) -- crests, leaders, races, the one class (MAGE), coins
+    eq(total, 4 + 17 + 60 + 2 + 3) -- crests, leaders, races, the one class (MAGE), coins
     eq(w.chat[#w.chat - 1], said .. L("probe.art.sum", 0, total))
     eq(w.chat[#w.chat], said .. L("probe.art.saved"))
     local kept = w.ns.db.probeArt -- the report, line for line, without the chat prefix

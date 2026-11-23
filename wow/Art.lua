@@ -36,14 +36,16 @@ local LEADERS = {
   human = { "Achievement_Leader_King_Varian_Wrynn" },
   nightelf = { "Achievement_Leader_Tyrande_Whisperwind" },
   dwarf = { "Achievement_Leader_King_Magni_Bronzebeard" },
-  gnome = { "Achievement_Leader_Gelbin_Mekkatorque" },
+  gnome = { "Achievement_Leader_Gelbin_Mekkatorque", "Achievement_Leader_Gelbin Mekkatorque", "Achievement_Leader_Mekkatorque" },
   draenei = { "Achievement_Leader_Prophet_Velen" },
-  orc = { "Achievement_Leader_Thrall" },
+  orc = { "Achievement_Leader_ Thrall", "Achievement_Leader_Thrall" },
   undead = { "Achievement_Leader_Sylvanas" },
   tauren = { "Achievement_Leader_Cairne Bloodhoof", "Achievement_Leader_Cairne_Bloodhoof" },
-  troll = { "Achievement_Leader_Voljin" },
-  bloodelf = { "Achievement_Leader_Lorthemar_Theron" },
+  troll = { "Achievement_Leader_Voljin", "Achievement_Leader_Vol'jin" },
+  bloodelf = { "Achievement_Leader_Lorthemar_Theron", "Achievement_Leader_Lor'themar_Theron", "Achievement_Leader_LorthemarTheron" },
 }
+-- The sex of each race's leader, for a king that falls back to the race's own icon.
+Art.LEADER_SEX = { nightelf = "female", undead = "female" }
 local COINS = { "gold", "silver", "copper" }
 local COIN_FILES = {
   gold = "Interface\\MoneyFrame\\UI-GoldIcon",

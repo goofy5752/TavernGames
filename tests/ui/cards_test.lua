@@ -96,6 +96,16 @@ describe("ui: card faces and backs", function()
     c:set("KD"); eq({ c.art, c.sil.frame:IsShown(), c.portrait:IsShown() }, { "standin", true, false })
   end)
 
+  it("a king without its leader's icon wears the client's hero of the race, the leader's sex", function()
+    fresh(); w.ns.Art.reset()
+    local c = C.card(w.G.UIParent)
+    c.deck = "orc"; w:hasAtlas("raceicon128-orc-male"); w.ns.Art.reset()
+    c:set("KS"); eq({ c.art, c.portrait.atlas, c.sil.frame:IsShown() }, { "client", "raceicon128-orc-male", false })
+    c.deck = "undead"; w:hasAtlas("raceicon128-undead-female"); w.ns.Art.reset()
+    c:set("KS"); eq({ c.art, c.portrait.atlas }, { "client", "raceicon128-undead-female" })
+    c.deck = "troll"; c:set("KS"); eq({ c.art, c.sil.frame:IsShown() }, { "standin", true }) -- neither: the crowned silhouette
+  end)
+
   it("an ace wears the crest, a number its suit in the middle, the back the deck's faction", function()
     fresh()
     local c = C.card(w.G.UIParent)
