@@ -203,7 +203,7 @@ local function probe(arg)
   Slash.probe()
 end
 
--- Bot mode on (it may still wait for my name) -> true | nil.
+-- Bot mode on (it may still wait for my name) for host / invite -> true | nil.
 local function botsOn()
   if ns.bots then return true end
   local state = Adapter.toggleBots()
@@ -218,8 +218,10 @@ end
 local function bots(arg)
   local verb, game = arg:match("^(%S*)%s*(.-)$")
   if verb == "fill" then
-    if not botsOn() then return end
-    if not ns.bots:fill(tonumber(game)) then say(L("bots.nofill")) end
+    local got, started = Adapter.fillBots(tonumber(game))
+    if got == "wait" then return say(L("bots.wait")) end
+    if started then say(L("bots.on")) end
+    if got == "nofill" then say(L("bots.nofill")) end
     return
   end
   if verb == "host" or verb == "invite" then

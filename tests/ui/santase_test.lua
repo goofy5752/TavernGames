@@ -98,6 +98,29 @@ describe("ui: Сантасе view", function()
     eq(#w:texts("Избери попа или дамата"), 0); eq(V.myFan.cards[1].mode, "plain") -- the click ended the armed state
   end)
 
+  it("a completed trick stays on the felt for 1.5 s; a new lead ends the hold at once; the last trick of a hand is held", function()
+    local w, V, View = boot(); local s = w.ns.client.session
+    local function seen() return { V.trick[1].frame:IsVisible() and V.trick[1].face, V.trick[2].frame:IsVisible() and V.trick[2].face } end
+    local st = full(); show(w, E.view(st, 1))
+    ok(E.apply(st, 1, { k = "play", i = 9, c = "9S" })); show(w, E.view(st, 1)); eq(seen(), { "9S", false })
+    ok(E.apply(st, 2, { k = "play", i = 4, c = "AS" })); show(w, E.view(st, 1))
+    eq(seen(), { "9S", "AS" }); eq(V.lastCards[1].frame:IsVisible(), false)                    -- not twice on the felt
+    w:advance(1.4); eq(seen(), { "9S", "AS" })
+    w:advance(0.2); eq(seen(), { false, false }); eq({ V.lastCards[1].face, V.lastCards[2].face }, { "9S", "AS" })
+    -- a lead during the hold: seat 2 took the first trick and leads
+    local w2, V2 = boot(); local st2 = full(); w2.ns.client.session.state = E.view(st2, 1); w2.ns.TableFrame.render()
+    ok(E.apply(st2, 1, { k = "play", i = 9, c = "9S" })); ok(E.apply(st2, 2, { k = "play", i = 4, c = "AS" })); show(w2, E.view(st2, 1))
+    local lead = E.legal(st2, 2)[1]; ok(E.apply(st2, 2, lead)); show(w2, E.view(st2, 1))
+    eq({ V2.trick[1].frame:IsVisible(), V2.trick[2].frame:IsVisible(), V2.trick[1].face }, { true, false, E.view(st2, 1).deck[lead.i] })
+    w2:advance(2); eq({ V2.trick[1].frame:IsVisible(), V2.trick[2].frame:IsVisible() }, { true, false })
+    -- the last trick of a hand: the hand's end waits for the hold
+    local w3, V3 = boot(); local st3 = full(); w3.ns.client.session.state = E.view(st3, 1); w3.ns.TableFrame.render()
+    ok(E.apply(st3, 1, { k = "play", i = 9, c = "9S" })); ok(E.apply(st3, 2, { k = "play", i = 4, c = "AS" }))
+    st3.phase, st3.res = "hand", { winner = 2, gp = 1, reason = "66" }; show(w3, E.view(st3, 1))
+    eq({ V3.trick[1].face, V3.trick[2].face }, { "9S", "AS" }); eq(#plainTexts(w3, "взима ръката"), 1)
+    w3:advance(1.6); eq({ V3.trick[1].frame:IsVisible(), V3.trick[2].frame:IsVisible() }, { false, false })
+  end)
+
   it("„Обяви“ is disarmed by a second click and by any event", function()
     local w, V = boot(); local s = w.ns.client.session; show(w, E.view(full(), 1))
     w:click(V.marryButton); eq(#w:texts("Избери попа или дамата"), 1)

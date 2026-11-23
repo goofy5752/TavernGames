@@ -119,7 +119,8 @@ end
 
 function Hall.clickTable(t)
   local client, rec = ns.client, t.rec
-  if not client or not rec or here(client, rec) then return end
+  if not client or not rec then return end
+  if here(client, rec) then return ns.TableFrame.focus() end
   if rec.state == "live" then client:watch(rec.tid) end
 end
 
@@ -130,6 +131,8 @@ function Hall.clickRow(r)
     sit(client, rec, firstFree(rec.seats))
   elseif r.act == "watch" then
     client:watch(rec.tid)
+  elseif r.act == "open" then
+    ns.TableFrame.focus()
   end
 end
 
@@ -164,7 +167,7 @@ function Hall.tableTooltip(tip, rec)
   end
   tip:AddLine(L("access." .. tostring(rec.access)) .. " · " .. L("hall.turn", rec.turn), Theme.rgb("inkDim"))
   if stakeText(rec) then tip:AddLine(stakeText(rec), Theme.rgb("gold")) end
-  if here(client, rec) then return end
+  if here(client, rec) then return tip:AddLine(L("hall.tip.mine"), Theme.rgb("good")) end
   if firstFree(rec.seats) then
     tip:AddLine(L("hall.tip.sit"), Theme.rgb("good"))
   elseif rec.state == "live" then
@@ -355,13 +358,13 @@ local function fillRow(r, rec, client)
   local mine = here(client, rec)
   r.mark:SetShown(mine)
   if mine then
-    r.act = nil
+    r.act = "open"
   elseif firstFree(rec.seats) then
     r.act = "sit"
   else
     r.act = "watch"
   end
-  r.action.text:SetText(r.act == "sit" and L("hall.sit") or L("hall.watch"))
+  r.action.text:SetText(L(r.act == "sit" and "hall.sit" or r.act == "open" and "hall.toTable" or "hall.watch"))
   r.action:SetShown(r.act ~= nil)
 end
 
@@ -418,6 +421,7 @@ function Hall.render()
   elseif mode == "list" then
     renderList(v, recs, client)
   end
+  ns.HallSign.render(v)
   ns.Accounts.render(v, client)
   ns.HallPeers.render(v, client)
   v.note:SetShown(Hall.updateAvailable)
@@ -564,9 +568,12 @@ local function buildCentre(v, page, x, w, colH)
     l:SetPoint("CENTER", centre, p[1], p[2], p[3])
     v.lanterns[#v.lanterns + 1] = l
   end
-  W.Label(centre, "heading", L("hall.title")):SetPoint("TOPLEFT", centre, "TOPLEFT", 10, -8)
+  v.title = W.Label(centre, "heading", L("hall.title"))
+  v.title:SetPoint("TOPLEFT", centre, "TOPLEFT", 10, -8)
   v.hint = W.Label(centre, "dim", L("hall.hint"), 12)
   v.hint:SetPoint("TOPRIGHT", centre, "TOPRIGHT", -10, -10)
+  v.centreW = w
+  ns.HallSign.build(v, centre, HEADER_H)
 
   local floor = CreateFrame("Frame", nil, centre)
   floor:SetPoint("TOPLEFT", centre, "TOPLEFT", 0, -HEADER_H)

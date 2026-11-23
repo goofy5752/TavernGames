@@ -123,6 +123,7 @@ ui/Cards.lua
 ui/MainWindow.lua
 ui/NewTableDialog.lua
 ui/HallPeers.lua
+ui/HallSign.lua
 ui/PayDialog.lua
 ui/Accounts.lua
 ui/Hall.lua
@@ -139,6 +140,7 @@ ui/HandHistory.lua
 ui/HandHistoryPanel.lua
 ui/games/TicTacToeView.lua
 ui/games/DeathRollView.lua
+ui/games/TrickHold.lua
 ui/games/SantaseView.lua
 ui/games/BelotModel.lua
 ui/games/BelotView.lua

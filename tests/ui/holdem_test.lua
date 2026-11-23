@@ -218,4 +218,75 @@ describe("ui: the Холдем view", function()
     local line = T.view.fairLine
     ok(line:IsVisible(), "no book line"); ok(line.text:GetText():find("Ръце за проверка при затварянето: ", 1, true), line.text:GetText())
   end)
+
+  describe("my hand label", function()
+    -- Checks and calls until the board has n cards (a hand3 table: nobody raises).
+    local function toBoard(st, n)
+      local guard = 0
+      while #st.board < n do
+        guard = guard + 1; assert(guard < 40, "no board")
+        if st.phase == "bet" then
+          local a = { k = "call" }; for _, l in ipairs(E.legal(st, st.turn)) do if l.k == "check" then a = { k = "check" } end end
+          ok(E.apply(st, st.turn, a))
+        else ok(E.apply(st, 0, E.system(st))) end
+      end
+    end
+    -- Draws seat `seat`'s view with its hole cards and the board faces replaced (a pair, a house…).
+    local function drawWith(f, st, seat, hole, board)
+      local s = sess(st, seat)
+      for j = 1, 2 do s.state.deck[s.state.p[seat].cards[j]] = hole[j] end
+      for j, face in ipairs(board or {}) do s.state.deck[s.state.board[j]] = face end
+      s.seq = (f.seqN or 1) + 1; f.seqN = s.seq
+      current.update(f, s)
+    end
+    local function label(f) return f.handLabel:IsVisible() and plain(f.handLabel:GetText()) or nil end
+
+    it("preflop it reads my two cards alone; after the flop, turn and river it follows the board", function()
+      local w, View, f = setup()
+      local st = hand3()
+      drawWith(f, st, 3, { "AS", "AD" })
+      eq(label(f), "Чифт аса")
+      drawWith(f, st, 3, { "AS", "KD" }); eq(label(f), "Висока карта: асо")
+      toBoard(st, 3); drawWith(f, st, 3, { "AS", "AD" }, { "2C", "5D", "9H" }); eq(label(f), "Чифт аса")
+      toBoard(st, 4); drawWith(f, st, 3, { "AS", "AD" }, { "2C", "5D", "9H", "AC" }); eq(label(f), "Тройка аса")
+      toBoard(st, 5); drawWith(f, st, 3, { "AS", "AD" }, { "2C", "5D", "9H", "AC", "AH" }); eq(label(f), "Каре аса")
+      local c = w.ns.Theme.color.goldHi
+      eq({ f.handLabel:GetTextColor() }, { c[1], c[2], c[3], 1 })
+    end)
+    it("the other categories in words, the house with the ranks", function()
+      local w, View, f = setup()
+      local st = hand3(); toBoard(st, 5)
+      local function is(hole, board, text) drawWith(f, st, 3, hole, board); eq(label(f), text) end
+      is({ "7S", "7D" }, { "2C", "5D", "9H", "KC", "3D" }, "Чифт седмици")
+      is({ "AS", "KD" }, { "AC", "KH", "9H", "2C", "3D" }, "Два чифта: аса и попове")
+      is({ "7S", "7D" }, { "7C", "5D", "9H", "KC", "3D" }, "Тройка седмици")
+      is({ "9S", "8D" }, { "TC", "JH", "QH", "2C", "3D" }, "Кента до дама")
+      is({ "AS", "2D" }, { "3C", "4H", "5H", "KC", "9D" }, "Кента до петица")
+      is({ "9S", "8D" }, { "7C", "6H", "5H", "KC", "2D" }, "Кента до деветка")
+      w.ns.Locale.set("en"); is({ "9S", "8D" }, { "7C", "6H", "5H", "KC", "2D" }, "Straight to the Nine"); w.ns.Locale.set("bg")
+      is({ "AS", "9S" }, { "2S", "5S", "KS", "KC", "3D" }, "Флош до асо")
+      is({ "AS", "AD" }, { "AC", "QH", "QD", "2C", "3D" }, "Фул хаус (AAA QQ)")
+      is({ "9S", "8S" }, { "TS", "JS", "QS", "2C", "3D" }, "Кент флош до дама")
+      is({ "AS", "KS" }, { "QS", "JS", "TS", "2C", "3D" }, "Роял флош")
+    end)
+    it("hidden for a watcher, a folded hand and while the deal is shuffled; nothing of it is sent", function()
+      local w, View, f = setup()
+      local st = hand3()
+      local sent = #w.sent
+      drawWith(f, st, 3, { "AS", "AD" }); eq(label(f), "Чифт аса")
+      draw(f, st, nil); eq(label(f), nil)
+      ok(E.apply(st, 1, { k = "call" })); ok(E.apply(st, 2, { k = "call" })); ok(E.apply(st, 3, { k = "fold" }))
+      drawWith(f, st, 3, { "AS", "AD" }); eq(label(f), nil)
+      eq(#w.sent, sent)
+      for _, m in ipairs(w.sent) do ok(not tostring(m.text or m.msg or m):find("аса", 1, true)) end
+    end)
+    it("is not recomputed while the cards stay the same", function()
+      local w, View, f = setup()
+      local st = hand3(); local n = 0
+      local describe = w.ns.HoldemEval.describe
+      w.ns.HoldemEval.describe = function(x) n = n + 1; return describe(x) end
+      drawWith(f, st, 3, { "AS", "AD" }); drawWith(f, st, 3, { "AS", "AD" }); drawWith(f, st, 3, { "AS", "AD" })
+      eq(n, 1)
+    end)
+  end)
 end)

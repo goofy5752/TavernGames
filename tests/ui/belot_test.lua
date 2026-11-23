@@ -176,6 +176,35 @@ describe("ui: Белот view", function()
     local st2 = E.new {}; ok(E.apply(st2, 0, { k = "deal", deck = DECK_A })); draw(f, st2, 1); eq(f.peekButton:IsVisible(), false)  -- the auction
   end)
 
+  it("a completed trick stays on the felt for 1.5 s; a new lead ends the hold at once", function()
+    local w, View, f = boot(); local st = started(DECK_A, "S P P P")
+    local function seen() local t = {}; for k = 0, 3 do t[k + 1] = f.trick[k].frame:IsVisible() and f.trick[k].face or false end; return t end
+    draw(f, st, 1); plays(st, "AH 9H 8H"); draw(f, st, 1)
+    eq(seen(), { "AH", "9H", "8H", false })                                                    -- seat 4 has still to play
+    plays(st, "TS"); draw(f, st, 1)
+    eq(seen(), { "AH", "9H", "8H", "TS" }); eq(f.trick[0].mode, "plain")                       -- all four, as played: nothing dimmed
+    w:advance(1.4); eq(seen(), { "AH", "9H", "8H", "TS" })
+    w:advance(0.2); eq(seen(), { false, false, false, false })                                 -- the next state: an empty felt
+    local st2 = started(DECK_A, "S P P P"); plays(st2, "AH 9H 8H TS"); draw(f, st2, 1)         -- (the same table again)
+    local w2, View2, f2 = boot(); local st3 = started(DECK_A, "S P P P"); draw(f2, st3, 1)
+    plays(st3, "AH 9H 8H TS"); draw(f2, st3, 1); eq(f2.trick[3].frame:IsVisible(), true)
+    plays(st3, "AC"); draw(f2, st3, 1)                                                         -- seat 4 won and leads
+    eq({ f2.trick[0].frame:IsVisible(), f2.trick[1].frame:IsVisible(), f2.trick[2].frame:IsVisible(), f2.trick[3].frame:IsVisible(), f2.trick[3].face },
+      { false, false, false, true, "AC" })
+    w2:advance(2); eq({ f2.trick[0].frame:IsVisible(), f2.trick[3].frame:IsVisible(), f2.trick[3].face }, { false, true, "AC" })   -- the old timer did nothing
+  end)
+
+  it("the last trick of the deal is held before the deal's summary", function()
+    local w, View, f = boot(); local full = started(DECK_A, "S P P P"); plays(full, "AH 9H 8H")
+    View.update(f, sess(E.view(full, 1), 1))
+    local fin = scored(); fin.deck = full.deck; fin.round = full.round
+    fin.last = { cards = { idx(full, "AH"), idx(full, "9H"), idx(full, "8H"), idx(full, "TS") }, lead = 1, win = 4 }
+    View.update(f, sess(fin, 1))
+    eq({ f.trick[0].face, f.trick[3].face, f.trick[0].frame:IsVisible() }, { "AH", "TS", true }); eq(f.summary:IsVisible(), false)
+    w:advance(1.4); eq(f.summary:IsVisible(), false)
+    w:advance(0.2); eq({ f.summary:IsVisible(), f.trick[0].frame:IsVisible(), f.trick[3].frame:IsVisible() }, { true, false, false })
+  end)
+
   it("the score, the contract and the deal's summary: вътре, контра, an announce that did not count", function()
     local w, View, f = boot(); local st = scored(); View.update(f, sess(st, 1))
     eq(#plainTexts(w, "Ние 32 · Вие 0"), 1); eq(#plainTexts(w, "до 151"), 1)

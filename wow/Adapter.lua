@@ -221,6 +221,12 @@ local function asks(fn, ...)
   return got or nil
 end
 
+-- The name of my guild, or nil: no guild, not known yet, or a secret value.
+function Adapter.guildName()
+  local name = asks(Adapter.fn("GetGuildInfo"), "player")
+  return type(name) == "string" and name ~= "" and name or nil
+end
+
 -- env.groupedWith(name): is `name` (normalized full name) in my party or raid?
 -- From my own client's data only: its GUID from my guild roster scan in my
 -- group, or the name in UnitInRaid / UnitInParty / the group roster; never a
@@ -487,8 +493,14 @@ local EVENTS = {
   LOADING_SCREEN_DISABLED = function() loadingScreen(false) end,
   PLAYER_LEAVING_WORLD = function() loadingScreen(true) end,
   PLAYER_ENTERING_WORLD = function() loadingScreen(false) end,
-  PLAYER_GUILD_UPDATE = function() Adapter.lookUpName() end,
-  GUILD_ROSTER_UPDATE = scanRoster,
+  PLAYER_GUILD_UPDATE = function()
+    Adapter.lookUpName()
+    if ns.Hall then ns.Hall.refresh() end
+  end,
+  GUILD_ROSTER_UPDATE = function(...)
+    scanRoster(...)
+    if ns.Hall then ns.Hall.refresh() end
+  end,
   CHAT_MSG_SYSTEM = function(text)
     local name = match(offlinePattern, text)
     if name and ns.client then ns.client:peerOffline(name) end
@@ -536,6 +548,19 @@ function addon:OnCommReceived(prefix, text, distribution, sender)
     return askRoster()
   end
   if ns.client then ns.client:receive(distribution, name, msg) end
+end
+
+-- Bots fill my table (/tavern bots fill, „Добави ботове“): bot mode is turned on
+-- first when it is off -> "wait" (my name is not known yet), "nofill" (the
+-- table takes no bots: Bots.canFill), or how many were asked; then true when
+-- this call turned bot mode on.
+function Adapter.fillBots(n)
+  local started = false
+  if not ns.bots then
+    if Adapter.toggleBots() == "wait" then return "wait", false end
+    started = true
+  end
+  return ns.bots:fill(n) or "nofill", started
 end
 
 -- /tavern bots: "on", "off", or "wait" while the own name is still unknown.

@@ -417,7 +417,7 @@ describe("ui: table frame, host-started games", function()
     eq(L("table.pressStart"), "Всички ли са тук? Натисни „Започни“.")
     ok(v.startButton:IsVisible(), "no Започни"); eq(v.startButton:IsEnabled(), true)
     eq(v.startButton.text:GetText(), "Започни")
-    eq(v.line.points[1][2], v.startButton) -- the news line sits right of „Започни“
+    ok(v.line.points[1][2] == v.botsButton, "line not right of the last button") -- the news line sits right of „Добави ботове“, after „Започни“
     w:click(v.startButton); w:advance(0)
     eq(client.session.status, "live")
     eq(v.startButton:IsVisible(), false); eq(v.banner:IsVisible(), false)
@@ -467,7 +467,7 @@ describe("ui: table frame, host-started games", function()
     w.ns.client.events:emit("session", s); w:advance(0)
     eq(v.inviteButton:IsShown(), false)
     local p = v.startButton.points[1]
-    ok(p[2] == v.standButton, "not next to Стани"); eq({ p[1], p[3], p[4], p[5] }, { "LEFT", "RIGHT", 8, 0 })
+    ok(p[2] == v.standButton, "not next to Стани"); eq({ p[1], p[3], p[4], p[5] }, { "LEFT", "RIGHT", 6, 0 })
     s.seats[5] = false
     w.ns.client.events:emit("session", s); w:advance(0)
     ok(v.startButton.points[1][2] == v.inviteButton, "not next to Покани")

@@ -264,6 +264,18 @@ function W.seal(parent, size)
   return f
 end
 
+-- A left-button drag on `handle` moves `target` (default: the handle itself, a
+-- movable window), and any press on it raises the target above its siblings. The
+-- resize grip is a child that takes its own press and registers no drag, so
+-- it never moves the window.
+function W.dragBy(handle, target)
+  target = target or handle
+  handle:RegisterForDrag("LeftButton")
+  handle:SetScript("OnDragStart", function() target:Raise(); target:StartMoving() end)
+  handle:SetScript("OnDragStop", function() target:StopMovingOrSizing() end)
+  handle:SetScript("OnMouseDown", function() target:Raise() end)
+end
+
 -- A dark translucent panel with a thin brass edge (mockup `.panel`).
 function W.Panel(parent)
   local f = CreateFrame("Frame", nil, parent)

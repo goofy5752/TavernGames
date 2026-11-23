@@ -146,6 +146,7 @@ local function build()
   f:SetMovable(true)
   f:SetClampedToScreen(true)
   f:EnableMouse(true)
+  W.dragBy(f)
   takeKeyboard(f)
   ns.Resize.attach(f, "main", 6)
 
@@ -159,9 +160,7 @@ local function build()
   bar:SetPoint("TOPRIGHT", f, "TOPRIGHT", -EDGE, -EDGE)
   bar:SetHeight(TITLE_H)
   bar:EnableMouse(true)
-  bar:RegisterForDrag("LeftButton")
-  bar:SetScript("OnDragStart", function() f:StartMoving() end)
-  bar:SetScript("OnDragStop", function() f:StopMovingOrSizing() end)
+  W.dragBy(bar, f)
 
   -- The addon's mug (its minimap and AddOns-list icon, without the wood) before the title.
   local mug = bar:CreateTexture(nil, "ARTWORK")

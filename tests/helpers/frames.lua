@@ -182,7 +182,14 @@ function Frame:SetParent(p)
   self.parent = p
   if p and p.children then p.children[#p.children + 1] = self end
 end
-function Frame:Raise() end
+-- Raise: this frame's level goes above every sibling of the same strata.
+function Frame:Raise()
+  local top = self:GetFrameLevel()
+  for _, sib in ipairs(self.parent and self.parent.children or {}) do
+    if sib ~= self and sib.GetFrameStrata and sib:GetFrameStrata() == self:GetFrameStrata() and sib:GetFrameLevel() >= top then top = sib:GetFrameLevel() + 1 end
+  end
+  self.level = top
+end
 
 function Frame:CreateTexture(name, layer, template, sub)
   assert(name == nil, "named textures create globals")
