@@ -404,8 +404,8 @@ describe("locale and help", function()
 
   it("the ledger topic says old results leave and debts stay", function()
     local keep = T.bg["help.ledger.keep"]
-    ok(keep:find("година", 1, true) and keep:find("ълговете", 1, true), "bg")
-    ok(T.en["help.ledger.keep"]:find("year", 1, true) and T.en["help.ledger.keep"]:find("ebts", 1, true), "en")
+    ok(keep:find("4500", 1, true) and keep:find("най-старите", 1, true) and keep:find("ълговете", 1, true), "bg")
+    ok(T.en["help.ledger.keep"]:find("4500", 1, true) and T.en["help.ledger.keep"]:find("oldest", 1, true) and T.en["help.ledger.keep"]:find("ebts", 1, true), "en")
   end)
 
   it("the book lists the board and the history topics, the board has its Player header and /tavern ledger its line", function()
