@@ -256,8 +256,8 @@ describe("locale and help", function()
     local BG = {
       ["help.stakes.holdem"] = "В Холдем със залог всеки сяда с вход между 40 и 100 големи блайнда. Един чип е един силвър. Докато играете, не се мести голд: аддонът помни за всеки пот от кого е дошъл всеки силвър.",
       ["help.stakes.holdem.example"] = "Иван, Мария и Kiro играят на 10s/20s. Kiro печели пот от 1g 20s: 40s са от Иван и 80s от Мария. По-късно Иван взима 30s от Kiro. Kiro става: Иван му дължи 10s, Мария му дължи 80s. Сборът по двойки е точно печалбата на Kiro.",
-      ["help.stakes.holdem.rebuy"] = "Докупуването се избира при отваряне на масата: „Без“, „Когато свършат чиповете“ или „Винаги до входа“. Станеш ли и седнеш ли пак в същата игра, не получаваш нови чипове даром: носиш поне това, с което си станал.",
-      ["help.stakes.holdem.stand"] = "„Стани“ записва сметката ти след края на ръката. Изчезнеш ли за 3 минути, аддонът те вдига сам и записва сметката. Дълговете се потвърждават сами, когато домакинът натисне „Приключи“ и ръцете се проверят с ключовете. Станеш ли по-рано, аддонът те пита за всеки твой дълг.",
+      ["help.stakes.holdem.rebuy"] = "Докупуването се избира при отваряне на масата: „Без“, „Когато свършат чиповете“ или „Винаги до входа“. Станеш ли и седнеш ли пак в същата игра, не получаваш нови чипове даром: носиш поне това, с което си станал. Станеш ли с повече от 100 големи блайнда, връщаш се с точно 100.",
+      ["help.stakes.holdem.stand"] = "„Стани“ записва сметката ти след края на ръката. Изчезнеш ли за 3 минути, аддонът те вдига сам и записва сметката. Дълговете се потвърждават сами, когато домакинът натисне „Приключи“ и ръцете се проверят с ключовете. Станеш ли по-рано, аддонът те пита за всеки твой дълг. Пита ли те аддонът за дълг от Холдем, значи ключовете не са излезли всички и той не е видял цялата игра. Потвърждавай само сума, която помниш: същият дълг може да дойде и втори път.",
       ["help.stakes.holdem.dealer"] = "Аддонът на раздаващия знае тестето на ръката, която раздава. В Холдем това са картите на всички. Играй Холдем за голд само с хора, на които вярваш. Раздаващият може и да анулира ръка, като замълчи, когато е негов ред: чиповете се връщат, а анулирането се брои по име.",
     }
     for k, v in pairs(BG) do
@@ -275,6 +275,22 @@ describe("locale and help", function()
     ok(T.bg["help.stakes.holdem.dealer"]:find("картите на всички", 1, true) and T.bg["help.stakes.holdem.dealer"]:find("брои по име", 1, true), "S1 and C9")
     ok(T.en["help.stakes.holdem.dealer"]:find("everybody's cards", 1, true) and T.en["help.stakes.holdem.dealer"]:find("counted by name", 1, true), "S1 and C9 (en)")
     ok(T.bg["help.stakes.p1"]:find("Холдем", 1, true) and T.en["help.stakes.p1"]:find("Hold'em", 1, true), "p1 names Холдем")
+  end)
+
+  -- Ruling F3-F I3 (Task 9 M5): the residual's only mitigation is this sentence, in both languages.
+  it("the Холдем stand text warns about a question before the keys", function()
+    local bg, en = T.bg["help.stakes.holdem.stand"], T.en["help.stakes.holdem.stand"]
+    ok(bg:find("Пита ли те аддонът за дълг от Холдем, значи ключовете не са излезли всички", 1, true), "bg: the question means the keys are not all in")
+    ok(bg:find("Потвърждавай само сума, която помниш: същият дълг може да дойде и втори път.", 1, true), "bg: the double-pay warning")
+    ok(en:find("If the addon asks you about a Hold'em debt, the keys are not all out", 1, true), "en: the question means the keys are not all in")
+    ok(en:find("Confirm only an amount you remember: the same debt can come a second time.", 1, true), "en: the double-pay warning")
+    -- Minor 11: the cash rules said as they are.
+    for lang, q in pairs({ bg = { "„", "“" }, en = { "“", "”" } }) do
+      ok(T[lang]["help.holdem.stake"]:find(q[1] .. T[lang]["cash.buy"] .. q[2], 1, true), lang .. ": the first buy is " .. T[lang]["cash.buy"])
+      ok(T[lang]["help.holdem.seats"]:find(q[1] .. T[lang]["dialog.stake.gold"] .. q[2], 1, true), lang .. ": seats names the staked table")
+    end
+    ok(T.bg["help.stakes.p1"]:find("В Холдем вместо сума избираш блайндовете.", 1, true) and T.en["help.stakes.p1"]:find("In Hold'em you choose the blinds", 1, true), "p1: blinds")
+    ok(T.bg["help.stakes.holdem.rebuy"]:find("връщаш се с точно 100", 1, true) and T.en["help.stakes.holdem.rebuy"]:find("exactly 100", 1, true), "rebuy: 100 BB")
   end)
 
   it("pinned texts are used verbatim", function()

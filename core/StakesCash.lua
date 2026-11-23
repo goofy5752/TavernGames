@@ -47,7 +47,7 @@ local _, ns = ...
 --   The dealer's step (E2, H14): s.hostHeard is my env.now() at the last EV,
 --     SNP or TCK of my host that my client took; s.stepAsks = {k = the dueKey,
 --     n} counts my asks for the step due (core/Cash.lua's `ask`), an ask only
---     while my client heard the host within FAIR_ASK_GAP before it (a dead
+--     while my client heard the host within PING_EVERY + FAIR_ASK_GAP before it (a dead
 --     link loses the asks and the host's words alike). Member.unasked reads it.
 --   The key draw (E8): the book's forged mark (rule 6a of core/Book.lua: my key
 --     left at the end and the same game runs on) is my foul too, at the end of
