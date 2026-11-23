@@ -150,3 +150,19 @@ describe("ui: widgets", function()
     ok(seen > 20, "ui files scanned: " .. seen)
   end)
 end)
+
+describe("ui: W.fit measures the whole text (final fix)", function()
+  it("a font string with its own width: the client bounds GetStringWidth by it, W.fit still shrinks", function()
+    local w = boot(); local W = w.ns.W
+    local fs = W.Label(w.G.UIParent, "ui", "", 12)
+    fs:SetFont(w.ns.Theme.font.ui, 12, "") -- a whole size: 6 px a character in the fake
+    fs:SetWidth(40); fs:SetText("123456789012") -- 12 characters at 6 px: 72 px of text in 40
+    eq({ fs:GetStringWidth(), fs:GetUnboundedStringWidth(), W.textWidth(fs) }, { 40, 72, 72 })
+    W.fit(fs, "1234567890", 40)
+    eq(select(2, fs:GetFont()), 8) -- 10 characters fit 40 px only at 8 (the floor)
+    W.fit(fs, "1234567890", 40, 10); eq(select(2, fs:GetFont()), 10) -- a floor of its own
+    W.fit(fs, "123", 40); eq(select(2, fs:GetFont()), 12)          -- a short text keeps the size
+    local bare = { GetStringWidth = function() return 7 end }
+    eq(W.textWidth(bare), 7) -- a client without GetUnboundedStringWidth
+  end)
+end)

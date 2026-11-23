@@ -192,16 +192,24 @@ function W.money(copper)
   return (ns.Util.money(copper):gsub("(%d+)([gsc])", function(n, letter) return n .. W.coinTag(COIN_OF[letter]) end))
 end
 
+-- The width the text of font string fs needs on one line. The client bounds
+-- GetStringWidth by a width set on fs, so a fixed column measures unbounded.
+function W.textWidth(fs)
+  if fs.GetUnboundedStringWidth then return fs:GetUnboundedStringWidth() end
+  return fs:GetStringWidth()
+end
+
 -- `text` on the one-line font string fs, its font one point smaller at a
--- time (down to FIT_MIN) until it fits `width`: an amount in a fixed column
--- is made smaller, never clipped. The font fs had at its first fit is its size.
+-- time (down to `floor`, default FIT_MIN) until it fits `width`: an amount in
+-- a fixed column is made smaller, never clipped. The font fs had at its first
+-- fit is its size.
 local FIT_MIN = 8
-function W.fit(fs, text, width)
+function W.fit(fs, text, width, floor)
   fs.fitFont = fs.fitFont or { fs:GetFont() }
   local path, size, flags = fs.fitFont[1], fs.fitFont[2], fs.fitFont[3]
   fs:SetFont(path, size, flags)
   fs:SetText(text)
-  while size - 1 >= FIT_MIN and fs:GetStringWidth() > width do
+  while size - 1 >= (floor or FIT_MIN) and W.textWidth(fs) > width do
     size = size - 1
     fs:SetFont(path, size, flags)
   end

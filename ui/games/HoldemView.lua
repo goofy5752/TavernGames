@@ -338,13 +338,8 @@ end
 
 -- `text` on button b in the largest size from LABEL down to LABEL_MIN that leaves LABEL_PAD of its width.
 local function fitLabel(b, text)
-  local fs, size = b.text, LABEL
-  fs:SetFont(Theme.font.heading, size, "")
-  fs:SetText(text)
-  while size > LABEL_MIN and fs:GetStringWidth() > b:GetWidth() - LABEL_PAD do
-    size = size - 1
-    fs:SetFont(Theme.font.heading, size, "")
-  end
+  if not b.text.fitFont then b.text:SetFont(Theme.font.heading, LABEL, "") end -- the size W.fit starts from
+  W.fit(b.text, text, b:GetWidth() - LABEL_PAD, LABEL_MIN)
 end
 
 local function setButton(f, b, shown, text)

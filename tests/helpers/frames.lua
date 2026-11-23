@@ -121,19 +121,28 @@ function FontString:SetWordWrap(on) self.wordWrap = on end
 function FontString:SetShadowOffset(x, y) self.shadow = { x, y } end
 function FontString:SetShadowColor(...) self.shadowColor = { ... } end
 function FontString:SetDrawLayer(layer, sub) self.layer, self.sublayer = layer, sub end
+-- A width set on the font string itself bounds GetStringWidth, as in the client.
+function FontString:SetWidth(w) self.width, self.fixedWidth = w, w end
+function FontString:SetSize(w, h) self.width, self.height, self.fixedWidth = w, h, w end
 -- Half the font size per character; an inline texture or atlas tag (a coin)
 -- is one square of the font size, as the client draws it; a colour code takes no room.
-function FontString:GetStringWidth()
+function FontString:GetUnboundedStringWidth()
   local text = (self.text or ""):gsub("|T.-|t", "MM"):gsub("|A.-|a", "MM"):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
   local _, n = text:gsub("[^\128-\191]", "")
   return n * (self.font and self.font[2] or 12) * 0.5
+end
+-- The drawn width: never more than a width set with SetWidth / SetSize.
+function FontString:GetStringWidth()
+  local w = self:GetUnboundedStringWidth()
+  if self.fixedWidth and self.fixedWidth > 0 then return math.min(w, self.fixedWidth) end
+  return w
 end
 -- Wrapped height: as many lines as the text needs at the width set (one line
 -- when no width is set), 1.25 x the font size each.
 function FontString:GetStringHeight()
   local size = self.font and self.font[2] or 12
   local lines = 1
-  if self.width and self.width > 0 then lines = math.max(1, math.ceil(self:GetStringWidth() / self.width)) end
+  if self.width and self.width > 0 then lines = math.max(1, math.ceil(self:GetUnboundedStringWidth() / self.width)) end
   return lines * size * 1.25
 end
 

@@ -290,7 +290,7 @@ local function setLine(b, i, row, text, status)
   line.text:SetWidth(width)
   line.text:SetWordWrap(false) -- measured on one row
   line.text:SetText(text)
-  local rows = (not status and line.text:GetStringWidth() > width) and 2 or 1
+  local rows = (not status and W.textWidth(line.text) > width) and 2 or 1
   line.text:SetWordWrap(rows == 2)
   line.text:Show()
   line.mark:SetText(mark and L(mark[1]) or "")

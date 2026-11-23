@@ -116,7 +116,7 @@ end
 local function noteAndName(p, w, text)
   local room = w - NOTE_RIGHT - NAME_X
   W.fit(p.note, text, room - NAME_MIN - NOTE_GAP)
-  p.name:SetWidth(math.max(0, math.min(w - PLATE_NAME_INSET, room - p.note:GetStringWidth() - NOTE_GAP)))
+  p.name:SetWidth(math.max(0, math.min(w - PLATE_NAME_INSET, room - W.textWidth(p.note) - NOTE_GAP)))
 end
 
 -- Places the plates on the grid of ns.HallLayout.plates, or around the felt
