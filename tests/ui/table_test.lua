@@ -141,10 +141,10 @@ describe("ui: table frame", function()
     eq(p1.name.points[1], { "LEFT", p1.frame, "LEFT", 40, 0 }); eq(p1.name:GetWidth(), 190 - 104)
     eq({ p1.frame:GetWidth(), p1.frame:GetHeight() }, { 190, 26 })                     -- the bar keeps its size
     for k = 1, 8 do eq(p1.tricks[k]:IsVisible(), false, "pip " .. k) end              -- Морски шах counts no tricks
-    local sets = 0; local set = p1.portrait.set
-    p1.portrait.set = function(...) sets = sets + 1; return set(...) end
+    local draws = 0; local coord = p1.portrait.tex.SetTexCoord
+    p1.portrait.tex.SetTexCoord = function(...) draws = draws + 1; return coord(...) end
     w.ns.client.events:emit("session", w.ns.client.session); w:advance(0); w:render(0.02)
-    eq(sets, 0)                                                                         -- set only when the seat's hero changes
+    eq(draws, 0)                                                                        -- drawn only when the seat's hero changes
     -- a free seat: the empty chair, „свободно място“
     local w2 = guildWow()
     w2.ns.client:openTable{ game = "ttt", access = "guild", turn = 45 }; w2:advance(0)

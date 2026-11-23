@@ -17,9 +17,23 @@ describe("ui: the hero portrait", function()
   it("the chain: my group's real portrait, the race icon, the class icon, our silhouette", function()
     local who = { name = B, cls = "PRIEST", race = "Tauren", sex = 2 }
     p:set(who); eq({ p.source, p.sil.layers }, { "sil", { "bust", "horns" } })
-    w:hasFile("Interface\\Icons\\ClassIcon_Priest"); A.reset(); p:set(who); eq(p.source, "class")
-    w:hasAtlas("raceicon128-tauren-male"); A.reset(); p:set(who); eq({ p.source, p.tex:GetAtlas() }, { "race", "raceicon128-tauren-male" })
+    -- the same who again draws nothing; the art the client has changed here, so the test forces it
+    w:hasFile("Interface\\Icons\\ClassIcon_Priest"); A.reset(); p:set(who); eq(p.source, "sil")
+    p:set(who, true); eq(p.source, "class")
+    w:hasAtlas("raceicon128-tauren-male"); A.reset(); p:set(who, true); eq({ p.source, p.tex:GetAtlas() }, { "race", "raceicon128-tauren-male" })
     who.unit = "party1"; p:set(who); eq({ p.source, p.tex.portrait }, { "unit", "party1" })
+  end)
+  it("set draws only when who or what the client knows of him changes; force and nil still draw", function()
+    local q = P.new(w.G.UIParent, 40)
+    local touched = 0
+    local setCoord = q.tex.SetTexCoord
+    q.tex.SetTexCoord = function(...) touched = touched + 1; return setCoord(...) end
+    local who = { name = B, cls = "PRIEST", race = "Tauren", sex = 2 }
+    q:set(who); eq(touched, 1)
+    q:set({ name = B, cls = "PRIEST", race = "Tauren", sex = 2 }); eq(touched, 1) -- a new table, the same data
+    q:set({ name = B, cls = "PRIEST", race = "Tauren", sex = 2, unit = "party1" }); eq(touched, 2)
+    q:set(nil); eq({ touched, q.source }, { 3, "empty" }); q:set(nil); eq(touched, 3)
+    q:set(who); q:set(who, true); eq(touched, 5)
   end)
   it("a peer without race or with a hostile one never reaches an atlas name", function()
     w:hasAtlas("raceicon128-tauren-male")

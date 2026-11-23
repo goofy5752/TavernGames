@@ -291,11 +291,9 @@ local function fillTable(t, rec, client)
       c.label:SetTextColor(nameColor(client, name))
       c.label:SetShown(labelled)
       c.button:SetEnabled(false)
-      local who = ns.Portrait.who(client, name)
-      local key = table.concat({ name, tostring(who.cls), tostring(who.race), tostring(who.sex), tostring(who.unit) }, "|")
-      if c.shown ~= key then c.shown = key; c.portrait:set(who) end
+      c.portrait:set(ns.Portrait.who(client, name))
     else
-      if c.shown ~= false then c.shown = false; c.portrait:set(nil) end
+      c.portrait:set(nil)
       c.label:Hide()
       c.button:SetEnabled(not mine)
     end

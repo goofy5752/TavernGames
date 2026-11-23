@@ -71,14 +71,9 @@ local function plateWidget(v, i)
   return p
 end
 
--- The seat's hero on the portrait, set again only when who sits there (or what
--- the client knows of him) changes.
+-- The seat's hero on the portrait (set again only when he changes, ui/Portrait.lua).
 local function hero(p, client, name)
-  local who = name and Portrait.who(client, name) or nil
-  local key = who and table.concat({ who.name, tostring(who.cls), tostring(who.race), tostring(who.sex), tostring(who.unit) }, "\1") or ""
-  if p.heroKey == key then return end
-  p.heroKey = key
-  p.portrait:set(who)
+  p.portrait:set(name and Portrait.who(client, name) or nil)
 end
 
 -- `n` pips (nil: none, at most PIPS).

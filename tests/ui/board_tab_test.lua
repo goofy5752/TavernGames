@@ -124,6 +124,20 @@ describe("ui: the tab „Класация“", function()
     ok(v.seal, "no seal")
   end)
 
+  it("a redraw of the rows sets no portrait whose player is unchanged", function()
+    local w = readyWow()
+    result(w); owe(w, B, ME, 50000)
+    local v = open(w)
+    local rows = shown(w)
+    local touched = 0
+    for _, r in ipairs(rows) do
+      local setCoord = r.portrait.tex.SetTexCoord
+      r.portrait.tex.SetTexCoord = function(...) touched = touched + 1; return setCoord(...) end
+    end
+    w:click(v.month); w:advance(0); w:click(v.all); w:advance(0)
+    eq(#shown(w), 2); eq(touched, 0)
+  end)
+
   it("the period buttons and the game button redraw the rows", function()
     local w = readyWow()
     result(w, "ttt"); owe(w, B, ME, 10000, "ttt")

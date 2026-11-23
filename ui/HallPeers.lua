@@ -80,9 +80,7 @@ function HallPeers.render(v, client)
     local r = peerWidget(v, i)
     r.peerName = p.name
     r.name:SetText(p.name)
-    local who = ns.Portrait.who(client, p.name)
-    local key = table.concat({ p.name, tostring(who.cls), tostring(who.race), tostring(who.sex), tostring(who.unit) }, "|")
-    if r.shown ~= key then r.shown = key; r.portrait:set(who) end
+    r.portrait:set(ns.Portrait.who(client, p.name))
     r.name:SetTextColor(ns.classColor(p.cls))
     r.status:SetText(whereIs(client, p, byTid))
     local offer = Hall.selected == p.name and HallPeers.canInviteName(client, p.name)

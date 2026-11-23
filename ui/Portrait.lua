@@ -96,8 +96,13 @@ function Portrait.new(parent, size, opts)
     b:Show()
   end
 
-  -- Shows `who` (see Portrait.who), or an empty seat for nil.
-  function p:set(who)
+  -- Shows `who` (see Portrait.who), or an empty seat for nil; nothing to do
+  -- while who and what the client knows of him are the ones shown, unless `force`.
+  function p:set(who, force)
+    local key = who and table.concat({ tostring(who.name), tostring(who.cls), tostring(who.race),
+                                       tostring(who.sex), tostring(who.unit) }, "\1") or ""
+    if key == self.key and not force then return end
+    self.key = key
     local tex, sil = self.tex, self.sil
     tex:SetTexCoord(0, 1, 0, 1)
     tex:SetVertexColor(1, 1, 1)
