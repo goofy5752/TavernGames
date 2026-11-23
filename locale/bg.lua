@@ -439,6 +439,7 @@ T["suit.S"] = "пика"
 -- Сантасе
 T["santase.marry20"] = "Обяви 20"
 T["santase.marry40"] = "Обяви 40"
+T["santase.marryBoth"] = "Обяви 20 / 40"
 T["santase.swap"] = "Смени деветката"
 T["santase.close"] = "Затвори"
 T["santase.pick"] = "Избери попа или дамата"

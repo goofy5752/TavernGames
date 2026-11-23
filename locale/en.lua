@@ -439,6 +439,7 @@ T["suit.S"] = "spades"
 -- Santase
 T["santase.marry20"] = "Declare 20"
 T["santase.marry40"] = "Declare 40"
+T["santase.marryBoth"] = "Declare 20 / 40"
 T["santase.swap"] = "Swap the nine"
 T["santase.close"] = "Close"
 T["santase.pick"] = "Pick the king or the queen"
