@@ -118,7 +118,7 @@ local function mark(f, x, y)
   local m = CreateFrame("Frame", nil, f)
   m:SetSize(MARK, MARK)
   m:SetPoint("CENTER", f, "TOPLEFT", x, y)
-  m:SetFrameLevel(f:GetFrameLevel() + 4) -- above the plates
+  m:SetFrameLevel(f:GetFrameLevel() + 8) -- above the plates and a card's layers (a card spans 4 levels)
   local disc = m:CreateTexture(nil, "ARTWORK")
   disc:SetTexture(Theme.tex.chip)
   disc:SetAllPoints(m)

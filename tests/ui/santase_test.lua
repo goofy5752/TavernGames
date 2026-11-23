@@ -116,6 +116,7 @@ describe("ui: Сантасе view", function()
     w:click(V.myFan.cards[1].frame); eq(sent, nil); w:click(V.myFan.cards[4].frame); eq(sent, { k = "play", i = 1, c = "KH" })
     eq(#w:texts("Тестето е затворено"), 1); eq(V.closeButton:IsVisible(), false); eq(V.trick[1].face, "AC")
     eq(V.trumpCard.face, nil); ok(V.trumpCard.frame:IsVisible()) -- turned down over the stock
+    ok(V.stockCard.frame:GetFrameLevel() > V.trumpCard.over:GetFrameLevel(), "the stock must clear the trump card's top layers")
     eq(#w:texts("Последна взятка"), 1); eq({ V.lastCards[1].face, V.lastCards[2].face }, { "9S", "AS" })
   end)
 
