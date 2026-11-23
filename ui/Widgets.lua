@@ -73,6 +73,50 @@ function W.tile(frame, path, texSize, w, h, layer)
   return t
 end
 
+-- The window chrome of skin Theme.S over all of `f` (`w` x `h` px): the wood
+-- tiled 4 px in and tinted woodTint, the hollow nine-slice of the skin's frame
+-- (a 12 px band) and a cap centred 5 px inside each top corner. Returns
+-- { wood, frame, caps = { left, right } }.
+function W.chrome(f, w, h)
+  local wood = W.tile(f, Theme.tex.wood, Theme.texSize.wood, w - 8, h - 8)
+  wood:SetPoint("TOPLEFT", f, "TOPLEFT", 4, -4)
+  wood:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -4, 4)
+  wood:SetVertexColor(unpack(Theme.S.woodTint))
+  local frame = W.nine(f, Theme.tex.frame, Theme.texSize.frame, 12, 12, "BORDER", true)
+  local function cap(point, x)
+    local t = f:CreateTexture(nil, "OVERLAY")
+    t:SetTexture(Theme.tex.cap)
+    t:SetSize(34, 34)
+    t:SetPoint("CENTER", f, point, x, -5)
+    return t
+  end
+  return { wood = wood, frame = frame, caps = { left = cap("TOPLEFT", 5), right = cap("TOPRIGHT", -5) } }
+end
+
+-- The crest of `faction` ("alliance" | "horde", default the applied skin), `size`
+-- px square: the client's (ns.Art) when it has one, else ours (`tex.standIn`).
+function W.crest(parent, size, faction)
+  faction = faction or Theme.skin
+  local tex = parent:CreateTexture(nil, "ARTWORK")
+  tex:SetSize(size, size)
+  if not (ns.Art and ns.Art.set(tex, "crest", faction)) then
+    tex:SetTexture(Theme.tex["crest_" .. faction])
+    tex.standIn = true
+  end
+  return tex
+end
+
+-- Masks `tex` with our oval/round mask (media/skin/mask) -> the mask, or nil
+-- on a client whose frames or textures cannot mask.
+function W.mask(tex, frame)
+  if not (frame.CreateMaskTexture and tex.AddMaskTexture) then return nil end
+  local m = frame:CreateMaskTexture()
+  m:SetTexture(Theme.tex.mask, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+  m:SetAllPoints(tex)
+  tex:AddMaskTexture(m)
+  return m
+end
+
 -- A FontString in one of the styles "heading" | "ui" | "dim" | "note", or
 -- "paper" | "paperNote" | "paperHeading" for text on cream paper.
 function W.Label(parent, style, text, size)
@@ -169,7 +213,7 @@ function W.Panel(parent)
   local f = CreateFrame("Frame", nil, parent)
   local fill = f:CreateTexture(nil, "BACKGROUND")
   fill:SetAllPoints(f)
-  fill:SetColorTexture(20 / 255, 10 / 255, 5 / 255, 0.55)
+  fill:SetColorTexture(0, 0, 0, 0.38)
   f.fill = fill
   local r, g, b = Theme.rgb("brassDim")
   local function line(p1, p2, horizontal)

@@ -129,7 +129,7 @@ local function layoutTabs()
     if prev then
       b:SetPoint("BOTTOMLEFT", prev, "BOTTOMRIGHT", 2, 0)
     else
-      b:SetPoint("BOTTOMLEFT", MainWindow.title, "BOTTOMRIGHT", 24, -5)
+      b:SetPoint("BOTTOMLEFT", MainWindow.title, "BOTTOMRIGHT", 60, -5) -- past the crest
     end
     prev = b
     styleTab(id)
@@ -149,12 +149,8 @@ local function build()
   takeKeyboard(f)
   ns.Resize.attach(f, "main", 6)
 
-  -- Wood inside the brass frame (tiled, slightly darker than the hall floor).
-  local wood = W.tile(f, Theme.tex.wood, Theme.texSize.wood, MainWindow.WIDTH - 8, MainWindow.HEIGHT - 8)
-  wood:SetPoint("TOPLEFT", f, "TOPLEFT", 4, -4)
-  wood:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -4, 4)
-  wood:SetVertexColor(0.85, 0.85, 0.85)
-  W.nine(f, Theme.tex.frame, Theme.texSize.frame, EDGE, EDGE, "BORDER", true)
+  -- Wood inside the skin's frame, with its corner caps.
+  MainWindow.chrome = W.chrome(f, MainWindow.WIDTH, MainWindow.HEIGHT)
 
   -- Title bar: the drag handle, with everything on it above it.
   local bar = CreateFrame("Frame", nil, f)
@@ -177,6 +173,11 @@ local function build()
   local title = W.Label(bar, "heading", L("addon.title"), 20)
   title:SetPoint("LEFT", mug, "RIGHT", 2, 0)
   MainWindow.title = title
+
+  -- The skin's crest after the title (the tabs start past it).
+  local crest = W.crest(bar, 28)
+  crest:SetPoint("LEFT", title, "RIGHT", 6, 0)
+  MainWindow.crest = crest
 
   local close = W.Close(f)
   close:SetFrameLevel(bar:GetFrameLevel() + 2)

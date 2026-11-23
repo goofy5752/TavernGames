@@ -434,12 +434,8 @@ function TableFrame.build()
   local v = { plates = {} }
   TableFrame.view = v
 
-  local wood = W.tile(f, Theme.tex.wood, Theme.texSize.wood, W_ - 8, H_ - 8)
-  wood:SetPoint("TOPLEFT", f, "TOPLEFT", 4, -4)
-  wood:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -4, 4)
-  wood:SetVertexColor(0.85, 0.85, 0.85)
-  v.wood = wood
-  W.nine(f, Theme.tex.frame, Theme.texSize.frame, EDGE, EDGE, "BORDER", true)
+  local chrome = W.chrome(f, W_, H_)
+  v.wood, v.chrome = chrome.wood, chrome
 
   -- Title bar: the drag handle.
   local bar = CreateFrame("Frame", nil, f)

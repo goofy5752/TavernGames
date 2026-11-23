@@ -19,14 +19,16 @@ ns.Adapter = Adapter
 -- bookKeep, bookSpent: the Hold'em table key and spend (core/Book.lua);
 -- stakeSeen, stakeLeft, stakeSat, stakeLog: my own outcome notes, the stake I
 -- sat down for and what I sent at that table (core/StakesWatch.lua), never
--- sent; ledger: the guild's gold ledger, account-wide; sound: false mutes ns.Art.play.
+-- sent; ledger: the guild's gold ledger, account-wide; sound: false mutes ns.Art.play;
+-- theme, deck: the character's skin key and deck (ui/Theme.lua), unset until chosen.
 local CHAR_KEYS = { snoozeUntil = true, busy = true, debug = true, fairKeep = true, lastAt = true,
-  bookKeep = true, bookSpent = true, stakeSeen = true, stakeLeft = true, stakeSat = true, stakeLog = true, paySent = true }
+  bookKeep = true, bookSpent = true, stakeSeen = true, stakeLeft = true, stakeSat = true, stakeLog = true, paySent = true,
+  theme = true, deck = true }
 local GLOBAL_KEYS = { lang = true, introDone = true, minimap = true, ledger = true, scale = true, sound = true }
 Adapter.CHAR_KEYS, Adapter.GLOBAL_KEYS = CHAR_KEYS, GLOBAL_KEYS
 Adapter.DEFAULTS = {
   char = { snoozeUntil = 0, busy = false, debug = false },
-  global = { introDone = false, minimap = { hide = false } },
+  global = { introDone = false, minimap = { hide = false }, sound = true },
 }
 
 local ALERT = { EV = true, ACT = true, SNP = true }
@@ -35,7 +37,7 @@ local CHANNELS = { GUILD = true, WHISPER = true }
 local WHO_WAIT = 5 -- seconds of roster lookup before asking the guild channel
 local NOT_FOUND_WINDOW = 5 -- seconds a whisper target's "player not found" line stays hidden
 local ROSTER_ASK_GAP = 10 -- seconds between roster refreshes asked for by unknown senders
-local INK = { 243 / 255, 226 / 255, 192 / 255 }
+local INK = { 242 / 255, 230 / 255, 200 / 255 } -- the ink token (ui/Theme.lua), for a class unknown
 
 -- The db table of the env contract over an AceDB object: char keys and global
 -- keys go to their own section; any other key is a programming error.
@@ -451,6 +453,7 @@ function addon:OnInitialize()
 end
 
 function addon:OnEnable()
+  if ns.Theme then ns.Theme.apply(ns.Theme.resolve(ns.db.theme, (UnitFactionGroup("player")))) end
   notFoundPattern = Adapter.pattern(ERR_CHAT_PLAYER_NOT_FOUND_S)
   offlinePattern = Adapter.pattern(ERR_FRIEND_OFFLINE_S)
   addFilter("CHAT_MSG_SYSTEM", hideNotFound)

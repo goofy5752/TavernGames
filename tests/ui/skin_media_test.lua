@@ -1,18 +1,7 @@
--- Every faction skin texture exists as a 32-bit TGA of the size the later tasks rely on.
-local SIZES = {
-  felt_alliance = { 256, 256 }, felt_horde = { 256, 256 },
-  frame_alliance = { 64, 64 }, frame_horde = { 64, 64 },
-  cap_alliance = { 64, 64 }, cap_horde = { 64, 64 },
-  stone = { 128, 128 },
-  oval_alliance = { 512, 256 }, oval_horde = { 512, 256 },
-  crest_alliance = { 128, 128 }, crest_horde = { 128, 128 },
-  coins = { 128, 32 }, parchment = { 256, 256 }, pring = { 128, 128 }, mask = { 64, 64 },
-  button_alliance = { 128, 32 }, button_hi_alliance = { 128, 32 },
-  button_horde = { 128, 32 }, button_hi_horde = { 128, 32 },
-  chip = { 32, 32 },
-  card_back_alliance = { 64, 128 }, card_back_horde = { 64, 128 },
-  cameo = { 64, 64 }, ribbon = { 64, 16 }, sil = { 512, 64 },
-}
+-- Every faction skin texture (Theme.skinTexSize) exists as a 32-bit TGA of the size the later tasks rely on.
+local ns = {}
+loadfile("ui/Theme.lua")("TavernGames", ns)
+local SIZES = ns.Theme.skinTexSize
 
 describe("skin media", function()
   it("lists 25 textures", function()

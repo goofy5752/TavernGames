@@ -89,7 +89,7 @@ describe("ui: table frame", function()
     local v = w.ns.TableFrame.view
     ok(v.banner:IsVisible(), "no banner"); eq(v.bannerText:GetText(), "Чакаме втори играч…")
     eq(v.plates[1].name:GetText(), ME); eq(color(v.plates[1].name), MAGE)
-    eq(v.plates[1].note:GetText(), "|cffe9c98aХ|r")
+    eq(v.plates[1].note:GetText(), w.ns.W.paint("Х", w.ns.Theme.rgb("brassLight")))
     eq(v.plates[2].name:GetText(), L("table.free"))
     eq(v.plates[1].ring:IsVisible(), false); eq(v.plates[1].clock:IsVisible(), false)
     ok(v.inviteButton:IsVisible(), "no Покани"); eq(v.inviteButton.text:GetText(), "Покани")
@@ -212,7 +212,7 @@ describe("ui: table frame", function()
     w.ns.client:openTable{ game = "ttt", access = "invite", turn = 45 }
     w:advance(0)
     local v, emit = w.ns.TableFrame.view, function(...) w.ns.client.events:emit("inviteAnswer", ...) end
-    local who = "|cfff3e2c0" .. B .. "|r" -- class unknown: ink
+    local who = "|cfff2e6c8" .. B .. "|r" -- class unknown: ink
     local cases = {
       { { "yes" }, who .. " прие поканата." },
       { { "no" }, who .. " отказа поканата." },

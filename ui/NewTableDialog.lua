@@ -16,7 +16,7 @@ local D = {
 }
 ns.NewTableDialog = D
 
-local WIDTH, HEIGHT, EDGE = 400, 330, 12
+local WIDTH, HEIGHT = 400, 330
 local LABEL_X, VALUE_X = 24, 170
 local OPTION_H = 34 -- one row per engine option, below the turn row
 local RANGE_H = 34 -- the range line of a cash table, under its blinds
@@ -252,11 +252,7 @@ local function build()
   f:SetFrameStrata("DIALOG")
   f:SetToplevel(true)
   f:EnableMouse(true)
-  local wood = W.tile(f, Theme.tex.wood, Theme.texSize.wood, WIDTH - 8, HEIGHT - 8)
-  wood:SetPoint("TOPLEFT", f, "TOPLEFT", 4, -4)
-  wood:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -4, 4)
-  D.wood = wood
-  W.nine(f, Theme.tex.frame, Theme.texSize.frame, EDGE, EDGE, "BORDER", true)
+  D.wood = W.chrome(f, WIDTH, HEIGHT).wood
 
   local title = W.Label(f, "heading", L("dialog.title"), 18)
   title:SetPoint("TOP", f, "TOP", 0, -20)
