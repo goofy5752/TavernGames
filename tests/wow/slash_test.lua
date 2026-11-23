@@ -305,3 +305,28 @@ describe("/tavern probe", function()
     eq(#w.chat, n + 1); eq(w.chat[n + 1], said .. L("probe.mail.closed"))
   end)
 end)
+
+describe("/tavern ledger", function()
+  it("prints authors, entries, stubs and the digest on one local line", function()
+    local w = guildWow()
+    w:fire("PLAYER_LOGIN")
+    w:advance(w.ns.Const.LEDGER_ADOPT_WAIT + 1)
+    local L = w.ns.L
+    w.ns.client.ledgerNet:make("R", { gid = ME .. "#1/1", g = "ttt", n = { ME, B }, w = { 1 }, l = { 2 } })
+    w:advance(1)
+    local said = "|cffb0813f" .. L("addon.title") .. "|r: "
+    local n = #w.chat
+    w:slash("ledger")
+    eq(#w.chat, n + 1)
+    eq(w.chat[n + 1], said .. L("ledger.stats", 1, 1, 0, w.ns.client.ledger:digest()))
+    eq(L("ledger.stats", 2, 30, 4, "abcd1234"), "Тефтер: 2 автори, 30 записа, 4 стари (само следа), отпечатък abcd1234")
+    ok(w.ns.client.ledger:digest():match("^%x%x%x%x%x%x%x%x$"), "no digest")
+  end)
+
+  it("without a guild it says nothing is kept yet", function()
+    local w = Wow.new(); w:boot()
+    local n = #w.chat
+    w:slash("ledger")
+    eq(#w.chat, n + 1)
+  end)
+end)

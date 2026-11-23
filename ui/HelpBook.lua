@@ -1,6 +1,6 @@
 local _, ns = ...
 
--- The rules book (spec 5.3а): a 640 x 480 sheet of cream paper in the brass
+-- The rules book (spec 5.3а): a 640 x 520 sheet of cream paper in the brass
 -- frame, titled „Книжка с правила“. The topics of core/Help.lua are listed on
 -- the left; the right side shows the chosen topic's blocks: "p" as text,
 -- "example" as an indented italic block with a brass rule on its left, "board"
@@ -14,7 +14,7 @@ local _, ns = ...
 local Theme, W, L = ns.Theme, ns.W, ns.L
 
 local HelpBook = {
-  WIDTH = 640, HEIGHT = 480,
+  WIDTH = 640, HEIGHT = 520, -- thirteen topics (F4 added „Класация“ and „История“)
   frame = nil,   -- built on the first open
   current = nil, -- the topic id shown
   topics = {},   -- { id, button } per topic, in Help order
@@ -36,7 +36,7 @@ local CELL, CELL_GAP = 26, 2
 local LADDER_SIZE, LADDER_ARROW, LADDER_GAP = 22, 16, 8
 local CARD_SCALE, CARD_GAP = 0.8, 4
 local DIE, DIE_GAP = 28, 6
-local TOPIC_H, TOPIC_GAP, TOPIC_PAD = 26, 4, 8 -- a list row: least height, gap below, text inset
+local TOPIC_H, TOPIC_GAP, TOPIC_PAD = 26, 3, 8 -- a list row: least height, gap below, text inset
 
 local function setColor(fs, token) fs:SetTextColor(Theme.rgb(token)) end
 

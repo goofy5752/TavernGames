@@ -211,6 +211,18 @@ local function bots(arg)
   say(L("bots." .. state))
 end
 
+-- /tavern ledger: one local line, never sent: authors held, bodies, stubs (old results kept as a
+-- trace only) and my digest.
+function Slash.ledger()
+  local client = ns.client
+  local ledger = client and client.ledger
+  if not ledger then return say(L("ledger.none")) end
+  local authors, bodies = 0, 0
+  for _ in pairs(ledger:vector()) do authors = authors + 1 end
+  ledger:each(function() bodies = bodies + 1 end)
+  say(L("ledger.stats", authors, bodies, ledger:stubCount(), ledger:digest(true) or "-"))
+end
+
 local COMMANDS = {
   [""] = function()
     if ns.MainWindow then return ns.MainWindow.toggle() end
@@ -229,6 +241,7 @@ local COMMANDS = {
     ns.db.lang, ns.db.introDone = nil, nil
     say(L("reset.done"))
   end,
+  ledger = Slash.ledger,
   probe = probe,
 }
 

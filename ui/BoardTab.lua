@@ -22,14 +22,15 @@ local BoardTab = {
 ns.BoardTab = BoardTab
 
 local BOOK_W, PAD, HEAD_H, ROW_H, ROWS = 760, 14, 90, 26, 14
-local BAR, MID = 60, 372 -- the bar's longest side, and its middle from the row's left
+local BAR, MID = 60, 352 -- the bar's longest side, and its middle from the row's left
 local PERIODS = { "week", "month", "all" }
 local GREEN, RED, RULE = { 0.27, 0.48, 0.2 }, { 0.66, 0.2, 0.18 }, { 0xd9 / 255, 0xc4 / 255, 0x9a / 255 }
 -- Columns: x from the row's left, width, justification.
 local COL = {
-  place = { 6, 22, "RIGHT" }, name = { 34, 140, "LEFT" }, games = { 176, 40, "RIGHT" }, wins = { 220, 46, "RIGHT" },
-  pct = { 270, 40, "RIGHT" }, net = { MID + BAR + 6, 84, "LEFT" }, fav = { 528, 84, "LEFT" }, honour = { 614, 90, "LEFT" },
+  place = { 6, 22, "RIGHT" }, name = { 34, 120, "LEFT" }, games = { 156, 40, "RIGHT" }, wins = { 200, 46, "RIGHT" },
+  pct = { 250, 40, "RIGHT" }, net = { MID + BAR + 6, 84, "LEFT" }, fav = { MID + BAR + 92, 104, "LEFT" }, honour = { 614, 98, "LEFT" },
 }
+BoardTab.COL, BoardTab.MID, BoardTab.BAR = COL, MID, BAR
 
 ---------------------------------------------------------------------------
 -- The lines
@@ -159,15 +160,24 @@ function BoardTab.nextGame()
 end
 
 -- Redraws on a ledger event: on the next frame, at most once per GAP s, only while shown.
-function BoardTab.refresh()
+-- When the timer fires the gap is checked again: a click or a hide and show in between
+-- already drew the page, and the timer waits out what is left of the gap.
+local function arm()
   local v = BoardTab.view
-  if BoardTab.scheduled or not v or not v.page:IsVisible() then return end
   BoardTab.scheduled = true
   local wait = math.max(0, (v.drawn or -BoardTab.GAP) + BoardTab.GAP - GetTime())
   C_Timer.After(wait, function()
+    if not v.page:IsVisible() then BoardTab.scheduled = false; return end
+    if GetTime() - (v.drawn or -BoardTab.GAP) < BoardTab.GAP - 1e-6 then return arm() end
     BoardTab.scheduled = false
     BoardTab.render()
   end)
+end
+
+function BoardTab.refresh()
+  local v = BoardTab.view
+  if BoardTab.scheduled or not v or not v.page:IsVisible() then return end
+  arm()
 end
 
 function BoardTab.build(page)
@@ -197,6 +207,7 @@ function BoardTab.build(page)
   cols:SetSize(BOOK_W - 20 - 2 * PAD, 18)
   cols:SetPoint("TOPLEFT", book, "TOPLEFT", PAD, -10)
   for _, key in ipairs({ "games", "wins", "pct", "fav" }) do column(cols, key, L("board.col." .. key), 11, "paperItalic") end
+  v.nameHead = column(cols, "name", L("board.col.name"), 11, "paperItalic")
   local net = column(cols, "net", L("board.col.net"), 11, "paperItalic")
   net:ClearAllPoints()
   net:SetPoint("LEFT", cols, "LEFT", MID - BAR, 0)
@@ -207,7 +218,11 @@ function BoardTab.build(page)
   v.empty = W.Label(book, "paperItalic", L("board.empty"), 14)
   v.empty:SetPoint("TOPLEFT", book, "TOPLEFT", PAD + 22, -PAD - 28)
   BoardTab.view = v
-  page:SetScript("OnShow", function() BoardTab.render() end)
+  -- The ⓘ of the title bar opens this tab's topic while it is shown, the hall's after.
+  local function topic(id) if ns.MainWindow.info then ns.MainWindow.info.topic = id end end
+  page:SetScript("OnShow", function() topic("board"); BoardTab.render() end)
+  page:SetScript("OnHide", function() topic("hall") end)
+  topic("board") -- built when first shown: OnShow has not run for it
   BoardTab.render()
 end
 

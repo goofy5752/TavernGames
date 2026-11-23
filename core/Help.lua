@@ -134,6 +134,19 @@ Help.topics = {
     { kind = "p", key = "help.ledger.alts" },
     { kind = "p", key = "help.ledger.holds" },
     { kind = "p", key = "help.ledger.mine" },
+    { kind = "p", key = "help.ledger.keep" },
+  } },
+  -- „Класация“ and „История“: whose word a result needs, the crown, the log; the ⓘ of each tab opens its own.
+  { id = "board", title = "tab.board", blocks = {
+    { kind = "p", key = "help.board.p1" },
+    { kind = "p", key = "help.board.trust" },
+    { kind = "p", key = "help.board.king" },
+    { kind = "example", key = "help.board.example" },
+  } },
+  { id = "history", title = "tab.history", blocks = {
+    { kind = "p", key = "help.history.p1" },
+    { kind = "p", key = "help.history.marks" },
+    { kind = "example", key = "help.history.example" },
   } },
   { id = "soon", title = "games.soon", blocks = {
     { kind = "p", key = "help.soon.p" },

@@ -276,7 +276,11 @@ function HistoryTab.build(page)
   v.empty = W.Label(book, "paperItalic", L("history.empty"), 14)
   v.empty:SetPoint("TOPLEFT", book, "TOPLEFT", PAD + 8, -PAD - 6)
   HistoryTab.view = v
-  page:SetScript("OnShow", function() HistoryTab.render() end)
+  -- The ⓘ of the title bar opens this tab's topic while it is shown, the hall's after.
+  local function topic(id) if ns.MainWindow.info then ns.MainWindow.info.topic = id end end
+  page:SetScript("OnShow", function() topic("history"); HistoryTab.render() end)
+  page:SetScript("OnHide", function() topic("hall") end)
+  topic("history")
   HistoryTab.render()
 end
 

@@ -240,4 +240,15 @@ describe("ui: the tab „История“", function()
     w.ns.MainWindow.show("history"); w:advance(0)
     eq(#shown(w), 7)
   end)
+
+  it("the ⓘ opens the tab's own topic while it is shown and the hall's after", function()
+    local w = readyWow()
+    local MW = w.ns.MainWindow
+    MW.show("history"); w:advance(0)
+    eq(MW.info.topic, "history")
+    MW.show("hall"); eq(MW.info.topic, "hall")
+    MW.show("history"); eq(MW.info.topic, "history")
+    MW.show("settings"); eq(MW.info.topic, "hall")
+  end)
+
 end)

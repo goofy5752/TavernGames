@@ -26,7 +26,7 @@ describe("locale and help", function()
     local H = ns.Help
     local ids = {}
     for i, t in ipairs(H.topics) do ids[i] = t.id end
-    eq(ids, { "hall", "ttt", "deathroll", "santase", "belot", "tabla", "holdem", "fair", "stakes", "ledger", "soon" })
+    eq(ids, { "hall", "ttt", "deathroll", "santase", "belot", "tabla", "holdem", "fair", "stakes", "ledger", "board", "history", "soon" })
     eq(#H.intro, 4)
     for _, t in ipairs(H.topics) do
       both(t.title, "topic title")
@@ -121,7 +121,7 @@ describe("locale and help", function()
       end
       local checked, cards, belot, tabla, holdem, money = 0, 0, 0, 0, 0, 0
       for k, text in pairs(T[lang]) do
-        local isMoney = k:match("^help%.stakes%.") or k:match("^help%.ledger%.")
+        local isMoney = k:match("^help%.stakes%.") or k:match("^help%.ledger%.") or k:match("^help%.board%.") or k:match("^help%.history%.")
         local card = k:match("^help%.santase%.") or k:match("^help%.fair%.")
         local isBelot = k:match("^help%.belot%.")
         local isTabla = k:match("^help%.tabla%.")
@@ -172,7 +172,7 @@ describe("locale and help", function()
       "p help.stakes.holdem.stand", "p help.stakes.holdem.dealer" })
     eq(H.get("ledger").title, "tab.ledger")
     eq(keys("ledger"), { "p help.ledger.p1", "p help.ledger.pay.trade", "p help.ledger.pay.mail", "p help.ledger.settle",
-      "example help.ledger.net", "p help.ledger.alts", "p help.ledger.holds", "p help.ledger.mine" })
+      "example help.ledger.net", "p help.ledger.alts", "p help.ledger.holds", "p help.ledger.mine", "p help.ledger.keep" })
     eq(T.bg["help.stakes.example"], "Иван и Мария играят Морски шах за 1g. Мария печели. Иван вижда в „Сметки“: „Дължиш на Мария Колева 1g“ и натиска „Плати“.")
     -- Each label below is the whole text of a UI key and is quoted in the two topics, in both languages.
     local LABELS = { "accounts.title", "accounts.pay", "accounts.settle", "accounts.nudge", "table.stand", "dialog.stake.gold",
@@ -382,5 +382,38 @@ describe("locale and help", function()
     ns.Locale.set("xx"); eq(ns.Locale.lang(), "en")
     ns.Locale.set("bg")
     T.bg["test.fmt"], T.en["test.fmt"] = nil, nil
+  end)
+
+  it("the board topic says whose word a result needs", function()
+    local H = ns.Help
+    local function keys(id)
+      local out = {}
+      for i, b in ipairs(H.get(id).blocks) do out[i] = b.kind .. " " .. b.key end
+      return out
+    end
+    eq(H.get("board").title, "tab.board"); eq(H.get("history").title, "tab.history")
+    eq(keys("board"), { "p help.board.p1", "p help.board.trust", "p help.board.king", "example help.board.example" })
+    eq(keys("history"), { "p help.history.p1", "p help.history.marks", "example help.history.example" })
+    local trust = T.bg["help.board.trust"]
+    ok(trust:find("потвърди", 1, true) and trust:find("домакин", 1, true), "the trust text")
+    ok(T.en["help.board.trust"]:find("confirm", 1, true) and T.en["help.board.trust"]:find("host", 1, true), "the trust text (en)")
+    ok(T.bg["help.board.king"]:find("най-много злато", 1, true), "the crown goes to the gold")
+    ok(T.bg["help.board.king"]:find("победи", 1, true), "and to the wins when no gold moved")
+    ok(T.bg["help.board.p1"]:find("Натисни ред", 1, true), "a row opens its history")
+  end)
+
+  it("the ledger topic says old results leave and debts stay", function()
+    local keep = T.bg["help.ledger.keep"]
+    ok(keep:find("година", 1, true) and keep:find("ълговете", 1, true), "bg")
+    ok(T.en["help.ledger.keep"]:find("year", 1, true) and T.en["help.ledger.keep"]:find("ebts", 1, true), "en")
+  end)
+
+  it("the book lists the board and the history topics, the board has its Player header and /tavern ledger its line", function()
+    local ids = {}
+    for _, t in ipairs(ns.Help.topics) do ids[t.id] = true end
+    ok(ids.board and ids.history, "topics")
+    eq(T.bg["board.col.name"], "Играч"); eq(T.en["board.col.name"], "Player")
+    eq(T.bg["ledger.stats"], "Тефтер: %d автори, %d записа, %d стари (само следа), отпечатък %s")
+    eq(T.en["ledger.stats"], "Ledger: %d authors, %d entries, %d old (trace only), digest %s")
   end)
 end)

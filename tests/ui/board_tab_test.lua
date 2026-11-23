@@ -187,6 +187,55 @@ describe("ui: the tab „Класация“", function()
     w.ns.HistoryTab = nil
     r.frame.scripts.OnMouseUp(r.frame, "LeftButton")
   end)
+
+  it("the timer re-checks the two seconds when it fires: a click in between draws once", function()
+    local w = readyWow()
+    open(w)
+    local runs = 0
+    local stats = w.ns.LedgerStats
+    local orig = stats.board
+    stats.board = function(...) runs = runs + 1; return orig(...) end
+    w:advance(1.5)
+    Bd(w).refresh()               -- due at drawn + 2 s, 0.5 s from now
+    w:advance(0.4)
+    Bd(w).setPeriod("month")      -- a click: drawn now
+    eq(runs, 1)
+    w:advance(0.3)                -- the timer has fired, 0.2 s after the click
+    eq(runs, 1)
+    w:advance(2)
+    eq(runs, 2)                   -- it came again once, a full gap after the click
+    stats.board = orig
+  end)
+
+  it("the ⓘ opens the tab's own topic while it is shown and the hall's after", function()
+    local w = readyWow()
+    local MW = w.ns.MainWindow
+    open(w)
+    eq(MW.info.topic, "board")
+    MW.show("hall"); eq(MW.info.topic, "hall")
+    MW.show("board"); eq(MW.info.topic, "board")
+    MW.show("settings"); eq(MW.info.topic, "hall")
+  end)
+
+  it("the columns fit the row of 712 px, the honour column holds the longest text, the name column has a header", function()
+    local w = readyWow()
+    local v = open(w)
+    local COL = Bd(w).COL
+    local order = { "place", "name", "games", "wins", "pct", "net", "fav", "honour" }
+    local prev = 0
+    for _, k in ipairs(order) do
+      local c = COL[k]
+      ok(c[1] >= prev, k .. " overlaps the column before it")
+      prev = c[1] + c[2]
+    end
+    ok(prev <= 712, "the row is " .. prev .. " px")
+    ok(COL.honour[2] >= 98, "the honour column is " .. COL.honour[2])
+    ok(COL.fav[2] >= 100, "the favourite column is " .. COL.fav[2])
+    local pctEnd = COL.pct[1] + COL.pct[2]
+    ok(Bd(w).MID - Bd(w).BAR >= pctEnd, "a negative bar starts under the percent")
+    eq(v.nameHead:GetText(), "Играч")
+  end)
+
 end)
 
 describe("ui: BookList", function()
