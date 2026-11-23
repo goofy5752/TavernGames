@@ -412,7 +412,7 @@ local function drawHand(f, m)
   if mine then
     local faces = { ms.cards[1], ms.cards[2] }
     for _, face in ipairs(m.board) do faces[#faces + 1] = face end
-    key = table.concat(faces, " ")
+    key = ns.Locale.lang() .. " " .. table.concat(faces, " ")
     if f.handKey ~= key then
       f.handKey = key
       W.fit(f.handLabel, View.handText(faces), HAND_W, LABEL_MIN)
