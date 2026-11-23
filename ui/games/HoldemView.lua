@@ -35,6 +35,7 @@ local CENTRE_X, POT_Y, TEXT_Y = 366, -156, -250
 local LEFT_X, NOTE_Y, LOG_Y, LEFT_W = 12, -366, -396, 270 -- the note in the close button's place (never both)
 local LABEL, LABEL_MIN, LABEL_PAD = 13, 8, 6 -- a button label shrinks to fit its button (8: W.fit's floor; 199g 95s at a cash table)
 local FOLDED_ALPHA, OFF_ALPHA = 0.5, 0.5
+local HAND_X, HAND_Y, HAND_W = 150, -338, 165 -- right edge 315, 8 px from my cards; below the bet of the seat on my left, above the note
 -- The finished hand's words with a hand category: the index of the category in the model's text.
 local CAT_AT = { ["holdem.won"] = 4, ["holdem.split"] = 3, ["holdem.log"] = 5, ["holdem.logSplit"] = 4 }
 -- The model's words with a chip count: the index of the amount in the model's text.
@@ -216,6 +217,14 @@ function View.build(parent)
   f.log:SetPoint("TOPLEFT", f, "TOPLEFT", LEFT_X, LOG_Y)
   f.log:Hide()
 
+  f.handLabel = W.Label(f, "heading", "", 13)
+  f.handLabel:SetTextColor(Theme.rgb("goldHi"))
+  f.handLabel:SetJustifyH("RIGHT")
+  f.handLabel:SetWordWrap(false)
+  f.handLabel:SetSize(HAND_W, 16)
+  f.handLabel:SetPoint("TOPLEFT", f, "TOPLEFT", HAND_X, HAND_Y)
+  f.handLabel:Hide()
+
   local plates = ns.HallLayout.ring(SEATS, FELT_W, FELT_H, 1) -- seat k + 1 sits at place k
   f.place, f.seat = {}, {}
   for k = 0, SEATS - 1 do f.place[k] = place(f, k, plates[k + 1]) end
@@ -375,6 +384,44 @@ local function drawWords(f, s, m)
   f.log:SetShown(m.log ~= nil)
 end
 
+-- My hand in words (ns.HoldemEval.describe of my hole cards and the board), left of my cards, in goldHi: only
+-- mine, only while I hold a live hand (not a watcher, not folded, not while the deal is shuffled); drawn again
+-- only when the cards change. Never sent.
+local CARD_KEY = { [10] = "T", [11] = "J", [12] = "Q", [13] = "K", [14] = "A" }
+local function cardName(r) return L("card." .. (CARD_KEY[r] or tostring(r))) end
+local function cardRun(r, n)
+  local c = cardName(r)
+  return (string.rep(c .. (#c > 1 and " " or ""), n):gsub(" $", ""))
+end
+function View.handText(faces)
+  local d = ns.HoldemEval.describe(faces)
+  local r, c = d.ranks, d.cat
+  local one, many = function(x) return L("holdem.r1." .. x) end, function(x) return L("holdem.rn." .. x) end
+  if c == 9 and r[1] == 14 then return L("holdem.hand.royal") end
+  if c == 3 then return L("holdem.hand.3", many(r[1]), many(r[2])) end
+  if c == 7 then return L("holdem.hand.7", cardRun(r[1], 3), cardRun(r[2], 2)) end
+  if c == 2 or c == 4 or c == 8 then return L("holdem.hand." .. c, many(r[1])) end
+  return L("holdem.hand." .. c, one(r[1]))
+end
+
+local function drawHand(f, m)
+  local ms = m.seats[m.me]
+  local mine = m.seated and m.inHand and m.phase ~= "deal" and ms and ms.cards and not ms.folded
+    and ms.cards[1] and ms.cards[2]
+  local key = nil
+  if mine then
+    local faces = { ms.cards[1], ms.cards[2] }
+    for _, face in ipairs(m.board) do faces[#faces + 1] = face end
+    key = table.concat(faces, " ")
+    if f.handKey ~= key then
+      f.handKey = key
+      W.fit(f.handLabel, View.handText(faces), HAND_W, LABEL_MIN)
+    end
+  end
+  if not key then f.handKey = nil end
+  f.handLabel:SetShown(key ~= nil)
+end
+
 function View.update(f, s)
   f.session = s
   local key = eventKey(s)
@@ -388,6 +435,7 @@ function View.update(f, s)
   drawTable(f, s, m)
   drawButtons(f, s, m)
   drawWords(f, s, m)
+  drawHand(f, m)
   ns.HoldemCashView.update(f, s, m)
 end
 
