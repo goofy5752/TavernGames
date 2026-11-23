@@ -57,7 +57,7 @@ function Ledger.new(store, me, epoch)
   local rec = store.me[me]
   if not (type(rec) == "table" and whole(rec.seq) and rec.seq >= 0 and rec.seq <= Ledger.ID_MAX
     and type(rec.born) == "number") then rec, store.me[me] = nil, nil end
-  local L = setmetatable({ store = store, me = me, epoch = epoch, rev = 0, top = {}, run = {}, rc = {}, deny = {}, xc = {}, il = {}, dirty = {}, act = {}, sn = {},
+  local L = setmetatable({ store = store, me = me, epoch = epoch, rev = 0, top = {}, run = {}, rc = {}, deny = {}, xc = {}, il = {}, dirty = {}, act = {}, sn = {}, sx = {},
     fresh = rec == nil, adopting = rec == nil, base = rec and rec.seq or 0 }, Store)
   L:refusedLoad()
   for a, byN in pairs(ev) do
@@ -70,6 +70,7 @@ function Ledger.new(store, me, epoch)
     end
   end
   L:stubLoad()
+  L.came = setmetatable({}, { __mode = "k" }) -- came[body] = L.rev when it came after the load (the sync's Sync:tail)
   if L.fresh then for _, k in ipairs(keys(store.ev[me], nil)) do L:bump(k) end end
   return L
 end
@@ -116,6 +117,7 @@ function Store:move(a, n, b, gone)
     s.ev[a][n] = b
   end
   if #tw == 0 then s.tw[a][n] = nil end
+  if self.came and not gone then self.came[b] = self.rev end
   self:stale(a, b.i .. ":" .. b.h, gone)
   self:advance(a)
 end

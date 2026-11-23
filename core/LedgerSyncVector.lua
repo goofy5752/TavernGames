@@ -5,7 +5,8 @@ local _, ns = ...
 -- (Sync:fixed), and a vector that does not fit LEDGER_EX_PAGES pages: only a
 -- part of it goes, the authors the partner is known to differ on first, then
 -- by their newest entry (Sync:order, Sync:cells, Sync:asking), so that every
--- exchange does some of the work and none is refused whole.
+-- exchange does some of the work and none is refused whole. What goes of an
+-- author's tail: Sync:tail (core/LedgerSyncTail.lua; L:above when I hold no stub).
 local C, Util = ns.Const, ns.Util
 local Sync = ns.LedgerSync
 local sorted, byteLess = Sync.sorted, Util.byteLess
@@ -87,7 +88,7 @@ function Sync:vector(x)
   if x.hold then return self:later(function() if self.by[x.peer] == x then self:vector(x) end end) end
   local L, mine, back, fix = self.L, self.L:vector(), {}, self:fixed(x.peer)
   local extra, want = {}, self.want[x.peer] or {}
-  x.acted = {}
+  x.acted, x.rev0 = {}, L.rev -- what comes to me after rev0 is not in this exchange's queue (Sync:tail)
   for _, a in ipairs(sorted(x.ask and x.v or mine)) do
     local m, t = mine[a], x.v[a]
     local sig = (t and t.n .. ":" .. t.x or "-") .. "|" .. (m and m.n .. ":" .. m.x or "-")
@@ -96,10 +97,10 @@ function Sync:vector(x)
     if not x.ask and not t and x.partial then
       extra[a] = m
     elseif go and not x.ask then
-      x.acted[a] = sig; self:queue(x, L:above(a, t and t.n or 0))
+      x.acted[a] = sig; self:queue(x, self:tail(x, a, t))
     end
     if not x.ask and t and t.x ~= m.x and t.n >= m.n then back[a] = m end
-    if go and x.ask and m and m.n > t.n then x.acted[a] = sig; self:queue(x, L:above(a, t.n)) end
+    if go and x.ask and m and m.n > t.n then x.acted[a] = sig; self:queue(x, self:tail(x, a, t)) end
     if go and x.ask and m and m.n == t.n and x.lidOut < C.LEDGER_LID_AUTHORS then
       x.acted[a], x.lidOut = sig, x.lidOut + 1
       self:lid(x, a, m.n, {})

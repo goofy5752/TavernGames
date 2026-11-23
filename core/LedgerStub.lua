@@ -7,8 +7,9 @@ local _, ns = ...
 -- n, the vector), so a pruned store, a full one and an F1–F3 one agree and exchange
 -- nothing. Its body offered again is a dup; it counts toward the four bodies of its id; my
 -- counter steps over it (Store:add, Store:make). No entry: never in the view. Never
--- stubbed: a D, C, N, P or X; an id with twins; an un body; an R or S of a game with a
--- pending debt (StakesClaims reads it). Not in L.rc; L.sn[author][n] = its count (as L.rn).
+-- stubbed: a D, C, N, P or X; an id with twins; an un body; a denied one (the denied-first
+-- rule of a fifth twin, „отречено“); an R or S of a game with a pending debt (StakesClaims
+-- reads it). Not in L.rc; L.sn[author][n] = its count (as L.rn). Net:prune: once a session.
 local Ledger, C = ns.Ledger, ns.Const
 local Store = Ledger.Store
 local sort = table.sort
@@ -16,11 +17,12 @@ local sort = table.sort
 local function hex16(v) return type(v) == "string" and #v == 16 and v:find("^[0-9a-f]+$") ~= nil end
 local function named(a) return type(a) == "string" and a ~= "" and #a <= 64 and not a:find("[|,]") end
 
--- One more stub of (a, n): counted, and n is a number of a seen.
+-- One more stub of (a, n): counted, n is a number of a seen, and the highest stubbed (L.sx; stubs never go).
 local function note(L, a, n)
   local sn = L.sn[a] or {}
   L.sn[a], sn[n] = sn, (sn[n] or 0) + 1
   if n > (L.top[a] or 0) then L.top[a] = n end
+  if n > (L.sx[a] or 0) then L.sx[a] = n end
 end
 
 -- After a load (the bodies filed): the saved stubs, a malformed row or one whose body is held dropped.
@@ -56,22 +58,18 @@ function Store:stubs(a)
 end
 
 -- The highest number of author a held as a stub (0: none); how many stubs of every author.
-function Store:stubTop(a)
-  local top = 0
-  for n in pairs(self.sn[a] or {}) do if n > top then top = n end end
-  return top
-end
+function Store:stubTop(a) return self.sx[a] or 0 end
 function Store:stubCount()
   local count = 0
   for _, sn in pairs(self.sn) do for _, c in pairs(sn) do count = count + c end end
   return count
 end
 
--- Body b becomes a stub -> true | false (not an R or S, put to me, or its id holds
--- another body or a stub). Its "<id>:<h>" stays in x and in the kept list (no Store:stale),
+-- Body b becomes a stub -> true | false (not an R or S, put to me, denied by its author, or its
+-- id holds another body or a stub). Its "<id>:<h>" stays in x and in the kept list (no Store:stale),
 -- and the counted run (L.run) stays: the stub fills its number.
 function Store:stub(b)
-  if type(b) ~= "table" or not (b.k == "R" or b.k == "S") or b.un then return false end
+  if type(b) ~= "table" or not (b.k == "R" or b.k == "S") or b.un or self:denied(b) then return false end
   local a, n = Ledger.author(b.i)
   local s = self.store
   if not (a and s.ev[a] and s.ev[a][n] == b) or (s.tw[a] and s.tw[a][n]) or (self.sn[a] and self.sn[a][n]) then return false end
@@ -143,4 +141,15 @@ function Store:prune(now, max)
   end
   if run.j > #run.list then self.pr = nil end
   return made, self.pr ~= nil
+end
+
+-- Once a session, LEDGER_PRUNE_WAIT s after login (Net:start): Store:prune, a step of at most
+-- LEDGER_PRUNE_STEP bodies each 5 s, never while my login queue waits, an x is to be hashed or
+-- an exchange runs (a queued body must not become a stub). A prune changes no digest: no HI.
+local Net = ns.LedgerNet
+function Net:prune()
+  if self.waiting or self.L:hashing() or self.client.ledgerSync:busy() then return self:arm("pruneTimer", 5, Net.prune) end
+  local n, more = self.L:prune(self.L.epoch(), C.LEDGER_PRUNE_STEP)
+  if n > 0 then self:changed() end
+  if more then self:arm("pruneTimer", 5, Net.prune) end
 end

@@ -70,6 +70,7 @@ function Net:start()
   self.waiting = true
   self:pending()
   self:arm("settleTimer", C.LEDGER_ADOPT_WAIT, Net.settle)
+  self:arm("pruneTimer", C.LEDGER_PRUNE_WAIT, Net.prune) -- once a session (core/LedgerStub.lua)
   if L:hashing() then L.kick() end -- a load hashes nothing: the x values are hashed from now on, in slices
   self:sweep() -- the refusals that expired while I was away (core/LedgerRefused.lua)
   if #self:asks() > 0 then self.asked = true; self:changed() end -- still unanswered from before
@@ -82,7 +83,7 @@ function Net:stop()
   self.running = false
   self.out, self.denials = {}, {}
   self.outTimer, self.denyTimer, self.emitTimer, self.settleTimer, self.hashTimer, self.freshly = nil, nil, nil, nil, nil, nil
-  self.sweepTimer = nil
+  self.sweepTimer, self.pruneTimer = nil, nil
 end
 
 -- Is the adoption window of a new store open?

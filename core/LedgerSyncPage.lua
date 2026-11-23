@@ -3,7 +3,10 @@ local _, ns = ...
 -- The pages, vectors and lists of core/LedgerSync.lua: a vector or a list goes
 -- in pages of at most PAGE packed bytes, m = true on all but the last; a LID
 -- list holds Ledger.item of my bodies of one author in its scope (above the
--- common n, at the ids I hold twins for, at the ids the other list names).
+-- common n, at the ids I hold twins for, at the ids the other list names), then
+-- the refusals and the stubs I hold in that scope as "<n>.<h>" (held: never sent
+-- to me again). A stub counts as its body did, also for the twins of its id, so
+-- a pruned client and one that keeps everything list the same items.
 local Ledger, C, Util = ns.Ledger, ns.Const, ns.Util
 local Net, Sync = ns.LedgerNet, ns.LedgerSync
 local item, sorted = Ledger.item, Sync.sorted
@@ -47,12 +50,12 @@ function Sync:pages(x, base, key, data, keyed)
   self:post(x, (self:paged(base, key, data, keyed and sorted(data) or nil)))
 end
 
--- My bodies of author au in a LID's scope: above n, at ids I hold twins for, at the ids in `at` (all: every one).
+-- My bodies of author au in a LID's scope: above n, at ids I hold twins for (a stub counts), at the ids in `at` (all: every one).
 function Sync:scope(au, n, at, all)
-  local out, bodies = {}, self.L:above(au, 0)
+  local out, bodies, sn = {}, self.L:above(au, 0), self.L.sn[au] or {}
   for j, b in ipairs(bodies) do
-    local twin = (bodies[j - 1] and bodies[j - 1].i == b.i) or (bodies[j + 1] and bodies[j + 1].i == b.i)
     local bn = select(2, Ledger.author(b.i))
+    local twin = sn[bn] or (bodies[j - 1] and bodies[j - 1].i == b.i) or (bodies[j + 1] and bodies[j + 1].i == b.i)
     if all or bn > n or twin or at[bn] then out[#out + 1] = b end
   end
   return out
@@ -65,6 +68,11 @@ function Sync:lid(x, au, n, at, answer, all)
   for _, r in ipairs(self.L:refusals(au)) do -- what I refused counts as held: the partner does not send it again
     local it = r.n .. "." .. r.h
     if (all or r.n > n or at[r.n]) and not set[it] then list[#list + 1] = it; set[it] = true end
+  end
+  local ev, sn = self.L.store.ev[au] or {}, self.L.sn[au] or {}
+  for _, s in ipairs(self.L:stubs(au)) do -- a stub as its body; a twin where its id holds another
+    local it = s.n .. "." .. s.h
+    if (all or s.n > n or at[s.n] or ev[s.n] or sn[s.n] > 1) and not set[it] then list[#list + 1] = it; set[it] = true end
   end
   if not answer then x.lidN[au], x.lidMine[au], x.lidAll[au] = n, set, all end
   self:pages(x, { v = C.PROTOCOL, t = "LID", au = au, r = answer or nil }, "l", list, false)
