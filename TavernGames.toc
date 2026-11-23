@@ -115,6 +115,8 @@ wow/Slash.lua
 ui/Theme.lua
 ui/Widgets.lua
 ui/Resize.lua
+ui/Decks.lua
+ui/Silhouette.lua
 ui/Cards.lua
 ui/MainWindow.lua
 ui/NewTableDialog.lua
