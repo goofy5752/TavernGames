@@ -335,6 +335,7 @@ local function drawText(f, s, m)
 end
 
 function View.update(f, s)
+  f.session = s
   local st = s.state
   remember(f, s)
   local hand, mine = st.hand or 0, View.seatTricks(s, s.mySeat) or 0
@@ -345,6 +346,15 @@ function View.update(f, s)
   if f.armed and not (m.mine and m.buttons.marry) then
     f.armed = false
     m = View.model(s, false, f.names)
+  end
+
+  local last = st.last or {}
+  local key = #last > 0 and (tostring(st.hand) .. ":" .. table.concat(last, ",")) or nil
+  local holding = ns.TrickHold.check(f, s.tid, key, #(st.trick or {}) > 0, function()
+    if f.session == s then View.update(f, s) end
+  end)
+  if holding then -- the trick just taken stays on the felt; its small copy waits
+    m.trick, m.last = { { seat = 0, i = last[1], face = m.last[1] }, { seat = 0, i = last[2], face = m.last[2] } }, {}
   end
 
   f.score:SetText(L("santase.score", st.gp[m.me], st.gp[m.opp]))

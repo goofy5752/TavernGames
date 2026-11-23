@@ -315,6 +315,11 @@ local function drawText(f, st, m)
   f.text:Show()
 end
 
+-- Names the last completed trick of the deal; nil before the first one.
+local function lastKey(st)
+  return st.last and (tostring(st.round) .. ":" .. table.concat(st.last.cards, ",")) or nil
+end
+
 function View.update(f, s)
   f.session = s
   local st = s.state
@@ -329,13 +334,20 @@ function View.update(f, s)
   else
     f.peek = false
   end
+  local holding = ns.TrickHold.check(f, s.tid, lastKey(st), #(st.trick or {}) > 0, function()
+    if f.session == s then View.update(f, s) end
+  end)
+  if holding then -- the trick just taken stays on the felt, as it was played
+    local last = M.build(s, true, f.names)
+    m.trick, m.peeking = last.trick, nil
+  end
   f.model = m
 
   drawTop(f, s, m)
   drawTrick(f, m)
   drawBubbles(f, m)
   drawButtons(f, m)
-  local played = m.summary ~= nil and not m.summary.passed
+  local played = m.summary ~= nil and not m.summary.passed and not holding
   if played then f.summary:SetText(summaryText(f, s, m)) end
   f.summary:SetShown(played)
   f.myFan:set(m.hand, function(entry) onCard(f, entry) end)

@@ -137,6 +137,7 @@ ui/TablePanels.lua
 ui/StakePanels.lua
 ui/games/TicTacToeView.lua
 ui/games/DeathRollView.lua
+ui/games/TrickHold.lua
 ui/games/SantaseView.lua
 ui/games/BelotModel.lua
 ui/games/BelotView.lua
