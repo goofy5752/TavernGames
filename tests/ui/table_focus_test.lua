@@ -71,3 +71,48 @@ describe("ui: my table comes to the front", function()
     ok(TF.frame:GetFrameLevel() > MW.frame:GetFrameLevel(), "table not raised")
   end)
 end)
+
+describe("ui: windows drag by their frame", function()
+  local function setup()
+    local w = guildWow()
+    w.ns.MainWindow.show()
+    w.ns.client:openTable{ game = "ttt", access = "guild", turn = 45 }
+    w:advance(0)
+    return w, { w.ns.MainWindow.frame, w.ns.TableFrame.frame }, { w.ns.MainWindow.titleBar, w.ns.TableFrame.frame.children[1] }
+  end
+
+  it("a drag on the frame moves the window, a stop ends it, and the start raises it", function()
+    local w, frames = setup()
+    for _, f in ipairs(frames) do
+      ok(f.drag and f.drag[1] == "LeftButton", "frame not draggable")
+      f.moving = false
+      f.scripts.OnDragStart(f); ok(f.moving, "not moving")
+      f.scripts.OnDragStop(f); eq(f.moving, false)
+    end
+    local other = frames[2]
+    frames[1]:Raise()
+    other.scripts.OnDragStart(other)
+    ok(other:GetFrameLevel() > frames[1]:GetFrameLevel(), "drag start did not raise")
+  end)
+
+  it("the title bar still drags its window", function()
+    local w, frames = setup()
+    local bar = w.ns.MainWindow.titleBar
+    bar.scripts.OnDragStart(bar); ok(frames[1].moving, "bar does not move")
+    bar.scripts.OnDragStop(bar); eq(frames[1].moving, false)
+  end)
+
+  it("the resize grip never registers for a drag, so it does not move the window", function()
+    local w, frames = setup()
+    for _, f in ipairs(frames) do
+      local grips = 0
+      for _, c in ipairs(f.children) do
+        if c.key and c.scripts.OnMouseDown and c.scripts.OnEnter then
+          grips = grips + 1
+          eq(c.drag, nil); eq(c.scripts.OnDragStart, nil)
+        end
+      end
+      ok(grips >= 1, "no grip found")
+    end
+  end)
+end)
