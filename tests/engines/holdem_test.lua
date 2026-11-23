@@ -101,6 +101,7 @@ local function assertViewClean(full, seat, v)
   local vis = {}
   for _, i in ipairs(full.board) do vis[i] = true end
   for st in pairs(full.shown) do for _, i in ipairs(full.p[st].cards) do vis[i] = true end end
+  for _, st in ipairs(E.faceUp(full)) do for _, i in ipairs(full.p[st].cards) do vis[i] = true end end   -- rule 11a
   if seat ~= 0 and full.p[seat] then for _, i in ipairs(full.p[seat].cards) do vis[i] = true end end
   for i in pairs(v.deck) do ok(vis[i], "seat " .. seat .. " sees deck[" .. i .. "]") end
 end
@@ -523,6 +524,9 @@ describe("holdem views", function()
         else
           ok(E.apply(v, seat, a))
         end
+        local up = {}   -- rule 11a: the dealer turns up the hands of an all-in (a seat-0 show)
+        for _, st in ipairs(E.faceUp(s)) do for _, i in ipairs(s.p[st].cards) do up[i] = s.deck[i] end end
+        if next(up) then ok(E.apply(v, 0, { k = "show", cards = up })) end
         eq(v, E.view(s, sv), "view of seat " .. sv); assertViewClean(s, sv, v)
         eq(E.legal(v, s.turn or 1), E.legal(s, s.turn or 1)); eq(E.auto(v, s.turn or 1), E.auto(s, s.turn or 1))
       end
@@ -591,6 +595,7 @@ local function fuzz(seed, hands, withViews, opt)
     local vis = {}
     for _, i in ipairs(s.board) do vis[i] = true end
     for st in pairs(s.shown) do for _, i in ipairs(s.p[st].cards) do vis[i] = true end end
+    for _, st in ipairs(E.faceUp(s)) do for _, i in ipairs(s.p[st].cards) do vis[i] = true end end   -- rule 11a
     for i, pid in pairs(dealtTo) do if pid == me then vis[i] = true end end
     for i in pairs(v.deck) do check(vis[i], "chair " .. sv .. " sees deck[" .. i .. "]") end
     for _, i in ipairs(E.hidden(s, sv)) do
@@ -598,6 +603,7 @@ local function fuzz(seed, hands, withViews, opt)
     end
   end
   local function apply(seat, a)
+    local wasUp = #E.faceUp(s) > 0
     local r, why = E.apply(s, seat, a)
     check(r, "rejected " .. tostring(a.k) .. " at seat " .. seat .. ": " .. tostring(why))
     if a.k == "join" then pids = pids + 1; owner[a.seat] = pids end
@@ -617,6 +623,11 @@ local function fuzz(seed, hands, withViews, opt)
       else
         check(E.apply(v, seat, a), "view " .. sv .. " rejected " .. a.k)
       end
+      local up = {}   -- rule 11a: the dealer turns up the hands of an all-in (a seat-0 show)
+      for _, st in ipairs(E.faceUp(s)) do for _, i in ipairs(s.p[st].cards) do up[i] = s.deck[i] end end
+      if next(up) then check(E.apply(v, 0, { k = "show", cards = up }), "view show up") end
+      -- a hand that was up and a leave folds: its faces stay in the views that saw them; a snapshot drops them
+      if wasUp and a.k == "leave" then v = E.view(s, sv); views[sv] = v end
       -- a client that stood up is gone (its view kept what it saw); whoever sits next starts from a snapshot
       local occupant = (sv ~= 0 and s.seats[sv]) and owner[sv] or nil
       if occupant ~= viewOwner[sv] then v = E.view(s, sv); views[sv], viewOwner[sv] = v, occupant end

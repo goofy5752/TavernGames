@@ -16,7 +16,7 @@ local _, ns = ...
 --   plays `a` at seat 0 when it is the step the engine waits for, it carries
 --   every face the step deals (a street without them is refused) and it
 --   publishes only faces a watcher may then see (allPublic). One event a
---   street; a folded or unshown hand is in no event. A street event that
+--   street, one show at an all-in (rule 11a); a folded or unshown hand in none. A street event that
 --   lacks a face of its own cards is the foul "deal" on every client (only a
 --   modified host plays one);
 -- - a hand that is over is sealed into the book (Book.seal), a shuffle whose

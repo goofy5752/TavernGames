@@ -182,6 +182,20 @@ describe("ui: the Холдем view", function()
     draw(f, st, nil); eq(faces(f.seat[3]), { "-", "-" })
   end)
 
+  it("an all-in turns the live hands up before the board runs out, for a watcher too; a folded hand stays down", function()
+    local w, View, f = setup()
+    local st = hand3(); ok(E.apply(st, 1, { k = "call" })); ok(E.apply(st, 2, { k = "fold" })); ok(E.apply(st, 3, { k = "check" }))
+    ok(E.apply(st, 0, E.system(st))); ok(E.apply(st, 3, { k = "check" })); ok(E.apply(st, 1, { k = "check" }))
+    ok(E.apply(st, 0, E.system(st))); ok(E.apply(st, 3, { k = "allin" }))
+    draw(f, st, nil); eq({ faces(f.seat[1]), faces(f.seat[2]), faces(f.seat[3]) }, { { "back", "back" }, { "-", "-" }, { "back", "back" } }) -- the call is open
+    ok(E.apply(st, 1, { k = "call" })); eq(#st.board, 4)
+    for _, seat in ipairs({ 0, 1, 3 }) do
+      draw(f, st, seat ~= 0 and seat or nil)
+      eq({ faces(f.seat[1]), faces(f.seat[2]), faces(f.seat[3]) }, { { "4C", "7C" }, { "-", "-" }, { "3C", "6C" } }, "seat " .. seat)
+      for _, face in ipairs({ "2C", "5C" }) do eq(#w:texts(face), 0) end
+    end
+  end)
+
   it("the host's „Приключи“; solo with bots from a real deal", function()
     local w, View, f = setup(); local st = hand3(); draw(f, st, 1)
     local called = {}

@@ -11,9 +11,9 @@ local _, ns = ...
 --   tiny suit, H.card), then who took it — Сантасе's declarations, close and swap
 --   before the trick they open, the hand's result.
 --   Холдем: „Ръка N · Блайндове 5 / 10“, my two cards (marked as mine), the
---   actions street by street under the board as it came, the hands shown at the
---   showdown with their category, who won what. Amounts are the table's own
---   (the Холдем view's View.amount: coins at a cash table, chips at a fun one).
+--   actions street by street under the board as it came, the hands turned up at an
+--   all-in, those shown at the showdown with their category, who won what. Amounts are
+--   the table's own (the Холдем view's View.amount: coins at a cash table, chips at a fun one).
 -- TableFrame.render calls H.render(v, s) on every redraw; the text is rebuilt
 -- only while the panel is open and the history changed (its ver).
 local Theme, W, L, Cards = ns.Theme, ns.W, ns.L, ns.Cards
@@ -117,6 +117,7 @@ local function holdemHand(add, hand, s)
         add("line", who(hand, a.seat) .. ": " .. verb)
       end
     end
+    for _, x in ipairs(hand.open or {}) do if x.at == street then add("line", L("holdem.historyOpen", who(hand, x.seat), cards(x.cards))) end end
   end
   if hand.void then return add("dim", L("holdem.void")) end
   for _, x in ipairs(hand.shown or {}) do

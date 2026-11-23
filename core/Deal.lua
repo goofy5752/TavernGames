@@ -457,7 +457,7 @@ local function seedsIn(fair)
 end
 
 -- Dealer: every participant's seed is in -> the deck, and the deal is asked for
--- with the faces a watcher sees.
+-- with the faces the deal itself turns up (E.view `dealt`: no hand of an all-in).
 local function tryDeal(s)
   local fair, engine = s.fair, s:engine()
   if fair.dealing or fair.stage ~= "seed" or s.mySeat ~= fair.d then return end
@@ -466,7 +466,7 @@ local function tryDeal(s)
   local deck = Fair.deck(engine.DECK, list, Fair.handId(s.tid, fair.h))
   local full = Fair.full(s.state, s.state.deck)
   if not engine.apply(full, 0, { k = "deal", deck = deck }) then return end
-  local pub = engine.view(full, 0).deck
+  local pub = engine.view(full, 0, true).deck
   fair.deck, fair.pub, fair.sent, fair.dealing = deck, pub, {}, true
   ns.DealKeep.save(s)
   Deal.submit(s, { k = "fair", op = "deal", h = fair.h, deck = copy(pub) })
@@ -482,23 +482,15 @@ local function takeEarly(s)
   end
 end
 
--- Dealer, stage "dealt": faces public outside a play go to the host as one
--- show; every seated participant gets the faces only it sees, once.
+-- Dealer, stage "dealt": every seated participant gets the faces only it sees, once; then
+-- faces public outside a play (Холдем: the hands an all-in turns up) go to the host as one show.
 function Deal.sync(s)
   local fair, engine = s.fair, s:engine()
   if not fair or fair.stage ~= "dealt" or not fair.deck or s.mySeat ~= fair.d then return end
   local full = Fair.full(s.state, fair.deck)
-  local known = engine.view(s.state, 0).deck
+  local known, now = engine.view(s.state, 0, true).deck, engine.view(full, 0, true).deck
   local function unsent(i, sent)
-    return known[i] == nil and fair.pub[i] == nil and (sent == nil or sent[i] == nil)
-  end
-  local show = {}
-  for i, f in pairs(engine.view(full, 0).deck) do
-    if unsent(i) then show[i] = f end
-  end
-  if next(show) then
-    for i, f in pairs(show) do fair.pub[i] = f end
-    Deal.submit(s, { k = "fair", op = "show", h = fair.h, cards = copy(show) })
+    return known[i] == nil and fair.pub[i] == nil and (sent == nil or (sent[i] == nil and now[i] == nil))
   end
   for _, q in ipairs(fair.p) do
     local name = s.seats[q]
@@ -506,7 +498,7 @@ function Deal.sync(s)
       local sent = fair.sent[q] or {}
       fair.sent[q] = sent
       local out = {}
-      for i, f in pairs(engine.view(full, q).deck) do
+      for i, f in pairs(engine.view(full, q, true).deck) do
         if unsent(i, sent) then out[i] = f end
       end
       if next(out) then
@@ -518,6 +510,14 @@ function Deal.sync(s)
         end
       end
     end
+  end
+  local show = {}
+  for i, f in pairs(engine.view(full, 0).deck) do
+    if unsent(i) then show[i] = f end
+  end
+  if next(show) then
+    for i, f in pairs(show) do fair.pub[i] = f end
+    Deal.submit(s, { k = "fair", op = "show", h = fair.h, cards = copy(show) })
   end
 end
 
