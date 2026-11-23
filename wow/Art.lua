@@ -148,6 +148,7 @@ function Art.set(tex, kind, id, sub)
   if not c then return false end
   if c.file then
     tex:SetTexture(c.file)
+    if tex.SetTexCoord then tex:SetTexCoord(0, 1, 0, 1) end -- an atlas set before left its own
     return true
   end
   if not tex.SetAtlas then return false end

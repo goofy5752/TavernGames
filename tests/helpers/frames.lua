@@ -74,7 +74,11 @@ function Texture:SetTexture(path, wrapH, wrapV)
   return true
 end
 function Texture:GetTexture() return self.texture end
-function Texture:SetAtlas(name) self.atlas, self.texture, self.color = name, nil, nil end
+-- An atlas is a part of its file: SetAtlas sets the tex-coords of that part, as the client does.
+function Texture:SetAtlas(name)
+  self.atlas, self.texture, self.color = name, nil, nil
+  self.texCoord = { 0.125, 0.875, 0.0625, 0.9375 }
+end
 function Texture:GetAtlas() return self.atlas end
 function Texture:SetColorTexture(r, g, b, a) self.color, self.texture, self.atlas = { r, g, b, a or 1 }, nil, nil end
 -- A mask texture (Frame:CreateMaskTexture) added to this texture; kept in order in .masks.

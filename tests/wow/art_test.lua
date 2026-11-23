@@ -56,6 +56,16 @@ describe("art: the check", function()
     end
   end)
 
+  it("a file after an atlas on the same texture shows the whole file (the atlas's tex-coords reset)", function()
+    local w = Wow.new{}; local A = w.ns.Art
+    w:hasAtlas("raceicon128-orc-female"); w:hasFile("Interface\\Icons\\Achievement_Leader_Thrall")
+    local tex = w.G.CreateFrame("Frame"):CreateTexture()
+    eq(A.set(tex, "race", "orc", "female"), true)
+    ok(tex.texCoord[1] ~= 0, "the fake atlas sets its own coords")
+    eq(A.set(tex, "leader", "orc"), true)
+    eq(tex:GetTexture(), "Interface\\Icons\\Achievement_Leader_Thrall"); eq(tex.texCoord, { 0, 1, 0, 1 })
+  end)
+
   it("lists the candidates of every kind in order", function()
     local A = Wow.new{}.ns.Art
     eq(A.candidates("crest", "horde"), { { file = "Interface\\Timer\\Horde-Logo" }, { atlas = "FactionIcon-Horde" } })
