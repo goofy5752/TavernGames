@@ -1,0 +1,518 @@
+<!doctype html>
+<html lang="bg" data-faction="alliance">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Шах в механата</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Alegreya+SC:wght@500;700;800&family=PT+Sans:wght@400;700&display=swap" rel="stylesheet">
+<style>
+/* ------------------------------------------------------------------ tokens (from 08-faction-tavern) */
+:root {
+  --ink: #f2e6c8; --ink-dim: #c4b48f; --paper: #efe2c2; --paper-ink: #2b1d12;
+  --gold: #e0b24e; --gold-hi: #fbe3a0; --gold-lo: #7a5418;
+  --wood: #3a2414; --wood-hi: #5a3a20; --shadow: rgba(0, 0, 0, .55);
+}
+[data-faction="alliance"] {
+  --deep: #0a1830; --felt: #13325e; --felt-hi: #1f4c8a; --felt-lo: #071226;
+  --metal: #d8ab4a; --metal-hi: #f6d98c; --metal-lo: #6f4f18;
+  --accent: #5fa8ff; --banner: #1b3f75; --glow: rgba(110, 170, 255, .35);
+  --page: radial-gradient(ellipse at 50% -10%, #1d3557 0%, #0d1a2e 45%, #070d18 100%);
+  /* the board */
+  --sq-l: #e7dec6; --sq-d: #3d679f; --coord: #f6d98c;
+  --hl: rgba(255, 214, 90, .48); --sel: #ffe27a; --dot: rgba(10, 24, 48, .38);
+  --frame: linear-gradient(135deg, #1b3f75, #0c2244 60%, #081a36);
+}
+[data-faction="horde"] {
+  --deep: #170b09; --felt: #5a0f0e; --felt-hi: #84201a; --felt-lo: #2a0605;
+  --metal: #9a8f86; --metal-hi: #d6ccc0; --metal-lo: #3a3431;
+  --accent: #ff7a3d; --banner: #6e1410; --glow: rgba(255, 110, 50, .35);
+  --page: radial-gradient(ellipse at 50% -10%, #3a1410 0%, #1c0b08 45%, #0c0504 100%);
+  --sq-l: #d8c19a; --sq-d: #7c2b20; --coord: #e6d3b0;
+  --hl: rgba(255, 140, 50, .5); --sel: #ffb066; --dot: rgba(30, 6, 4, .42);
+  --frame: linear-gradient(135deg, #2b1a12, #1d110b 60%, #140b07);
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--page); background-attachment: fixed; color: var(--ink); font: 15px/1.5 "PT Sans", sans-serif; min-height: 100vh; }
+h1, h2, h3, .sc { font-family: "Alegreya SC", serif; font-weight: 700; letter-spacing: .01em; }
+.wrap { max-width: 1240px; margin: 0 auto; padding: 0 16px 80px; }
+.top { display: flex; align-items: center; gap: 18px; padding: 22px 0 8px; flex-wrap: wrap; }
+.top h1 { margin: 0; font-size: 30px; color: var(--metal-hi); text-shadow: 0 2px 0 #000; }
+.top p { margin: 0; color: var(--ink-dim); max-width: 86ch; flex-basis: 100%; }
+.switch { display: flex; border-radius: 999px; padding: 4px; background: rgba(0,0,0,.45); box-shadow: inset 0 0 0 1px rgba(255,255,255,.08); }
+.switch.first { margin-left: auto; }
+.switch button { font: 700 15px "Alegreya SC", serif; border: 0; cursor: pointer; border-radius: 999px; padding: 8px 16px 8px 12px; display: flex; align-items: center; gap: 8px; color: var(--ink-dim); background: transparent; }
+.switch button svg { width: 24px; height: 24px; }
+.switch button[aria-pressed="true"] { color: #fff; background: var(--banner); box-shadow: 0 0 0 1px var(--metal), 0 0 18px var(--glow); }
+.note { font-size: 13px; color: var(--ink-dim); }
+.src { display: inline-block; font-size: 11.5px; line-height: 1.35; color: var(--gold-hi); background: rgba(0,0,0,.5); border-radius: 4px; padding: 2px 6px; box-shadow: inset 0 0 0 1px rgba(224,178,78,.35); }
+.src.ours { color: var(--ink-dim); box-shadow: inset 0 0 0 1px rgba(255,255,255,.15); }
+section { margin-top: 46px; }
+section > h2 { font-size: 24px; margin: 0 0 4px; color: var(--metal-hi); }
+section > p { margin: 0 0 16px; color: var(--ink-dim); max-width: 86ch; }
+
+/* ------------------------------------------------------------------ window */
+.win { position: relative; border-radius: 10px; padding: 14px; width: fit-content; max-width: 100%;
+  background: linear-gradient(180deg, rgba(255,255,255,.04), transparent 30%), repeating-linear-gradient(90deg, var(--wood) 0 38px, #331f11 38px 40px, var(--wood-hi) 40px 41px, var(--wood) 41px 80px);
+  box-shadow: 0 0 0 2px var(--metal-lo), 0 0 0 4px var(--metal), 0 0 0 6px var(--metal-lo), 0 24px 60px var(--shadow); }
+[data-faction="horde"] .win { background: linear-gradient(180deg, rgba(255,255,255,.03), transparent 30%), repeating-linear-gradient(90deg, #2b1a12 0 36px, #1d110b 36px 38px, #3a241a 38px 39px, #2b1a12 39px 76px); }
+.win::before, .win::after { content: ""; position: absolute; top: -12px; width: 34px; height: 34px; z-index: 3; background: radial-gradient(circle at 40% 35%, var(--metal-hi), var(--metal) 45%, var(--metal-lo) 80%); border-radius: 50%; box-shadow: 0 3px 6px #000; }
+.win::before { left: -12px; } .win::after { right: -12px; }
+[data-faction="horde"] .win::before, [data-faction="horde"] .win::after { border-radius: 0; clip-path: polygon(50% 0, 64% 36%, 100% 50%, 64% 64%, 50% 100%, 36% 64%, 0 50%, 36% 36%); }
+.titlebar { display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 6px 10px; border-bottom: 1px solid rgba(0,0,0,.6); box-shadow: 0 1px 0 rgba(255,255,255,.06); }
+.titlebar .mug { width: 34px; height: 34px; }
+.titlebar .name { font: 800 21px "Alegreya SC", serif; color: var(--gold-hi); text-shadow: 0 2px 0 #000; }
+.titlebar .crest { width: 30px; height: 30px; filter: drop-shadow(0 2px 2px #000); }
+.titlebar .right { margin-left: auto; display: flex; align-items: center; gap: 14px; font-size: 14px; color: var(--ink-dim); }
+.x { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; color: var(--ink); background: radial-gradient(circle at 40% 35%, #8a2a1a, #4a120a); box-shadow: 0 0 0 2px var(--metal-lo), 0 0 0 3px var(--metal); font-size: 16px; }
+.coin { display: inline-block; width: 12px; height: 12px; border-radius: 50%; vertical-align: -1px; margin-left: 2px; background: radial-gradient(circle at 35% 30%, #fff3c0, #e8b53c 50%, #8a5a10); box-shadow: 0 0 0 1px #5a3a08; }
+.gold-amt { color: #ffe08a; font-weight: 700; }
+.grip { position: absolute; right: 8px; bottom: 8px; width: 24px; height: 24px; background: rgba(0,0,0,.6); border-radius: 3px; }
+.grip i { position: absolute; width: 4px; height: 4px; background: var(--gold); }
+
+/* the felt */
+.felt { position: relative; margin-top: 12px; border-radius: 26px; overflow: hidden; padding: 26px 30px; display: flex; gap: 26px; align-items: flex-start;
+  background: radial-gradient(ellipse at 40% 45%, var(--felt-hi) 0%, var(--felt) 45%, var(--felt-lo) 100%);
+  box-shadow: inset 0 0 0 10px #2a170c, inset 0 0 0 12px var(--metal-lo), inset 0 0 0 14px var(--metal), inset 0 0 0 22px #3a2414, inset 0 0 80px rgba(0,0,0,.75), 0 10px 30px rgba(0,0,0,.6); }
+[data-faction="horde"] .felt { box-shadow: inset 0 0 0 10px #1d110b, inset 0 0 0 12px var(--metal-lo), inset 0 0 0 14px var(--metal), inset 0 0 0 22px #2b1a12, inset 0 0 90px rgba(0,0,0,.8), 0 10px 30px rgba(0,0,0,.6); }
+.felt::before { content: ""; position: absolute; inset: 0; opacity: .18; pointer-events: none;
+  background-image: repeating-linear-gradient(45deg, rgba(255,255,255,.08) 0 1px, transparent 1px 4px), repeating-linear-gradient(-45deg, rgba(0,0,0,.25) 0 1px, transparent 1px 4px); }
+[data-faction="horde"] .felt::before { opacity: .35; background-image: radial-gradient(circle at 20% 30%, rgba(0,0,0,.35), transparent 40%), radial-gradient(circle at 75% 70%, rgba(0,0,0,.3), transparent 45%), repeating-radial-gradient(circle at 50% 50%, rgba(255,255,255,.03) 0 2px, transparent 2px 7px); }
+.watermark { position: absolute; right: 40px; bottom: 30px; width: 240px; height: 240px; opacity: .10; pointer-events: none; }
+.stitch { position: absolute; inset: 30px; border-radius: 14px; border: 2px dashed rgba(255,255,255,.12); pointer-events: none; }
+[data-faction="horde"] .stitch { border-color: rgba(0,0,0,.45); border-style: dotted; border-width: 3px; }
+
+/* ------------------------------------------------------------------ the board */
+.bw { --sq: 58px; --fr: calc(var(--sq) * .42); width: fit-content; position: relative; z-index: 2; flex: none; padding: var(--fr); border-radius: 8px; background: var(--frame);
+  box-shadow: inset 0 0 0 2px var(--metal-lo), inset 0 0 0 4px var(--metal), inset 0 0 0 5px var(--metal-lo), 0 0 0 2px #000, 0 12px 28px rgba(0,0,0,.7); }
+[data-faction="horde"] .bw { box-shadow: inset 0 0 0 3px #000, inset 0 0 0 6px var(--metal), inset 0 0 0 7px #000, 0 0 0 2px #000, 0 12px 28px rgba(0,0,0,.75); }
+.bw .rv { position: absolute; width: 9px; height: 9px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, var(--metal-hi), var(--metal) 50%, var(--metal-lo)); box-shadow: 0 1px 2px #000; }
+[data-faction="alliance"] .bw .rv { width: 12px; height: 12px; }
+.board { display: grid; grid-template-columns: repeat(8, var(--sq)); grid-template-rows: repeat(8, var(--sq)); box-shadow: 0 0 0 2px #000, 0 0 0 3px var(--metal-lo); }
+.sq { position: relative; }
+.sq.l { background: linear-gradient(135deg, rgba(255,255,255,.18), transparent 55%), var(--sq-l); }
+.sq.d { background: linear-gradient(135deg, rgba(255,255,255,.10), transparent 60%), var(--sq-d); }
+[data-faction="horde"] .sq.d { background: radial-gradient(circle at 30% 30%, rgba(255,255,255,.06), transparent 60%), radial-gradient(circle at 70% 80%, rgba(0,0,0,.25), transparent 50%), var(--sq-d); }
+[data-faction="horde"] .sq.l { background: radial-gradient(circle at 60% 40%, rgba(255,255,255,.14), transparent 60%), radial-gradient(circle at 20% 80%, rgba(90,50,20,.18), transparent 50%), var(--sq-l); }
+.sq.last::before { content: ""; position: absolute; inset: 0; background: var(--hl); }
+.sq.sel::before { content: ""; position: absolute; inset: 0; background: var(--hl); box-shadow: inset 0 0 0 3px var(--sel); }
+.sq.dot::after { content: ""; position: absolute; left: 50%; top: 50%; width: 30%; height: 30%; transform: translate(-50%, -50%); border-radius: 50%; background: var(--dot); z-index: 3; }
+.sq.cap::after { content: ""; position: absolute; inset: 4%; border-radius: 50%; box-shadow: inset 0 0 0 calc(var(--sq) * .07) var(--dot); z-index: 3; }
+.sq.check::before { content: ""; position: absolute; inset: 0; background: radial-gradient(circle, rgba(255,40,30,.95) 0%, rgba(220,20,10,.75) 35%, rgba(160,0,0,0) 72%); }
+.sq svg.pc { position: absolute; left: 5%; top: 4%; width: 90%; height: 90%; z-index: 2; filter: drop-shadow(0 2px 1.5px rgba(0,0,0,.65)); }
+.sq.hov { cursor: pointer; }
+.cf, .cr { position: absolute; font: 700 calc(var(--sq) * .24) "PT Sans", sans-serif; color: var(--coord); text-shadow: 0 1px 0 #000; text-align: center; pointer-events: none; }
+.cf { width: var(--sq); bottom: 0; height: var(--fr); line-height: var(--fr); }
+.cr { height: var(--sq); left: 0; width: var(--fr); line-height: var(--sq); }
+
+/* promotion picker */
+.promo { position: absolute; z-index: 6; display: grid; grid-template-rows: repeat(4, var(--sq)); width: var(--sq); border-radius: 6px; overflow: hidden;
+  background: radial-gradient(circle at 50% 30%, #2a3a55, #0c1424); box-shadow: 0 0 0 2px #000, 0 0 0 4px var(--metal), 0 10px 24px rgba(0,0,0,.8); }
+[data-faction="horde"] .promo { background: radial-gradient(circle at 50% 30%, #4a2620, #160806); }
+.promo div { position: relative; border-bottom: 1px solid rgba(255,255,255,.08); }
+.promo div:first-child { background: rgba(255,214,90,.25); }
+.promo svg.pc { position: absolute; left: 6%; top: 6%; width: 88%; height: 88%; filter: drop-shadow(0 2px 1.5px rgba(0,0,0,.7)); }
+
+/* banners over the board */
+.banner { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 7; text-align: center; min-width: 74%; padding: 12px 18px 14px; border-radius: 8px;
+  background: linear-gradient(180deg, rgba(10,8,6,.92), rgba(10,8,6,.82)); box-shadow: 0 0 0 1px #000, 0 0 0 3px var(--metal), 0 14px 30px rgba(0,0,0,.8); }
+.banner .t { font: 800 22px "Alegreya SC", serif; color: var(--gold-hi); text-shadow: 0 2px 0 #000; }
+.banner .s { font-size: 13px; color: var(--ink-dim); margin: 2px 0 8px; }
+.banner .row { display: flex; gap: 8px; justify-content: center; }
+
+/* ------------------------------------------------------------------ side column */
+.side { position: relative; z-index: 2; width: 300px; display: flex; flex-direction: column; gap: 10px; }
+.plate { position: relative; display: flex; align-items: center; }
+.plate .por { width: 62px; height: 62px; border-radius: 50%; position: relative; flex: none; box-shadow: 0 0 0 2px #000, 0 0 0 4px var(--metal), 0 0 0 5px var(--metal-lo), 0 4px 10px #000; overflow: hidden; background: radial-gradient(circle at 50% 30%, #6a7a8c, #24303d); z-index: 1; }
+.plate .por svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.plate .badge { position: absolute; bottom: -4px; left: 44px; width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font: 700 10px "PT Sans"; color: #fff; box-shadow: 0 0 0 2px #000, 0 0 0 3px var(--metal); z-index: 2; }
+.plate .bar { margin-left: -12px; padding: 6px 12px 7px 20px; flex: 1; border-radius: 0 6px 6px 0; background: linear-gradient(180deg, rgba(0,0,0,.78), rgba(0,0,0,.6)); box-shadow: 0 0 0 1px var(--metal-lo); }
+.plate .nm { font-weight: 700; font-size: 14px; line-height: 1.1; display: flex; gap: 8px; align-items: baseline; }
+.plate .nm .side-tag { font: 700 11px "PT Sans"; color: var(--ink-dim); padding: 0 6px; border-radius: 3px; box-shadow: inset 0 0 0 1px rgba(255,255,255,.18); }
+.plate .meta { font-size: 11.5px; color: var(--ink-dim); display: flex; justify-content: space-between; }
+.plate .meta b { color: var(--gold-hi); font-variant-numeric: tabular-nums; }
+.plate.turn .por { box-shadow: 0 0 0 2px #000, 0 0 0 4px var(--gold-hi), 0 0 22px 6px rgba(255, 215, 90, .55); }
+.plate .clock { margin-top: 4px; height: 4px; border-radius: 2px; background: #000; overflow: hidden; }
+.plate .clock i { display: block; height: 100%; background: linear-gradient(90deg, #f6d36a, #e08a2a); }
+.caps { display: flex; align-items: center; gap: 0; min-height: 26px; padding-left: 64px; }
+.caps svg.pc { width: 30px; height: 30px; margin-right: -8px; filter: drop-shadow(0 1px 1px rgba(0,0,0,.7)); }
+.caps .adv { margin-left: 12px; font: 700 12px "PT Sans"; color: var(--gold-hi); }
+.moves { border-radius: 6px; background: linear-gradient(180deg, #f3e7c9, #e4d2a6); color: var(--paper-ink); box-shadow: 0 0 0 1px #000, 0 0 0 3px var(--metal-lo), inset 0 0 20px rgba(120,80,30,.25); padding: 8px 6px 8px 10px; }
+.moves .hd { display: flex; align-items: center; justify-content: space-between; font: 700 14px "Alegreya SC", serif; color: #5a3a14; padding: 0 4px 4px; border-bottom: 1px solid rgba(90,58,20,.3); }
+.moves ol { list-style: none; margin: 6px 0 0; padding: 0; height: 226px; overflow: auto; font: 14px/1.7 "PT Sans"; columns: 1; }
+.moves li { display: grid; grid-template-columns: 30px 1fr 1fr; padding: 0 4px; border-radius: 3px; }
+.moves li:nth-child(odd) { background: rgba(120,80,30,.08); }
+.moves li span:first-child { color: #8a6a3a; }
+.moves li .cur { background: #5a3a14; color: #fbe3a0; border-radius: 3px; padding: 0 4px; margin-left: -4px; width: fit-content; font-weight: 700; }
+.moves .tg { display: flex; gap: 2px; }
+.moves .tg button { font: 700 11px "PT Sans"; border: 0; background: rgba(90,58,20,.14); color: #5a3a14; border-radius: 3px; padding: 1px 7px; cursor: pointer; }
+.moves .tg button[aria-pressed="true"] { background: #5a3a14; color: #fbe3a0; }
+
+.bottombar { display: flex; align-items: center; gap: 10px; padding: 12px 4px 2px; flex-wrap: wrap; }
+.btn { font: 700 14px "PT Sans"; border: 0; cursor: pointer; border-radius: 4px; padding: 8px 16px; color: #2a1606; background: linear-gradient(180deg, #ffe7a6, #e0b24e 55%, #a8741f); box-shadow: 0 0 0 1px #5a3a08, inset 0 1px 0 #fff6d0, 0 3px 6px rgba(0,0,0,.5); }
+.btn.ghost { color: var(--gold-hi); background: linear-gradient(180deg, rgba(0,0,0,.25), rgba(0,0,0,.55)); box-shadow: 0 0 0 1px var(--metal), inset 0 1px 0 rgba(255,255,255,.08); }
+.btn.red { color: #fff; background: linear-gradient(180deg, #c8402a, #8a1c10 60%, #5a0c06); box-shadow: 0 0 0 1px #2a0502, inset 0 1px 0 #ff9a80, 0 3px 6px rgba(0,0,0,.5); }
+.btn.sm { font-size: 12.5px; padding: 5px 12px; }
+.bottombar .line { margin-left: auto; margin-right: 34px; font-size: 13px; color: var(--ink-dim); }
+
+/* ------------------------------------------------------------------ piece style cards & small boards */
+.styles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+.style-card { border-radius: 10px; padding: 14px; background: rgba(0,0,0,.35); box-shadow: 0 0 0 1px rgba(255,255,255,.08); cursor: pointer; transition: box-shadow .2s; }
+.style-card.on { box-shadow: 0 0 0 2px var(--metal), 0 0 24px var(--glow); }
+.style-card h3 { margin: 0; font-size: 19px; color: var(--gold-hi); display: flex; justify-content: space-between; align-items: center; }
+.style-card p { margin: 4px 0 10px; font-size: 13px; color: var(--ink-dim); min-height: 58px; }
+.strip { display: grid; grid-template-columns: repeat(6, 1fr); border-radius: 4px; overflow: hidden; box-shadow: 0 0 0 2px #000, 0 0 0 3px var(--metal-lo); }
+.strip .sq { aspect-ratio: 1; }
+.strip.small { width: 50%; margin-top: 10px; }
+.minis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; }
+.mini h3 { margin: 10px 0 0; font-size: 17px; color: var(--gold-hi); }
+.mini p { margin: 2px 0 0; font-size: 13px; color: var(--ink-dim); }
+.mini .bw { --sq: 30px; }
+.mini .banner { min-width: 88%; padding: 8px 10px 10px; }
+.mini .banner .t { font-size: 17px; }
+.mini .banner .s { font-size: 11.5px; margin-bottom: 6px; }
+
+/* the new-table dialog row */
+.dlg { width: fit-content; border-radius: 8px; padding: 16px 20px; background: linear-gradient(180deg, #1a120b, #120c07); box-shadow: 0 0 0 1px #000, 0 0 0 3px var(--metal), 0 14px 30px rgba(0,0,0,.6); }
+.dlg .row { display: flex; align-items: center; gap: 8px; margin: 8px 0; }
+.dlg .lab { width: 140px; color: var(--ink-dim); font-size: 14px; }
+.chip { font: 700 13px "PT Sans"; padding: 5px 12px; border-radius: 4px; color: var(--ink-dim); background: rgba(255,255,255,.05); box-shadow: inset 0 0 0 1px rgba(255,255,255,.14); }
+.chip.on { color: #2a1606; background: linear-gradient(180deg, #ffe7a6, #e0b24e 55%, #a8741f); box-shadow: 0 0 0 1px #5a3a08; }
+.chip.off { opacity: .35; text-decoration: line-through; }
+.tile { display: flex; align-items: center; gap: 12px; padding: 10px 16px 10px 10px; border-radius: 40px; width: fit-content; background: radial-gradient(circle at 30% 30%, #6a4426, #3a2414); box-shadow: 0 0 0 2px #000, 0 0 0 4px var(--metal), 0 8px 18px rgba(0,0,0,.6); }
+.tile .ic { width: 52px; height: 52px; border-radius: 50%; display: grid; place-items: center; background: radial-gradient(circle, var(--felt-hi), var(--felt-lo)); box-shadow: 0 0 0 2px var(--metal); }
+.tile .ic svg { width: 34px; height: 34px; fill: var(--gold-hi); }
+.tile b { font: 700 17px "Alegreya SC", serif; color: var(--gold-hi); display: block; }
+
+/* ------------------------------------------------------------------ pieces */
+.pc .b { fill: var(--fill); stroke: var(--ol); stroke-width: 2.4; stroke-linejoin: round; }
+.pc .t { fill: var(--tr); stroke: var(--ol); stroke-width: 1.2; stroke-linejoin: round; }
+.pc .e { fill: var(--ey); }
+.pc .sl { fill: none; stroke: var(--ey); stroke-width: 2.6; stroke-linecap: round; }
+.pc .tl { fill: none; stroke: var(--tr); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+.pc .gm { fill: #d0302a; stroke: var(--ol); stroke-width: 1; }
+.pc .rim { fill: none; stroke: var(--tr); stroke-width: 3.2; }
+.pc .rim2 { fill: none; stroke: var(--ol); stroke-width: 1.4; }
+.pc .g .b, .pc .g .t, .pc .g .gm { fill: var(--gl); stroke: none; }
+.pc .g .e { fill: var(--fill); }
+.pc .g .sl, .pc .g .tl { stroke: var(--fill); }
+[data-faction="alliance"] .pc.w { --fill: url(#gAW); --ol: #4a3410; --tr: #c8942e; --ey: #4a3410; --gl: #1b3361; }
+[data-faction="alliance"] .pc.k { --fill: url(#gAB); --ol: #a8802c; --tr: #e5b850; --ey: #e5b850; --gl: #f0c862; }
+[data-faction="horde"] .pc.w { --fill: url(#gHW); --ol: #2e2118; --tr: #7d736b; --ey: #2e2118; --gl: #3a2b26; }
+[data-faction="horde"] .pc.k { --fill: url(#gHB); --ol: #8a7a6e; --tr: #c8492e; --ey: #d9603e; --gl: #ead7b4; }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <linearGradient id="gGold" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff0b8"/><stop offset=".5" stop-color="#e0b24e"/><stop offset="1" stop-color="#7a5418"/></linearGradient>
+    <linearGradient id="gIron" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#e2d8cc"/><stop offset=".5" stop-color="#8e837a"/><stop offset="1" stop-color="#3a3431"/></linearGradient>
+    <linearGradient id="gBlue" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3b6fc0"/><stop offset="1" stop-color="#0f2a55"/></linearGradient>
+    <linearGradient id="gRed" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#b4281e"/><stop offset="1" stop-color="#4a0a08"/></linearGradient>
+    <linearGradient id="mugG" x1="0" x2="1"><stop offset="0" stop-color="#9a6234"/><stop offset=".5" stop-color="#6a3c1a"/><stop offset="1" stop-color="#3a1e0c"/></linearGradient>
+    <!-- piece materials: ivory/lapis (Alliance), bone/blackened iron (Horde) -->
+    <linearGradient id="gAW" x1="0" y1="0" x2=".6" y2="1"><stop offset="0" stop-color="#fffaf0"/><stop offset=".55" stop-color="#efe2c0"/><stop offset="1" stop-color="#c9b282"/></linearGradient>
+    <linearGradient id="gAB" x1="0" y1="0" x2=".6" y2="1"><stop offset="0" stop-color="#46639a"/><stop offset=".5" stop-color="#1d2f55"/><stop offset="1" stop-color="#0a1226"/></linearGradient>
+    <linearGradient id="gHW" x1="0" y1="0" x2=".6" y2="1"><stop offset="0" stop-color="#fbf1da"/><stop offset=".55" stop-color="#e4d1aa"/><stop offset="1" stop-color="#ab9068"/></linearGradient>
+    <linearGradient id="gHB" x1="0" y1="0" x2=".6" y2="1"><stop offset="0" stop-color="#5a4740"/><stop offset=".5" stop-color="#2a201d"/><stop offset="1" stop-color="#0c0807"/></linearGradient>
+  </defs>
+  <symbol id="crest-alliance" viewBox="0 0 100 120">
+    <path d="M50 4 L92 16 V58 C92 86 72 104 50 116 C28 104 8 86 8 58 V16 Z" fill="url(#gBlue)" stroke="url(#gGold)" stroke-width="5"/>
+    <path d="M50 18 L80 26 V58 C80 78 66 92 50 101 C34 92 20 78 20 58 V26 Z" fill="none" stroke="#e0b24e" stroke-width="1.5" opacity=".6"/>
+    <path d="M32 40 L38 30 L44 38 L50 26 L56 38 L62 30 L68 40 L66 48 H34 Z" fill="url(#gGold)"/>
+    <path d="M50 52 C40 52 34 60 36 70 C38 80 46 86 50 92 C54 86 62 80 64 70 C66 60 60 52 50 52 Z M44 66 a3 3 0 1 0 0.1 0 M56 66 a3 3 0 1 0 0.1 0" fill="url(#gGold)"/>
+    <path d="M38 62 C30 58 26 66 30 72 M62 62 C70 58 74 66 70 72" stroke="#e0b24e" stroke-width="3" fill="none"/>
+  </symbol>
+  <symbol id="crest-horde" viewBox="0 0 120 120">
+    <circle cx="60" cy="60" r="50" fill="url(#gRed)" stroke="url(#gIron)" stroke-width="6"/>
+    <g fill="url(#gIron)">
+      <path d="M60 6 L68 26 L60 22 L52 26 Z"/><path d="M60 114 L68 94 L60 98 L52 94 Z"/>
+      <path d="M6 60 L26 52 L22 60 L26 68 Z"/><path d="M114 60 L94 52 L98 60 L94 68 Z"/>
+      <path d="M30 34 L60 46 L90 34 L80 60 L90 86 L60 74 L30 86 L40 60 Z"/>
+    </g>
+    <path d="M44 56 L60 64 L76 56 L70 70 L60 66 L50 70 Z" fill="#2a0806"/>
+    <path d="M46 72 C44 80 46 86 50 90 M74 72 C76 80 74 86 70 90" stroke="#efe2c2" stroke-width="4" fill="none" stroke-linecap="round"/>
+  </symbol>
+  <symbol id="mug" viewBox="0 0 64 64">
+    <path d="M44 26 a8 8 0 1 1 0 16 v-4 a4 4 0 1 0 0-8 z" fill="#d6a84a"/>
+    <rect x="14" y="20" width="28" height="34" rx="3" fill="url(#mugG)"/>
+    <rect x="14" y="24" width="28" height="3" fill="#e0b24e"/><rect x="14" y="46" width="28" height="3" fill="#e0b24e"/>
+    <path d="M12 22 C10 12 18 8 22 12 C24 6 32 6 34 11 C38 7 46 10 44 18 C47 20 45 24 42 23 H14 C11 24 10 23 12 22 Z" fill="#fbf0d6"/>
+  </symbol>
+  <symbol id="bust" viewBox="0 0 100 100"><path d="M50 22 a17 19 0 1 1 -0.1 0 Z M14 100 C16 72 30 62 50 62 C70 62 84 72 86 100 Z" fill="#0b0f15" opacity=".88"/></symbol>
+  <symbol id="beard" viewBox="0 0 100 100"><path d="M36 42 C36 66 44 76 50 80 C56 76 64 66 64 42 C58 50 42 50 36 42 Z" fill="#b8742a"/></symbol>
+  <symbol id="tusks" viewBox="0 0 100 100"><path d="M40 48 C36 40 36 34 38 30 C40 38 42 42 44 46 Z M60 48 C64 40 64 34 62 30 C60 38 58 42 56 46 Z" fill="#f4ecd8"/></symbol>
+  <symbol id="hair" viewBox="0 0 100 100"><path d="M30 34 C28 14 72 14 70 34 C72 52 76 66 80 74 C70 70 66 60 66 44 C60 30 40 30 34 44 C34 60 30 70 20 74 C24 66 28 52 30 34 Z" fill="#d8c08a"/></symbol>
+  <symbol id="horns" viewBox="0 0 100 100"><path d="M34 30 C20 26 14 14 18 6 C22 16 30 20 38 22 Z M66 30 C80 26 86 14 82 6 C78 16 70 20 62 22 Z" fill="#e9dcc0"/></symbol>
+</svg>
+
+<div class="wrap">
+  <div class="top">
+    <h1>Шах в механата</h1>
+    <div class="switch first" role="group" aria-label="Облик">
+      <button type="button" data-f="alliance" aria-pressed="true"><svg><use href="#crest-alliance"/></svg>Alliance</button>
+      <button type="button" data-f="horde" aria-pressed="false"><svg><use href="#crest-horde"/></svg>Horde</button>
+    </div>
+    <div class="switch" role="group" aria-label="Фигури" id="styleSwitch">
+      <button type="button" data-s="staunton" aria-pressed="true">А · Класически</button>
+      <button type="button" data-s="faction" aria-pressed="false">Б · Фракционни</button>
+      <button type="button" data-s="medal" aria-pressed="false">В · Медальони</button>
+    </div>
+    <p>Мокъп за одобрение. Горе превключваш облика и стила на фигурите, а всичко на страницата се преоблича. Всичко <span class="src ours">наше</span> се генерира от скрипт в <code>tools/</code> като TGA: дъската, рамката, фигурите, точките и маркерите. <span class="src">От клиента</span> са само гербът и портретите в табелките, с наши заместители, както в 08.</p>
+  </div>
+
+  <!-- ============================================================ HERO -->
+  <section style="margin-top:22px">
+    <div class="win">
+      <div class="titlebar">
+        <svg class="mug"><use href="#mug"/></svg>
+        <span class="name">Шах</span>
+        <svg class="crest"><use class="crest-use" href="#crest-alliance"/></svg>
+        <span class="note" style="margin-left:6px" id="tableNote"></span>
+        <span class="right">👁 1 гледа <span class="x">×</span></span>
+      </div>
+      <div class="felt">
+        <svg class="watermark"><use class="crest-use" href="#crest-alliance"/></svg>
+        <div class="stitch"></div>
+        <div id="hero"></div>
+        <div class="side">
+          <div class="plate" id="pTop"></div>
+          <div class="caps" id="capTop"></div>
+          <div class="moves">
+            <div class="hd"><span>Ходове</span><span class="tg" id="nota"><button type="button" data-n="bg" aria-pressed="true">БГ</button><button type="button" data-n="en" aria-pressed="false">EN</button></span></div>
+            <ol id="moves"></ol>
+          </div>
+          <div class="caps" id="capBot"></div>
+          <div class="plate turn" id="pBot"></div>
+        </div>
+      </div>
+      <div class="bottombar">
+        <button class="btn ghost" type="button">Стани</button>
+        <button class="btn ghost" type="button">Предложи реми</button>
+        <button class="btn red" type="button">Предай се</button>
+        <span class="line" id="heroLine"></span>
+      </div>
+      <div class="grip" aria-hidden="true"><i style="right:4px;bottom:4px"></i><i style="right:10px;bottom:4px"></i><i style="right:16px;bottom:4px"></i><i style="right:4px;bottom:10px"></i><i style="right:10px;bottom:10px"></i><i style="right:4px;bottom:16px"></i></div>
+    </div>
+    <p class="note" style="margin-top:12px">
+      Тук си с белите и си на ход. Избран е конят на f3: точките са свободните полета, а пръстенът на e5 е взимане. Последният ход на противника, h7–h5, е оцветен. Взетите фигури стоят до табелката на този, който ги е взел. До тях пише материалната преднина, ако има такава. Часовникът е шахматен: оставащото време на играча в мм:сс и лента, която тече само докато е на ход. Под 30 секунди цифрите почервеняват, а при „Без лимит“ пише ∞ и няма лента.
+    </p>
+  </section>
+
+  <!-- ============================================================ PIECE STYLES -->
+  <section>
+    <h2>Фигурите: три стила</h2>
+    <p>И трите стила са наши и се рисуват от Python скрипт. Цветовете идват от облика. При Alliance белите са слонова кост със злато, а черните са лапис със злато. При Horde белите са кост с желязо, а черните са почерняло желязо с жар. Долната лента показва фигурите на 30 px, колкото са на малка маса. Там трябва да се четат от пръв поглед.</p>
+    <div class="styles" id="styles"></div>
+  </section>
+
+  <!-- ============================================================ STATES -->
+  <section>
+    <h2>Моменти от партията</h2>
+    <p>Шах, промоция, предложено реми и краят на партията, на малка дъска.</p>
+    <div class="minis" id="minis"></div>
+  </section>
+
+  <!-- ============================================================ HALL + DIALOG -->
+  <section>
+    <h2>В залата и при нова маса</h2>
+    <p>Иконата ще е от game-icons.net, тук е заместител. За шаха редът „Време за ход“ става „Време за партия“: 5, 10, 15 или 30 минути на играч, +5 секунди за всеки ход, и „Без лимит“ само на маса за удоволствие. На маса със залог изборът е задраскан.</p>
+    <div style="display:flex;gap:30px;align-items:center;flex-wrap:wrap">
+      <div class="tile"><span class="ic"><svg viewBox="0 0 100 100" id="tileIcon"></svg></span><span><b>Шах</b><span class="note">2 играчи · свободни столове: 1</span></span></div>
+      <div class="dlg">
+        <div class="row"><span class="lab">Игра</span><span class="chip on">Шах</span></div>
+        <div class="row"><span class="lab">Залог</span><span class="chip on" id="cFun">Само за удоволствие</span><span class="chip" id="cStake">Със залог</span></div>
+        <div class="row"><span class="lab">Време за партия</span><span class="chip">5 мин</span><span class="chip">10 мин</span><span class="chip">15 мин</span><span class="chip">30 мин</span><span class="chip on" id="cInf">Без лимит</span></div>
+        <div class="note" style="margin-left:148px">Щракни „Със залог“, за да видиш как „Без лимит“ изчезва.</div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script>
+// ------------------------------------------------------------------ piece shapes (viewBox 0..100)
+const BASE = `<path class="b" d="M19 80 h62 a3 3 0 0 1 3 3 v7 h-68 v-7 a3 3 0 0 1 3 -3 z"/>`;
+const P_BODY = `<path class="b" d="M40 52 h20 c0 12 6 20 14 28 h-48 c8 -8 14 -16 14 -28 z"/><path class="b" d="M35 46 h30 a3 3 0 0 1 0 6 h-30 a3 3 0 0 1 0 -6 z"/>`;
+const B_BODY = `<path class="b" d="M41 62 h18 c0 8 4 13 12 18 h-42 c8 -5 12 -10 12 -18 z"/><path class="b" d="M35 56 h30 a3 3 0 0 1 0 6 h-30 a3 3 0 0 1 0 -6 z"/>`;
+const Q_BODY = `<path class="b" d="M38 64 h24 c0 7 4 11 12 16 h-48 c8 -5 12 -9 12 -16 z"/><path class="b" d="M32 58 h36 a3 3 0 0 1 0 6 h-36 a3 3 0 0 1 0 -6 z"/>`;
+const K_BODY = `<path class="b" d="M38 62 h24 c0 8 4 13 12 18 h-48 c8 -5 12 -10 12 -18 z"/><path class="b" d="M32 56 h36 a3 3 0 0 1 0 6 h-36 a3 3 0 0 1 0 -6 z"/>`;
+const R_BODY = `<path class="b" d="M33 37 h34 l3 37 h-40 z"/><path class="b" d="M27 74 h46 l4 6 h-54 z"/>`;
+const MITRE = `<path class="b" d="M50 18 c11 8 16 18 14 28 c-1 6 -6 10 -14 10 c-8 0 -13 -4 -14 -10 c-2 -10 3 -20 14 -28 z"/><circle class="b" cx="50" cy="13" r="5.5"/>`;
+const HORSE = `<path class="b" d="M30 80 C28 66 34 56 44 48 C36 51 30 54 26 51 C22 48 23 42 27 38 C33 32 37 26 41 18 L42 10 L49 16 C65 19 75 34 75 52 C75 62 73 72 71 80 Z"/><circle class="e" cx="46" cy="30" r="2.8"/>`;
+
+const SHAPES = {
+  staunton: {
+    p: P_BODY + `<circle class="b" cx="50" cy="32" r="13"/>` + BASE,
+    r: R_BODY + `<path class="b" d="M28 33 h44 v5 h-44 z"/><path class="b" d="M27 13 h10 v8 h6 v-8 h14 v8 h6 v-8 h10 v20 h-46 z"/>` + BASE,
+    b: B_BODY + MITRE + `<path class="sl" d="M55 26 l-9 13"/>` + BASE,
+    n: HORSE + `<path class="sl" d="M53 19 C64 25 70 37 70 50"/>` + BASE,
+    q: Q_BODY + `<path class="b" d="M24 26 L35 52 L37 22 L44 50 L50 17 L56 50 L63 22 L65 52 L76 26 L67 58 H33 Z"/>` +
+       [[24,24],[37,19],[50,13],[63,19],[76,24]].map(([x,y]) => `<circle class="b" cx="${x}" cy="${y}" r="4.6"/>`).join("") + BASE,
+    k: K_BODY + `<path class="b" d="M32 56 L28 42 C24 30 34 22 43 26 C46 27 48 29 50 32 C52 29 54 27 57 26 C66 22 76 30 72 42 L68 56 Z"/><path class="b" d="M47 5 h6 v6 h6 v6 h-6 v10 h-6 v-10 h-6 v-6 h6 z"/>` + BASE,
+  },
+  alliance: { // footman helm, Stormwind tower, Light-star mitre, plumed charger, arched crown, crowned king
+    p: P_BODY + `<path class="b" d="M33 46 C33 28 40 18 50 18 C60 18 67 28 67 46 Z"/><path class="t" d="M30 42 h40 v6 h-40 z"/><path class="t" d="M47.5 25 h5 v20 h-5 z"/><circle class="t" cx="50" cy="15" r="4.2"/>` + BASE,
+    r: R_BODY + `<path class="t" d="M28 32 h44 v6 h-44 z"/><path class="b" d="M30 33 L50 9 L70 33 Z"/><path class="tl" d="M50 10 V2"/><path class="t" d="M50 1.5 l14 4.5 l-14 4.5 z"/><path class="e" d="M45.5 52 a4.5 4.5 0 0 1 9 0 v11 h-9 z" opacity=".55"/>` + BASE,
+    b: B_BODY + MITRE + `<path class="t" d="M50 27 l2.6 6 l6.2 .8 l-4.6 4.2 l1.4 6.2 l-5.6 -3.2 l-5.6 3.2 l1.4 -6.2 l-4.6 -4.2 l6.2 -.8 z"/>` + BASE,
+    n: HORSE + `<path class="t" d="M42 13 C43 3 56 0 62 7 C55 6 49 9 46 15 Z"/><path class="tl" d="M27 40 L45 35 L55 49"/>` + BASE,
+    q: Q_BODY + `<path class="b" d="M29 58 L24 30 Q37 17 50 30 Q63 17 76 30 L71 58 Z"/><path class="t" d="M30 49 h40 v5 h-40 z"/><circle class="t" cx="24" cy="28" r="4.6"/><circle class="t" cx="76" cy="28" r="4.6"/><circle class="t" cx="50" cy="27" r="4.2"/><circle class="b" cx="50" cy="12" r="6"/>` + BASE,
+    k: K_BODY + `<path class="b" d="M32 56 L28 42 C24 30 34 22 43 26 C46 27 48 29 50 32 C52 29 54 27 57 26 C66 22 76 30 72 42 L68 56 Z"/><path class="t" d="M30 46 h40 v6 h-40 z"/><circle class="gm" cx="50" cy="49" r="3"/><path class="t" d="M47 4 h6 v6 h6 v6 h-6 v11 h-6 v-11 h-6 v-6 h6 z"/>` + BASE,
+  },
+  horde: { // grunt helm, spiked palisade, skull totem, wolf, spiked crown, horned crown
+    p: P_BODY + `<path class="b" d="M35 46 C35 30 41 22 50 22 C59 22 65 30 65 46 Z"/><path class="t" d="M36 34 C26 32 21 24 23 13 C27 21 31 25 38 27 Z"/><path class="t" d="M64 34 C74 32 79 24 77 13 C73 21 69 25 62 27 Z"/><path class="e" d="M41 37 h18 v3.5 h-18 z"/>` + BASE,
+    r: `<path class="b" d="M32 33 h36 l-2 41 h-32 z"/><path class="b" d="M27 74 h46 l4 6 h-54 z"/><path class="b" d="M30 35 L33 14 L39 28 L44 7 L50 26 L56 7 L61 28 L67 14 L70 35 Z"/><path class="t" d="M32 46 h36 v5 h-36 z"/><path class="t" d="M33 61 h34 v5 h-34 z"/>` + BASE,
+    b: B_BODY + `<path class="b" d="M45 30 h10 v27 h-10 z"/><path class="t" d="M44 40 L33 54 L39 54 Z"/><path class="t" d="M56 40 L67 54 L61 54 Z"/><path class="b" d="M50 7 C39 7 34 14 34 22 C34 28 37 31 41 32 V37 H59 V32 C63 31 66 28 66 22 C66 14 61 7 50 7 Z"/><circle class="e" cx="44" cy="22" r="3.8"/><circle class="e" cx="56" cy="22" r="3.8"/>` + BASE,
+    n: `<path class="b" d="M30 80 C30 66 34 58 40 52 L24 50 L11 43 L28 34 L38 26 L42 7 L50 20 L58 7 L61 26 C71 34 76 44 76 56 C76 64 74 72 72 80 Z"/><path class="e" d="M33 32 L43 29 L40 35 Z"/><path class="t" d="M19 45 L23 52 L26 46 Z"/><path class="sl" d="M58 30 C66 38 70 48 70 60"/>` + BASE,
+    q: Q_BODY + `<path class="b" d="M24 21 L35 52 L38 15 L44 50 L50 6 L56 50 L62 15 L65 52 L76 21 L67 58 H33 Z"/><path class="t" d="M33 51 h34 v6 h-34 z"/>` + BASE,
+    k: K_BODY + `<path class="b" d="M33 56 V36 H67 V56 Z"/><path class="b" d="M33 37 L36 22 L42 34 L50 10 L58 34 L64 22 L67 37 Z"/><path class="t" d="M33 41 C20 39 14 27 17 12 C21 24 26 30 34 32 Z"/><path class="t" d="M67 41 C80 39 86 27 83 12 C79 24 74 30 66 32 Z"/><circle class="gm" cx="50" cy="46" r="4"/>` + BASE,
+  },
+};
+
+const state = { theme: location.hash === "#horde" ? "horde" : "alliance", style: "staunton", nota: "bg", stake: false };
+
+// One piece: c = "w" | "k" (black), t in prkbnq... (kn: king), as an <svg class="pc">.
+function piece(c, t, style = state.style) {
+  let body;
+  if (style === "medal") {
+    body = `<circle class="b" cx="50" cy="50" r="45"/><circle class="rim" cx="50" cy="50" r="39"/><circle class="rim2" cx="50" cy="50" r="36"/>` +
+           `<g class="g" transform="translate(50 51) scale(.6) translate(-50 -50)">${SHAPES.staunton[t]}</g>`;
+  } else {
+    const set = style === "faction" ? SHAPES[state.theme] : SHAPES.staunton;
+    body = set[t];
+  }
+  return `<svg class="pc ${c}" viewBox="0 0 100 100" aria-hidden="true">${body}</svg>`;
+}
+
+// ------------------------------------------------------------------ boards
+const FILES = "abcdefgh";
+function fenMap(fen) {
+  const m = {};
+  fen.split("/").forEach((row, i) => {
+    let f = 0;
+    for (const ch of row) {
+      if (/\d/.test(ch)) { f += +ch; continue; }
+      const c = ch === ch.toUpperCase() ? "w" : "k";
+      m[FILES[f] + (8 - i)] = { c, t: ch.toLowerCase() };
+      f++;
+    }
+  });
+  return m;
+}
+function board(o) {
+  const m = fenMap(o.fen);
+  let sq = "";
+  for (let r = 8; r >= 1; r--) for (let f = 0; f < 8; f++) {
+    const id = FILES[f] + r;
+    const cls = ["sq", (f + r) % 2 === 1 ? "d" : "l"];
+    if (o.last && o.last.includes(id)) cls.push("last");
+    if (o.sel === id) cls.push("sel");
+    if (o.dots && o.dots.includes(id)) cls.push("dot", "hov");
+    if (o.caps && o.caps.includes(id)) cls.push("cap", "hov");
+    if (o.check === id) cls.push("check");
+    sq += `<div class="${cls.join(" ")}">${m[id] ? piece(m[id].c, m[id].t) : ""}</div>`;
+  }
+  let coords = "";
+  for (let f = 0; f < 8; f++) coords += `<span class="cf" style="left:calc(var(--fr) + ${f} * var(--sq))">${FILES[f]}</span>`;
+  for (let r = 8; r >= 1; r--) coords += `<span class="cr" style="top:calc(var(--fr) + ${8 - r} * var(--sq))">${r}</span>`;
+  const rv = ["left:6px;top:6px", "right:6px;top:6px", "left:6px;bottom:6px", "right:6px;bottom:6px"].map(s => `<i class="rv" style="${s}"></i>`).join("");
+  let promo = "";
+  if (o.promo) {
+    const f = FILES.indexOf(o.promo);
+    promo = `<div class="promo" style="left:calc(var(--fr) + ${f} * var(--sq));top:var(--fr)">${["q", "r", "b", "n"].map(t => `<div>${piece("w", t)}</div>`).join("")}</div>`;
+  }
+  return `<div class="bw"${o.style ? ` style="${o.style}"` : ""}>${rv}<div class="board">${sq}</div>${coords}${promo}${o.banner || ""}</div>`;
+}
+
+// ------------------------------------------------------------------ the hero table
+const PLAYERS = {
+  alliance: { top: { name: "Торвалд", cls: "Воин", lvl: 60, color: "#c69b6d", acc: ["beard"] }, bot: { name: "Арамис", cls: "Паладин", lvl: 60, color: "#f48cba", acc: [] } },
+  horde: { top: { name: "Грок", cls: "Воин", lvl: 60, color: "#c69b6d", acc: ["tusks"] }, bot: { name: "Ранда", cls: "Ловец", lvl: 60, color: "#aad372", acc: ["horns"] } },
+};
+const sil = (acc) => `<svg viewBox="0 0 100 100">${(acc || []).filter(a => a === "hair").map(a => `<use href="#${a}"/>`).join("")}<use href="#bust"/>${(acc || []).filter(a => a !== "hair").map(a => `<use href="#${a}"/>`).join("")}</svg>`;
+function plate(p, side, secs, frac) {
+  const clock = state.stake || true ? `<b>${secs}</b>` : "";
+  return `<div class="por">${sil(p.acc)}</div><span class="badge" style="background:${p.color}">${p.lvl}</span>
+    <div class="bar"><div class="nm" style="color:${p.color}">${p.name}<span class="side-tag">${side}</span></div>
+    <div class="meta"><span>${p.cls}</span>${clock}</div><div class="clock"><i style="width:${frac}%"></i></div></div>`;
+}
+const SAN = ["e4", "e5", "Nf3", "Nc6", "Bb5", "a6", "Bxc6", "dxc6", "O-O", "Bg4", "h3", "h5"];
+const BG = { K: "Ц", Q: "Д", R: "Т", B: "О", N: "К" };
+const loc = (m) => state.nota === "bg" ? m.replace(/^[KQRBN]/, x => BG[x]).replace(/=([QRBN])/, (_, x) => "=" + BG[x]) : m;
+
+function renderHero() {
+  document.getElementById("hero").innerHTML = board({
+    fen: "r2qkbnr/1pp2pp1/p1p5/4p2p/4P1b1/5N1P/PPPP1PP1/RNBQ1RK1",
+    last: ["h7", "h5"], sel: "f3", dots: ["d4", "g5", "h4", "h2", "e1"], caps: ["e5"],
+  });
+  const P = PLAYERS[state.theme];
+  document.getElementById("pTop").innerHTML = plate(P.top, "черни", "9:12", 92);
+  document.getElementById("pBot").innerHTML = plate(P.bot, "бели", "8:38", 86);
+  document.getElementById("capTop").innerHTML = piece("w", "b");
+  document.getElementById("capBot").innerHTML = piece("k", "n");
+  let li = "";
+  for (let i = 0; i < SAN.length; i += 2) {
+    const last = i + 1 === SAN.length - 1;
+    li += `<li><span>${i / 2 + 1}.</span><span>${loc(SAN[i])}</span><span${last ? ' class="cur"' : ""}>${SAN[i + 1] ? loc(SAN[i + 1]) : ""}</span></li>`;
+  }
+  document.getElementById("moves").innerHTML = li;
+  document.getElementById("tableNote").innerHTML = `маса на ${P.bot.name} · залог <span class="gold-amt">10</span><span class="coin"></span> · 10 мин +5 с`;
+  document.getElementById("heroLine").textContent = `Твой ход. ${state.nota === "bg" ? "Кон" : "Knight"} f3: 6 хода.`;
+}
+
+// ------------------------------------------------------------------ the three styles
+const STYLE_INFO = {
+  staunton: ["А · Класически", "Силуетите на Стаунтън, като на истинска дъска, в материала на облика. Четат се най-лесно и всеки ги познава."],
+  faction: ["Б · Фракционни", "Всяка фигура е от фракцията. Alliance: шлем на пехотинец, кула на Stormwind, кон с перо. Horde: шлем на грънт с рога, палисада с шипове, тотем с череп, вълк. Носят най-много дух, но се учат за минута."],
+  medal: ["В · Медальони", "Кръгли жетони като монетите в механата, с гравиран силует. Най-ясни на малък размер, но изглеждат по-плоски."],
+};
+function strip(cls) {
+  const order = ["k", "q", "r", "b", "n", "p"];
+  return `<div class="strip ${cls}">${order.map((t, i) => `<div class="sq ${i % 2 ? "d" : "l"}">${piece("w", t)}</div>`).join("")}${order.map((t, i) => `<div class="sq ${i % 2 ? "l" : "d"}">${piece("k", t)}</div>`).join("")}</div>`;
+}
+function renderStyles() {
+  const saved = state.style;
+  document.getElementById("styles").innerHTML = Object.keys(STYLE_INFO).map(s => {
+    state.style = s;
+    const [name, txt] = STYLE_INFO[s];
+    const html = `<div class="style-card${s === saved ? " on" : ""}" data-s="${s}"><h3>${name}${s === saved ? '<span class="note">избран</span>' : ""}</h3><p>${txt}</p>${strip("")}${strip("small")}</div>`;
+    return html;
+  }).join("");
+  state.style = saved;
+  document.querySelectorAll(".style-card").forEach(c => c.addEventListener("click", () => { state.style = c.dataset.s; render(); }));
+}
+
+// ------------------------------------------------------------------ moments
+function renderMinis() {
+  const P = PLAYERS[state.theme];
+  const minis = [
+    { h: "Шах", p: "Царят в шах свети в червено. Чува се звукът за шах.", b: { fen: "rnbqkbnr/ppp1pppp/8/1B1p4/4P3/8/PPPP1PPP/RNBQK1NR", last: ["f1", "b5"], check: "e8" } },
+    { h: "Промоция", p: "Пешката стига последния ред и излиза избор: дама, топ, офицер или кон. Дамата е отгоре и е маркирана.", b: { fen: "r5k1/1P3ppp/8/8/8/8/5PPP/6K1", sel: "b7", dots: ["b8"], caps: ["a8"], promo: "b" } },
+    { h: "Предложено реми", p: "Лентата е само при противника. Ако той изиграе ход, отказва.", b: { fen: "8/5k2/8/3r4/8/3R4/5K2/8", last: ["d1", "d3"], banner: `<div class="banner"><div class="t">Реми?</div><div class="s">${P.top.name} предлага реми</div><div class="row"><button class="btn sm">Приеми</button><button class="btn ghost sm">Откажи</button></div></div>` } },
+    { h: "Мат", p: "Край на партията. Домакинът започва „Нова партия“ и цветовете се разменят. При реми пише причината, например „Реми: троен повтор“.", b: { fen: "4R1k1/5ppp/8/8/8/8/5PPP/6K1", last: ["e1", "e8"], check: "g8", banner: `<div class="banner"><div class="t">Мат!</div><div class="s">${P.bot.name} печели · +10<span class="coin"></span></div><div class="row"><button class="btn sm">Нова партия</button></div></div>` } },
+  ];
+  document.getElementById("minis").innerHTML = minis.map(x => `<div class="mini">${board(x.b)}<h3>${x.h}</h3><p>${x.p}</p></div>`).join("");
+}
+
+function render() {
+  document.documentElement.dataset.faction = state.theme;
+  document.querySelectorAll("[data-f]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.f === state.theme)));
+  document.querySelectorAll("#styleSwitch button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.s === state.style)));
+  document.querySelectorAll("#nota button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.n === state.nota)));
+  document.querySelectorAll(".crest-use").forEach(u => u.setAttribute("href", "#crest-" + state.theme));
+  document.getElementById("tileIcon").innerHTML = SHAPES.staunton.n.replace(/class="[a-z]+"/g, "");
+  renderHero(); renderStyles(); renderMinis();
+  document.getElementById("cFun").classList.toggle("on", !state.stake);
+  document.getElementById("cStake").classList.toggle("on", state.stake);
+  document.getElementById("cInf").className = "chip " + (state.stake ? "off" : "on");
+}
+document.querySelectorAll("[data-f]").forEach(b => b.addEventListener("click", () => { state.theme = b.dataset.f; render(); }));
+document.querySelectorAll("#styleSwitch button").forEach(b => b.addEventListener("click", () => { state.style = b.dataset.s; render(); }));
+document.querySelectorAll("#nota button").forEach(b => b.addEventListener("click", () => { state.nota = b.dataset.n; render(); }));
+document.getElementById("cFun").addEventListener("click", () => { state.stake = false; render(); });
+document.getElementById("cStake").addEventListener("click", () => { state.stake = true; render(); });
+render();
+</script>
+</body>
+</html>
