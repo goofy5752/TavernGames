@@ -76,10 +76,13 @@ Residuals F3 must close or re-accept (rulings log, "Stage E" 1–10):
 
 ### F4 — Класация, История, housekeeping
 
-- The tabs „Класация“ (period × game, the columns and honours of spec 5.6, „Кралят/Кралицата на механата“) and „История“, both computed from the log.
-- Which `RESULT` events count (a host-authored result is a claim): the trust rule is decided here.
-- Log retention and compaction (spec 9 leaves it to the implementer); F1–F3 never delete an event.
-- Polishing found by the F1–F3 check lists.
+**Built** (plan `2026-11-26-stageF4-leaderboard-history.md`; Addendum 11 of `docs/superpowers/notes/engine-contract.md`; the rulings log, section "Stage F4").
+
+- The tabs „Класация“ (a week, a month or all time; all games or one; place, name, games, wins, percent, a bar for the gold net, the favourite game, honours of three or more in a row; „Кралят/Кралицата на механата“) and „История“ (every game and payment, newest first, each game marked by how far its word is backed; a click on a row of „Класация“ shows that player's lines and up to five opponents), both **computed from the log and stored nowhere**. Both redraw only while shown, at most once per 2 s.
+- **The trust rule (Decision T), one line:** a result counts per player: a staked one on the loser's and the winner's own confirmed debts, a fun one on a seated host's word; gold is read from confirmed debts only; the crown goes to the most gold won, and to the most wins only when no gold moved.
+- **The retention rule (Decision R, J1 a), one line:** only an `R`/`S` of an author over 4500 of them is ever dropped (oldest first, once a session, 60 s after login), leaving a stub that counts for the sync, so retention changes no digest and no wire message; there is no age rule, and debts and payments never leave.
+- The rules book lists „Класация“ and „История“; `/tavern ledger` prints the authors, bodies, stubs and my digest; the board's timer, columns and header polished.
+- Left open: Addendum 8 residuals 20 and 21; the in-game check list (`docs/superpowers/notes/2026-11-stageF4-ingame-checks.md`), every row "not yet measured".
 
 ## Why this split
 

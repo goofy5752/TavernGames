@@ -1,0 +1,22 @@
+# Stage F4: in-game checks
+
+Run these in the game client on Forever with `/console scriptErrors 1` on throughout.
+Nothing here is marked passed on the strength of the unit tests: every row stays `not yet measured` until the result is written in by hand.
+Rows 8 and 9 need two characters (row 9 with two stores, one of them edited by hand); rows 2 and 3 need a second character to play and a loser who can press „Потвърждавам“.
+
+Scope of this stage: the tabs „Класация“ and „История“ (computed from the ledger, nothing stored), the trust rule (Decision T), the retention by stubs (Decision R: only an `R`/`S` of an author over 4500 is dropped, once a session, `LEDGER_PRUNE_WAIT` after login), the rules book's two new topics and `/tavern ledger`. What was built is stated in Addendum 11 of `docs/superpowers/notes/engine-contract.md`; the rulings are in the log, section "Stage F4".
+
+| # | Check | What to look for | Result |
+|---|---|---|---|
+| 1 | five tab buttons and the gold fit the title bar (Зала, Тефтер, Класация, История, Настройки) at the default and a low UI scale, both languages | nothing clipped or overlapping; the gold amount, the ⓘ and × stay clear of the last button | not yet measured |
+| 2 | „Класация“ after a game for fun | the game counts for both names at once, on the host's word; the head names the king or „Тронът е празен.“; the row has a name, games, wins, percent, no gold bar | not yet measured |
+| 3 | „Класация“ after a staked game, before and after the loser's confirmation | before: no win or loss for either name, no gold; after „Потвърждавам“ (or the loser's own `D`): the game counts, the gold bar and „Злато нето“ show the amount and the winner can be the king | not yet measured |
+| 4 | the period buttons and the game button | „Седмица“, „Месец“ and „Всичко“ change the rows and the selected one is gold; the game button cycles „Всички игри“ and each game; the king line does not change with the game; the layout holds in both languages | not yet measured |
+| 5 | a click on a row of „Класация“ | „История“ opens with only that player's lines, the head lists up to five opponents with the wins, the losses and the gold between them; „Всички“ brings the whole log back; the ⓘ opens the topic of the tab that is shown and the hall's after | not yet measured |
+| 6 | the row: the honour and favourite columns, the „Играч“ header (bg and en) | "12 losses in a row" and the longest game name fit their columns; the row ends inside the paper (712 px); the headers sit over their columns | not yet measured |
+| 7 | „История“ with 200 lines (a long ledger, or the sim's) | scrolling with the wheel is smooth; no frame count growth; the marks (за удоволствие, чака потвърждение, оспорен, потвърдено, само твърдение) and the tooltip's „по думите на“ read right; a denied entry is marked „отречено“ | not yet measured |
+| 8 | `/tavern ledger` before and after `LEDGER_PRUNE_WAIT` (60 s) | one local line „Тефтер: … автори, … записа, … стари (само следа), отпечатък …“; nothing is sent; with the normal store the stubs stay 0 and the digest does not change | not yet measured |
+| 9 | two characters with different retention states (edit one store to hold more than 4500 `R` of one author, so that its prune makes stubs) | after the prune the two show **equal digests** in `/tavern ledger` and **exchange nothing** (watch the message count for a minute); a third, new character receives the bodies once and not again | not yet measured |
+| 10 | the rules book | the list has thirteen rows and ends above the intro link in both languages; „Класация“ and „История“ open their topics; the topic „Тефтер“ ends with what leaves and what stays | not yet measured |
+| 11 | the time of a rebuild: „Класация“ with a large ledger (thousands of results) | the page opens without a hitch; a ledger event while shown redraws no more than once per 2 s; hidden, nothing is rebuilt | not yet measured |
+| 12 | the memory of the addon after login with a large ledger (`/dump collectgarbage("count")` before and after login, then after the prune) | the growth by the ledger and the stubs is steady; the prune does not spike a frame (it works in steps of 500 bodies) | not yet measured |
