@@ -949,3 +949,20 @@ describe("holdem: what a full table costs", function()
     eq(byType, { EV = 138, PRV = 5 }); ok(tck <= 6, "TCK " .. tck); eq(n, 143 + tck); ok(bytes <= 23500, "bytes " .. bytes)       -- 23 events to 6 members and the dealer's 5 private whispers; measured 22 000-22 500
   end)
 end)
+
+describe("holdem: the host deals and stands mid-hand (e2e soak)", function()
+  -- The host's own stand (a handoff) voids the hand it deals: its own void, not
+  -- one "in my name that I did not make" (soak seed 300183: "bad: forged" on the leaver).
+  it("the hand is void on every client and on the leaver, and nowhere forged", function()
+    tableN(3); ok(cl[1]:startGame()); sim:run(3)
+    local f = cl[1].session.fair
+    eq({ st().hand, f.d, f.stage }, { 1, 1, "dealt" })
+    local verdicts = {}
+    for i = 1, 3 do cl[i]:on("fair", function(v) verdicts[#verdicts + 1] = { i, v.verdict, v.why } end) end
+    cl[1]:stand(); sim:run(3)
+    eq(cl[1].session, nil)
+    for _, v in ipairs(verdicts) do ok(v[2] ~= "bad", "client " .. v[1] .. ": " .. tostring(v[2]) .. " " .. tostring(v[3])) end
+    eq(host(), cl[2]); eq(st().last.void, true)
+    for _, c in ipairs{ cl[2], cl[3], w } do eq(c.session.fairLast.verdict, "void") end
+  end)
+end)
