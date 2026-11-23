@@ -322,6 +322,17 @@ function TableFrame.render()
   TableFrame.tick()
 end
 
+-- Brings my table window up in front of the tavern window (built, drawn and
+-- shown even when I had closed it) -> true, or false without a session.
+function TableFrame.focus()
+  local client = ns.client
+  if not (client and client.session) then return false end
+  TableFrame.render()
+  TableFrame.frame:Show()
+  TableFrame.frame:Raise()
+  return true
+end
+
 -- Redraws on the next frame; several calls in one frame draw once.
 function TableFrame.refresh()
   if TableFrame.scheduled then return end
@@ -355,6 +366,7 @@ function TableFrame.build()
   f:SetPoint("CENTER", UIParent, "CENTER", 0, 30)
   f:SetFrameStrata("HIGH")
   f:SetToplevel(true)
+  f:SetScript("OnMouseDown", function() f:Raise() end)
   f:SetMovable(true)
   f:SetClampedToScreen(true)
   f:EnableMouse(true)
