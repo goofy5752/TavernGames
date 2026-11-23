@@ -317,15 +317,19 @@ describe("/tavern probe", function()
     ok(probeLine(w, said .. "GetFileIDFromPath: function", n + 1), "GetFileIDFromPath")
     local total = select(3, w.ns.Art.report())
     eq(total, 4 + 11 + 60 + 2 + 3) -- crests, leaders, races, the one class (MAGE), coins
-    eq(w.chat[#w.chat], said .. L("probe.art.sum", 0, total))
+    eq(w.chat[#w.chat - 1], said .. L("probe.art.sum", 0, total))
+    eq(w.chat[#w.chat], said .. L("probe.art.saved"))
+    local kept = w.ns.db.probeArt -- the report, line for line, without the chat prefix
+    eq(#kept, #w.chat - 1 - n); eq(kept[1], L("probe.art.head")); eq(kept[#kept], L("probe.art.sum", 0, total))
     n = #w.chat
     w:hasFile(logo); w.ns.Art.reset()
     w:slash("probe art")
     ok(probeLine(w, said .. logo .. ": file", n + 1), "logo present")
-    local player = w.chat[#w.chat - 1]
+    local player = w.chat[#w.chat - 2]
     eq(player, said .. L("probe.art.player", "Alliance", "Human", "2"))
     for _, needle in ipairs({ "Alliance", "Human", "2" }) do ok(player:find(needle, 1, true), player) end
-    ok(w.chat[#w.chat]:find("Намерени 1 от " .. total, 1, true), w.chat[#w.chat])
+    ok(w.chat[#w.chat - 1]:find("Намерени 1 от " .. total, 1, true), w.chat[#w.chat - 1])
+    eq(w.ns.db.probeArt[#w.ns.db.probeArt], L("probe.art.sum", 1, total))
     eq(#w.sent, sent)
   end)
 end)

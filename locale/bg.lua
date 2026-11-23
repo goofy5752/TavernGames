@@ -180,6 +180,7 @@ T["probe.art.head"] = "Графики от клиента (file / atlas = има
 T["probe.art.line"] = "%s: %s"
 T["probe.art.player"] = "Герой: фракция %s, раса %s, пол %s"
 T["probe.art.sum"] = "Намерени %d от %d. Липсващите се показват с наши заместители."
+T["probe.art.saved"] = "Докладът е запазен. След /reload е в WTF\\Account\\<акаунт>\\SavedVariables\\TavernGames.lua."
 
 -- Main window and hall
 T["tab.hall"] = "Зала"

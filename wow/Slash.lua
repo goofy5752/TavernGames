@@ -180,12 +180,18 @@ end
 
 -- /tavern probe art: every client asset candidate, sound name and art API with
 -- what the client has (ns.Art.report), then my character and the count found.
+-- The lines are also kept in ns.db.probeArt (account-wide, never sent), so the
+-- report can be read from SavedVariables after a /reload.
 function Slash.probeArt()
-  say(L("probe.art.head"))
+  local lines = {}
+  local function out(text) lines[#lines + 1] = text; say(text) end
+  out(L("probe.art.head"))
   local rows, found, total = ns.Art.report()
-  for _, row in ipairs(rows) do say(L("probe.art.line", row[1], row[2])) end
-  say(L("probe.art.player", nth(1, "UnitFactionGroup", "player"), nth(2, "UnitRace", "player"), nth(1, "UnitSex", "player")))
-  say(L("probe.art.sum", found, total))
+  for _, row in ipairs(rows) do out(L("probe.art.line", row[1], row[2])) end
+  out(L("probe.art.player", nth(1, "UnitFactionGroup", "player"), nth(2, "UnitRace", "player"), nth(1, "UnitSex", "player")))
+  out(L("probe.art.sum", found, total))
+  if ns.db then ns.db.probeArt = lines end
+  say(L("probe.art.saved"))
 end
 
 local function probe(arg)

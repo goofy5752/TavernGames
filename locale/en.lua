@@ -180,6 +180,7 @@ T["probe.art.head"] = "Client art (file / atlas = present, - = missing):"
 T["probe.art.line"] = "%s: %s"
 T["probe.art.player"] = "Character: faction %s, race %s, sex %s"
 T["probe.art.sum"] = "Found %d of %d. The missing ones are shown with our own stand-ins."
+T["probe.art.saved"] = "Report saved. After /reload it is in WTF\\Account\\<account>\\SavedVariables\\TavernGames.lua."
 
 -- Main window and hall
 T["tab.hall"] = "Hall"
