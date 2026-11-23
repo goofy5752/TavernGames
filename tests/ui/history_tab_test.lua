@@ -72,6 +72,12 @@ local function shown(w)
 end
 
 describe("ui: the tab „История“", function()
+  it("the book carries the wax seal at the top right", function()
+    local w = readyWow()
+    local v = open(w, B)
+    ok(v.seal); eq({ v.seal:GetSize() }, { 56, 56 }); eq(v.seal.points[1][1], "TOPRIGHT")
+  end)
+
   it("a fun game, a staked game and a payment read as lines, newest first", function()
     local w = readyWow()
     fun(w); w:advance(60)

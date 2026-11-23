@@ -41,7 +41,7 @@ describe("ui: rules book", function()
     eq(B.current, "hall")
     eq(B.title:GetText(), "Книжка с правила")
     framed(w, B.border)
-    eq(B.paper.color, rgba(w, "cream"))
+    eq(B.paper:GetTexture(), w.ns.Theme.tex.parchment)
     local names = {}
     for i, t in ipairs(B.topics) do names[i] = t.id .. "=" .. t.button.text:GetText() end
     eq(names, { "hall=Залата", "ttt=Морски шах", "deathroll=Death Roll", "santase=Сантасе", "belot=Белот", "tabla=Табла", "holdem=Тексас Холдем", "fair=Защо раздаването е честно", "stakes=Залози", "ledger=Тефтер", "board=Класация", "history=История", "soon=Скоро" })

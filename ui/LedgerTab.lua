@@ -264,6 +264,7 @@ function LedgerTab.build(page)
   book:SetPoint("TOPLEFT", panel, "TOPLEFT", 10, -HEAD_H)
   book:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -10, 10)
   W.paper(book)
+  local seal = W.seal(book, 56)
   local margin = book:CreateTexture(nil, "BORDER")
   margin:SetColorTexture(Theme.color.felt[1], Theme.color.felt[2], Theme.color.felt[3], 0.25)
   margin:SetPoint("TOPLEFT", book, "TOPLEFT", PAD + MARGIN - 8, -12)
@@ -280,7 +281,7 @@ function LedgerTab.build(page)
   local foot = W.Label(book, "paperNote", "", 13)
   foot:SetPoint("BOTTOMLEFT", book, "BOTTOMLEFT", PAD + MARGIN, PAD)
   foot:SetHeight(FOOT_H - 6)
-  LedgerTab.view = { page = page, panel = panel, title = title, head = head, book = book, scroll = scroll,
+  LedgerTab.view = { seal = seal, page = page, panel = panel, title = title, head = head, book = book, scroll = scroll,
     empty = empty, foot = foot, rows = {}, lines = {}, rowW = rowW, ROWS = ROWS, ROW_H = ROW_H }
   page:SetScript("OnShow", function() topic("ledger"); LedgerTab.render() end)
   page:SetScript("OnHide", function() topic("hall") end)

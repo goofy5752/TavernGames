@@ -17,7 +17,7 @@ local STYLES = {
   -- Dark ink on cream paper (the rules book, the intro), without a shadow.
   paper = { font = "ui", size = 13, color = "woodDark", flat = true },
   paperNote = { font = "ui", size = 13, color = "woodDark", flat = true },
-  paperHeading = { font = "heading", size = 18, color = "red", flat = true },
+  paperHeading = { font = "heading", size = 18, color = "paperHead", flat = true },
 }
 
 -- Nine-slice of the texture at `path` (pixel size `size`, a number or {w, h})
@@ -229,14 +229,30 @@ function W.edges(frame, px, layer)
   return set
 end
 
--- Cream paper inside the brass frame (media/frame.tga, a 12 px band drawn
--- 12 px wide) over all of `frame`. Returns the paper texture and the nine-slice.
+-- Parchment inside the skin's frame (a 12 px band drawn 12 px wide) over all of
+-- `frame`. Returns the paper texture and the nine-slice.
 function W.paper(frame)
   local paper = frame:CreateTexture(nil, "BACKGROUND")
   paper:SetPoint("TOPLEFT", frame, "TOPLEFT", 4, -4)
   paper:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -4, 4)
-  paper:SetColorTexture(Theme.rgb("cream"))
+  paper:SetTexture(Theme.tex.parchment)
   return paper, W.nine(frame, Theme.tex.frame, Theme.texSize.frame, 12, 12, "BORDER", true)
+end
+
+-- The wax seal of the faction's banner colour, `size` px, at the top right of
+-- the book `parent` (the crest pressed into it) -> the frame (.disc, .crest).
+function W.seal(parent, size)
+  local f = CreateFrame("Frame", nil, parent)
+  f:SetSize(size, size)
+  f:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -22, 14)
+  f.disc = f:CreateTexture(nil, "ARTWORK")
+  f.disc:SetAllPoints(f)
+  f.disc:SetTexture(Theme.tex.chair)
+  f.disc:SetVertexColor(Theme.rgb("banner"))
+  f.crest = W.crest(f, size * 0.62)
+  f.crest:SetPoint("CENTER", f, "CENTER")
+  f.crest:SetAlpha(0.85)
+  return f
 end
 
 -- A dark translucent panel with a thin brass edge (mockup `.panel`).

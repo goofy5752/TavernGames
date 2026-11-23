@@ -27,7 +27,7 @@ local PERIODS = { "week", "month", "all" }
 local GREEN, RED, RULE = { 0.27, 0.48, 0.2 }, { 0.66, 0.2, 0.18 }, { 0xd9 / 255, 0xc4 / 255, 0x9a / 255 }
 -- Columns: x from the row's left, width, justification.
 local COL = {
-  place = { 6, 22, "RIGHT" }, name = { 34, 120, "LEFT" }, games = { 156, 40, "RIGHT" }, wins = { 200, 46, "RIGHT" },
+  place = { 6, 22, "RIGHT" }, name = { 56, 98, "LEFT" }, games = { 156, 40, "RIGHT" }, wins = { 200, 46, "RIGHT" },
   pct = { 250, 40, "RIGHT" }, net = { MID + BAR + 6, 84, "LEFT" }, fav = { MID + BAR + 92, 104, "LEFT" }, honour = { 614, 98, "LEFT" },
 }
 BoardTab.COL, BoardTab.MID, BoardTab.BAR = COL, MID, BAR
@@ -62,12 +62,12 @@ end
 function BoardTab.lines(client, period, game)
   if not (client and client.ledger) then return { rows = {} } end
   local b = Stats.board(client.ledger, { period = period, game = game, now = client.env.epoch() })
-  local out = { king = b.king and L("board.king", paint(client, b.king)) or L("board.king.none"), rows = {} }
+  local out = { king = b.king and L(Theme.skin == "horde" and "board.king.horde" or "board.king", paint(client, b.king)) or L("board.king.none"), rows = {} }
   for i, r in ipairs(b.rows) do
     out.rows[i] = {
       name = r.name, who = paint(client, r.name), games = tostring(r.games), wins = tostring(r.wins),
       pct = r.pct and r.pct .. "%" or "–", net = signed(r.net), bar = b.top > 0 and r.net / b.top or 0,
-      fav = r.fav and W.gameName(r.fav) or "", honour = honour(r.honour),
+      fav = r.fav and W.gameName(r.fav) or "", honour = honour(r.honour), king = r.name == b.king,
     }
   end
   return out
@@ -95,6 +95,8 @@ local function makeRow(r)
   rule:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 0, 0)
   rule:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", 0, 0)
   rule:SetHeight(1)
+  r.portrait = ns.Portrait.new(f, ROW_H - 4)
+  r.portrait.frame:SetPoint("LEFT", f, "LEFT", COL.place[1] + COL.place[2] + 2, 0)
   r.place, r.name = column(f, "place", "", 12), column(f, "name", "", 14, "paperNote")
   r.games, r.wins, r.pct = column(f, "games"), column(f, "wins"), column(f, "pct")
   r.pos, r.neg = f:CreateTexture(nil, "ARTWORK"), f:CreateTexture(nil, "ARTWORK")
@@ -115,6 +117,8 @@ local function fillRow(r, line, i)
   r.line = line
   r.place:SetText(i .. ".")
   r.name:SetText(line.who)
+  r.portrait:set(ns.Portrait.who(ns.client, line.name))
+  r.portrait:turn(line.king)
   r.games:SetText(line.games); r.wins:SetText(line.wins); r.pct:SetText(line.pct)
   r.net:SetText(line.net)
   r.pos:SetShown(line.bar > 0); r.neg:SetShown(line.bar < 0)
@@ -203,6 +207,7 @@ function BoardTab.build(page)
   book:SetPoint("TOPLEFT", panel, "TOPLEFT", 10, -HEAD_H)
   book:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -10, 10)
   W.paper(book)
+  v.seal = W.seal(book, 56)
   local cols = CreateFrame("Frame", nil, book)
   cols:SetSize(BOOK_W - 20 - 2 * PAD, 18)
   cols:SetPoint("TOPLEFT", book, "TOPLEFT", PAD, -10)
