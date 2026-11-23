@@ -328,6 +328,7 @@ local function buildSure()
   local Theme = ns.Theme
   local f = CreateFrame("Frame", nil, UIParent)
   A.sure = f
+  ns.Resize.follow(f, "main")
   f:SetSize(SURE_W, SURE_H)
   f:SetPoint("CENTER", UIParent, "CENTER", 0, 40)
   f:SetFrameStrata("DIALOG")

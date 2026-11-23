@@ -35,12 +35,16 @@ local Theme = {
     walnut = hex("3b1d10"),     -- the dark checker
     glow = hex("ffd100"),       -- a legal target
   },
+  -- Headings keep the tavern face (Alegreya SC); every other text is PT Sans.
   font = {
     heading = MEDIA .. "fonts\\AlegreyaSC-Bold.ttf",
-    ui = MEDIA .. "fonts\\AlegreyaSans-Regular.ttf",
-    uiBold = MEDIA .. "fonts\\AlegreyaSans-Bold.ttf",
-    italic = MEDIA .. "fonts\\Alegreya-Italic.ttf",
+    ui = MEDIA .. "fonts\\PTSans-Regular.ttf",
+    uiBold = MEDIA .. "fonts\\PTSans-Bold.ttf",
   },
+  -- PT Sans sets the UI's text about 10% wider than Alegreya Sans did at the
+  -- same size (measured over both locales): its sizes are scaled so every
+  -- label keeps the width the layout was made for. The x-height stays the same.
+  fontScale = { ui = 0.91, uiBold = 0.93 },
   tex = {},
   -- Pixel size of each texture file, for tiling and nine-slicing.
   texSize = {
@@ -60,6 +64,12 @@ ns.Theme = Theme
 function Theme.rgb(token)
   local c = Theme.color[token]
   return c[1], c[2], c[3]
+end
+
+-- Sets font `token` (heading | ui | uiBold) at layout size `size` on a
+-- FontString or an EditBox, scaled by Theme.fontScale.
+function Theme.setFont(fs, token, size, flags)
+  return fs:SetFont(Theme.font[token], size * (Theme.fontScale[token] or 1), flags or "")
 end
 
 -- The texture coordinates of die face n (1..6) on the `dice` texture

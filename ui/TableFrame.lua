@@ -160,7 +160,7 @@ local function plateWidget(v, i)
   ring:SetPoint("CENTER", disc, "CENTER")
   ring:SetTexture(Theme.tex.ring)
   local name = W.Label(f, "ui", "", 12)
-  name:SetFont(Theme.font.uiBold, 12, "")
+  Theme.setFont(name, "uiBold", 12)
   name:SetWordWrap(false)
   name:SetWidth(PLATE_W - PLATE_NAME_INSET)
   name:SetPoint("LEFT", f, "LEFT", 28, 0)
@@ -430,6 +430,7 @@ function TableFrame.build()
   f:SetMovable(true)
   f:SetClampedToScreen(true)
   f:EnableMouse(true)
+  ns.Resize.attach(f, "table", 3)
   local v = { plates = {} }
   TableFrame.view = v
 

@@ -183,7 +183,7 @@ describe("ui: Белот view", function()
     eq(plain(f.summary:GetText()), table.concat({ "Игра: Купа, контра  каза Мария Стоянова", "Ние +32 · Вие +0", "Вътре са!",
       "Иван Петров: Терца, 20", "Мария Стоянова: Терца (не се брои)", "Пешо Тодоров: Белот, 20" }, "\n"))
     for k = 0, 3 do eq(f.trick[k].frame:IsVisible(), false) end
-    eq(f.summary:GetWidth(), 170); eq(select(2, f.summary:GetFont()), 11)
+    eq(f.summary:GetWidth(), 170); eq(select(2, f.summary:GetFont()), 11 * w.ns.Theme.fontScale.ui)
     eq(f.summary.points[1], { "TOP", f, "TOPLEFT", 266, -64 })
     st.hang = 9; View.update(f, sess(st, 1)); eq(#plainTexts(w, "до 151 · висят 9"), 1)
 

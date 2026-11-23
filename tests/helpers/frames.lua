@@ -20,6 +20,17 @@ function Region:SetHeight(h) self.height = h end
 function Region:GetWidth() return self.width end
 function Region:GetHeight() return self.height end
 function Region:GetSize() return self.width, self.height end
+-- Scale and screen position: SetScale is kept; GetLeft/GetTop report only what a
+-- test sets in .left / .top (there is no layout engine).
+function Region:SetScale(s) self.scale = s end
+function Region:GetScale() return self.scale or 1 end
+function Region:GetEffectiveScale()
+  local s, r = 1, self
+  while r do s = s * (r.scale or 1); r = r.parent end
+  return s
+end
+function Region:GetLeft() return self.left end
+function Region:GetTop() return self.top end
 function Region:SetAlpha(a) self.alpha = a end
 function Region:GetAlpha() return self.alpha end
 function Region:IsShown() return self.shown end

@@ -57,7 +57,8 @@ Every table is either **just for fun** or **staked in gold and silver**. The add
 - 📜 **History**: a timeline of games and payments, and a head-to-head view of any two players.
 - 🔄 **Survives disconnects**: reconnect snapshots, automatic stand-up when a player goes offline, and a new host is chosen when the host leaves.
 - 🌍 **English and Bulgarian** interface, an in-game rules book and a first-run intro.
-- 🎨 **A hand-made tavern look**: a walnut frame, burgundy felt, brass, cream-coloured cards and the Alegreya typeface. It does not look like the default WoW UI templates.
+- 🎨 **A hand-made tavern look**: a walnut frame, burgundy felt, brass, cream-coloured cards with Alegreya SC headings and clear PT Sans text. It does not look like the default WoW UI templates.
+- ↘️ **Resizable windows**: drag the corner of the main window or a game table to make it as large or as small as you like. Everything inside, from text to cards to boards, scales with it, and the size is remembered. Right-click the corner for the normal size.
 
 ## Games
 
@@ -227,7 +228,7 @@ Bug reports, rule corrections (especially for regional Belot and Santase variant
 ## License and credits
 
 - Tavern Games is released under the [MIT License](LICENSE).
-- The bundled libraries (Ace3, LibDeflate, LibDataBroker-1.1, LibDBIcon-1.0) and the Alegreya fonts keep their own licenses; see [LICENSE-THIRD-PARTY.md](LICENSE-THIRD-PARTY.md).
+- The bundled libraries (Ace3, LibDeflate, LibDataBroker-1.1, LibDBIcon-1.0) and the Alegreya SC and PT Sans fonts keep their own licenses; see [LICENSE-THIRD-PARTY.md](LICENSE-THIRD-PARTY.md).
 - World of Warcraft® is a trademark of Blizzard Entertainment, Inc. This project is not affiliated with or endorsed by Blizzard Entertainment.
 
 ---
@@ -242,6 +243,7 @@ Bug reports, rule corrections (especially for regional Belot and Santase variant
 - **Честно раздаване:** всички участват в разбъркването на тестето (commit-reveal), раздаващият се сменя всяка ръка и всеки клиент проверява всеки ход.
 - **Холдем със злато:** вход от 40 до 100 големи блайнда, докупуване и сметка между всеки двама играчи.
 - **Класация и история:** седмица, месец и всичко, титлата „Кралят/Кралицата на механата“, хронология на игрите и сравнение между двама играчи.
+- **Разтегаеми прозорци:** хващаш ъгъла на прозореца или на масата и го правиш колкото искаш голям. Всичко вътре се уголемява заедно с него.
 - **Интерфейс на български и английски**, книга с правилата и въведение при първо пускане.
 
 **Инсталиране:** копирай папките `Libs`, `core`, `engines`, `locale`, `wow`, `ui`, `media` и файла `TavernGames.toc` в `World of Warcraft\_forever_\Interface\AddOns\TavernGames\`. После напиши `/tavern` в играта.

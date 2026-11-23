@@ -69,7 +69,7 @@ describe("ui: rules book", function()
     end
     local p, ex, board = blocks[1], blocks[2], blocks[3]
     eq(p.text:GetFont(), Theme.font.ui)
-    eq(ex.text:GetFont(), Theme.font.italic)
+    eq(ex.text:GetFont(), Theme.font.ui)
     eq(ex.rule.color, rgba(w, "brass")); eq(ex.rule:GetWidth(), 2)
     local _, _, _, px = unpack(p.text.points[1]); local _, _, _, ex_x = unpack(ex.text.points[1])
     ok(ex_x > px, "example not indented")

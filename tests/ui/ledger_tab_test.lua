@@ -127,12 +127,12 @@ describe("ui: the tab „Тефтер“", function()
     open(w)
     eq(states(w), { "open", "open", "pending", "contested", "paid", "denied" })
     eq(shown(w), {
-      { "Дара Колева → Тодор Ангелов", "2g", "днес" },
-      { "Мария Стоянова → Тодор Ангелов", "остават 2g от 5g", "днес" },
-      { "Дара Колева → Мария Стоянова", "6g", "днес", "чака потвърждение" },
-      { "Тодор Ангелов → Мария Стоянова", "3g", "днес", "оспорен" },
-      { "Тодор Ангелов → Дара Колева", "4g", "днес" },
-      { "Дара Колева → Мария Стоянова", "1g", "днес", "отречено от автора си" },
+      { "Дара Колева » Тодор Ангелов", "2g", "днес" },
+      { "Мария Стоянова » Тодор Ангелов", "остават 2g от 5g", "днес" },
+      { "Дара Колева » Мария Стоянова", "6g", "днес", "чака потвърждение" },
+      { "Тодор Ангелов » Мария Стоянова", "3g", "днес", "оспорен" },
+      { "Тодор Ангелов » Дара Колева", "4g", "днес" },
+      { "Дара Колева » Мария Стоянова", "1g", "днес", "отречено от автора си" },
     })
     local rows = T(w).rows
     table.sort(rows, function(p, q) return p.index < q.index end)
@@ -166,7 +166,7 @@ describe("ui: the tab „Тефтер“", function()
     eq(states(w), { "denied", "denied" })
     local marks = {}
     for _, l in ipairs(shown(w)) do marks[l[1]] = l[4] end
-    eq(marks, { ["Мария Стоянова → Дара Колева"] = "отречено", ["Дара Колева → Тодор Ангелов"] = "отречено от автора си" })
+    eq(marks, { ["Мария Стоянова » Дара Колева"] = "отречено", ["Дара Колева » Тодор Ангелов"] = "отречено от автора си" })
     eq(T(w).head:IsVisible(), true); eq(T(w).head:GetText(), "Открити дългове в гилдията: 0c в 0 записа")
     eq(T(w).foot:IsVisible(), false)
   end)
@@ -178,7 +178,7 @@ describe("ui: the tab „Тефтер“", function()
     deny(w, p)
     open(w)
     eq(states(w), { "open", "denied" })
-    eq(shown(w)[2], { "Мария Стоянова → Тодор Ангелов", "5g", "днес", "отречено от автора си" })
+    eq(shown(w)[2], { "Мария Стоянова » Тодор Ангелов", "5g", "днес", "отречено от автора си" })
   end)
 
   it("a relayed entry carries „пренесено“ in its tooltip", function()
@@ -188,7 +188,7 @@ describe("ui: the tab „Тефтер“", function()
     open(w)
     local rows = T(w).rows
     table.sort(rows, function(p, q) return p.index < q.index end)
-    eq(plain(rows[1].who:GetText()), "Дара Колева → Тодор Ангелов")
+    eq(plain(rows[1].who:GetText()), "Дара Колева » Тодор Ангелов")
     w:hover(rows[1].frame)
     local tip = table.concat(w.G.GameTooltip.lines, "\n")
     ok(not tip:find("пренесено", 1, true), "a direct entry says relayed: " .. tip)

@@ -143,6 +143,8 @@ function Wow.new(opts)
   G.C_Timer.After = function(seconds, fn) G.C_Timer.NewTimer(seconds, fn) end
   G.CreateFrame = Frames.factory(G, function(f) self.frames[#self.frames + 1] = f end)
   G.UIParent = G.CreateFrame("Frame")
+  G.UIParent:SetSize(1920, 1080)
+  G.GetCursorPosition = function() local c = self.cursor or { 0, 0 }; return c[1], c[2] end
   G.GameTooltip = Frames.tooltip(G.CreateFrame)
   G.GameTooltip:Hide()
   G.GetMoney = function() return self.money end

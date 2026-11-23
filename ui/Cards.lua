@@ -86,7 +86,7 @@ function Cards.card(parent, scale)
   card.body = body
 
   local rank = W.Label(f, "paper", nil, 13 * scale)
-  rank:SetFont(Theme.font.uiBold, 13 * scale, "")
+  Theme.setFont(rank, "uiBold", 13 * scale)
   rank:SetDrawLayer("ARTWORK", 1)
   rank:SetPoint("TOPLEFT", f, "TOPLEFT", 3 * scale, -1 * scale)
   card.rank = rank

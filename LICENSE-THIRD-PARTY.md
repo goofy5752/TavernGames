@@ -27,9 +27,8 @@ All SIL Open Font License 1.1; the license texts ship next to the fonts.
 | Font | File | Source | License file |
 |---|---|---|---|
 | Alegreya SC Bold (static TTF) | `media/fonts/AlegreyaSC-Bold.ttf` | https://github.com/huertatipografica/Alegreya tag `v2.008` (commit `254c16b651af6926154b9af159c7af8eb908a6ea`), `fonts/ttf/AlegreyaSC-Bold.ttf` | `media/fonts/OFL.txt` (Alegreya, same tag) |
-| Alegreya Italic (static TTF) | `media/fonts/Alegreya-Italic.ttf` | same Alegreya tag, `fonts/ttf/Alegreya-Italic.ttf` | `media/fonts/OFL.txt` |
-| Alegreya Sans Regular (static TTF) | `media/fonts/AlegreyaSans-Regular.ttf` | https://github.com/huertatipografica/Alegreya-Sans tag `v2.008` (commit `1b9de7248ae8b8003160703a7e367ea69dcc9a89`), `fonts/ttf/AlegreyaSans-Regular.ttf` | `media/fonts/OFL-AlegreyaSans.txt` (Alegreya Sans, same tag) |
-| Alegreya Sans Bold (static TTF) | `media/fonts/AlegreyaSans-Bold.ttf` | same Alegreya Sans tag, `fonts/ttf/AlegreyaSans-Bold.ttf` | `media/fonts/OFL-AlegreyaSans.txt` |
+| PT Sans Regular (TTF, "Web" build) | `media/fonts/PTSans-Regular.ttf` | https://github.com/google/fonts commit `8b3f056a2e9e6099dbc5d2dbb6c8209662178525`, `ofl/ptsans/PT_Sans-Web-Regular.ttf` (ParaType), retrieved 2026-11-23 | `media/fonts/OFL-PTSans.txt` (same commit, `ofl/ptsans/OFL.txt`) |
+| PT Sans Bold (TTF, "Web" build) | `media/fonts/PTSans-Bold.ttf` | same commit, `ofl/ptsans/PT_Sans-Web-Bold.ttf` | `media/fonts/OFL-PTSans.txt` |
 
 Each font was checked to have a non-empty glyph for every character of „Жълтата дюля“.
 

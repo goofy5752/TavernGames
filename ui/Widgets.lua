@@ -13,10 +13,10 @@ local STYLES = {
   heading = { font = "heading", size = 14, color = "brassLight" },
   ui = { font = "ui", size = 13, color = "ink" },
   dim = { font = "ui", size = 11, color = "inkDim" },
-  italic = { font = "italic", size = 13, color = "ink" },
+  note = { font = "ui", size = 13, color = "ink" }, -- the ledger voice (it was Alegreya Italic)
   -- Dark ink on cream paper (the rules book, the intro), without a shadow.
   paper = { font = "ui", size = 13, color = "woodDark", flat = true },
-  paperItalic = { font = "italic", size = 13, color = "woodDark", flat = true },
+  paperNote = { font = "ui", size = 13, color = "woodDark", flat = true },
   paperHeading = { font = "heading", size = 18, color = "red", flat = true },
 }
 
@@ -73,12 +73,12 @@ function W.tile(frame, path, texSize, w, h, layer)
   return t
 end
 
--- A FontString in one of the styles "heading" | "ui" | "dim" | "italic", or
--- "paper" | "paperItalic" | "paperHeading" for text on cream paper.
+-- A FontString in one of the styles "heading" | "ui" | "dim" | "note", or
+-- "paper" | "paperNote" | "paperHeading" for text on cream paper.
 function W.Label(parent, style, text, size)
   local s = STYLES[style] or STYLES.ui
   local fs = parent:CreateFontString(nil, "OVERLAY")
-  fs:SetFont(Theme.font[s.font], size or s.size, "")
+  Theme.setFont(fs, s.font, size or s.size)
   fs:SetTextColor(Theme.rgb(s.color))
   if s.flat then
     fs:SetShadowOffset(0, 0)

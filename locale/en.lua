@@ -143,7 +143,7 @@ T["intro.sit.text"] = "See an empty dashed chair? Click it and you are playing. 
 T["intro.pay.title"] = "Accounts and paying"
 T["intro.pay.text"] = "Played for gold? On the right, under “Accounts”, you see whom you owe and who owes you. Press “Pay” and the addon fills in the trade or the letter for you."
 T["intro.book.title"] = "The rules book"
-T["intro.book.text"] = "See an ⓘ? Click it. The rules book opens, with simple examples. This intro is in there too, if you want to see it again."
+T["intro.book.text"] = "See an |TInterface\\AddOns\\TavernGames\\media\\info:14:14|t? Click it. The rules book opens, with simple examples. This intro is in there too, if you want to see it again."
 
 -- WoW adapter and /tavern
 T["addon.title"] = "Tavern Games"
@@ -180,6 +180,7 @@ T["probe.mail.closed"] = "Probe: open a mailbox and try again."
 -- Main window and hall
 T["tab.hall"] = "Hall"
 T["main.gold"] = "In your bags:"
+T["resize.tip"] = "Drag to resize the window. Right-click: normal size."
 T["book.title"] = "Rules book"
 T["minimap.tip"] = "Click to open the tavern."
 T["game.ttt"] = "Tic-tac-toe"
@@ -666,7 +667,7 @@ T["accounts.nudge.offline"] = "%s is not online with Tavern Games. You can remin
 T["tab.ledger"] = "Ledger"
 T["ledger.head"] = "Open debts in the guild: %s in %d entries"
 T["ledger.empty"] = "The ledger is empty. Nobody owes anybody."
-T["ledger.row"] = "%s → %s"
+T["ledger.row"] = "%s » %s"
 T["ledger.part"] = "%s left of %s"
 T["ledger.pending"] = "awaiting confirmation"
 T["ledger.contested"] = "contested"

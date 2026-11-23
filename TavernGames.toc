@@ -113,6 +113,7 @@ wow/Slash.lua
 # UI
 ui/Theme.lua
 ui/Widgets.lua
+ui/Resize.lua
 ui/Cards.lua
 ui/MainWindow.lua
 ui/NewTableDialog.lua

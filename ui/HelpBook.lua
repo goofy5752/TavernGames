@@ -57,7 +57,7 @@ function BLOCKS.p(content, b, y)
 end
 
 function BLOCKS.example(content, b, y)
-  local fs, h = text(content, "paperItalic", b.key, 4 + INDENT, y, TEXT_W - 4 - INDENT)
+  local fs, h = text(content, "paperNote", b.key, 4 + INDENT, y, TEXT_W - 4 - INDENT)
   local rule = content:CreateTexture(nil, "ARTWORK")
   rule:SetColorTexture(Theme.rgb("brass"))
   rule:SetWidth(2)
@@ -243,6 +243,7 @@ end
 local function build()
   local f = CreateFrame("Frame", nil, UIParent)
   HelpBook.frame = f
+  ns.Resize.follow(f, "main")
   f:SetSize(HelpBook.WIDTH, HelpBook.HEIGHT)
   f:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
   f:SetFrameStrata("DIALOG")

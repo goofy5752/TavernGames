@@ -42,6 +42,7 @@ end
 local function build()
   local f = CreateFrame("Frame", nil, UIParent)
   P.frame = f
+  ns.Resize.follow(f, "main")
   f:SetSize(DLG_W, DLG_H)
   f:SetPoint("CENTER", UIParent, "CENTER", 0, 40)
   f:SetFrameStrata("DIALOG")

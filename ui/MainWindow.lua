@@ -147,6 +147,7 @@ local function build()
   f:SetClampedToScreen(true)
   f:EnableMouse(true)
   takeKeyboard(f)
+  ns.Resize.attach(f, "main", 3)
 
   -- Wood inside the brass frame (tiled, slightly darker than the hall floor).
   local wood = W.tile(f, Theme.tex.wood, Theme.texSize.wood, MainWindow.WIDTH - 8, MainWindow.HEIGHT - 8)

@@ -80,6 +80,7 @@ end
 local function buildAsk()
   local f = CreateFrame("Frame", nil, UIParent)
   P.askFrame = f
+  ns.Resize.follow(f, "main")
   f:SetSize(ASK_W, ASK_H)
   f:SetPoint("CENTER", UIParent, "CENTER", 0, 40)
   f:SetFrameStrata("DIALOG")
