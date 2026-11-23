@@ -538,6 +538,19 @@ function addon:OnCommReceived(prefix, text, distribution, sender)
   if ns.client then ns.client:receive(distribution, name, msg) end
 end
 
+-- Bots fill my table (/tavern bots fill, „Добави ботове“): bot mode is turned on
+-- first when it is off -> "wait" (my name is not known yet), "nofill" (the
+-- table takes no bots: Bots.canFill), or how many were asked; then true when
+-- this call turned bot mode on.
+function Adapter.fillBots(n)
+  local started = false
+  if not ns.bots then
+    if Adapter.toggleBots() == "wait" then return "wait", false end
+    started = true
+  end
+  return ns.bots:fill(n) or "nofill", started
+end
+
 -- /tavern bots: "on", "off", or "wait" while the own name is still unknown.
 -- Outside a guild the bots get a local-only client named after UnitName.
 function Adapter.toggleBots()

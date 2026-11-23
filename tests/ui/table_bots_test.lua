@@ -1,0 +1,74 @@
+local Wow = require("wow")
+local Staked = require("staked")
+
+local ME = "Иван Петров"
+
+local function guildWow()
+  local w = Wow.new{ ui = true }
+  w.inGuild = true
+  w.roster = { { name = ME .. "-Forever", online = true, guid = Wow.GUID } }
+  w.G.RAID_CLASS_COLORS.PRIEST = { r = 1, g = 1, b = 1 }
+  w:boot(); w:firstRunDone()
+  w:fire("GUILD_ROSTER_UPDATE"); w:fire("PLAYER_LOGIN")
+  return w
+end
+
+local function hostTable(w, game)
+  local tid = w.ns.client:openTable{ game = game or "deathroll", access = "invite", turn = 45, opt = { start = 100 } }
+  w:advance(0)
+  return tid, w.ns.TableFrame.view
+end
+
+describe("ui: „Добави ботове“ at the table", function()
+  it("shown for the host of a fun table with free seats; its text is the key's", function()
+    local w = guildWow()
+    local _, v = hostTable(w)
+    ok(v.botsButton:IsVisible(), "button hidden")
+    eq(v.botsButton.text:GetText(), "Добави ботове")
+  end)
+
+  it("hidden for a guest, a staked table, a full table and a live game", function()
+    local w = guildWow()
+    w:slash("bots"); w:advance(0); w:advance(0)
+    w:slash("bots host dr"); w:advance(0); w:advance(0)
+    w.ns.client:sit(w.ns.client.lobby:tables()[1].tid, 2); w:advance(1)
+    eq(w.ns.client.session.role, "player")
+    eq(w.ns.TableFrame.view.botsButton:IsVisible(), false)
+
+    local s = Staked.guildWow and Staked.guildWow()
+    ok(s, "no staked world")
+    local tid = s.ns.client:openTable{ game = "deathroll", access = "guild", turn = 45, stake = 1000, opt = { start = 1000 } }
+    assert(tid); s:advance(0)
+    eq(s.ns.TableFrame.view.botsButton:IsVisible(), false)
+  end)
+
+  it("hidden when the table is full or its game runs", function()
+    local w = guildWow()
+    local _, v = hostTable(w)
+    local sess = w.ns.client.session
+    for i = 2, #sess.seats do sess.seats[i] = "Бот " .. i end
+    w.ns.client.events:emit("session", sess); w:advance(0)
+    eq(v.botsButton:IsVisible(), false)
+    for i = 2, #sess.seats do sess.seats[i] = false end
+    sess.status = "live"
+    w.ns.client.events:emit("session", sess); w:advance(0)
+    eq(v.botsButton:IsVisible(), false)
+  end)
+
+  it("a click turns the bots on, seats them, and says so on the table's own line", function()
+    local w = guildWow()
+    local _, v = hostTable(w)
+    w:click(v.botsButton)
+    ok(w.ns.bots, "bots not on")
+    eq(#w:texts(w.ns.L("bots.on")), 1)
+    w:advance(8)
+    ok(w.ns.client.session:seatedCount() > 1, "no bot sat")
+  end)
+
+  it("/tavern bots fill still works", function()
+    local w = guildWow()
+    hostTable(w)
+    w:slash("bots fill 1"); w:advance(6)
+    eq(w.ns.client.session:seatedCount(), 2)
+  end)
+end)

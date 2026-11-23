@@ -134,6 +134,13 @@ function TableFrame.startGame()
   if not started then TableFrame.say(L(START_WHY[code] or "start.failed")) end
 end
 
+-- „Добави ботове“: the shared Adapter.fillBots; what it says goes on the news line.
+function TableFrame.addBots()
+  local got, started = ns.Adapter.fillBots()
+  if got == "wait" then return TableFrame.say(L("bots.wait")) end
+  TableFrame.say(L(got == "nofill" and "bots.nofill" or started and "bots.on" or "table.addBots.asked"))
+end
+
 function TableFrame.invite(name)
   local client = ns.client
   TableFrame.view.picker:Hide()
@@ -220,8 +227,15 @@ local function renderStart(v, s, engine, client)
     b:ClearAllPoints()
     b:SetPoint("LEFT", v.inviteButton:IsShown() and v.inviteButton or v.standButton, "RIGHT", 8, 0)
   end
+  local bots = v.botsButton
+  local canBots = ns.Bots.canFill(s)
+  bots:SetShown(canBots)
+  if canBots then
+    bots:ClearAllPoints()
+    bots:SetPoint("LEFT", shown and b or v.inviteButton:IsShown() and v.inviteButton or v.standButton, "RIGHT", 8, 0)
+  end
   v.line:ClearAllPoints()
-  v.line:SetPoint("LEFT", shown and b or v.inviteButton, "RIGHT", 14, 0)
+  v.line:SetPoint("LEFT", canBots and bots or shown and b or v.inviteButton, "RIGHT", 14, 0)
   v.line:SetPoint("RIGHT", TableFrame.frame, "BOTTOMRIGHT", -(EDGE + 24), EDGE + 20) -- clear of the resize grip
 end
 
@@ -467,6 +481,10 @@ function TableFrame.build()
   start:SetPoint("LEFT", invite, "RIGHT", 8, 0)
   start:Hide()
   v.startButton = start
+  local bots = W.Button(f, L("table.addBots"), TableFrame.addBots)
+  bots:SetSize(130, 26)
+  bots:Hide()
+  v.botsButton = bots
   local line = W.Label(f, "ui", "", 12)
   line:SetTextColor(Theme.rgb("gold"))
   line:SetJustifyH("RIGHT")
