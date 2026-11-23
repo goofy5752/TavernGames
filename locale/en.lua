@@ -618,6 +618,7 @@ T["settle.how.mail"] = "by mail"
 T["settle.how.hand"] = "by hand"
 T["settle.clean"] = "your account is clear"
 T["settle.left"] = "%s left"
+T["settle.over"] = "overpaid %s"
 -- The stake of Santase, Belot and Tabla (ui/StakePanels.lua, ui/TablePanels.lua, ui/TableFrame.lua)
 T["stake.ask.team"] = "The stake is %s. If your team loses, you pay %s to one of the opponents. If you leave the game, you pay %s to each of them, %s in all. Your partner owes nothing."
 T["stake.ask.cards"] = "The dealer's addon knows the deck of the hand it deals. Play cards for gold with people you trust."

@@ -5,8 +5,10 @@ local _, ns = ...
 -- (core/LedgerNet.lua "paid": my own record, or the creditor's live one; never
 -- the sync's). „Уредено: Мария ти плати 5g“ or „Уредено: плати 5g на Мария“,
 -- and under it how it was paid and what is left between us now: „сметката ви е
--- чиста“ at zero, else „остават Z“, the absolute balance (a credit too: a
--- payment beyond the debt leaves a positive Z, never „чиста“, never a minus).
+-- чиста“ at zero; else the hall's net (View.net) or, when that is zero, the
+-- pair's one-sided credit (a payment beyond the debt: never „чиста“), as a
+-- positive Z: „остават Z“ while the payer still owes, „надплатени Z“ when the
+-- rest is in the payer's favour.
 -- Once per id; a record more than FRESH s old is ignored; at most MAX wait and
 -- the rest are dropped. The head of the queue is shown on the next frame for
 -- SECONDS, then the next; its balance is read when it is shown (one view per
@@ -33,14 +35,18 @@ function SettleToast.text(client, p)
   local me = client.ledger.me
   local other = p.to == me and p.from or p.to
   local v = ns.LedgerView.of(client.ledger)
-  local left = math.abs(owed(v, me, other) - owed(v, other, me))
+  -- > 0: I owe other. The hall's net when it has one, else the pair's one-sided credit.
+  local net = ns.LedgerView.net(v, me, other)
+  if net == 0 then net = owed(v, me, other) - owed(v, other, me) end
   local title
   if p.to == me then
     title = L("settle.got", W.colored(client, p.from), W.money(p.c))
   else
     title = L("settle.paid", W.money(p.c), W.colored(client, p.to))
   end
-  local rest = left == 0 and L("settle.clean") or L("settle.left", W.money(left))
+  -- The payer still owes the receiver: „остават“; the rest is in the payer's favour: „надплатени“.
+  local payerOwes = (p.from == me) == (net > 0)
+  local rest = net == 0 and L("settle.clean") or L(payerOwes and "settle.left" or "settle.over", W.money(math.abs(net)))
   return title, L("settle.how." .. tostring(p.how)) .. " · " .. rest
 end
 

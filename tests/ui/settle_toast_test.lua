@@ -86,7 +86,8 @@ describe("the „Уредено“ toast", function()
     eq(showing(w), false)
   end)
 
-  it("a part payment and an overpayment both say what is left, as a positive amount", function()
+  it("a part payment says what is left, an overpayment what was overpaid, both positive, on either side", function()
+    -- I pay: part, then over.
     local w = readyWow()
     debt(w, ME, B, 50000)
     lev(w, B, "P", { f = ME, c = 20000, how = "trade" })
@@ -97,7 +98,32 @@ describe("the „Уредено“ toast", function()
     debt(w2, ME, B, 50000)
     lev(w2, B, "P", { f = ME, c = 80000, how = "trade" })
     eq(title(w2), "Уредено: плати " .. w2:coins("8g") .. " на Мария Стоянова")
-    eq(sub(w2), "с размяна · остават " .. w2:coins("3g")) -- a credit of 3g, never „чиста“, never -3g
+    eq(sub(w2), "с размяна · надплатени " .. w2:coins("3g")) -- a credit of 3g, never „чиста“, never -3g
+
+    -- I am paid: part, then over.
+    local w3 = readyWow()
+    debt(w3, B, ME, 50000)
+    w3.ns.client.ledgerNet:make("P", { f = B, c = 20000, how = "hand" }); w3:advance(0)
+    eq(title(w3), "Уредено: Мария Стоянова ти плати " .. w3:coins("2g"))
+    eq(sub(w3), "на ръка · остават " .. w3:coins("3g"))
+
+    local w4 = readyWow()
+    debt(w4, B, ME, 50000)
+    w4.ns.client.ledgerNet:make("P", { f = B, c = 80000, how = "hand" }); w4:advance(0)
+    eq(title(w4), "Уредено: Мария Стоянова ти плати " .. w4:coins("8g"))
+    eq(sub(w4), "на ръка · надплатени " .. w4:coins("3g"))
+  end)
+
+  it("when both owe, the amount is the hall's: I owe 5g, she owes 3g, I pay 8g -> overpaid 3g", function()
+    local w = readyWow()
+    debt(w, ME, B, 50000)
+    debt(w, B, ME, 30000)
+    lev(w, B, "P", { f = ME, c = 80000, how = "mail" })
+    local View = w.ns.LedgerView
+    local net = View.net(View.of(w.ns.client.ledger), ME, B)
+    eq(net, -30000) -- the hall: she owes me 3g
+    eq(sub(w), "по пощата · надплатени " .. w:coins("3g"))
+    eq(sub(w), "по пощата · надплатени " .. w.ns.W.money(math.abs(net)))
   end)
 
   it("my own „Уредено“ for a debtor: „Уредено: Мария ти плати 5g“, by hand", function()
