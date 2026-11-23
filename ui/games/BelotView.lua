@@ -238,6 +238,9 @@ function View.seatNote(s, seat)
   return M.build(s).dealer == seat and L("belot.dealer") or ""
 end
 
+-- The pips on a plate: the tricks the seat's team took in the deal under way.
+function View.seatTricks(s, seat) return M.tricks(s.state, seat) end
+
 -- Who sits where while the match runs, so the line at its end can still name
 -- a player whose seat emptied when he left.
 local function remember(f, s)

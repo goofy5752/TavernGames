@@ -131,6 +131,7 @@ ui/BoardTab.lua
 ui/HistoryTab.lua
 ui/Minimap.lua
 ui/TableFrame.lua
+ui/TablePlates.lua
 ui/TablePanels.lua
 ui/StakePanels.lua
 ui/games/TicTacToeView.lua

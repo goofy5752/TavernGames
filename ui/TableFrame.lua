@@ -1,10 +1,13 @@
 local _, ns = ...
 
 -- The table frame (mockup 03), shown whenever client.session is non-nil and
--- hidden when it is nil. Felt stretched once inside a wood frame with the brass
--- edge. One nameplate per seat, up to three rows (ns.HallLayout.plates): the
--- name in class color, the game's mark for that seat, and on the player on
--- turn a brass ring, a gold edge and the turn clock. The game's board in the
+-- hidden when it is nil. The skin's felt stretched once inside the skin's
+-- frame with the brass edge, its crest as a watermark (alpha 0.13) and a
+-- stitch 14 px inside the edge; the crest again right of the title. One
+-- nameplate per seat, up to three rows (ns.HallLayout.plates): the hero, the
+-- name in class color, the tricks, the game's mark for that seat, and on the
+-- player on turn a gold ring, a gold edge and the turn clock (ui/TablePlates.lua,
+-- TableFrame.plates). The game's board in the
 -- middle, drawn by the view registered for the game id, 16 px lower for every
 -- plate row after the first (a view frame at most 236 high starts below two
 -- rows of plates, which end 68 px from the top of the felt). A view with
@@ -40,7 +43,8 @@ local _, ns = ...
 -- over, the bill „Сметката“ over the lower felt (ui/StakePanels.lua).
 --
 -- A view is { build(parent) -> frame, update(frame, session) } and may add
--- seatNote(session, seat) -> text for the plates, `ring = true` and `size`. Client
+-- seatNote(session, seat) -> text and seatTricks(session, seat) -> number | nil
+-- for the plates, `ring = true` and `size`. Client
 -- events only schedule a redraw for the next frame (TableFrame.refresh), as in
 -- the hall.
 local Theme, W, L = ns.Theme, ns.W, ns.L
@@ -56,11 +60,11 @@ local TableFrame = {
 ns.TableFrame = TableFrame
 
 local EDGE, TITLE_H, BOTTOM_H = 12, 28, 40
-local PLATE_W, PLATE_H = 190, 26     -- plate size before ns.HallLayout.plates sets the width
-local PLATE_NAME_INSET = 28 + 64      -- the plate width the disc and the clock/note keep from the name
 local SAY_SECONDS, RESYNC_SECONDS = 5, 3
+local WATERMARK, WATERMARK_ALPHA, STITCH_INSET = 0.6, 0.13, 14 -- the crest: a share of the felt's shorter side
+local STITCH = { alliance = { 2, 1, 1, 1, 0.12 }, horde = { 3, 0, 0, 0, 0.45 } } -- skin -> px, r, g, b, a
 
--- view: { build(parent) -> frame, update(frame, session), seatNote(session, seat)?, ring?, size? }
+-- view: { build(parent) -> frame, update(frame, session), seatNote(session, seat)?, seatTricks(session, seat)?, ring?, size? }
 function TableFrame.registerView(gameId, view) TableFrame.views[gameId] = view end
 
 local function firstFree(seats)
@@ -142,91 +146,11 @@ end
 -- Drawing
 ---------------------------------------------------------------------------
 
-local function plateWidget(v, i)
-  local p = v.plates[i]
-  if p then return p end
-  local f = CreateFrame("Frame", nil, v.area)
-  f:SetSize(PLATE_W, PLATE_H)
-  f:SetFrameLevel(v.area:GetFrameLevel() + 2)
-  local fill = f:CreateTexture(nil, "BACKGROUND")
-  fill:SetAllPoints(f)
-  fill:SetColorTexture(32 / 255, 16 / 255, 8 / 255, 0.82)
-  local edges = W.edges(f, 1)
-  local disc = f:CreateTexture(nil, "ARTWORK")
-  disc:SetSize(16, 16)
-  disc:SetPoint("LEFT", f, "LEFT", 6, 0)
-  local ring = f:CreateTexture(nil, "OVERLAY")
-  ring:SetSize(24, 24)
-  ring:SetPoint("CENTER", disc, "CENTER")
-  ring:SetTexture(Theme.tex.ring)
-  local name = W.Label(f, "ui", "", 12)
-  Theme.setFont(name, "uiBold", 12)
-  name:SetWordWrap(false)
-  name:SetWidth(PLATE_W - PLATE_NAME_INSET)
-  name:SetPoint("LEFT", f, "LEFT", 28, 0)
-  local clock = W.Label(f, "ui", "", 12)
-  clock:SetTextColor(Theme.rgb("gold"))
-  clock:SetJustifyH("RIGHT")
-  clock:SetPoint("RIGHT", f, "RIGHT", -6, 0)
-  local note = W.Label(f, "heading", "", 13)
-  note:SetJustifyH("CENTER")
-  note:SetPoint("RIGHT", f, "RIGHT", -42, 0)
-  p = { frame = f, edges = edges, disc = disc, ring = ring, name = name, note = note, clock = clock }
-  v.plates[i] = p
-  return p
-end
-
--- The turn clock on the plate of the player on turn.
+-- The turn clock on the plate of the player on turn (ui/TablePlates.lua).
 function TableFrame.tick()
   local v, client = TableFrame.view, ns.client
   local s = client and client.session
-  if not v or not s then return end
-  local left = s:left()
-  if not left then return end
-  local secs = math.ceil(left)
-  local text = L("table.clock", math.floor(secs / 60), secs % 60)
-  for i = 1, #v.plates do
-    if v.plates[i].clock:IsShown() then v.plates[i].clock:SetText(text) end
-  end
-end
-
--- Places the plates on the grid of ns.HallLayout.plates, or around the felt
--- (ns.HallLayout.ring) for a ring view -> the number of rows.
-local function renderPlates(v, s, client)
-  local n, view = #s.seats, TableFrame.views[s.game]
-  local spots, rows
-  if view and view.ring then
-    spots, rows = ns.HallLayout.ring(n, v.areaW, v.areaH, s.mySeat or 1)
-  else
-    spots, rows = ns.HallLayout.plates(n, v.areaW)
-  end
-  local turn = s.status == "live" and s.state and s.state.turn
-  for i = 1, n do
-    local p, name, spot = plateWidget(v, i), s.seats[i], spots[i]
-    p.frame:ClearAllPoints()
-    p.frame:SetPoint("TOPLEFT", v.area, "TOPLEFT", spot[1], spot[2])
-    p.frame:SetWidth(spot[3])
-    p.name:SetWidth(spot[3] - PLATE_NAME_INSET)
-    if name then
-      p.name:SetText(name)
-      p.name:SetTextColor(W.nameColor(client, name))
-      p.disc:SetTexture(Theme.tex.chair)
-      p.disc:SetVertexColor(W.nameColor(client, name))
-    else
-      p.name:SetText(L("table.free"))
-      p.name:SetTextColor(Theme.rgb("inkDim"))
-      p.disc:SetTexture(Theme.tex.chair_empty)
-      p.disc:SetVertexColor(1, 1, 1)
-    end
-    p.note:SetText(view and view.seatNote and view.seatNote(s, i) or "")
-    local onTurn = turn == i
-    p.ring:SetShown(onTurn)
-    p.clock:SetShown(onTurn and s.deadline ~= nil)
-    p.edges.setColor(Theme.rgb(onTurn and "gold" or "brass"))
-    p.frame:Show()
-  end
-  for i = n + 1, #v.plates do v.plates[i].frame:Hide() end
-  return rows
+  if v and s then TableFrame.plates.tick(v, s) end
 end
 
 -- The board in the middle, 16 px lower for every plate row after the first;
@@ -332,6 +256,10 @@ local function fit(v, w, h)
   v.areaH = h - (EDGE + TITLE_H) - (EDGE + BOTTOM_H)
   v.area:SetSize(v.areaW, v.areaH)
   v.felt:SetSize(v.areaW, v.areaH)
+  local mark = WATERMARK * math.min(v.areaW, v.areaH)
+  v.watermark:SetSize(mark, mark)
+  v.watermark:ClearAllPoints()
+  v.watermark:SetPoint("CENTER", v.area, "CENTER", 0, 0.04 * mark) -- 4 % of its height above the middle
   v.banner:SetWidth(v.areaW)
   v.fairLine:SetWidth(v.areaW - 40)
 end
@@ -375,7 +303,7 @@ function TableFrame.render()
   v.stake:SetText(blinds and L("table.blinds", blinds) or s.stake and L("table.stake", ns.Util.money(s.stake)) or "")
   v.stake:SetShown(s.stake ~= nil)
   local billLeft = ns.StakePanels.bill(v, s) -- before the board: its view hides its own result line under the bill
-  renderBoard(v, s, renderPlates(v, s, client))
+  renderBoard(v, s, TableFrame.plates.render(v, s, client))
   local key, secs, left = bannerKey(s, engine)
   if key then v.bannerText:SetText(secs and L(key, secs) or L(key)) end
   v.banner:SetShown(key ~= nil)
@@ -448,8 +376,10 @@ function TableFrame.build()
   bar:SetScript("OnDragStop", function() f:StopMovingOrSizing() end)
   v.title = W.Label(bar, "heading", "", 16)
   v.title:SetPoint("LEFT", bar, "LEFT", 8, 0)
+  v.crest = W.crest(bar, 20)
+  v.crest:SetPoint("LEFT", v.title, "RIGHT", 6, 0)
   v.meta = W.Label(bar, "dim", "", 12)
-  v.meta:SetPoint("LEFT", v.title, "RIGHT", 12, 0)
+  v.meta:SetPoint("LEFT", v.crest, "RIGHT", 6, 0)
   v.stake = W.Label(bar, "ui", "", 12)
   v.stake:SetTextColor(Theme.rgb("gold"))
   v.stake:SetPoint("LEFT", v.meta, "RIGHT", 10, 0)
@@ -470,6 +400,18 @@ function TableFrame.build()
   felt:SetTexture(Theme.tex.felt)
   v.felt = felt
   W.edges(area, 2).setColor(Theme.rgb("brass"))
+  -- The skin's crest as a watermark (sized in fit) and the stitch 14 px inside
+  -- the edge, in a frame at the felt's own level, under the board.
+  v.watermark = W.crest(area, 1)
+  v.watermark:SetAlpha(WATERMARK_ALPHA)
+  local seam = CreateFrame("Frame", nil, area)
+  seam:SetPoint("TOPLEFT", area, "TOPLEFT", STITCH_INSET, -STITCH_INSET)
+  seam:SetPoint("BOTTOMRIGHT", area, "BOTTOMRIGHT", -STITCH_INSET, STITCH_INSET)
+  seam:SetFrameLevel(area:GetFrameLevel())
+  local stitch = STITCH[Theme.skin] or STITCH.alliance
+  v.stitch = W.edges(seam, stitch[1])
+  v.stitch.setColor(stitch[2], stitch[3], stitch[4], stitch[5])
+  v.stitch.frame = seam
 
   -- The banner across the felt, above the board.
   local banner = CreateFrame("Frame", nil, area)

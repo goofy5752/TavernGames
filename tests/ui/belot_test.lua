@@ -268,6 +268,30 @@ describe("ui: Белот view", function()
     eq(v.info.topic, "belot")
   end)
 
+  it("Сантасе and Белот count tricks on the plates", function()
+    local st = started(DECK_A, "S P P P"); plays(st, "AH 9H 8H TS")                     -- seat 4 trumps: the trick is team 2's
+    local M = guildWow().ns.BelotModel
+    eq({ M.tricks(st, 1), M.tricks(st, 2), M.tricks(st, 3), M.tricks(st, 4) }, { 0, 1, 0, 1 })
+    eq(M.tricks(E.new {}, 1), nil); eq(M.tricks(st, 5), nil)                           -- no deal under way; no such seat
+    local w = guildWow(); w:slash("bots"); w:advance(0); w:advance(0)
+    local client, T = w.ns.client, w.ns.TableFrame
+    client:openTable{ game = "belot", access = "invite", turn = 45 }; w:advance(0)
+    local v = T.view
+    for _, bot in ipairs(BOTS) do
+      w:click(v.inviteButton)
+      for _, r in ipairs(v.picker.rows) do
+        if r.frame:IsVisible() and r.name:GetText() == bot then w:click(r.frame) end
+      end
+      w:advance(2)
+    end
+    local s = client.session; s.state = E.view(st, 1); T.render()
+    eq({ T.views.belot.seatTricks(s, 2), T.views.belot.seatTricks(s, 1) }, { 1, 0 })
+    for _, seat in ipairs({ 2, 4 }) do
+      ok(v.plates[seat].tricks[1]:IsVisible(), "no pip on plate " .. seat); eq(v.plates[seat].tricks[2]:IsVisible(), false)
+    end
+    for _, seat in ipairs({ 1, 3 }) do eq(v.plates[seat].tricks[1]:IsVisible(), false, "a pip on plate " .. seat) end
+  end)
+
   it("„Стани“ in a running match asks first: „Отборът ви губи мача“; „Остани“ keeps the seat, „Стани“ there stands", function()
     local w = guildWow(); w:slash("bots"); w:advance(0); w:advance(0)
     local client, T = w.ns.client, w.ns.TableFrame

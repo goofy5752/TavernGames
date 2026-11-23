@@ -130,6 +130,13 @@ local function textOf(s, st, seated, team, mine, names)
   return nil
 end
 
+-- The tricks `seat`'s team took in the deal under way (its play and its
+-- scoring); nil outside a deal or for a seat that is none of the four.
+function M.tricks(st, seat)
+  if not st or not isSeat(seat) or (st.phase ~= "play" and st.phase ~= "score") or not st.took then return nil end
+  return st.took[2 - seat % 2]
+end
+
 -- Everything the Белот view draws. `peek`: show the last trick instead of
 -- the running one. `names` (optional): seat -> who held it during the match.
 function M.build(s, peek, names)

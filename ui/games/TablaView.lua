@@ -3,10 +3,11 @@ local _, ns = ...
 -- The Табла board (mockup 07 variant 1, the Табла strip), 512 x 260, centred
 -- on the felt as Сантасе is. Left the board 404 x 232 from my side (a
 -- watcher: seat 1's): a wood rim, the dark field, 24 points of 28 x 96 (my
--- point 1 bottom right, 12 bottom left, 13 top left, 24 top right), the bar
--- between the quadrants and the tray on the right. Up to five checkers per
--- point, 17 px apart from its base (a pinned checker first), a number on the
--- fifth above five; light checkers for seat 1, dark for seat 2. A ring on
+-- point 1 bottom right, 12 bottom left, 13 top left, 24 top right; the dark
+-- ones in the skin's felt, the light ones pointLight), the bar between the
+-- quadrants with the skin's crest under its checkers, and the tray on the
+-- right. Up to five checkers per point, 17 px apart from its base (a pinned
+-- checker first), a number on the fifth above five; light checkers for seat 1, dark for seat 2. A ring on
 -- each checker I may pick (bright on the picked one), a glow on each point
 -- the picked checker may land on. Right: the variant and the game, the score
 -- to 5, the dice (a played one dimmed), the steps left, „Върни“ and
@@ -33,6 +34,7 @@ local BUTTON_X, BUTTON_W, BUTTON_H = 414, 96, 24
 local GLOW_ALPHA, RING_DIM, DIE_DIM, OFF_ALPHA = 0.45, 0.45, 0.4, 0.5
 local BAR, TRAY = 25, 0           -- the bar and the tray as points of a step
 local COLOUR = { "bone", "walnut" } -- seat -> checker colour token
+local CREST, CREST_ALPHA = 40, 0.8
 
 local View = {}
 
@@ -189,6 +191,10 @@ function View.build(parent)
   bar.countOpp = stack(bar, "TOP", bar.checkers)    -- the opponent's, in its upper half
   marks(bar)
   f.bar = bar
+  f.crest = W.crest(bar, CREST)                     -- the skin's crest on the bar, under its checkers
+  f.crest:SetDrawLayer("ARTWORK", -1)
+  f.crest:SetAlpha(CREST_ALPHA)
+  f.crest:SetPoint("CENTER", bar, "CENTER", 0, 0)
 
   local tray = spot(f, TRAY, TRAY_X, -RIM, TRAY_W, BOARD_H - 2 * RIM)
   fill(tray, "boardBar", 0, 0, TRAY_W, BOARD_H - 2 * RIM)
