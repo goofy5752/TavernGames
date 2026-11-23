@@ -44,13 +44,74 @@ end
 local CARD = {}
 CARD.__index = CARD
 
--- `face` up, or the back for nil.
+local function hex(n) return { math.floor(n / 65536) / 255, math.floor(n / 256) % 256 / 255, n % 256 / 255 } end
+-- The disc behind a court's portrait, by the deck's faction.
+local CHAIR = { alliance = hex(0x5b6676), horde = hex(0x6d4d42) }
+local SEX = { queen = "female", jack = "male" }
+
+-- Under this width (px) a court shows no ribbon: the name would not fit.
+Cards.RIBBON_MIN = 50
+
+-- Puts `tex` at the fractions of the card: l, t, r, b inset from its edges.
+local function inset(card, region, l, t, r, b)
+  local w, h = card.w, card.h
+  region:ClearAllPoints()
+  region:SetPoint("TOPLEFT", card.frame, "TOPLEFT", l * w, -t * h)
+  region:SetPoint("BOTTOMRIGHT", card.frame, "BOTTOMRIGHT", -r * w, b * h)
+end
+
+-- The crest of faction `fac`, made once per card.
+function CARD:crestOf(fac)
+  local c = self.crests[fac]
+  if not c then
+    c = W.crest(self.frame, self.w, fac)
+    c:SetDrawLayer("ARTWORK", 2)
+    self.crests[fac] = c
+  end
+  return c
+end
+
+-- A court card: the hero in the oval, the label on the ribbon.
+function CARD:court(info, fac)
+  self.cameo:Show()
+  self.chairBack:SetVertexColor(CHAIR[fac][1], CHAIR[fac][2], CHAIR[fac][3], 1)
+  local ok = false
+  if ns.Art then
+    if info.role == "king" then ok = ns.Art.set(self.portrait, "leader", info.race)
+    else ok = ns.Art.set(self.portrait, "race", info.race, SEX[info.role]) end
+  end
+  self.art = ok and "client" or "standin"
+  self.portrait:SetShown(ok)
+  self.sil.frame:SetShown(not ok)
+  if not ok then self.sil:set(ns.Silhouette.layers(info.race, info.role)) end
+  self.cameoRing:SetVertexColor(Theme.factionColor(fac, "brass"))
+  self.cameoRing:Show()
+  local wide = self.w >= Cards.RIBBON_MIN
+  if wide then
+    local r, g, b = Theme.factionColor(fac, "banner")
+    self.ribbon:SetVertexColor(r, g, b, 1)
+    self.ribbonText:SetText(info.label)
+    self.ribbon:Show(); self.ribbonText:Show()
+  end
+end
+
+-- `face` up, or the back for nil. Reads the deck and skin each time, so a
+-- deck change shows on the next set.
 function CARD:set(face)
   self.face = face
+  local key = self.deck or ns.Decks.key()
+  local fac = ns.Decks.faction(key, Theme.skin)
+  self.cameo:Hide(); self.cameoRing:Hide(); self.ribbon:Hide(); self.ribbonText:Hide()
+  self.big:Hide(); self.art = nil
+  for _, c in pairs(self.crests) do c:Hide() end
   if face == nil then
-    self.body:SetTexture(Theme.tex.card_back)
-    self.shade:SetTexture(Theme.tex.card_back)
-    self.rank:Hide(); self.pip:Hide(); self.big:Hide()
+    local back = Theme.tex["card_back_" .. fac]
+    self.body:SetTexture(back); self.shade:SetTexture(back)
+    self.rank:Hide(); self.pip:Hide()
+    local c = self:crestOf(fac)
+    self.crest = c
+    c:ClearAllPoints(); c:SetSize(0.62 * self.w, 0.62 * self.w); c:SetPoint("CENTER", self.frame, "CENTER", 0, 0)
+    c:Show()
     return
   end
   self.body:SetTexture(Theme.tex.card)
@@ -63,7 +124,18 @@ function CARD:set(face)
     t:SetTexCoord(coord[1], coord[2], 0, 1)
     t:SetVertexColor(r, g, b)
   end
-  self.rank:Show(); self.pip:Show(); self.big:Show()
+  self.rank:Show(); self.pip:Show()
+  local info = ns.Decks.court(face, key, Theme.skin)
+  if info then
+    self:court(info, info.faction)
+  elseif face:sub(1, 1) == "A" then
+    local c = self:crestOf(fac)
+    self.crest = c
+    inset(self, c, 0.14, 0.14, 0.14, 0.18)
+    c:Show()
+  else
+    self.big:Show()
+  end
 end
 
 -- "plain" | "raised" (the gold edge; its owner draws it RAISE higher) | "dim".
@@ -73,45 +145,90 @@ function CARD:look(mode)
   self.shade:SetShown(mode == "dim")
 end
 
+-- Frame levels of the card's layers from `n`: the card, the cameo, its
+-- silhouette, then the frame of the corner index, dimming and edge on top of all.
+function CARD:level(n)
+  self.frame:SetFrameLevel(n)
+  self.cameo:SetFrameLevel(n + 1)
+  self.sil.frame:SetFrameLevel(n + 2)
+  self.over:SetFrameLevel(n + 3)
+end
+Cards.LEVELS = 4
+
 -- One card, 40 x 58 px times `scale` (default 1).
 function Cards.card(parent, scale)
   scale = scale or 1
   local f = CreateFrame("Button", nil, parent)
-  f:SetSize(Cards.W * scale, Cards.H * scale)
+  local w, h = Cards.W * scale, Cards.H * scale
+  f:SetSize(w, h)
   f:RegisterForClicks("LeftButtonUp")
-  local card = setmetatable({ frame = f, scale = scale }, CARD)
+  local card = setmetatable({ frame = f, scale = scale, w = w, h = h, crests = {} }, CARD)
 
   local body = f:CreateTexture(nil, "BACKGROUND")
   body:SetAllPoints(f)
   card.body = body
 
-  local rank = W.Label(f, "paper", nil, 13 * scale)
+  -- The big suit of a number card, centred.
+  card.big = f:CreateTexture(nil, "ARTWORK")
+  card.big:SetTexture(Theme.tex.suits)
+  card.big:SetSize(0.46 * w, 0.46 * w)
+  card.big:SetPoint("CENTER", f, "CENTER", 0, 0)
+
+  -- The ribbon with the court's label.
+  card.ribbon = f:CreateTexture(nil, "ARTWORK", nil, 3)
+  card.ribbon:SetTexture(Theme.tex.ribbon)
+  inset(card, card.ribbon, 0.08, 1 - 0.09 - 0.15, 0.08, 0.09)
+
+  -- The cameo: a disc, the portrait masked in the oval, or the stand-in over it.
+  local cameo = CreateFrame("Frame", nil, f)
+  inset(card, cameo, 0.18, 0.13, 0.18, 0.21)
+  card.cameo = cameo
+  card.chairBack = cameo:CreateTexture(nil, "ARTWORK", nil, 0)
+  card.chairBack:SetTexture(Theme.tex.chair)
+  card.chairBack:SetAllPoints(cameo)
+  card.portrait = cameo:CreateTexture(nil, "ARTWORK", nil, 1)
+  card.portrait:SetAllPoints(cameo)
+  W.mask(card.portrait, cameo)
+  card.sil = ns.Silhouette.new(cameo)
+  card.sil.frame:SetAllPoints(cameo)
+
+  -- Everything the card shows above its layers: the ring, label, corner index,
+  -- dimming and edge.
+  local over = CreateFrame("Frame", nil, f)
+  over:SetAllPoints(f)
+  card.over = over
+  card.cameoRing = over:CreateTexture(nil, "OVERLAY", nil, 1)
+  card.cameoRing:SetTexture(Theme.tex.cameo)
+  card.cameoRing:SetAllPoints(cameo)
+
+  local ribbonText = W.Label(over, "heading", nil, math.max(8, 0.14 * w))
+  ribbonText:SetDrawLayer("OVERLAY", 2)
+  ribbonText:SetJustifyH("CENTER")
+  ribbonText:SetPoint("CENTER", card.ribbon, "CENTER", 0, 0)
+  card.ribbonText = ribbonText
+
+  local rank = W.Label(over, "paper", nil, 13 * scale)
   Theme.setFont(rank, "uiBold", 13 * scale)
-  rank:SetDrawLayer("ARTWORK", 1)
+  rank:SetDrawLayer("OVERLAY", 3)
   rank:SetPoint("TOPLEFT", f, "TOPLEFT", 3 * scale, -1 * scale)
   card.rank = rank
 
-  local function suit(size)
-    local t = f:CreateTexture(nil, "ARTWORK")
-    t:SetTexture(Theme.tex.suits)
-    t:SetSize(size * scale, size * scale)
-    return t
-  end
-  card.pip = suit(10)
+  card.pip = over:CreateTexture(nil, "OVERLAY", nil, 3)
+  card.pip:SetTexture(Theme.tex.suits)
+  card.pip:SetSize(10 * scale, 10 * scale)
   card.pip:SetPoint("TOPLEFT", f, "TOPLEFT", 3 * scale, -14 * scale)
-  card.big = suit(21)
-  card.big:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -4 * scale, 2 * scale)
 
-  -- Dimming: the card's own shape in black at 1 - DIM over body, rank and
-  -- suits, so all three keep DIM of their brightness and the corners stay round.
-  local shade = f:CreateTexture(nil, "OVERLAY")
+  -- Dimming: the card's own shape in black at 1 - DIM over everything, so the
+  -- corners stay round and every layer keeps DIM of its brightness.
+  local shade = over:CreateTexture(nil, "OVERLAY", nil, 6)
   shade:SetAllPoints(f)
   shade:SetVertexColor(0, 0, 0, 1 - Cards.DIM)
   card.shade = shade
 
-  card.edges = W.edges(f, 2, "OVERLAY")
+  card.edges = W.edges(over, 2, "OVERLAY")
   card.edges.setColor(Theme.rgb("gold"))
 
+  card:level(f:GetFrameLevel())
   card:set(nil)
   card:look("plain")
   return card
@@ -143,7 +260,7 @@ function FAN:set(entries, onClick)
     card:set(e.face)
     card:look(mode)
     card.x, card.y = xs[k], mode == "raised" and Cards.RAISE * scale or 0
-    card.frame:SetFrameLevel(level + k)
+    card:level(level + Cards.LEVELS * k)
     card.frame:ClearAllPoints()
     card.frame:SetPoint("BOTTOMLEFT", self.frame, "BOTTOM", card.x, card.y)
     card.frame:Show()
