@@ -338,6 +338,35 @@ describe("F3-F Minors: the late key and the notes' registry", function()
     eq(#book.open, 0); ok(book.seen.bad > 0, "the first wrong key closed his hands")
   end)
 
+  -- N1: the published keys tried at the book's end (soft) use up none of a name's budget.
+  it("N1: soft tries do not count to the cap: his real late key still closes every hand", function()
+    local sim, cl = vanished()
+    close(sim, cl)
+    local s = cl[B].session
+    local book = s.book
+    ok(book.final and #book.open > 0, "Kiro's hands are open")
+    for i = 1, 6 do ns.Book.late(s, book, K, string.format("%032x", i), true) end
+    ok(#book.open > 0, "a soft key that fits nothing changes nothing")
+    ns.Book.late(s, book, K, sim.envs[K].db.bookKeep.key)
+    eq({ #book.open, book.seen.bad }, { 0, 0 })
+  end)
+
+  -- N2: a kept key of a finished game goes out while I sit in the next game at that table.
+  it("N2: stood up offline in game g, sitting in game g+1: the key of g goes out", function()
+    local sim, cl, tid = vanished()
+    local key = sim.envs[K].db.bookKeep.key
+    local g = sim.envs[K].db.bookKeep.g
+    close(sim, cl)
+    local mark = #sim.sent
+    assert(cl[A]:startGame()); sim:run(1)
+    cl[K] = sim:relog(K); sim:run(2)
+    cl[K]:sit(tid, 5, SK, 1000)
+    sim:run(2 * C.LEDGER_ADOPT_WAIT + 5)
+    ok(cl[K].session and cl[K].session.state.g ~= g, "Kiro sits in the next game")
+    eq(keys(sim, mark), { { K, "GUILD", key } })
+    eq(#cl[B].session.book.open, 0)
+  end)
+
   -- Minor 2: a note that is final and not unseen leaves the registry; an unseen one stays for a late key.
   it("client.cashLate keeps only the notes a late key could still judge", function()
     local sim, cl = cash({ 1, 2, 3 })

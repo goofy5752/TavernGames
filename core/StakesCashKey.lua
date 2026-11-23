@@ -6,6 +6,7 @@ local _, ns = ...
 -- LEDGER_ADOPT_WAIT after the login:
 --   I sit in that game again (my session, seated, state.g): nothing, for good
 --     (the game's own keys path publishes it).
+--   I sit at that table in ANOTHER game: its hands have all ended, the lobby check is skipped.
 --   The lobby's record of that table still lists me in a seat (a relog inside
 --     a hand whose snapshot is late or lost: the key is the one my running
 --     hand is committed to, F3-F I2): not now; checked again every
@@ -37,7 +38,8 @@ function Late.send(client)
   if type(kept.late) ~= "number" then kept.late = now end
   if now > kept.late + C.CASH_BOOK_WAIT then db.bookKeep = nil; return end
   if s and s.tid == kept.tid and s.mySeat and s.state and s.state.g == kept.g then return end
-  if seated(client, kept.tid) then return client:after(C.LEDGER_ADOPT_WAIT, function() Late.send(client) end) end
+  local other = s and s.tid == kept.tid and s.state and s.state.g ~= kept.g -- the key's hands have all ended
+  if not other and seated(client, kept.tid) then return client:after(C.LEDGER_ADOPT_WAIT, function() Late.send(client) end) end
   local spent, have = type(db.bookSpent) == "table" and db.bookSpent or {}, false
   db.bookSpent = spent
   for _, x in ipairs(spent) do have = have or (x.tid == kept.tid and x.me == env.me and x.key == kept.key) end

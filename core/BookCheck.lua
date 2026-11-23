@@ -108,13 +108,14 @@ end
 -- are then tried again and the book ends again ("book") -> true when it changed.
 -- `soft`: a key the game published under another chair of that name (a player stood up offline who
 -- sat again elsewhere with his kept key): it says nothing about the old chair, so one that gives
--- none of those commits changes nothing. At most LATE_KEYS keys of one name are tried on a book.
+-- none of those commits changes nothing, and it uses none of the LATE_KEYS budget. At most LATE_KEYS late keys of one name are tried on a book.
 Book.LATE_KEYS = 4
 function Book.late(s, book, name, key, soft)
   local tag = name .. "|" .. key
   book.lateSeen, book.lateN = book.lateSeen or {}, book.lateN or {}
   if not book.final or book.lateSeen[tag] or (book.lateN[name] or 0) >= Book.LATE_KEYS then return false end
-  book.lateSeen[tag], book.lateN[name] = true, (book.lateN[name] or 0) + 1
+  book.lateSeen[tag] = true
+  if not soft then book.lateN[name] = (book.lateN[name] or 0) + 1 end
   local his, seats, hit = {}, {}, false
   for _, h in ipairs(book.open) do
     local rec, hid = book.rec[h], Fair.handId(s.tid, h)
