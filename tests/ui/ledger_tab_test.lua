@@ -86,7 +86,7 @@ describe("ui: the tab „Тефтер“", function()
   it("the tab sits between Зала and Настройки, its ⓘ opens the ledger topic", function()
     local w = readyWow()
     local MW = w.ns.MainWindow
-    eq(MW.order, { "hall", "ledger", "settings" })
+    eq(MW.order, { "hall", "ledger", "board", "settings" })
     eq(MW.tabs.ledger.button.text:GetText(), "Тефтер")
     eq(MW.info.topic, "hall")
     open(w)

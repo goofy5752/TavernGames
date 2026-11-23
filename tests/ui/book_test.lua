@@ -430,7 +430,7 @@ describe("ui: settings", function()
     local w = guildWow()
     local MW = w.ns.MainWindow
     MW.show()
-    eq(MW.order, { "hall", "ledger", "settings" })
+    eq(MW.order, { "hall", "ledger", "board", "settings" })
     eq(MW.tabs.settings.button.text:GetText(), "Настройки")
     local v = settings(w)
     eq(v.version:GetText(), "Версия на аддона: 0.1.0")

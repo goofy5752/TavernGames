@@ -120,6 +120,8 @@ ui/PayDialog.lua
 ui/Accounts.lua
 ui/Hall.lua
 ui/LedgerTab.lua
+ui/BookList.lua
+ui/BoardTab.lua
 ui/Minimap.lua
 ui/TableFrame.lua
 ui/TablePanels.lua
