@@ -497,7 +497,10 @@ local EVENTS = {
     Adapter.lookUpName()
     if ns.Hall then ns.Hall.refresh() end
   end,
-  GUILD_ROSTER_UPDATE = scanRoster,
+  GUILD_ROSTER_UPDATE = function(...)
+    scanRoster(...)
+    if ns.Hall then ns.Hall.refresh() end
+  end,
   CHAT_MSG_SYSTEM = function(text)
     local name = match(offlinePattern, text)
     if name and ns.client then ns.client:peerOffline(name) end

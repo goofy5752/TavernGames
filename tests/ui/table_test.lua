@@ -467,7 +467,7 @@ describe("ui: table frame, host-started games", function()
     w.ns.client.events:emit("session", s); w:advance(0)
     eq(v.inviteButton:IsShown(), false)
     local p = v.startButton.points[1]
-    ok(p[2] == v.standButton, "not next to Стани"); eq({ p[1], p[3], p[4], p[5] }, { "LEFT", "RIGHT", 8, 0 })
+    ok(p[2] == v.standButton, "not next to Стани"); eq({ p[1], p[3], p[4], p[5] }, { "LEFT", "RIGHT", 6, 0 })
     s.seats[5] = false
     w.ns.client.events:emit("session", s); w:advance(0)
     ok(v.startButton.points[1][2] == v.inviteButton, "not next to Покани")

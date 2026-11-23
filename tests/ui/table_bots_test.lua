@@ -72,3 +72,34 @@ describe("ui: „Добави ботове“ at the table", function()
     eq(w.ns.client.session:seatedCount(), 2)
   end)
 end)
+
+describe("ui: the table's bottom row with all four buttons", function()
+  it("keeps the news line at least 120 px wide and the bots button explains itself", function()
+    local w = guildWow()
+    local _, v = hostTable(w)
+    local s = w.ns.client.session
+    s.seats[2] = "Някой" -- one more player: „Започни“ shows too
+    w.ns.client.events:emit("session", s); w:advance(0)
+    for _, b in ipairs({ v.standButton, v.inviteButton, v.startButton, v.botsButton }) do ok(b:IsVisible(), "a button is hidden") end
+    local x = 16 -- EDGE + 4
+    for _, b in ipairs({ v.standButton, v.inviteButton, v.startButton, v.botsButton }) do
+      local p = b.points[1]
+      x = x + (p[2] == v.standButton and 0 or 0) + b:GetWidth() + (b == v.standButton and 0 or p[4])
+    end
+    local frameW = w.ns.TableFrame.frame:GetWidth()
+    local lineLeft = x + v.line.points[1][4]
+    local lineRight = frameW - 12 - 24
+    ok(lineRight - lineLeft >= 120, "news line only " .. (lineRight - lineLeft) .. " px")
+    w:hover(v.botsButton)
+    eq(w.G.GameTooltip.lines[1], w.ns.L("table.addBots.tip"))
+  end)
+
+  it("the hall sign refreshes on GUILD_ROSTER_UPDATE", function()
+    local w = guildWow()
+    w.ns.MainWindow.show(); w:advance(0)
+    w.guildName = false; w:fire("GUILD_ROSTER_UPDATE"); w:advance(0)
+    eq(w.ns.Hall.view.sign:IsVisible(), false)
+    w.guildName = "Късна"; w:fire("GUILD_ROSTER_UPDATE"); w:advance(0)
+    ok(w.ns.Hall.view.sign:IsVisible(), "sign not shown")
+  end)
+end)
