@@ -148,7 +148,7 @@ T["intro.book.text"] = "Видиш ли |TInterface\\AddOns\\TavernGames\\media\
 -- WoW adapter and /tavern
 T["addon.title"] = "Tavern Games"
 T["hall.noguild"] = "Не си в гилдия. Кръчмата е за хората от гилдията, но можеш да я пробваш с ботове: /tavern bots"
-T["slash.help"] = "Команди: /tavern (залата), /tavern bots [host | invite] [игра], /tavern bots fill [брой], /tavern debug, /tavern intro, /tavern ledger, /tavern reset, /tavern probe [roll | trade | mail]"
+T["slash.help"] = "Команди: /tavern (залата), /tavern bots [host | invite] [игра], /tavern bots fill [брой], /tavern debug, /tavern intro, /tavern ledger, /tavern reset, /tavern probe [roll | trade | mail | art]"
 T["bots.on"] = "Ботовете влязоха в кръчмата."
 T["bots.off"] = "Ботовете си тръгнаха."
 T["bots.wait"] = "Още разпознавам името ти. Опитай пак след няколко секунди."
@@ -176,6 +176,10 @@ T["probe.trade.event"] = "Трейд: %s (%s); пари: мои %s, негови
 T["probe.mail.row"] = "Писмо %s: от „%s“, тема „%s“, пари %s (%s)"
 T["probe.mail.price"] = "Цена за пращане (GetSendMailPrice): %s"
 T["probe.mail.closed"] = "Проба: отвори пощенска кутия и опитай пак."
+T["probe.art.head"] = "Графики от клиента (file / atlas = има, - = липсва):"
+T["probe.art.line"] = "%s: %s"
+T["probe.art.player"] = "Герой: фракция %s, раса %s, пол %s"
+T["probe.art.sum"] = "Намерени %d от %d. Липсващите се показват с наши заместители."
 
 -- Main window and hall
 T["tab.hall"] = "Зала"

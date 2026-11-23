@@ -148,7 +148,7 @@ T["intro.book.text"] = "See an |TInterface\\AddOns\\TavernGames\\media\\info:14:
 -- WoW adapter and /tavern
 T["addon.title"] = "Tavern Games"
 T["hall.noguild"] = "You are not in a guild. The tavern is for guild members, but you can try it with bots: /tavern bots"
-T["slash.help"] = "Commands: /tavern (the hall), /tavern bots [host | invite] [game], /tavern bots fill [count], /tavern debug, /tavern intro, /tavern ledger, /tavern reset, /tavern probe [roll | trade | mail]"
+T["slash.help"] = "Commands: /tavern (the hall), /tavern bots [host | invite] [game], /tavern bots fill [count], /tavern debug, /tavern intro, /tavern ledger, /tavern reset, /tavern probe [roll | trade | mail | art]"
 T["bots.on"] = "The bots came into the tavern."
 T["bots.off"] = "The bots left."
 T["bots.wait"] = "Still finding out your name. Try again in a few seconds."
@@ -176,6 +176,10 @@ T["probe.trade.event"] = "Trade: %s (%s); money: mine %s, theirs %s; partner: %s
 T["probe.mail.row"] = "Letter %s: from \"%s\", subject \"%s\", money %s (%s)"
 T["probe.mail.price"] = "Postage (GetSendMailPrice): %s"
 T["probe.mail.closed"] = "Probe: open a mailbox and try again."
+T["probe.art.head"] = "Client art (file / atlas = present, - = missing):"
+T["probe.art.line"] = "%s: %s"
+T["probe.art.player"] = "Character: faction %s, race %s, sex %s"
+T["probe.art.sum"] = "Found %d of %d. The missing ones are shown with our own stand-ins."
 
 -- Main window and hall
 T["tab.hall"] = "Hall"

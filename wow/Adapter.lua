@@ -19,10 +19,10 @@ ns.Adapter = Adapter
 -- bookKeep, bookSpent: the Hold'em table key and spend (core/Book.lua);
 -- stakeSeen, stakeLeft, stakeSat, stakeLog: my own outcome notes, the stake I
 -- sat down for and what I sent at that table (core/StakesWatch.lua), never
--- sent; ledger: the guild's gold ledger, account-wide.
+-- sent; ledger: the guild's gold ledger, account-wide; sound: false mutes ns.Art.play.
 local CHAR_KEYS = { snoozeUntil = true, busy = true, debug = true, fairKeep = true, lastAt = true,
   bookKeep = true, bookSpent = true, stakeSeen = true, stakeLeft = true, stakeSat = true, stakeLog = true, paySent = true }
-local GLOBAL_KEYS = { lang = true, introDone = true, minimap = true, ledger = true, scale = true }
+local GLOBAL_KEYS = { lang = true, introDone = true, minimap = true, ledger = true, scale = true, sound = true }
 Adapter.CHAR_KEYS, Adapter.GLOBAL_KEYS = CHAR_KEYS, GLOBAL_KEYS
 Adapter.DEFAULTS = {
   char = { snoozeUntil = 0, busy = false, debug = false },

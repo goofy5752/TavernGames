@@ -108,6 +108,7 @@ wow/Adapter.lua
 wow/Trade.lua
 wow/Mail.lua
 wow/Rolls.lua
+wow/Art.lua
 wow/Slash.lua
 
 # UI

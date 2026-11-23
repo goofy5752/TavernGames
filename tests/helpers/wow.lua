@@ -105,6 +105,7 @@ end
 -- opts.late: names of game functions the client defines only later (nil while the
 -- addon loads; the test puts self.late[name] back into self.G when it wants them).
 -- opts.ui: also run the ui/ files.
+-- opts.noArt: a client without GetFileIDFromPath and C_Texture (no client art can be confirmed).
 function Wow.new(opts)
   opts = opts or {}
   local self = setmetatable({
@@ -121,6 +122,10 @@ function Wow.new(opts)
     calls = {}, forbidden = {},
     -- Units: unit id ("target", "party1", "raid7") -> GUID; near[unit]: CheckInteractDistance says in range.
     units = {}, near = {},
+    -- The player's character (UnitFactionGroup, UnitRace, UnitSex); visible[unit] == false: UnitIsVisible says no.
+    faction = "Alliance", race = { "Човек", "Human", 1 }, sex = 2, visible = {},
+    -- Client art the check confirms: files by lower-case path -> file id, atlas names (Wow:hasFile, Wow:hasAtlas).
+    art = { files = {}, atlases = {}, count = 0 },
   }, Wow)
   for _, name in ipairs(FORBIDDEN) do self.forbidden[name] = true end
   local G = {}
@@ -164,8 +169,15 @@ function Wow.new(opts)
     return os.date("!*t", t)
   end
   G.UnitClass = function() return "Маг", "MAGE", 8 end
-  G.UnitRace = function() return "Човек", "Human", 1 end
-  G.UnitFactionGroup = function() return "Alliance", "Alliance" end
+  G.UnitRace = function() return unpack(self.race) end
+  G.UnitFactionGroup = function() return self.faction, self.faction end
+  G.UnitSex = function() return self.sex end
+  G.UnitIsVisible = function(unit) return self.visible[unit] ~= false and (unit == "player" or self.units[unit] ~= nil) end
+  G.SetPortraitTexture = function(tex, unit) tex.portrait, tex.texture = unit, "portrait:" .. unit end
+  G.SetPortraitToTexture = function(tex, path) tex.texture, tex.round = path, true end
+  G.GetFileIDFromPath = function(path) return type(path) == "string" and self.art.files[path:lower()] or nil end
+  G.C_Texture = { GetAtlasInfo = function(name) if self.art.atlases[name] then return { width = 64, height = 64 } end end }
+  if opts.noArt then G.GetFileIDFromPath, G.C_Texture = nil, nil end
   G.GetRealmName = function() return "Forever" end
   G.GetLocale = function() return "enUS" end
   G.GetCurrentRegion = function() return 3 end
@@ -307,6 +319,8 @@ function Wow.new(opts)
     local optional = {
       TavernGamesDB = true, CUSTOM_CLASS_COLORS = true, SOUNDKIT = true, issecretvalue = true, InviteUnit = true,
       debugprofilestop = true, GetFramerate = true,
+      GetFileIDFromPath = true, C_Texture = true, SetPortraitTexture = true, SetPortraitToTexture = true,
+      UnitSex = true, UnitIsVisible = true,
     }
     setmetatable(G, { __index = function(_, k)
       if optional[k] then return nil end
@@ -320,6 +334,15 @@ end
 function Wow:init() if self.addon.OnInitialize then self.addon:OnInitialize() end end
 function Wow:enable() if self.addon.OnEnable then self.addon:OnEnable() end end
 function Wow:boot() self:init(); self:enable() end
+
+-- The client has the file at `path` (GetFileIDFromPath finds it in any case) or the atlas `name`.
+function Wow:hasFile(path)
+  local key = path:lower()
+  if self.art.files[key] then return end
+  self.art.count = self.art.count + 1
+  self.art.files[key] = 1000 + self.art.count
+end
+function Wow:hasAtlas(name) self.art.atlases[name] = true end
 
 -- The first run is over (language chosen, intro seen): the main window opens
 -- directly instead of the language dialog.

@@ -304,6 +304,30 @@ describe("/tavern probe", function()
     w:slash("probe mail")
     eq(#w.chat, n + 1); eq(w.chat[n + 1], said .. L("probe.mail.closed"))
   end)
+
+  it("probe art prints every candidate, sound and API with what the client has, locally only", function()
+    local w = guildWow()
+    local L = w.ns.L
+    local said = "|cffb0813f" .. L("addon.title") .. "|r: "
+    local logo = "Interface\\Timer\\Alliance-Logo"
+    local n, sent = #w.chat, #w.sent
+    w:slash("probe art")
+    eq(w.chat[n + 1], said .. L("probe.art.head"))
+    ok(probeLine(w, said .. logo .. ": -", n + 1), "logo missing")
+    ok(probeLine(w, said .. "GetFileIDFromPath: function", n + 1), "GetFileIDFromPath")
+    local total = select(3, w.ns.Art.report())
+    eq(total, 4 + 11 + 60 + 2 + 3) -- crests, leaders, races, the one class (MAGE), coins
+    eq(w.chat[#w.chat], said .. L("probe.art.sum", 0, total))
+    n = #w.chat
+    w:hasFile(logo); w.ns.Art.reset()
+    w:slash("probe art")
+    ok(probeLine(w, said .. logo .. ": file", n + 1), "logo present")
+    local player = w.chat[#w.chat - 1]
+    eq(player, said .. L("probe.art.player", "Alliance", "Human", "2"))
+    for _, needle in ipairs({ "Alliance", "Human", "2" }) do ok(player:find(needle, 1, true), player) end
+    ok(w.chat[#w.chat]:find("Намерени 1 от " .. total, 1, true), w.chat[#w.chat])
+    eq(#w.sent, sent)
+  end)
 end)
 
 describe("/tavern ledger", function()

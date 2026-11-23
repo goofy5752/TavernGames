@@ -169,10 +169,30 @@ function Slash.probeMail()
   say(L("probe.mail.price", show("GetSendMailPrice")))
 end
 
+-- The `n`th value the read-only API at `path` returns for the arguments, as text; "-" when absent or it raises.
+local function nth(n, path, ...)
+  local fn = lookup(path)
+  if type(fn) ~= "function" then return "-" end
+  local r = { pcall(fn, ...) }
+  if not r[1] then return "-" end
+  return tostring(r[n + 1])
+end
+
+-- /tavern probe art: every client asset candidate, sound name and art API with
+-- what the client has (ns.Art.report), then my character and the count found.
+function Slash.probeArt()
+  say(L("probe.art.head"))
+  local rows, found, total = ns.Art.report()
+  for _, row in ipairs(rows) do say(L("probe.art.line", row[1], row[2])) end
+  say(L("probe.art.player", nth(1, "UnitFactionGroup", "player"), nth(2, "UnitRace", "player"), nth(1, "UnitSex", "player")))
+  say(L("probe.art.sum", found, total))
+end
+
 local function probe(arg)
   if arg == "roll" then return Slash.probeRoll() end
   if arg == "trade" then return Slash.probeTrade() end
   if arg == "mail" then return Slash.probeMail() end
+  if arg == "art" then return Slash.probeArt() end
   if arg ~= "" then return say(L("slash.help")) end
   Slash.probe()
 end

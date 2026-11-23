@@ -70,11 +70,18 @@ function Region:SetShown(on) if on then self:Show() else self:Hide() end end
 local Texture = setmetatable({}, { __index = Region })
 Texture.__index = Texture
 function Texture:SetTexture(path, wrapH, wrapV)
-  self.texture, self.color, self.wrap = path, nil, { wrapH, wrapV }
+  self.texture, self.color, self.atlas, self.wrap = path, nil, nil, { wrapH, wrapV }
   return true
 end
 function Texture:GetTexture() return self.texture end
-function Texture:SetColorTexture(r, g, b, a) self.color, self.texture = { r, g, b, a or 1 }, nil end
+function Texture:SetAtlas(name) self.atlas, self.texture, self.color = name, nil, nil end
+function Texture:GetAtlas() return self.atlas end
+function Texture:SetColorTexture(r, g, b, a) self.color, self.texture, self.atlas = { r, g, b, a or 1 }, nil, nil end
+-- A mask texture (Frame:CreateMaskTexture) added to this texture; kept in order in .masks.
+function Texture:AddMaskTexture(mask)
+  self.masks = self.masks or {}
+  self.masks[#self.masks + 1] = mask
+end
 function Texture:SetTexCoord(...) self.texCoord = { ... } end
 function Texture:SetVertexColor(r, g, b, a) self.vertex = { r, g, b, a or 1 } end
 function Texture:GetVertexColor()
@@ -169,6 +176,13 @@ function Frame:CreateTexture(name, layer, template, sub)
   }, Texture)
   self.regions[#self.regions + 1] = t
   return t
+end
+
+-- A mask: a texture region of object type "MaskTexture", with the texture methods.
+function Frame:CreateMaskTexture(name, layer, template, sub)
+  local m = self:CreateTexture(name, layer, template, sub)
+  m.objectType = "MaskTexture"
+  return m
 end
 
 function Frame:CreateFontString(name, layer, template)
