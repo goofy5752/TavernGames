@@ -201,12 +201,10 @@ describe("ui: hall", function()
     ok(t.frame:IsVisible(), "table hidden"); eq(t.tid, tid)
     eq(t.game:GetText(), "Морски шах")
     local c1, c2 = t.chairs[1], t.chairs[2]
-    eq(c1.disc:GetTexture(), w.ns.Theme.tex.chair)
-    eq({ c1.disc:GetVertexColor() }, { 0.25, 0.78, 0.92, 1 })
     eq(c1.label:GetText(), "Мария")
     eq({ c1.label:GetTextColor() }, { 0.25, 0.78, 0.92, 1 })
     eq(t.host:GetText(), "Мария"); eq({ t.host:GetTextColor() }, { 0.25, 0.78, 0.92, 1 })
-    eq(c2.disc:GetTexture(), w.ns.Theme.tex.chair_empty); eq(c2.label:IsVisible(), false)
+    eq(c2.portrait.tex:GetTexture(), w.ns.Theme.tex.chair_empty); eq(c2.label:IsVisible(), false)
     w:click(c2.button)
     local sit = lastSent(w, "SIT")
     ok(sit, "no SIT"); eq(sit.dist, "WHISPER"); eq(sit.target, B); eq({ sit.msg.tid, sit.msg.seat }, { tid, 2 })
@@ -224,9 +222,9 @@ describe("ui: hall", function()
     w:hover(t.chairs[1].button); eq(tip.lines, { B })
     w:hover(t.chairs[2].button); eq(tip.lines, { "Кликни празния стол, за да седнеш" })
     local g = w.ns.Theme.color.gold
-    eq({ t.chairs[2].disc:GetVertexColor() }, { g[1], g[2], g[3], 1 })
+    eq({ t.chairs[2].portrait.tex:GetVertexColor() }, { g[1], g[2], g[3], 1 })
     t.chairs[2].button.scripts.OnLeave(t.chairs[2].button)
-    eq({ t.chairs[2].disc:GetVertexColor() }, { 1, 1, 1, 1 })
+    eq({ t.chairs[2].portrait.tex:GetVertexColor() }, { 1, 1, 1, 1 })
   end)
 
   it("a live table shows „тече“ and a click on it watches", function()
@@ -312,7 +310,8 @@ describe("ui: hall", function()
     local tid = tbl(w, B, { B, false }, "open", "|TInterface\\Icons\\x:16|t")
     local t = w.ns.Hall.view.tables[1]
     eq(t.tid, tid)
-    eq(#w:texts("Непозната игра"), 1); eq(#w:texts("|T"), 0)
+    eq(#w:texts("Непозната игра"), 2) -- on the table top and in the label under it
+    eq(#w:texts("|T"), 0)
     local sent = #w.sent
     w:click(t.chairs[2].button)
     eq(w.ns.Hall.view.footer:GetText(), w.ns.L("refused.version"))
@@ -476,5 +475,102 @@ describe("ui: minimap", function()
     w:fire("PLAYER_LOGOUT")
     local w2 = guildWow(w.G.TavernGamesDB)
     eq(w2.icons.TavernGames.shown, false)
+  end)
+end)
+
+describe("ui: the hall's faction look", function()
+  it("the Alliance hall has a stone floor, the Horde hall planks; both a rug and three lanterns", function()
+    local w = guildWow()
+    w.ns.MainWindow.show()
+    local v, T = w.ns.Hall.view, w.ns.Theme
+    eq(v.floorTex:GetTexture(), T.tex.stone)
+    eq(v.floorTex.texCoord[2] > 1, true)
+    eq(#v.seams, 0)
+    eq(#v.lanterns, 3)
+    local want = { T.color.lantern[1], T.color.lantern[2], T.color.lantern[3], 1 }
+    for i = 1, 3 do
+      local l = v.lanterns[i]
+      eq(l:GetTexture(), T.tex.glow); eq(l.blend, "ADD"); eq({ l:GetSize() }, { 96, 96 })
+      eq({ l:GetVertexColor() }, want)
+    end
+    eq({ v.rug.fill.color[1], v.rug.fill.color[2], v.rug.fill.color[3], v.rug.fill.color[4] },
+       { T.color.felt[1], T.color.felt[2], T.color.felt[3], 0.55 })
+    eq(#v.rug.edges, 4)
+    eq(v.rug.edges[1].color[1], T.color.brass[1])
+
+    local h = Wow.new{ ui = true }; h.faction = "Horde"; h.inGuild = true
+    h.roster = { { name = ME .. "-Forever", online = true, guid = Wow.GUID } }
+    h:boot(); h:firstRunDone(); h:fire("GUILD_ROSTER_UPDATE"); h:fire("PLAYER_LOGIN")
+    h.ns.MainWindow.show()
+    local hv = h.ns.Hall.view
+    eq(hv.floorTex, nil)
+    ok(#hv.seams > 0, "no seams")
+    eq(#hv.lanterns, 3)
+  end)
+
+  it("a seated chair shows the player's portrait, an empty one the outline", function()
+    local w = guildWow()
+    w.ns.MainWindow.show()
+    hi(w, B, "MAGE")
+    tbl(w, B)
+    local c1, c2 = w.ns.Hall.view.tables[1].chairs[1], w.ns.Hall.view.tables[1].chairs[2]
+    eq({ c1.portrait.frame:GetWidth(), c1.portrait.frame:GetHeight() }, { 26, 26 })
+    ok(c1.portrait.source ~= "empty", "seated shows empty")
+    eq(c2.portrait.source, "empty")
+    eq(c2.portrait.tex:GetTexture(), w.ns.Theme.tex.chair_empty)
+    w:hover(c2.button)
+    local g = w.ns.Theme.color.gold
+    eq({ c2.portrait.tex:GetVertexColor() }, { g[1], g[2], g[3], 1 })
+    c2.button.scripts.OnLeave(c2.button)
+    eq({ c2.portrait.tex:GetVertexColor() }, { 1, 1, 1, 1 })
+  end)
+
+  it("the table carries its game picture and the stake under it", function()
+    local w = guildWow()
+    w.ns.MainWindow.show()
+    hi(w, B, "MAGE")
+    tbl(w, B)
+    local t, T = w.ns.Hall.view.tables[1], w.ns.Theme
+    eq(t.icon:GetTexture(), T.gameIcon("ttt")); eq({ t.icon:GetSize() }, { 30, 30 })
+    eq(t.icon.alpha, 0.9)
+    eq({ t.icon:GetVertexColor() }, { T.color.brassLight[1], T.color.brassLight[2], T.color.brassLight[3], 1 })
+    eq(t.label:GetText(), "Морски шах · За удоволствие")
+    eq(t.game:IsShown(), false)
+  end)
+
+  it("everyone in the tavern has a portrait in the list", function()
+    local w = guildWow()
+    w.ns.MainWindow.show()
+    hi(w, B, "MAGE")
+    local r = w.ns.Hall.view.peers[1]
+    eq({ r.portrait.frame:GetWidth(), r.portrait.frame:GetHeight() }, { 22, 22 })
+    eq(r.frame:GetHeight(), 26)
+    ok(r.portrait.source ~= nil, "no source")
+    eq(r.name.points[1][4], 28)
+  end)
+end)
+
+describe("ui: the table label stays clear of the chair labels", function()
+  it("under a 2-seat and a 4-seat table the label is below the bottom chair's name", function()
+    local w = guildWow()
+    w.ns.MainWindow.show()
+    hi(w, B, "MAGE"); hi(w, C, "MAGE")
+    tbl(w, B, { B, C }, "open", "ttt")
+    tbl(w, C, { C, B, false, false }, "open", "ttt")
+    for _, t in ipairs(w.ns.Hall.view.tables) do
+      local lp = t.label.points[1]
+      eq(lp[1], "TOP"); eq(lp[3], "BOTTOM")
+      local labelTop = -75 + lp[5]
+      local n = #t.rec.seats
+      for i = 1, n do
+        local c = t.chairs[i]
+        local p = c.label.points[1]
+        if p[4] == 0 or math.abs(p[4]) < 1 then
+          if p[5] < 0 then
+            ok(labelTop <= p[5] - 8, "table label too high for n=" .. n)
+          end
+        end
+      end
+    end
   end)
 end)

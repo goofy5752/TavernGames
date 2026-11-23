@@ -191,7 +191,7 @@ describe("ui: the hall column „Сметки“", function()
     local n = 0
     for _, r in ipairs(v.peers) do if r.frame:IsVisible() then n = n + 1 end end
     eq(n, 20)
-    eq(v.peerScroll.content:GetHeight(), 20 * 20)
+    eq(v.peerScroll.content:GetHeight(), 20 * 26)
     eq(v.peers[1].frame.points[1][5], 0)
   end)
 end)

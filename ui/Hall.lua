@@ -212,24 +212,29 @@ local function tableWidget(v, i)
   local wood = top:CreateTexture(nil, "BACKGROUND")
   wood:SetAllPoints(top)
   wood:SetTexture(Theme.tex.tabletop)
-  local felt = top:CreateTexture(nil, "BORDER")
-  felt:SetSize(TOP_SIZE - 18, TOP_SIZE - 18)
-  felt:SetPoint("CENTER", top, "CENTER")
-  felt:SetTexture(Theme.tex.chair)
-  felt:SetVertexColor(Theme.rgb("felt"))
-
+  -- The game's picture on the wood, 14 px above the centre; a game without
+  -- one keeps its name there.
+  local icon = top:CreateTexture(nil, "ARTWORK")
+  icon:SetSize(30, 30)
+  icon:SetPoint("CENTER", top, "CENTER", 0, 14)
+  icon:SetAlpha(0.9)
+  icon:SetVertexColor(Theme.rgb("brassLight"))
   local game = W.Label(top, "heading", "", 14)
   game:SetJustifyH("CENTER")
-  game:SetPoint("CENTER", top, "CENTER", 0, 11)
+  game:SetPoint("CENTER", top, "CENTER", 0, 14)
   local host = W.Label(top, "ui", "", 11)
   host:SetJustifyH("CENTER")
-  host:SetPoint("CENTER", top, "CENTER", 0, -4)
+  host:SetPoint("CENTER", top, "CENTER", 0, -8)
   local state = W.Label(top, "ui", "", 11)
   state:SetJustifyH("CENTER")
   color(state, "gold")
-  state:SetPoint("CENTER", top, "CENTER", 0, -18)
+  state:SetPoint("CENTER", top, "CENTER", 0, -22)
+  -- „<game> · <stake>“ under the table.
+  local label = W.Label(f, "dim", "", 10)
+  label:SetJustifyH("CENTER")
+  label:SetPoint("TOP", f, "BOTTOM", 0, -14)
 
-  t = { frame = f, glow = glow, top = top, game = game, host = host, state = state, chairs = {} }
+  t = { frame = f, glow = glow, top = top, icon = icon, game = game, host = host, state = state, label = label, chairs = {} }
   top:SetScript("OnClick", function() Hall.clickTable(t) end)
   W.tooltip(top, function(tip) Hall.tableTooltip(tip, t.rec) end)
   v.tables[i] = t
@@ -243,19 +248,15 @@ local function chairWidget(t, i)
   b:SetSize(26, 26)
   b:SetFrameLevel(t.top:GetFrameLevel() + 1)
   b:RegisterForClicks("LeftButtonUp")
-  local rim = b:CreateTexture(nil, "BORDER")
-  rim:SetAllPoints(b)
-  rim:SetTexture(Theme.tex.chair)
-  rim:SetVertexColor(Theme.rgb("woodDark"))
-  local disc = b:CreateTexture(nil, "ARTWORK")
-  disc:SetPoint("CENTER", b, "CENTER")
+  local portrait = ns.Portrait.new(b, 26)
+  portrait.frame:SetPoint("CENTER", b, "CENTER")
   local label = W.Label(t.frame, "ui", "", 11)
   label:SetJustifyH("CENTER")
-  c = { button = b, rim = rim, disc = disc, label = label }
+  c = { button = b, portrait = portrait, label = label }
   b:SetScript("OnClick", function() Hall.clickChair(t, i) end)
   W.tooltip(b, function(tip) Hall.chairTooltip(tip, t.rec, i) end)
-  b:HookScript("OnEnter", function() if c.empty then disc:SetVertexColor(Theme.rgb("gold")) end end)
-  b:HookScript("OnLeave", function() if c.empty then disc:SetVertexColor(1, 1, 1) end end)
+  b:HookScript("OnEnter", function() if c.empty then portrait.tex:SetVertexColor(Theme.rgb("gold")) end end)
+  b:HookScript("OnLeave", function() if c.empty then portrait.tex:SetVertexColor(1, 1, 1) end end)
   t.chairs[i] = c
   return c
 end
@@ -264,6 +265,11 @@ local function fillTable(t, rec, client)
   t.rec, t.tid = rec, rec.tid
   local mine = here(client, rec)
   t.game:SetText(gameName(rec.game))
+  local pic = Theme.gameIcon(rec.game)
+  if pic then t.icon:SetTexture(pic) end
+  t.icon:SetShown(pic ~= nil)
+  t.game:SetShown(pic == nil)
+  t.label:SetText(gameName(rec.game) .. " · " .. (stakeText(rec) or L("table.stake.none")))
   t.host:SetText(firstWord(rec.host))
   t.host:SetTextColor(nameColor(client, rec.host))
   t.state:SetText(L("hall.live"))
@@ -281,19 +287,15 @@ local function fillTable(t, rec, client)
     c.label:SetPoint("CENTER", t.frame, "CENTER", x * k, y * k)
     c.empty = not name
     if name then
-      c.rim:Show()
-      c.disc:SetTexture(Theme.tex.chair)
-      c.disc:SetSize(22, 22)
-      c.disc:SetVertexColor(nameColor(client, name))
       c.label:SetText(firstWord(name))
       c.label:SetTextColor(nameColor(client, name))
       c.label:SetShown(labelled)
       c.button:SetEnabled(false)
+      local who = ns.Portrait.who(client, name)
+      local key = table.concat({ name, tostring(who.cls), tostring(who.race), tostring(who.sex), tostring(who.unit) }, "|")
+      if c.shown ~= key then c.shown = key; c.portrait:set(who) end
     else
-      c.rim:Hide()
-      c.disc:SetTexture(Theme.tex.chair_empty)
-      c.disc:SetSize(26, 26)
-      c.disc:SetVertexColor(1, 1, 1)
+      if c.shown ~= false then c.shown = false; c.portrait:set(nil) end
       c.label:Hide()
       c.button:SetEnabled(not mine)
     end
@@ -462,7 +464,8 @@ local function buildLeft(v, page, colH)
     local rim = row:CreateTexture(nil, "OVERLAY")
     rim:SetSize(36, 36)
     rim:SetPoint("CENTER", icon, "CENTER")
-    rim:SetTexture(Theme.tex.ring)
+    rim:SetTexture(Theme.tex.pring)
+    rim:SetVertexColor(Theme.rgb("brass"))
     local title = gameName(g.id)
     -- The game's picture on the felt disc; its first letter for a game without one.
     local path = Theme.gameIcon(g.id)
@@ -506,22 +509,62 @@ local function buildCentre(v, page, x, w, colH)
   local centre = W.Panel(page)
   centre:SetPoint("TOPLEFT", page, "TOPLEFT", x, 0)
   centre:SetSize(w, colH)
-  -- Floor planks (mockup 02): lighter wood, a seam every 22 px down and 64 px across.
-  centre.fill:Hide()
-  local planks = W.tile(centre, Theme.tex.wood, Theme.texSize.wood, w - 2, colH - 2)
-  planks:SetPoint("TOPLEFT", centre, "TOPLEFT", 1, -1)
-  planks:SetPoint("BOTTOMRIGHT", centre, "BOTTOMRIGHT", -1, 1)
-  for y = 22, colH - 2, 22 do
-    local s = centre:CreateTexture(nil, "BORDER")
-    s:SetColorTexture(0, 0, 0, 0.18)
-    s:SetPoint("TOPLEFT", centre, "TOPLEFT", 1, -y)
-    s:SetSize(w - 2, 1)
+  -- The floor: stone tiles in the Alliance hall; in the Horde one planks (mockup
+  -- 02): lighter wood, a seam every 22 px down and 64 px across.
+  v.seams, v.lanterns = {}, {}
+  if Theme.S.floor == "stone" then
+    v.floorTex = W.tile(centre, Theme.tex.stone, 128, w - 2, colH - 2)
+    v.floorTex:SetPoint("TOPLEFT", centre, "TOPLEFT", 1, -1)
+    v.floorTex:SetPoint("BOTTOMRIGHT", centre, "BOTTOMRIGHT", -1, 1)
+  else
+    local planks = W.tile(centre, Theme.tex.wood, Theme.texSize.wood, w - 2, colH - 2)
+    planks:SetPoint("TOPLEFT", centre, "TOPLEFT", 1, -1)
+    planks:SetPoint("BOTTOMRIGHT", centre, "BOTTOMRIGHT", -1, 1)
+    for y = 22, colH - 2, 22 do
+      local s = centre:CreateTexture(nil, "BORDER")
+      s:SetColorTexture(0, 0, 0, 0.18)
+      s:SetPoint("TOPLEFT", centre, "TOPLEFT", 1, -y)
+      s:SetSize(w - 2, 1)
+      v.seams[#v.seams + 1] = s
+    end
+    for sx = 64, w - 2, 64 do
+      local s = centre:CreateTexture(nil, "BORDER")
+      s:SetColorTexture(0, 0, 0, 0.25)
+      s:SetPoint("TOPLEFT", centre, "TOPLEFT", sx, -1)
+      s:SetSize(1, colH - 2)
+      v.seams[#v.seams + 1] = s
+    end
   end
-  for sx = 64, w - 2, 64 do
-    local s = centre:CreateTexture(nil, "BORDER")
-    s:SetColorTexture(0, 0, 0, 0.25)
-    s:SetPoint("TOPLEFT", centre, "TOPLEFT", sx, -1)
-    s:SetSize(1, colH - 2)
+  -- The rug: felt at 0.55 inset 26 px top and bottom, 40 px at the sides, a 2 px brass edge.
+  local rug = { edges = {} }
+  local fr, fg, fb = Theme.rgb("felt")
+  local br, bg, bb = Theme.rgb("brass")
+  rug.fill = centre:CreateTexture(nil, "BORDER", nil, 1)
+  rug.fill:SetColorTexture(fr, fg, fb, 0.55)
+  rug.fill:SetPoint("TOPLEFT", centre, "TOPLEFT", 40, -26)
+  rug.fill:SetPoint("BOTTOMRIGHT", centre, "BOTTOMRIGHT", -40, 26)
+  local function edge(p1, x1, y1, p2, x2, y2, w2, h2)
+    local e = centre:CreateTexture(nil, "BORDER", nil, 2)
+    e:SetColorTexture(br, bg, bb, 1)
+    e:SetPoint(p1, centre, p1, x1, y1)
+    e:SetPoint(p2, centre, p2, x2, y2)
+    if w2 then e:SetWidth(w2) else e:SetHeight(h2) end
+    rug.edges[#rug.edges + 1] = e
+  end
+  edge("TOPLEFT", 40, -26, "TOPRIGHT", -40, -26, nil, 2)
+  edge("BOTTOMLEFT", 40, 26, "BOTTOMRIGHT", -40, 26, nil, 2)
+  edge("TOPLEFT", 40, -26, "BOTTOMLEFT", 40, 26, 2, nil)
+  edge("TOPRIGHT", -40, -26, "BOTTOMRIGHT", -40, 26, 2, nil)
+  v.rug = rug
+  -- Three lanterns: a tinted glow each.
+  for _, p in ipairs({ { "TOPLEFT", 40, -20 }, { "TOPRIGHT", -50, -30 }, { "BOTTOM", 0, 24 } }) do
+    local l = centre:CreateTexture(nil, "BORDER", nil, 3)
+    l:SetTexture(Theme.tex.glow)
+    l:SetBlendMode("ADD")
+    l:SetSize(96, 96)
+    l:SetVertexColor(Theme.rgb("lantern"))
+    l:SetPoint("CENTER", centre, p[1], p[2], p[3])
+    v.lanterns[#v.lanterns + 1] = l
   end
   W.Label(centre, "heading", L("hall.title")):SetPoint("TOPLEFT", centre, "TOPLEFT", 10, -8)
   v.hint = W.Label(centre, "dim", L("hall.hint"), 12)

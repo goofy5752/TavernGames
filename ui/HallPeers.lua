@@ -11,7 +11,7 @@ local Theme, W, L, Util = ns.Theme, ns.W, ns.L, ns.Util
 local HallPeers = {}
 ns.HallPeers = HallPeers
 
-local PEER_H = 20
+local PEER_H = 26
 
 -- May I invite `name` to my table now: I host with a free seat, the name is
 -- not seated there, and its client speaks our protocol?
@@ -39,11 +39,13 @@ local function peerWidget(v, i)
   local name = W.Label(b, "ui", "", 12)
   name:SetWidth(v.peerW - 100)
   name:SetWordWrap(false)
-  name:SetPoint("LEFT", b, "LEFT", 2, 0)
+  name:SetPoint("LEFT", b, "LEFT", 28, 0)
+  local portrait = ns.Portrait.new(b, 22)
+  portrait.frame:SetPoint("LEFT", b, "LEFT", 2, 0)
   local status = W.Label(b, "dim", "")
   status:SetJustifyH("RIGHT")
   status:SetPoint("RIGHT", b, "RIGHT", -2, 0)
-  r = { frame = b, name = name, status = status }
+  r = { frame = b, name = name, status = status, portrait = portrait }
   local invite = W.Button(b, L("hall.invite"), function() ns.Hall.invite(r.peerName) end, true)
   invite:SetSize(64, 18)
   invite:SetPoint("RIGHT", b, "RIGHT", 0, 0)
@@ -78,6 +80,9 @@ function HallPeers.render(v, client)
     local r = peerWidget(v, i)
     r.peerName = p.name
     r.name:SetText(p.name)
+    local who = ns.Portrait.who(client, p.name)
+    local key = table.concat({ p.name, tostring(who.cls), tostring(who.race), tostring(who.sex), tostring(who.unit) }, "|")
+    if r.shown ~= key then r.shown = key; r.portrait:set(who) end
     r.name:SetTextColor(ns.classColor(p.cls))
     r.status:SetText(whereIs(client, p, byTid))
     local offer = Hall.selected == p.name and HallPeers.canInviteName(client, p.name)
