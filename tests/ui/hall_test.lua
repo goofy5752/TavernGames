@@ -201,12 +201,10 @@ describe("ui: hall", function()
     ok(t.frame:IsVisible(), "table hidden"); eq(t.tid, tid)
     eq(t.game:GetText(), "Морски шах")
     local c1, c2 = t.chairs[1], t.chairs[2]
-    eq(c1.disc:GetTexture(), w.ns.Theme.tex.chair)
-    eq({ c1.disc:GetVertexColor() }, { 0.25, 0.78, 0.92, 1 })
     eq(c1.label:GetText(), "Мария")
     eq({ c1.label:GetTextColor() }, { 0.25, 0.78, 0.92, 1 })
     eq(t.host:GetText(), "Мария"); eq({ t.host:GetTextColor() }, { 0.25, 0.78, 0.92, 1 })
-    eq(c2.disc:GetTexture(), w.ns.Theme.tex.chair_empty); eq(c2.label:IsVisible(), false)
+    eq(c2.portrait.tex:GetTexture(), w.ns.Theme.tex.chair_empty); eq(c2.label:IsVisible(), false)
     w:click(c2.button)
     local sit = lastSent(w, "SIT")
     ok(sit, "no SIT"); eq(sit.dist, "WHISPER"); eq(sit.target, B); eq({ sit.msg.tid, sit.msg.seat }, { tid, 2 })
@@ -224,9 +222,9 @@ describe("ui: hall", function()
     w:hover(t.chairs[1].button); eq(tip.lines, { B })
     w:hover(t.chairs[2].button); eq(tip.lines, { "Кликни празния стол, за да седнеш" })
     local g = w.ns.Theme.color.gold
-    eq({ t.chairs[2].disc:GetVertexColor() }, { g[1], g[2], g[3], 1 })
+    eq({ t.chairs[2].portrait.tex:GetVertexColor() }, { g[1], g[2], g[3], 1 })
     t.chairs[2].button.scripts.OnLeave(t.chairs[2].button)
-    eq({ t.chairs[2].disc:GetVertexColor() }, { 1, 1, 1, 1 })
+    eq({ t.chairs[2].portrait.tex:GetVertexColor() }, { 1, 1, 1, 1 })
   end)
 
   it("a live table shows „тече“ and a click on it watches", function()
@@ -312,7 +310,8 @@ describe("ui: hall", function()
     local tid = tbl(w, B, { B, false }, "open", "|TInterface\\Icons\\x:16|t")
     local t = w.ns.Hall.view.tables[1]
     eq(t.tid, tid)
-    eq(#w:texts("Непозната игра"), 2) -- on the table top and in the label under it; eq(#w:texts("|T"), 0)
+    eq(#w:texts("Непозната игра"), 2) -- on the table top and in the label under it
+    eq(#w:texts("|T"), 0)
     local sent = #w.sent
     w:click(t.chairs[2].button)
     eq(w.ns.Hall.view.footer:GetText(), w.ns.L("refused.version"))
@@ -548,5 +547,30 @@ describe("ui: the hall's faction look", function()
     eq(r.frame:GetHeight(), 26)
     ok(r.portrait.source ~= nil, "no source")
     eq(r.name.points[1][4], 28)
+  end)
+end)
+
+describe("ui: the table label stays clear of the chair labels", function()
+  it("under a 2-seat and a 4-seat table the label is below the bottom chair's name", function()
+    local w = guildWow()
+    w.ns.MainWindow.show()
+    hi(w, B, "MAGE"); hi(w, C, "MAGE")
+    tbl(w, B, { B, C }, "open", "ttt")
+    tbl(w, C, { C, B, false, false }, "open", "ttt")
+    for _, t in ipairs(w.ns.Hall.view.tables) do
+      local lp = t.label.points[1]
+      eq(lp[1], "TOP"); eq(lp[3], "BOTTOM")
+      local labelTop = -75 + lp[5]
+      local n = #t.rec.seats
+      for i = 1, n do
+        local c = t.chairs[i]
+        local p = c.label.points[1]
+        if p[4] == 0 or math.abs(p[4]) < 1 then
+          if p[5] < 0 then
+            ok(labelTop <= p[5] - 8, "table label too high for n=" .. n)
+          end
+        end
+      end
+    end
   end)
 end)

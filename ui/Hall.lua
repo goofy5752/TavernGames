@@ -232,7 +232,7 @@ local function tableWidget(v, i)
   -- „<game> · <stake>“ under the table.
   local label = W.Label(f, "dim", "", 10)
   label:SetJustifyH("CENTER")
-  label:SetPoint("TOP", f, "BOTTOM", 0, 2)
+  label:SetPoint("TOP", f, "BOTTOM", 0, -14)
 
   t = { frame = f, glow = glow, top = top, icon = icon, game = game, host = host, state = state, label = label, chairs = {} }
   top:SetScript("OnClick", function() Hall.clickTable(t) end)
@@ -248,21 +248,15 @@ local function chairWidget(t, i)
   b:SetSize(26, 26)
   b:SetFrameLevel(t.top:GetFrameLevel() + 1)
   b:RegisterForClicks("LeftButtonUp")
-  local rim = b:CreateTexture(nil, "BORDER")
-  rim:SetAllPoints(b)
-  rim:SetTexture(Theme.tex.chair)
-  rim:SetVertexColor(Theme.rgb("woodDark"))
-  local disc = b:CreateTexture(nil, "ARTWORK")
-  disc:SetPoint("CENTER", b, "CENTER")
   local portrait = ns.Portrait.new(b, 26)
   portrait.frame:SetPoint("CENTER", b, "CENTER")
   local label = W.Label(t.frame, "ui", "", 11)
   label:SetJustifyH("CENTER")
-  c = { button = b, rim = rim, disc = disc, portrait = portrait, label = label }
+  c = { button = b, portrait = portrait, label = label }
   b:SetScript("OnClick", function() Hall.clickChair(t, i) end)
   W.tooltip(b, function(tip) Hall.chairTooltip(tip, t.rec, i) end)
-  b:HookScript("OnEnter", function() if c.empty then disc:SetVertexColor(Theme.rgb("gold")); portrait.tex:SetVertexColor(Theme.rgb("gold")) end end)
-  b:HookScript("OnLeave", function() if c.empty then disc:SetVertexColor(1, 1, 1); portrait.tex:SetVertexColor(1, 1, 1) end end)
+  b:HookScript("OnEnter", function() if c.empty then portrait.tex:SetVertexColor(Theme.rgb("gold")) end end)
+  b:HookScript("OnLeave", function() if c.empty then portrait.tex:SetVertexColor(1, 1, 1) end end)
   t.chairs[i] = c
   return c
 end
@@ -293,10 +287,6 @@ local function fillTable(t, rec, client)
     c.label:SetPoint("CENTER", t.frame, "CENTER", x * k, y * k)
     c.empty = not name
     if name then
-      c.rim:Show()
-      c.disc:SetTexture(Theme.tex.chair)
-      c.disc:SetSize(22, 22)
-      c.disc:SetVertexColor(nameColor(client, name))
       c.label:SetText(firstWord(name))
       c.label:SetTextColor(nameColor(client, name))
       c.label:SetShown(labelled)
@@ -306,10 +296,6 @@ local function fillTable(t, rec, client)
       if c.shown ~= key then c.shown = key; c.portrait:set(who) end
     else
       if c.shown ~= false then c.shown = false; c.portrait:set(nil) end
-      c.rim:Hide()
-      c.disc:SetTexture(Theme.tex.chair_empty)
-      c.disc:SetSize(26, 26)
-      c.disc:SetVertexColor(1, 1, 1)
       c.label:Hide()
       c.button:SetEnabled(not mine)
     end
