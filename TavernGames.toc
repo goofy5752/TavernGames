@@ -33,6 +33,7 @@ core/LedgerStore.lua
 core/LedgerDeny.lua
 core/LedgerHash.lua
 core/LedgerView.lua
+core/LedgerStats.lua
 core/LedgerHistory.lua
 core/LedgerNet.lua
 core/LedgerSend.lua

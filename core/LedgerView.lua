@@ -15,7 +15,8 @@ local _, ns = ...
 -- net(a, b) = gross(a, b) - gross(b, a); a P beyond the gross stays as credit of
 -- that pair. A row's open part is what is left of a confirmed debt once the paid
 -- and netted copper of its pair has cleared that pair's debts oldest first.
--- The R entries are indexed by gid (View.results).
+-- The R entries are indexed by gid (View.results); the S entries with a string gid and f
+-- (v.stands) and the P entries counted in a balance (v.pays) are listed in L:each order.
 -- View.of(L) is cached per store until L.rev changes; a rebuild is linear in the
 -- whole ledger (tens of ms on a large one), so callers ask for it once per batch
 -- of entries (a LEV) or behind a short debounce, never per entry or per frame.
@@ -83,7 +84,7 @@ local function settle(d)
 end
 
 local function build(L)
-  local v = { rev = L.rev, debts = {}, sum = {}, pay = {}, peers = {}, denials = {}, rows = {}, results = {} }
+  local v = { rev = L.rev, debts = {}, sum = {}, pay = {}, peers = {}, denials = {}, rows = {}, results = {}, stands = {}, pays = {} }
   local byKey, byId, words = {}, {}, {}
   L:each(function(e)
     if e.un then return end -- an own entry put to me after a crash (core/LedgerNet.lua) counts for nothing
@@ -107,8 +108,11 @@ local function build(L)
     elseif e.k == "R" and str(e.gid) then
       local r = cell(v.results, e.gid)
       r[#r + 1] = e
+    elseif e.k == "S" and str(e.gid) and str(e.f) then
+      v.stands[#v.stands + 1] = e
     elseif e.k == "P" and str(e.f) and copper(e.c) then
       add(v.pay, a, e.f, e.c)
+      v.pays[#v.pays + 1] = e
       cell(v.peers, a)[e.f], cell(v.peers, e.f)[a] = true, true
     end
   end)
