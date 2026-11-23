@@ -212,14 +212,13 @@ local function bots(arg)
 end
 
 -- /tavern ledger: one local line, never sent: authors held, bodies, stubs (old results kept as a
--- trace only) and my digest.
+-- trace only) and my digest. A plain walk (Store:census): it finishes no hash and sorts nothing
+-- in its frame; while an x is stale the digest is the last settled one ("-": none yet).
 function Slash.ledger()
   local client = ns.client
   local ledger = client and client.ledger
   if not ledger then return say(L("ledger.none")) end
-  local authors, bodies = 0, 0
-  for _ in pairs(ledger:vector()) do authors = authors + 1 end
-  ledger:each(function() bodies = bodies + 1 end)
+  local authors, bodies = ledger:census()
   say(L("ledger.stats", authors, bodies, ledger:stubCount(), ledger:digest(true) or "-"))
 end
 

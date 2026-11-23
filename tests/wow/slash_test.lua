@@ -323,6 +323,30 @@ describe("/tavern ledger", function()
     ok(w.ns.client.ledger:digest():match("^%x%x%x%x%x%x%x%x$"), "no digest")
   end)
 
+  it("counts by a plain walk: no hash is finished and no author sorted in that frame (final review M2)", function()
+    local w = guildWow()
+    w:fire("PLAYER_LOGIN")
+    w:advance(w.ns.Const.LEDGER_ADOPT_WAIT + 1)
+    local L, ledger, Ledger = w.ns.L, w.ns.client.ledger, w.ns.Ledger
+    local settled = ledger:digest()
+    for k = 1, 3 do ledger:add({ i = Ledger.id(B, k), k = "R", at = 1700000000 + k, gid = B .. "#1/" .. k, g = "ttt", n = { B, ME }, w = { 1 }, l = { 2 } }, B) end
+    ledger:add({ i = Ledger.id(B, 3), k = "R", at = 1700000009, gid = B .. "#1/9", g = "ttt", n = { B, ME }, w = { 1 }, l = { 2 } }, B) -- a twin
+    local old = "Стара Сянка"
+    local _, body = ledger:add({ i = Ledger.id(old, 1), k = "R", at = 1600000000, gid = old .. "#1/1", g = "ttt", n = { old, B }, w = { 1 }, l = { 2 } }, B)
+    eq(ledger:stub(body), true) -- an author held only as a stub
+    ok(ledger:hashing(), "an x is stale")
+    local calls = 0
+    for _, name in ipairs({ "vector", "each", "above", "work" }) do
+      local real = ledger[name]
+      ledger[name] = function(...) calls = calls + 1; return real(...) end
+    end
+    local n = #w.chat
+    w:slash("ledger")
+    eq(calls, 0)
+    ok(ledger:hashing(), "still stale")
+    eq(w.chat[n + 1], "|cffb0813f" .. L("addon.title") .. "|r: " .. L("ledger.stats", 2, 4, ledger:stubCount(), settled))
+  end)
+
   it("without a guild it says nothing is kept yet", function()
     local w = Wow.new(); w:boot()
     local n = #w.chat

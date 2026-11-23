@@ -219,6 +219,44 @@ describe("ui: the tab „История“", function()
     eq(Ht(w2).head(w2.ns.client, ME), {})
   end)
 
+  -- Final review M4. Counts the draws of the page (HistoryTab.render while it is shown).
+  local function draws(w)
+    local c, real = { n = 0 }, Ht(w).render
+    Ht(w).render = function(...) c.n = c.n + 1; return real(...) end
+    return c
+  end
+  it("open draws the page once: at its first show, from another tab, and while it is shown", function()
+    local w = readyWow()
+    local c = draws(w)
+    open(w)
+    eq(c.n, 1)
+    w.ns.MainWindow.show("hall"); w:advance(0)
+    c.n = 0
+    open(w, B)
+    eq(c.n, 1); eq(Ht(w).state.name, B)
+    c.n = 0
+    local v = open(w, C) -- already shown: no OnShow draws it
+    eq(c.n, 1); eq(plain(v.title:GetText()), plain(w.ns.L("history.of", C)))
+  end)
+
+  it("the timer re-checks the two seconds when it fires: a click in between draws once", function()
+    local w = readyWow()
+    open(w)
+    local c = draws(w)
+    w:advance(1.5)
+    Ht(w).refresh()               -- due at drawn + 2 s, 0.5 s from now
+    w:advance(0.4)
+    Ht(w).clear()                 -- a click: drawn now
+    eq(c.n, 1)
+    w:advance(0.3)                -- the timer has fired, 0.2 s after the click
+    eq(c.n, 1)
+    w:advance(2)
+    eq(c.n, 2)                    -- it came again once, a full gap after the click
+    w.ns.MainWindow.show("hall"); w:advance(0)
+    Ht(w).refresh(); w:advance(3)
+    eq(c.n, 2)                    -- hidden: nothing is armed
+  end)
+
   it("rebuilds at most once per two seconds while shown, and not at all hidden", function()
     local w = readyWow()
     open(w)

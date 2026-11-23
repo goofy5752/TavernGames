@@ -201,6 +201,20 @@ end
 function Store:each(fn)
   for _, a in ipairs(keys(self.store.ev, byteLess)) do for _, e in ipairs(self:above(a, 0)) do fn(e) end end
 end
+-- How many authors I hold anything of (a body, a stub or a refusal: the vector's) and how many
+-- bodies, twins included: a walk, no sort and no hash (/tavern ledger).
+function Store:census()
+  local s, seen, authors, bodies = self.store, {}, 0, 0
+  for _, set in ipairs({ s.ev, s.st, s.rf }) do
+    for a, held in pairs(set) do
+      if not seen[a] and (set ~= s.ev or next(held)) then seen[a], authors = true, authors + 1 end
+    end
+  end
+  for a, byN in pairs(s.ev) do
+    for n in pairs(byN) do bodies = bodies + 1 + #(s.tw[a] and s.tw[a][n] or {}) end
+  end
+  return authors, bodies
+end
 -- Every body of the author numbered above n, ascending, twins after their sibling (with
 -- `keep`: those for which keep(number, body) is true).
 function Store:above(a, n, keep)

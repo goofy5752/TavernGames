@@ -214,7 +214,7 @@ end
 function HistoryTab.render()
   local v = HistoryTab.view
   if not v or not v.page:IsVisible() then return end
-  v.drawn = GetTime()
+  v.drawn, v.draws = GetTime(), (v.draws or 0) + 1
   local client, who = ns.client, HistoryTab.state.name
   local lines = bare(client, who)
   v.today = #lines > 0 and today(client)
@@ -229,11 +229,13 @@ function HistoryTab.render()
   end
 end
 
--- Shows the lines of `who` (nil: everyone), now.
+-- Shows the lines of `who` (nil: everyone), now: drawn once (by the page's show, else here).
 function HistoryTab.open(who)
+  local v = HistoryTab.view
+  local draws = v and v.draws
   HistoryTab.state.name = who
   ns.MainWindow.show("history")
-  HistoryTab.render()
+  if HistoryTab.view and HistoryTab.view.draws == draws then HistoryTab.render() end
 end
 
 function HistoryTab.clear()
@@ -242,15 +244,21 @@ function HistoryTab.clear()
 end
 
 -- Redraws on a ledger event: on the next frame, at most once per GAP s, only while shown.
-function HistoryTab.refresh()
+-- When the timer fires the gap is checked again (as ui/BoardTab.lua): what drew the page meanwhile counts.
+local function arm()
   local v = HistoryTab.view
-  if HistoryTab.scheduled or not v or not v.page:IsVisible() then return end
   HistoryTab.scheduled = true
   local wait = math.max(0, (v.drawn or -HistoryTab.GAP) + HistoryTab.GAP - GetTime())
   C_Timer.After(wait, function()
+    if not v.page:IsVisible() then HistoryTab.scheduled = false; return end
+    if GetTime() - (v.drawn or -HistoryTab.GAP) < HistoryTab.GAP - 1e-6 then return arm() end
     HistoryTab.scheduled = false
     HistoryTab.render()
   end)
+end
+function HistoryTab.refresh()
+  local v = HistoryTab.view
+  if not HistoryTab.scheduled and v and v.page:IsVisible() then arm() end
 end
 
 function HistoryTab.build(page)
