@@ -421,6 +421,7 @@ function Hall.render()
   elseif mode == "list" then
     renderList(v, recs, client)
   end
+  ns.HallSign.render(v)
   ns.Accounts.render(v, client)
   ns.HallPeers.render(v, client)
   v.note:SetShown(Hall.updateAvailable)
@@ -567,9 +568,12 @@ local function buildCentre(v, page, x, w, colH)
     l:SetPoint("CENTER", centre, p[1], p[2], p[3])
     v.lanterns[#v.lanterns + 1] = l
   end
-  W.Label(centre, "heading", L("hall.title")):SetPoint("TOPLEFT", centre, "TOPLEFT", 10, -8)
+  v.title = W.Label(centre, "heading", L("hall.title"))
+  v.title:SetPoint("TOPLEFT", centre, "TOPLEFT", 10, -8)
   v.hint = W.Label(centre, "dim", L("hall.hint"), 12)
   v.hint:SetPoint("TOPRIGHT", centre, "TOPRIGHT", -10, -10)
+  v.centreW = w
+  ns.HallSign.build(v, centre, HEADER_H)
 
   local floor = CreateFrame("Frame", nil, centre)
   floor:SetPoint("TOPLEFT", centre, "TOPLEFT", 0, -HEADER_H)

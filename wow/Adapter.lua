@@ -221,6 +221,12 @@ local function asks(fn, ...)
   return got or nil
 end
 
+-- The name of my guild, or nil: no guild, not known yet, or a secret value.
+function Adapter.guildName()
+  local name = asks(Adapter.fn("GetGuildInfo"), "player")
+  return type(name) == "string" and name ~= "" and name or nil
+end
+
 -- env.groupedWith(name): is `name` (normalized full name) in my party or raid?
 -- From my own client's data only: its GUID from my guild roster scan in my
 -- group, or the name in UnitInRaid / UnitInParty / the group roster; never a
@@ -487,7 +493,10 @@ local EVENTS = {
   LOADING_SCREEN_DISABLED = function() loadingScreen(false) end,
   PLAYER_LEAVING_WORLD = function() loadingScreen(true) end,
   PLAYER_ENTERING_WORLD = function() loadingScreen(false) end,
-  PLAYER_GUILD_UPDATE = function() Adapter.lookUpName() end,
+  PLAYER_GUILD_UPDATE = function()
+    Adapter.lookUpName()
+    if ns.Hall then ns.Hall.refresh() end
+  end,
   GUILD_ROSTER_UPDATE = scanRoster,
   CHAT_MSG_SYSTEM = function(text)
     local name = match(offlinePattern, text)

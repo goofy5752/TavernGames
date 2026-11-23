@@ -123,6 +123,7 @@ ui/Cards.lua
 ui/MainWindow.lua
 ui/NewTableDialog.lua
 ui/HallPeers.lua
+ui/HallSign.lua
 ui/PayDialog.lua
 ui/Accounts.lua
 ui/Hall.lua
