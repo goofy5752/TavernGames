@@ -144,6 +144,14 @@ function View.seatNote(s, seat)
   return L("santase.points", E.points(st, seat))
 end
 
+-- The pips on a plate: the tricks the seat took in the hand under way.
+function View.seatTricks(s, seat)
+  local st = s.state
+  if not st or st.phase ~= "play" or (seat ~= 1 and seat ~= 2) then return nil end
+  local won = st.won and st.won[seat]
+  return won and #won / 2 or nil
+end
+
 ---------------------------------------------------------------------------
 -- Acting
 ---------------------------------------------------------------------------

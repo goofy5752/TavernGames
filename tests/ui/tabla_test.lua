@@ -103,6 +103,20 @@ describe("ui: Табла view", function()
     eq({ View.seatNote(sess(st, 1), 1), View.seatNote(sess(st, 1), 2), View.seatNote(sess(nil, 1), 1) }, { "бели · 0", "черни · 0", "" })
   end)
 
+  it("the Табла bar carries the crest", function()
+    for _, case in ipairs({ { "Alliance", "alliance" }, { "Horde", "horde" } }) do
+      local w = Wow.new{ ui = true }; w.faction = case[1]; w:boot(); w:fire("PLAYER_LOGIN")
+      local parent = w.G.CreateFrame("Frame", nil, w.G.UIParent); parent:SetSize(532, 328)
+      local f = w.ns.TableFrame.views.tabla.build(parent)
+      local T, c = w.ns.Theme, f.crest
+      ok(c, "no crest"); eq({ c:GetSize() }, { 40, 40 }); eq(c:GetAlpha(), 0.8); ok(c.standIn, "not our stand-in")
+      eq(c:GetTexture(), T.tex["crest_" .. case[2]]); eq(c.points[1], { "CENTER", f.bar, "CENTER", 0, 0 })
+      eq({ c.layer, c.sublayer }, { "ARTWORK", -1 }); eq({ f.bar.checkers[1].layer, f.bar.checkers[1].sublayer or 0 }, { "ARTWORK", 0 }) -- under the checkers
+      local felt, light = T.color.felt, T.color.pointLight
+      eq(f.spikes[1].tri.vertex, { felt[1], felt[2], felt[3], 1 }); eq(f.spikes[2].tri.vertex, { light[1], light[2], light[3], 1 })
+    end
+  end)
+
   it("„Готово“ is dead until the move is whole and then sends the staged steps as one action", function()
     local w, View, f, acts = setup(); local st = E.new{}; roll(st, 6, 1); roll(st, 3, 1); draw(f, st, 1)
     eq({ lit(f), f.doneButton.enabled, f.undoButton.enabled, f.text:GetText() }, { {}, false, false, "Твой ход: кликни пул" })

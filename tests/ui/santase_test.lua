@@ -120,6 +120,20 @@ describe("ui: Сантасе view", function()
     eq(#w:texts("Последна взятка"), 1); eq({ V.lastCards[1].face, V.lastCards[2].face }, { "9S", "AS" })
   end)
 
+  it("Сантасе and Белот count tricks on the plates", function()
+    local st = full(); ok(E.apply(st, 1, { k = "play", i = 9, c = "9S" })); ok(E.apply(st, 2, { k = "play", i = 4, c = "AS" })) -- seat 2 wins
+    local w, _, View = boot(); local s = w.ns.client.session; show(w, E.view(st, 1))
+    local v, T = w.ns.TableFrame.view, w.ns.Theme
+    eq({ View.seatTricks(s, 1), View.seatTricks(s, 2) }, { 0, 1 })
+    local pip = v.plates[2].tricks[1]
+    ok(pip:IsVisible(), "no pip on the winner's plate"); eq(v.plates[2].tricks[2]:IsVisible(), false)
+    for k = 1, 8 do eq(v.plates[1].tricks[k]:IsVisible(), false, "pip " .. k) end
+    eq({ pip:GetSize() }, { 5, 8 }); eq(pip.color, { T.color.banner[1], T.color.banner[2], T.color.banner[3], 1 })
+    eq(v.plates[2].tricks[2].points[1], { "LEFT", pip, "RIGHT", 3, 0 })
+    st.phase, st.res = "hand", { winner = 2, gp = 1, reason = "66" }; show(w, E.view(st, 1))
+    eq(View.seatTricks(s, 2), nil); eq(pip:IsVisible(), false)                         -- outside play: none
+  end)
+
   it("„Обяви“ is the gold button of the mockup; „Смени деветката“ stays the dark one", function()
     local w, V = boot(); show(w, E.view(full(), 1))
     local T = w.ns.Theme

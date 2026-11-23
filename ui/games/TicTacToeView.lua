@@ -1,9 +1,9 @@
 local _, ns = ...
 
 -- The Морски шах board (mockup 03 `.ttt`): 3x3 cells of 62 px with 6 px gaps,
--- X in light brass and O in #e2735a (Alegreya SC 44). On my turn an empty cell
--- shows a faint ghost of my mark on hover and a click marks it; when it is not
--- my turn, or I only watch, the cells are dimmed and not clickable. The cells
+-- X in light brass and O in oMark (Alegreya SC 44; colours from the tokens
+-- only). On my turn an empty cell shows a faint ghost of my mark on hover and
+-- a click marks it; when it is not my turn, or I only watch, the cells are dimmed and not clickable. The cells
 -- of `state.line` glow gold. Above the board: „до 3 победи“ and the score
 -- (seat 1 : seat 2). In phase "match": the winner and „Реванш“, then „Чакаме
 -- <Име>…“ once I asked for it (watchers see only the winner); none of these

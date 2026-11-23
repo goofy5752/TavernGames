@@ -4,9 +4,11 @@ local Play = require("play")
 local ME, B = "Иван Петров", "Мария Стоянова"
 local BOT = "Бот Иванов"
 
--- In a guild, booted with the ui/ files, own name resolved, PLAYER_LOGIN fired.
-local function guildWow()
+-- In a guild, booted with the ui/ files, own name resolved, PLAYER_LOGIN fired
+-- (`faction`: the character's UnitFactionGroup, default the fake's Alliance).
+local function guildWow(faction)
   local w = Wow.new{ ui = true }
+  if faction then w.faction = faction end
   w.inGuild = true
   w.roster = { { name = ME .. "-Forever", online = true, guid = Wow.GUID } }
   w.G.RAID_CLASS_COLORS.PRIEST = { r = 1, g = 1, b = 1 }
@@ -91,7 +93,7 @@ describe("ui: table frame", function()
     eq(v.plates[1].name:GetText(), ME); eq(color(v.plates[1].name), MAGE)
     eq(v.plates[1].note:GetText(), w.ns.W.paint("Х", w.ns.Theme.rgb("brassLight")))
     eq(v.plates[2].name:GetText(), L("table.free"))
-    eq(v.plates[1].ring:IsVisible(), false); eq(v.plates[1].clock:IsVisible(), false)
+    eq(v.plates[1].portrait.glow:IsVisible(), false); eq(v.plates[1].clock:IsVisible(), false)
     ok(v.inviteButton:IsVisible(), "no Покани"); eq(v.inviteButton.text:GetText(), "Покани")
     eq(v.standButton.text:GetText(), "Стани")
     eq(v.watchers:IsVisible(), false)
@@ -118,13 +120,94 @@ describe("ui: table frame", function()
     eq(v.plates[2].name:GetText(), BOT); eq(color(v.plates[2].name), PRIEST)
     eq(v.plates[2].note:GetText(), "|cffe2735aО|r")
     -- I start: the ring and the clock are on my plate, the edge is gold.
-    ok(v.plates[1].ring:IsVisible(), "no ring on my plate"); eq(v.plates[2].ring:IsVisible(), false)
-    eq(v.plates[1].ring:GetTexture(), w.ns.Theme.tex.ring)
+    ok(v.plates[1].portrait.glow:IsVisible(), "no ring on my plate"); eq(v.plates[2].portrait.glow:IsVisible(), false)
+    eq(v.plates[1].portrait.ring.vertex, rgb(w, "goldHi"))
     eq({ v.plates[1].edges[1]:GetVertexColor() }, rgb(w, "gold"))
     w:render(0.02)
     eq(v.plates[1].clock:GetText(), "0:45")
     w:advance(4.5); w:render(0.02)
     eq(v.plates[1].clock:GetText(), "0:41")
+  end)
+
+  it("a plate shows the seat's hero, ringed in gold on turn, with the class badge", function()
+    local w, v = matchWithBot()
+    local p1, p2 = v.plates[1], v.plates[2]
+    ok(p1.portrait.source ~= "empty", "my plate is empty"); ok(p2.portrait.source ~= "empty", "the bot's plate is empty")
+    eq({ p1.portrait.frame:GetSize() }, { 30, 30 }); eq(p1.portrait.frame.points[1], { "CENTER", p1.frame, "LEFT", 0, 0 })
+    eq({ p1.disc, p1.ring }, { nil, nil })                                            -- the portrait replaces the disc and the ring
+    ok(p1.portrait.glow:IsVisible(), "no glow on turn"); eq(p1.portrait.ring.vertex, rgb(w, "goldHi"))
+    eq(p2.portrait.glow:IsVisible(), false); eq(p2.portrait.ring.vertex, rgb(w, "brass"))
+    ok(p1.portrait.badge:IsVisible(), "no class badge"); ok(p2.portrait.badge:IsVisible(), "no class badge")
+    eq(p1.name.points[1], { "LEFT", p1.frame, "LEFT", 40, 0 }); eq(p1.name:GetWidth(), 190 - 104)
+    eq({ p1.frame:GetWidth(), p1.frame:GetHeight() }, { 190, 26 })                     -- the bar keeps its size
+    for k = 1, 8 do eq(p1.tricks[k]:IsVisible(), false, "pip " .. k) end              -- Морски шах counts no tricks
+    local sets = 0; local set = p1.portrait.set
+    p1.portrait.set = function(...) sets = sets + 1; return set(...) end
+    w.ns.client.events:emit("session", w.ns.client.session); w:advance(0); w:render(0.02)
+    eq(sets, 0)                                                                         -- set only when the seat's hero changes
+    -- a free seat: the empty chair, „свободно място“
+    local w2 = guildWow()
+    w2.ns.client:openTable{ game = "ttt", access = "guild", turn = 45 }; w2:advance(0)
+    local free = w2.ns.TableFrame.view.plates[2]
+    eq(free.portrait.source, "empty"); eq(free.name:GetText(), w2.ns.L("table.free")); eq(free.portrait.glow:IsVisible(), false)
+  end)
+
+  it("the turn bar shrinks with the clock", function()
+    local w, v = matchWithBot()
+    local s, p1 = w.ns.client.session, v.plates[1]
+    w:render(0.02)
+    ok(p1.bar:IsVisible(), "no turn bar"); eq(p1.bar:GetHeight(), 3); eq(p1.bar.color, rgb(w, "gold"))
+    eq(p1.bar.points[1], { "BOTTOMLEFT", p1.frame, "BOTTOMLEFT", 0, 0 })
+    eq(p1.bar:GetWidth(), 190); eq(v.plates[2].bar:IsVisible(), false)
+    w:advance(4.5); w:render(0.02)
+    eq(s:left(), 41); eq(p1.bar:GetWidth(), 190 * 41 / 45)
+    w:advance(1.6); w:click(w.ns.TableFrame.built.ttt.cells[1].button); w:advance(0); w:render(0.02)
+    eq(p1.bar:IsVisible(), false); ok(v.plates[2].bar:IsVisible(), "the bar did not move")
+  end)
+
+  it("on a narrow plate a long name, eight tricks, the note and the clock never meet; the turn bar is sized as it shows", function()
+    local w = withBots(); local T = w.ns.TableFrame
+    T.registerView("belot", { ring = true, update = function() end, seatNote = function() return "разд." end, seatTricks = function() return 9 end,
+      build = function(parent) local f = w.G.CreateFrame("Frame", nil, parent); f:SetSize(parent:GetWidth(), parent:GetHeight()); return f end })
+    w.ns.client:openTable{ game = "belot", access = "invite", turn = 45 }; w:advance(0)
+    local v, s = T.view, w.ns.client.session
+    s.seats[1] = "Константин Христофоров Димитров"; s.status, s.state = "live", { turn = 1 }; s.deadline = w.ns.client.env.now() + 30
+    local p = v.plates[1]; p.bar.width = nil
+    T.plates.render(v, s, w.ns.client)
+    eq(p.frame:GetWidth(), 165); eq(p.note:GetText(), "разд."); ok(p.clock:IsShown(), "no clock")
+    eq(p.bar:GetWidth(), 165 * 30 / 45)                                                 -- sized by render, before any tick
+    for k = 1, 8 do ok(p.tricks[k]:IsShown(), "pip " .. k) end                         -- at most eight
+    -- the pips: a fixed row under the name, on the bar's bottom edge, over the turn bar
+    eq(p.tricks[1].points, { { "LEFT", p.frame, "BOTTOMLEFT", 40, 1 } }); eq(p.tricks[1].layer, "OVERLAY")
+    for k = 2, 8 do eq(p.tricks[k].points, { { "LEFT", p.tricks[k - 1], "RIGHT", 3, 0 } }) end
+    local right, top = 40 + 8 * 5 + 7 * 3, 1 + 8 / 2
+    ok(right <= 165 - 64, "the pips reach into the note and clock column: " .. right)  -- the column the name keeps clear of
+    ok(top < (26 - 13) / 2, "the pips reach into the line of text")                    -- the note (13) and the clock (12) are centred
+    eq(p.name.points[1], { "LEFT", p.frame, "LEFT", 40, 0 }); eq(p.name:GetWidth(), 165 - 104)
+  end)
+
+  it("the felt wears the faction: its texture, the crest as a watermark, the stitch", function()
+    for _, case in ipairs({ { nil, "alliance", { 1, 1, 1, 0.12 } }, { "Horde", "horde", { 0, 0, 0, 0.45 } } }) do
+      local w = guildWow(case[1]); local T = w.ns.Theme
+      w.ns.client:openTable{ game = "ttt", access = "guild", turn = 45 }; w:advance(0)
+      local v = w.ns.TableFrame.view
+      eq(T.skin, case[2]); eq(v.felt:GetTexture(), T.tex.felt); eq(T.tex.felt, T.tex["felt_" .. case[2]])
+      eq(v.watermark:GetAlpha(), 0.13); ok(v.watermark.standIn, "not our stand-in")
+      eq(v.watermark:GetTexture(), T.tex["crest_" .. case[2]])
+      local size = 0.6 * math.min(v.areaW, v.areaH)
+      eq({ v.watermark:GetSize() }, { size, size }); eq(v.watermark.points[1], { "CENTER", v.area, "CENTER", 0, 0.04 * size })
+      eq(v.stitch.frame.points[1], { "TOPLEFT", v.area, "TOPLEFT", 14, -14 }); eq(v.stitch.frame.points[2], { "BOTTOMRIGHT", v.area, "BOTTOMRIGHT", -14, 14 })
+      for i = 1, 4 do eq(v.stitch[i].vertex, case[3], case[2] .. " stitch " .. i) end
+      eq({ v.crest:GetSize() }, { 20, 20 }); ok(v.crest.standIn, "the title's crest is not ours")
+      eq(v.crest.points[1], { "LEFT", v.title, "RIGHT", 6, 0 }); eq(v.meta.points[1], { "LEFT", v.crest, "RIGHT", 6, 0 })
+    end
+  end)
+
+  it("Морски шах and Death Roll read the colour tokens only", function()
+    for _, path in ipairs({ "ui/games/TicTacToeView.lua", "ui/games/DeathRollView.lua" }) do
+      local fh = assert(io.open(path, "r")); local src = fh:read("*a"); fh:close()
+      for _, pat in ipairs({ "/ ?255", "0x%x%x", "#%x%x%x%x%x%x", "hex%(" }) do ok(not src:find(pat), path .. " has a literal colour: " .. pat) end
+    end
   end)
 
   it("the picker skips seated players and says when nobody is there", function()
@@ -146,7 +229,7 @@ describe("ui: table frame", function()
     eq(c[1].mark:GetText(), "Х"); eq(color(c[1].mark), rgb(w, "brassLight"))
     -- The bot's turn: my cells are dimmed and not clickable, the ring is on the bot.
     eq(c[5].button:IsEnabled(), false); ok(c[5].button:GetAlpha() < 1, "not dimmed")
-    ok(v.plates[2].ring:IsVisible(), "ring did not move"); eq(v.plates[1].ring:IsVisible(), false)
+    ok(v.plates[2].portrait.glow:IsVisible(), "ring did not move"); eq(v.plates[1].portrait.glow:IsVisible(), false)
     w:advance(1.6)
     eq(c[2].mark:GetText(), "О"); eq(color(c[2].mark), rgb(w, "oMark"))
     ok(c[5].button:IsEnabled(), "my turn but not clickable"); eq(c[5].button:GetAlpha(), 1)
@@ -162,7 +245,7 @@ describe("ui: table frame", function()
     eq(w.ns.TableFrame.built.ttt.upTo:GetText(), "до 3 победи")
     w:advance(3); w:advance(0)
     eq(c[1].mark:GetText(), ""); ok(c[1].bg.color[1] ~= gold[1], "glow stayed")
-    ok(v.plates[2].ring:IsVisible(), "the other player does not start the next round")
+    ok(v.plates[2].portrait.glow:IsVisible(), "the other player does not start the next round")
     w:advance(1.6)
     eq(c[1].mark:GetText(), "О")
     -- My turn runs out: the first empty cell is filled for me.
@@ -249,6 +332,7 @@ describe("ui: table frame", function()
     eq({ T.frame:GetSize() }, { 760, 532 }); eq({ v.areaW, v.areaH }, { 732, 440 })
     eq({ v.area:GetSize() }, { 732, 440 }); eq({ v.felt:GetSize() }, { 732, 440 }); eq(v.banner:GetWidth(), 732)
     eq(v.wood.texCoord, { 0, 752 / wood, 0, 524 / wood })
+    eq({ v.watermark:GetSize() }, { 264, 264 }); eq(v.watermark.points[1], { "CENTER", v.area, "CENTER", 0, 0.04 * 264 }) -- 0.6 x 440
     local at = { { 291, -388 }, { 10, -300 }, { 10, -80 }, { 291, -10 }, { 572, -80 }, { 572, -300 } }
     for i, p in ipairs(at) do
       eq(v.plates[i].frame.points[1], { "TOPLEFT", v.area, "TOPLEFT", p[1], p[2] }); eq(v.plates[i].frame:GetWidth(), 150)
@@ -261,6 +345,7 @@ describe("ui: table frame", function()
     eq({ T.frame:GetSize() }, { 560, 420 }); eq({ v.areaW, v.areaH }, { 532, 328 }); eq({ v.area:GetSize() }, { 532, 328 })
     eq({ v.felt:GetSize() }, { 532, 328 }); eq(v.banner:GetWidth(), 532); eq(v.fairLine:GetWidth(), 492)
     eq(v.wood.texCoord, { 0, 552 / wood, 0, 412 / wood })
+    eq({ v.watermark:GetSize() }, { 0.6 * 328, 0.6 * 328 }); eq(#v.watermark.points, 1) -- re-anchored, not piled up
   end)
 end)
 
