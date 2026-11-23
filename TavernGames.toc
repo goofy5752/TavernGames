@@ -118,6 +118,7 @@ ui/Resize.lua
 ui/Decks.lua
 ui/Silhouette.lua
 ui/Portrait.lua
+ui/Sounds.lua
 ui/Cards.lua
 ui/MainWindow.lua
 ui/NewTableDialog.lua

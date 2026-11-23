@@ -337,6 +337,9 @@ end
 function View.update(f, s)
   local st = s.state
   remember(f, s)
+  local hand, mine = st.hand or 0, View.seatTricks(s, s.mySeat) or 0
+  ns.Sounds.once("deal", s.tid .. ":" .. hand, s.tid, hand > 0)
+  ns.Sounds.once("trick", s.tid .. ":" .. hand .. ":" .. mine, s.tid, mine > 0)
   if f.armedAt ~= eventKey(s) then f.armed = false end
   local m = View.model(s, f.armed, f.names)
   if f.armed and not (m.mine and m.buttons.marry) then
