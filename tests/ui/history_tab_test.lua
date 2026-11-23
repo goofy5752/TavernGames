@@ -90,6 +90,24 @@ describe("ui: the tab „История“", function()
     eq(lines[3].age, "днес")
   end)
 
+  it("the worst amount, a trade of the gold cap (214748g 36s 47c), fits its column at full size; a bigger one is smaller, never clipped", function()
+    local w = readyWow()
+    entry(w, ME, "P", { f = B, c = 2147483647, how = "trade" }); w:advance(60)
+    entry(w, ME, "P", { f = B, c = 99999999999, how = "trade" }) -- above any purse
+    open(w)
+    local rows = shown(w)
+    eq(#rows, 2)
+    local full = 13 * 0.93
+    for i, want in ipairs({ "9999999g 99s 99c", "214748g 36s 47c" }) do
+      local a = rows[i].amount
+      eq(a:GetText(), w:coins(want)); eq(a:GetWidth(), 110)
+      ok(a:GetStringWidth() <= a:GetWidth(), "clipped: " .. want .. " " .. a:GetStringWidth())
+      ok(select(2, a:GetFont()) >= 8, "below the floor")
+    end
+    ok(select(2, rows[1].amount:GetFont()) < full, "the bigger amount did not shrink")
+    eq(select(2, rows[2].amount:GetFont()), full)
+  end)
+
   it("a draw, a forfeit and a Холдем sitting have their own words", function()
     local w = readyWow()
     fun(w, "ttt", { ME, B }, {}, {})

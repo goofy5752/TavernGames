@@ -25,7 +25,7 @@ ns.HistoryTab = HistoryTab
 
 local BOOK_W, PAD, HEAD_H, ROW_H, ROWS, LINE_H = 760, 14, 108, 26, 16, 14
 local ROW_W = BOOK_W - 20 - 2 * PAD - 6
-local TEXT_W, MARK_W, AMOUNT_W, AGE_W = 420, 110, 90, 56
+local TEXT_W, MARK_W, AMOUNT_W, AGE_W = 400, 110, 110, 56 -- the amount fits the gold cap in coins
 local RULE, AGE = { 0xd9 / 255, 0xc4 / 255, 0x9a / 255 }, { 0x7a / 255, 0x5a / 255, 0x3a / 255 }
 local STATE = {
   fun = "history.mark.fun", claim = "history.mark.claim", confirmed = "history.mark.confirmed",
@@ -205,7 +205,7 @@ local function fillRow(r, line)
   r.line = l
   r.text:SetText(l.text)
   r.mark:SetText(l.mark or "")
-  r.amount:SetText(l.amount)
+  W.fit(r.amount, l.amount, AMOUNT_W)
   r.age:SetText(l.age)
   r.frame:SetAlpha(l.kind == "denied" and 0.6 or 1)
 end

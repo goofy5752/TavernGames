@@ -200,7 +200,7 @@ local function fillRow(v, r, i)
   r.who:SetText(l.who)
   r.mark:SetText(l.mark or "")
   r.mark:SetShown(l.mark ~= nil)
-  r.amount:SetText(l.amount)
+  W.fit(r.amount, l.amount, AMOUNT_W)
   if l.state == "paid" then r.amount:SetTextColor(PAID[1], PAID[2], PAID[3]) else r.amount:SetTextColor(Theme.rgb("felt")) end
   r.age:SetText(l.age)
   r.strike:SetShown(l.state == "paid")

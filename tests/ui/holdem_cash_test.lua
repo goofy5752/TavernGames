@@ -254,6 +254,42 @@ describe("ui: „Сметка“ and the buy-in on the felt", function()
     w:click(f.cash.button)
     eq(f.cash.panel:IsShown(), false)
   end)
+
+  it("the worst amounts fit their cells, smaller, never clipped: 9999g 99s in a column, a 200g buy-in in the stepper", function()
+    local w, View, f = setup()
+    local st = played()
+    View.update(f, sess(st, 1))
+    w:click(f.cash.button)
+    local m = w.ns.HoldemModel.build(sess(st, 1))
+    local big = 999999 -- chips: 9999g 99s, fifty top buy-ins of the biggest blinds (200 x 100)
+    m.cash.mine = { { name = B, gave = big, took = big, net = -big } }
+    m.cash.all = { { name = "Александрина", bought = big, chips = big, net = -big } }
+    local function check(want)
+      local r = f.cash.rows[2]
+      for j = 2, 4 do
+        local cell = r.cells[j]
+        eq(cell:GetText(), want[j - 1])
+        ok(cell:GetStringWidth() <= cell:GetWidth(), "clipped: " .. cell:GetText() .. " " .. cell:GetStringWidth())
+        ok(select(2, cell:GetFont()) >= 8, "below the floor")
+      end
+      ok(r.cells[1]:GetStringWidth() <= r.cells[1]:GetWidth(), "the name is clipped")
+    end
+    w.ns.HoldemCashView.update(f, sess(st, 1), m)
+    check({ w:coins("9999g 99s"), w:coins("9999g 99s"), w:coins("-9999g 99s") })
+    ok(select(2, f.cash.rows[2].cells[4]:GetFont()) < 12 * 0.91, "the net did not shrink")
+    w:click(f.cash.tabs[2]); w.ns.HoldemCashView.update(f, sess(st, 1), m)
+    check({ w:coins("9999g 99s"), w:coins("9999g 99s"), w:coins("-9999g 99s") })
+    -- A small amount in a reused cell is back at the full size.
+    m.cash.all = { { name = B, bought = 1000, chips = 1020, net = 20 } }
+    w.ns.HoldemCashView.update(f, sess(st, 1), m)
+    eq(f.cash.rows[2].cells[4]:GetText(), w:coins("20s")); eq(select(2, f.cash.rows[2].cells[4]:GetFont()), 12 * 0.91)
+    -- The stepper: the top of the biggest range, 200g less a silver.
+    m.cash.lo, m.cash.hi = 8000, 19999
+    w.ns.HoldemCashView.update(f, sess(st, 1), m)
+    w:click(f.cash.buy)
+    local a = f.cash.amount
+    eq(a:GetText(), w:coins("199g 99s")); ok(a:GetStringWidth() <= a:GetWidth(), "the stepper clips " .. a:GetStringWidth())
+  end)
 end)
 
 describe("ui: „Стани“ at a cash table", function()

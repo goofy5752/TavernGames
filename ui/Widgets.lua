@@ -192,6 +192,21 @@ function W.money(copper)
   return (ns.Util.money(copper):gsub("(%d+)([gsc])", function(n, letter) return n .. W.coinTag(COIN_OF[letter]) end))
 end
 
+-- `text` on the one-line font string fs, its font one point smaller at a
+-- time (down to FIT_MIN) until it fits `width`: an amount in a fixed column
+-- is made smaller, never clipped. The font fs had at its first fit is its size.
+local FIT_MIN = 8
+function W.fit(fs, text, width)
+  fs.fitFont = fs.fitFont or { fs:GetFont() }
+  local path, size, flags = fs.fitFont[1], fs.fitFont[2], fs.fitFont[3]
+  fs:SetFont(path, size, flags)
+  fs:SetText(text)
+  while size - 1 >= FIT_MIN and fs:GetStringWidth() > width do
+    size = size - 1
+    fs:SetFont(path, size, flags)
+  end
+end
+
 -- The first word of a player's name ("Иван Петров" -> "Иван").
 function W.firstWord(name) return ns.Names.first(name) end
 

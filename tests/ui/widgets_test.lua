@@ -118,7 +118,7 @@ describe("ui: widgets", function()
   it("no ui file formats gold with letters any more", function()
     local seen = 0
     for p in io.lines("tests/.files.txt") do
-      p = p:gsub("\\r", "")
+      p = p:gsub("\r", "")
       if p:match("^ui/.+%.lua$") then
         local n = 0
         for line in io.lines(p) do
