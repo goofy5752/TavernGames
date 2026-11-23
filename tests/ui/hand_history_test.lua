@@ -168,6 +168,25 @@ describe("ui: hand history — Белот", function()
     eq(#w.sent, sent)
   end))
 
+  it("a passed-out deal says so; a deal voided in the auction does not", function()
+    local w, panel = setup()
+    local H, L = w.ns.HandHistory, w.ns.L
+    local st = EB.new{ first = 1 }
+    ok(EB.apply(st, 0, { k = "deal", deck = DECK_A })); H.observe(bsess(st, 1))
+    ok(EB.apply(st, st.turn, { k = "bid", b = "P" })); H.observe(bsess(st, 1))
+    ok(EB.apply(st, 0, { k = "void" })); H.observe(bsess(st, 1))
+    H.draw(panel, bsess(st, 1))
+    eq(lineWith(panel, L("belot.passed")), nil)
+    ok(EB.apply(st, 0, { k = "deal", deck = DECK_A })); H.observe(bsess(st, 1))
+    for _ = 1, 4 do ok(EB.apply(st, st.turn, { k = "bid", b = "P" })); H.observe(bsess(st, 1)) end
+    eq(st.phase, "deal")
+    H.draw(panel, bsess(st, 1))
+    local ls = lines(panel)
+    -- newest first: the passed-out deal (#1 again: a void keeps the round), then the voided one
+    eq({ ls[1], ls[2], ls[3], ls[4] }, { plain(L("table.historyHand", 1)), plain(L("belot.passed")), " ", plain(L("table.historyHand", 1)) })
+    eq(#H.tables["t#1"].hands, 2)
+  end)
+
   it("a new hand goes on top; at most 10 hands, the oldest dropped", function()
     local w, panel = setup()
     local H, L = w.ns.HandHistory, w.ns.L
@@ -276,12 +295,140 @@ describe("ui: hand history — Сантасе", function()
     w:click(v.historyButton); ok(v.history:IsVisible(), "panel not shown")
     w:click(v.historyButton); eq(v.history:IsVisible(), false)
     w:click(v.historyButton)
+    local tid = w.ns.client.session.tid
     w:click(v.standButton)
     w:advance(0)
     eq(w.ns.client.session, nil); eq(next(H.tables), nil)
+    eq(v.history:IsShown(), false) -- closed with the table, not left open for the next one
+    w.ns.client:openTable{ game = "santase", access = "guild", turn = 45 }
+    w:advance(0)
+    ok(w.ns.client.session.tid ~= tid, "another table")
+    eq({ v.historyButton:IsShown(), v.history:IsShown() }, { true, false })
+    w:click(v.historyButton); eq(v.history:IsShown(), true)
+    -- another table while it is open (a snapshot of a new tid): closed again
+    w.ns.client.session.tid = "t#other"; w.ns.TableFrame.render()
+    eq(v.history:IsShown(), false)
+    w:click(v.standButton); w:advance(0)
     w.ns.client:openTable{ game = "ttt", access = "guild", turn = 45 }
     w:advance(0)
     eq({ v.historyButton:IsShown(), v.history:IsShown() }, { false, false })
+  end)
+end)
+
+---------------------------------------------------------------------------
+-- The panel beside the table, never over it
+---------------------------------------------------------------------------
+
+-- The rect {l, b, r, t} of region r, from its anchors (the fake has no layout engine):
+-- UIParent is 1920 x 1080 at the origin; a font string without a width is as wide as its text.
+local POS = { TOPLEFT = { 0, 1 }, TOP = { 0.5, 1 }, TOPRIGHT = { 1, 1 }, LEFT = { 0, 0.5 }, CENTER = { 0.5, 0.5 },
+  RIGHT = { 1, 0.5 }, BOTTOMLEFT = { 0, 0 }, BOTTOM = { 0.5, 0 }, BOTTOMRIGHT = { 1, 0 } }
+local function rectOf(w, r)
+  if r == w.G.UIParent then return { 0, 0, 1920, 1080 } end
+  local pts = r.points or {}
+  if #pts == 0 then return nil end
+  if pts[1][1] == "ALL" then return rectOf(w, pts[1][2] or r.parent) end
+  local width, height = r.width, r.height
+  if r.objectType == "FontString" then
+    width = (r.fixedWidth and r.fixedWidth > 0) and math.min(r.fixedWidth, r:GetUnboundedStringWidth()) or r:GetUnboundedStringWidth()
+    height = r:GetStringHeight()
+  end
+  local hx, vy = {}, {}
+  for _, a in ipairs(pts) do
+    local point, rel, relPoint, x, y = a[1], a[2], a[3], a[4], a[5]
+    if type(rel) == "number" or rel == nil then rel, relPoint, x, y = r.parent, point, rel, relPoint end
+    if type(relPoint) == "number" then relPoint, x, y = point, relPoint, x end
+    local rr = rectOf(w, rel or r.parent)
+    if not rr then return nil end
+    local rp, sp = POS[relPoint or point], POS[point]
+    local px = rr[1] + rp[1] * (rr[3] - rr[1]) + (x or 0)
+    local py = rr[2] + rp[2] * (rr[4] - rr[2]) + (y or 0)
+    hx[#hx + 1] = { sp[1], px }; vy[#vy + 1] = { sp[2], py }
+  end
+  local function solve(list, size)
+    for _, a in ipairs(list) do
+      for _, b in ipairs(list) do
+        if a[1] < b[1] then local span = (b[2] - a[2]) / (b[1] - a[1]); local lo = a[2] - a[1] * span; return lo, lo + span end
+      end
+    end
+    local lo = list[1][2] - list[1][1] * (size or 0)
+    return lo, lo + (size or 0)
+  end
+  local l, rgt = solve(hx, width)
+  local b, t = solve(vy, height)
+  return { l, b, rgt, t }
+end
+local function overlap(a, b) return a[1] < b[3] and b[1] < a[3] and a[2] < b[4] and b[2] < a[4] end
+
+-- Every shown frame under `root` (itself included), deep.
+local function framesUnder(root)
+  local out = {}
+  local function walk(f) if f:IsShown() then out[#out + 1] = f; for _, c in ipairs(f.children or {}) do walk(c) end end end
+  walk(root)
+  return out
+end
+
+describe("ui: hand history — the panel beside the table", function()
+  for _, game in ipairs({ "holdem", "santase", "belot" }) do
+    it(game .. ": the open panel lies outside the table window; no play control under it", function()
+      local w = guildWow()
+      w.ns.client:openTable{ game = game, access = "guild", turn = 45 }
+      w:advance(0)
+      local TF = w.ns.TableFrame
+      local v = TF.view
+      -- a game under way with me on turn, so the board shows its play controls
+      local s = w.ns.client.session
+      local st
+      if game == "holdem" then
+        s.seats = { A, B, C, false, false, false }; st = EH.new{ seats = { true, true, true } }
+        ok(EH.apply(st, 0, { k = "hand" })); ok(EH.apply(st, 0, { k = "deal", deck = EH.DECK }))
+      elseif game == "santase" then
+        s.seats = { A, BOT }; st = ES.new{ first = 1 }; ok(ES.apply(st, 0, { k = "deal", deck = DM }))
+      else
+        s.seats = { A, B, C, D }; st = EB.new{ first = 1 }; ok(EB.apply(st, 0, { k = "deal", deck = DECK_A }))
+      end
+      s.status, s.state = "live", w.ns.Engines[game].view(st, 1)
+      TF.render()
+      ok(v.historyButton:IsVisible(), "no button")
+      w:click(v.historyButton)
+      ok(v.history:IsVisible(), "not open")
+      eq(v.history:GetParent(), TF.frame) -- a child of the window: it moves and scales with it
+      local panel, win = rectOf(w, v.history), rectOf(w, TF.frame)
+      ok(panel and win, "unresolved")
+      eq({ panel[1], panel[2], panel[4] }, { win[3], win[2], win[4] }) -- beside it, as tall as it
+      ok(not overlap(panel, win), "over the table window")
+      -- every control of the board (the action buttons, the cash panel, the fan) and the bottom row
+      local board, n = TF.built[game], 0
+      ok(board, "no board")
+      for _, x in ipairs(framesUnder(board)) do
+        local r = rectOf(w, x)
+        if r then n = n + 1; ok(not overlap(panel, r), game .. ": a control under the panel") end
+      end
+      for _, b in ipairs({ v.standButton, v.inviteButton, v.startButton, v.botsButton }) do
+        local r = b and rectOf(w, b)
+        if r then ok(not overlap(panel, r), "a bottom button under the panel") end
+      end
+      ok(n > 3, "board frames resolved: " .. n)
+      local named = { holdem = { "foldButton", "callButton", "raiseButton", "allinButton", "plusButton" }, santase = { "marryButton", "closeButton" }, belot = {} }
+      for _, key in ipairs(named[game]) do ok(board[key]:IsVisible() and rectOf(w, board[key]), key .. " not drawn") end
+      ok(not overlap(panel, rectOf(w, v.area)), "over the felt")
+    end)
+  end
+
+  it("the title bar's options line stops before the watchers and „История“", function()
+    local w = guildWow()
+    w.ns.client:openTable{ game = "belot", access = "guild", turn = 45 }
+    w:advance(0)
+    local TF, H = w.ns.TableFrame, w.ns.HandHistory
+    local v = TF.view
+    v.meta:SetText(string.rep("Опция 99 · ", 30))
+    v.stake:SetText("Залог: 5g"); v.stake:Show()
+    v.watchers:SetText("Гледат: 3"); v.watchers:Show()
+    H.render(v, w.ns.client.session)
+    local meta, stake, button, watchers = rectOf(w, v.meta), rectOf(w, v.stake), rectOf(w, v.historyButton), rectOf(w, v.watchers)
+    eq(v.meta.wordWrap, false)
+    ok(meta[3] <= watchers[1] and stake[3] <= watchers[1] and watchers[3] <= button[1], "the title bar crowds: " ..
+      table.concat({ meta[3], stake[3], watchers[1], watchers[3], button[1] }, " "))
   end)
 end)
 
@@ -296,10 +443,10 @@ local function hand3()
   ok(EH.apply(st, 0, { k = "hand" }))
   return st
 end
-local function hsess(st, seat, stake)
+local function hsess(st, seat, stake, seq, gameNo)
   return { game = "holdem", status = "live", mySeat = seat, role = seat == 1 and "host" or "player",
-    seats = { A, B, C, false, false, false }, state = FULL and EH.snapshot(st) or EH.view(st, seat or 0), tid = "t#1", epoch = 1, seq = 1,
-    stake = stake, engine = function() return EH end, gameNo = 1 }
+    seats = { A, B, C, false, false, false }, state = FULL and EH.snapshot(st) or EH.view(st, seat or 0), tid = "t#1", epoch = 1, seq = seq or 1,
+    stake = stake, engine = function() return EH end, gameNo = gameNo or 1 }
 end
 
 -- The hand above: seat 1 raises to 30, seat 2 folds, seat 3 calls; flop: check, seat 1 bets 40, call;
@@ -425,6 +572,42 @@ describe("ui: hand history — Холдем", function()
     w2.ns.HandHistory.draw(panel2, hsess(st2, 1))
     ok(lineWith(panel2, "Иван: " .. L("holdem.hist.raise", "30")), "chips")
     ok(not table.concat(lines(panel2), " "):find(plain(coins(30)), 1, true), "no coins at a fun table")
+  end)
+
+  it("a snapshot mid-hand (my events jumped, gameNo moved on): one record, later actions where they belong", function()
+    local w, panel = setup(240, 400)
+    local H, L = w.ns.HandHistory, w.ns.L
+    local st, q = hand3(), 1
+    local function see(jump, gameNo) q = q + (jump or 1); H.observe(hsess(st, 1, nil, q, gameNo)) end
+    see()
+    ok(EH.apply(st, 0, { k = "deal", deck = EH.DECK })); see()
+    HH.apply(st, st.turn, { k = "raise", to = 30 }); see()
+    -- missed: the fold, the call, the flop, a check and Иван's bet of 40
+    HH.apply(st, st.turn, { k = "fold" }); HH.apply(st, st.turn, { k = "call" })
+    HH.apply(st, 0, (EH.system(st))); HH.apply(st, st.turn, { k = "check" }); HH.apply(st, st.turn, { k = "bet", to = 40 })
+    see(6, 2) -- the snapshot: s.seq jumps, Member.adopt moves s.gameNo on
+    HH.apply(st, st.turn, { k = "call" }); see(nil, 2)
+    HH.apply(st, 0, (EH.system(st))); see(nil, 2)
+    HH.apply(st, st.turn, { k = "check" }); see(nil, 2)
+    eq(#H.tables["t#1"].hands, 1)
+    H.draw(panel, hsess(st, 1))
+    local got = {}
+    for _, a in ipairs(H.tables["t#1"].hands[1].acts) do got[#got + 1] = table.concat({ a.street, a.seat, a.k, tostring(a.amt) }, " ") end
+    eq(got, { "0 2 sb 5", "0 3 bb 10", "0 1 raise 30", "1 3 call 40", "2 3 check nil" })
+    ok(lineWith(panel, "Kiro: " .. L("holdem.hist.call", "40")), "the call after the snapshot")
+  end)
+
+  it("a record begun mid-hand: a short blind posts what it had", function()
+    local w, panel = setup(240, 400)
+    local H, L = w.ns.HandHistory, w.ns.L
+    local st = EH.new{ seats = { true, true, true } }
+    st.seats[2].chips = 3
+    ok(EH.apply(st, 0, { k = "hand" })); ok(EH.apply(st, 0, { k = "deal", deck = EH.DECK }))
+    HH.apply(st, st.turn, { k = "raise", to = 30 })
+    H.observe(hsess(st, 1)) -- the first state this client sees
+    H.draw(panel, hsess(st, 1))
+    ok(lineWith(panel, "Мария: " .. L("holdem.hist.sb", "3")), table.concat(lines(panel), " / "))
+    ok(lineWith(panel, "Kiro: " .. L("holdem.hist.bb", "10")), "the big blind")
   end)
 
   it("leaving the table drops its history; another table starts empty", function()

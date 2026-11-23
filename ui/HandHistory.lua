@@ -4,7 +4,8 @@ local _, ns = ...
 -- recorder fed by the client's "session" event, the same state the views draw,
 -- kept in memory only (never saved, never sent), the last MAX hands of the
 -- table, dropped as soon as I leave it (no session, or another table). The
--- panel that shows it is ui/HandHistoryPanel.lua.
+-- panel that shows it is ui/HandHistoryPanel.lua. A snapshot (my events jumped,
+-- or another epoch) keeps the hand's record and reads the next change from it.
 --
 -- It records only what the whole table has seen face up, whatever else my view
 -- may know:
@@ -42,14 +43,19 @@ local function bookOf(s)
   return b
 end
 
--- The record of hand `no` of the game my client holds (s.gameNo): the newest one,
--- or a new one on top while that is another hand or closed; the oldest beyond MAX
--- go. -> hand, fresh
-local function handOf(b, s, no)
-  local key = tostring(s.gameNo or 0) .. ":" .. tostring(no)
+-- The record of hand `no` of game `gid` (the engine's own identity: Холдем's state.g;
+-- none for the card games, whose new match begins with a "deal" phase that closes the
+-- last hand): the newest one, or a new one on top while that is another hand, closed,
+-- or ended with its game (`over`: the state is still that game's end). Never s.gameNo,
+-- which every adopted snapshot moves on. The oldest beyond MAX go. -> hand, fresh
+local function handOf(b, no, gid, over)
+  local key = tostring(gid or "") .. ":" .. tostring(no)
   local top = b.hands[#b.hands]
-  if top and top.key == key and not top.closed then return top, false end
-  local hand = { key = key, no = no, names = {}, tricks = {}, events = {}, acts = {}, board = {} }
+  if top and top.key == key and not top.closed and (over or not top.ended) then
+    top.ended = top.ended or over
+    return top, false
+  end
+  local hand = { key = key, no = no, names = {}, tricks = {}, events = {}, acts = {}, board = {}, ended = over }
   b.hands[#b.hands + 1] = hand
   while #b.hands > H.MAX do table.remove(b.hands, 1) end
   return hand, true
@@ -74,10 +80,15 @@ end
 ---------------------------------------------------------------------------
 
 local function belot(s, st, b)
-  local phase = st.phase
-  if phase == "deal" then return close(b) end -- between deals, or a void: the next deal is another hand
+  local phase, top = st.phase, b.hands[#b.hands]
+  if phase == "deal" then -- between deals, or a void: the next deal is another hand
+    local res = st.res -- a passed-out deal leaves res without a contract, naming its round; a void none
+    if top and not top.closed and res and res.contract == nil and res.round == top.no then top.passed = true end
+    return close(b)
+  end
+  if phase == "match" and top then top.ended = true end
   if phase ~= "bid" and phase ~= "play" and phase ~= "score" then return end
-  local hand = handOf(b, s, st.round)
+  local hand = handOf(b, st.round)
   names(hand, s, 4)
   local c = st.contract
   if c then hand.contract = { seat = c.seat, b = c.b, x = c.x } end
@@ -117,7 +128,8 @@ local function santase(s, st, b)
   local phase = st.phase
   if phase == "deal" then return close(b) end
   if phase ~= "play" and phase ~= "hand" and phase ~= "match" then return end
-  local hand = handOf(b, s, st.hand)
+  local hand = handOf(b, st.hand, nil, phase == "match")
+  if b.jump then hand.was = nil end
   names(hand, s, 2)
   hand.tsuit = hand.tsuit or st.tsuit
   local done = (st.ntr and st.ntr[1] or 0) + (st.ntr and st.ntr[2] or 0)
@@ -191,13 +203,14 @@ local function holdem(s, st, b)
   local inHand = E.holdem.inHand(st)
   local last = st.last and st.last.hand == st.hand and st.last or nil
   if not inHand and not last or (st.hand or 0) < 1 then return end
-  local hand, fresh = handOf(b, s, st.hand)
+  local hand, fresh = handOf(b, st.hand, st.g)
+  if b.jump then hand.was = nil end -- after a snapshot: nothing is read against the state before it
   names(hand, s, #st.seats)
   hand.sb, hand.bb = st.sb, st.bb
   if fresh then
     for _, x in ipairs({ { st.sbSeat, "sb", st.sb }, { st.bbSeat, "bb", st.bb } }) do
       local p = x[1] and st.p[x[1]]
-      if p then act(hand, 0, x[1], x[2], st.phase == "deal" and p.total or x[3]) end
+      if p then act(hand, 0, x[1], x[2], math.min(x[3], p.total)) end -- a short blind posts what it has
     end
   elseif hand.was and not hand.done then
     diff(hand, st, hand.was)
@@ -239,6 +252,10 @@ function H.observe(s)
   end
   if not s or not H.GAMES[s.game] or type(s.state) ~= "table" then return end
   local b = bookOf(s)
+  -- A snapshot (another epoch, or my events jumped: Member.adopt) replaces the state at once:
+  -- the next change is read from it, not from the state before it.
+  b.jump = b.seq ~= nil and (s.epoch ~= b.epoch or (s.seq ~= b.seq and s.seq ~= b.seq + 1))
+  b.seq, b.epoch = s.seq, s.epoch
   RECORD[s.game](s, s.state, b)
   b.ver = b.ver + 1
 end

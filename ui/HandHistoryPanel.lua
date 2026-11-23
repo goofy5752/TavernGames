@@ -1,10 +1,11 @@
 local _, ns = ...
 
--- „История“: the table's last hands (ui/HandHistory.lua) in a panel inside the
--- table frame, so it scales with it (ui/Resize.lua). The button sits in the title
--- bar left of ⓘ at a Белот, Сантасе or Холдем table only and toggles the panel
--- over the right of the felt; the newest hand on top, the hand under way growing
--- as it is played, the list scrolled with the mouse wheel (W.Scroll).
+-- „История“: the table's last hands (ui/HandHistory.lua) in a side window beside
+-- the table frame (its child: it moves and scales with it, ui/Resize.lua), never
+-- over the felt, its cards or its buttons. The button sits in the title bar left of
+-- ⓘ at a Белот, Сантасе or Холдем table only and toggles it; it closes when I leave
+-- the table or another table's session comes. The newest hand on top, the hand
+-- under way growing as it is played, the list scrolled with the mouse wheel (W.Scroll).
 --   Белот / Сантасе: „Ръка N“, the contract or the trump suit, every trick in
 --   order — each seat's name in its class colour and its card (the rank and a
 --   tiny suit, H.card), then who took it — Сантасе's declarations, close and swap
@@ -19,6 +20,8 @@ local Theme, W, L, Cards = ns.Theme, ns.W, ns.L, ns.Cards
 local H = ns.HandHistory
 
 local PANEL_W, PAD, TOP, GAP = 240, 8, 28, 2
+local EDGE = 12 -- the window chrome's band, as the table frame's (TableFrame EDGE)
+local SIDE_W = PANEL_W + 2 * EDGE -- the side window beside the table frame
 local STYLE = { head = { "heading", 13, "gold" }, sub = { "ui", 11, "brassLight" }, line = { "ui", 11, "ink" }, dim = { "ui", 11, "inkDim" } }
 local SUIT_CELL = { C = "0:32", D = "32:64", H = "64:96", S = "96:128" } -- the cells of the `suits` strip
 
@@ -70,7 +73,7 @@ local function cardHand(add, hand, game)
   add("head", L("table.historyHand", hand.no))
   if hand.contract then
     add("sub", contractText(hand.contract) .. " · " .. L("belot.by", who(hand, hand.contract.seat)))
-  elseif game == "belot" and hand.closed then
+  elseif game == "belot" and hand.passed then
     add("dim", L("belot.passed"))
   end
   if hand.tsuit and game == "santase" then add("sub", L("santase.trump", Cards.suitName(hand.tsuit))) end
@@ -174,39 +177,51 @@ function H.draw(panel, s)
   panel.ver, panel.tid = b and b.ver, s and s.tid
 end
 
-function H.buildPanel(parent)
-  local panel = W.Panel(parent)
-  panel.fill:SetColorTexture(20 / 255, 10 / 255, 5 / 255, 0.95)
-  panel:SetSize(PANEL_W, 300)
+-- The panel: on its own a dark panel (W.Panel); `framed`, a window with the table
+-- frame's chrome (wood and the brass edge), its content EDGE inside.
+function H.buildPanel(parent, framed)
+  local panel, e
+  if framed then
+    panel, e = CreateFrame("Frame", nil, parent), EDGE
+    panel:SetSize(SIDE_W, 300)
+    panel.chrome = W.chrome(panel, SIDE_W, 300)
+  else
+    panel, e = W.Panel(parent), 0
+    panel.fill:SetColorTexture(20 / 255, 10 / 255, 5 / 255, 0.95)
+    panel:SetSize(PANEL_W, 300)
+  end
   panel:EnableMouse(true)
   panel:EnableMouseWheel(true)
   panel.title = W.Label(panel, "heading", L("table.history"), 13)
-  panel.title:SetPoint("TOPLEFT", panel, "TOPLEFT", 10, -8)
+  panel.title:SetPoint("TOPLEFT", panel, "TOPLEFT", e + 10, -(e + 8))
   local x = W.Close(panel)
-  x:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -4, -4)
+  x:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -(e + 4), -(e + 4))
   panel.close = x
   local scroll = W.Scroll(panel)
-  scroll:SetPoint("TOPLEFT", panel, "TOPLEFT", PAD, -TOP)
-  scroll:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -PAD, PAD)
+  scroll:SetPoint("TOPLEFT", panel, "TOPLEFT", e + PAD, -(e + TOP))
+  scroll:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -(e + PAD), e + PAD)
   panel.textW = PANEL_W - 2 * PAD - 6
   scroll.content:SetWidth(panel.textW)
   panel.scroll = scroll
   panel.lines, panel.used = {}, 0
   panel.empty = W.Label(panel, "dim", L("table.historyEmpty"), 11)
-  panel.empty:SetPoint("TOPLEFT", panel, "TOPLEFT", 10, -TOP - 2)
+  panel.empty:SetPoint("TOPLEFT", panel, "TOPLEFT", e + 10, -(e + TOP + 2))
   panel:Hide()
   return panel
 end
 
--- The button and the panel in the table frame (TableFrame.view v), once.
+-- The button and the panel of the table frame (TableFrame.view v), once: the panel
+-- is a window of its own BESIDE the frame (its left edge on the frame's right edge,
+-- as tall as the frame), a child of it, so it moves and scales with it
+-- (ui/Resize.lua) and never lies over the felt, its cards or its buttons.
 local function build(v)
   local f = ns.TableFrame.frame
-  local panel = H.buildPanel(f)
+  local panel = H.buildPanel(f, true)
   panel:ClearAllPoints()
-  panel:SetPoint("TOPRIGHT", v.area, "TOPRIGHT", -4, -4)
-  panel:SetPoint("BOTTOMRIGHT", v.area, "BOTTOMRIGHT", -4, 4)
-  panel:SetWidth(PANEL_W)
-  panel:SetFrameLevel(v.area:GetFrameLevel() + ns.Cards.TOP + 24) -- above a full hand and the felt's panels
+  panel:SetPoint("TOPLEFT", f, "TOPRIGHT", 0, 0)
+  panel:SetPoint("BOTTOMLEFT", f, "BOTTOMRIGHT", 0, 0)
+  panel:SetWidth(SIDE_W)
+  W.dragBy(panel, f) -- dragging the side window moves the table with it
   panel:SetScript("OnShow", function() H.draw(panel, ns.client and ns.client.session) end)
   v.history = panel
   local button = W.GhostButton(f, L("table.history"), "brassLight", function()
@@ -218,15 +233,45 @@ local function build(v)
   v.historyButton = button
 end
 
+-- The title bar's options line (v.meta) on one line, never wider than the room
+-- between the crest and what stands right of it (the stake after it, then the
+-- watcher count, „История“ and ⓘ).
+local function fitMeta(v, kept)
+  local bar = ns.TableFrame.frame:GetWidth() - 2 * EDGE
+  local left = 8 + W.textWidth(v.title) + 6 + 20 + 6
+  local right = 6 + v.info:GetWidth() + 12
+  if kept then right = right + 8 + v.historyButton:GetWidth() end
+  if v.watchers:IsShown() then right = right + 12 + W.textWidth(v.watchers) end
+  if v.stake:IsShown() then right = right + 10 + W.textWidth(v.stake) end
+  v.meta:SetWordWrap(false)
+  v.meta:SetWidth(math.max(1, math.min(W.textWidth(v.meta), bar - left - right)))
+end
+
 -- From TableFrame.render: the button at a table whose game keeps a history (the
--- watcher count left of it), else neither; the open panel redrawn when it changed.
+-- watcher count left of it), else neither; the panel closed at another table; the
+-- open panel redrawn when the history changed.
 function H.render(v, s)
   if not v.historyButton then build(v) end
   local kept = s ~= nil and H.GAMES[s.game] == true
+  if not kept or v.historyTid ~= s.tid then v.history:Hide() end
+  v.historyTid = s and s.tid
   v.historyButton:SetShown(kept)
-  if not kept then v.history:Hide() end
   v.watchers:ClearAllPoints()
   v.watchers:SetPoint("RIGHT", kept and v.historyButton or v.info, "LEFT", -12, 0)
+  fitMeta(v, kept)
+  local h = ns.TableFrame.frame:GetHeight()
+  if v.history.h ~= h then -- the wood tiles, never stretches, as the frame's (TableFrame fit)
+    v.history.h = h
+    v.history.chrome.wood:SetTexCoord(0, (SIDE_W - 8) / Theme.texSize.wood, 0, (h - 8) / Theme.texSize.wood)
+  end
   local b = kept and H.tables[s.tid]
   if v.history:IsShown() and (v.history.tid ~= s.tid or v.history.ver ~= (b and b.ver)) then H.draw(v.history, s) end
 end
+
+-- I left my table: its panel goes with it (TableFrame.render draws nothing without a session).
+ns.ready(function(client)
+  client:on("session", function(s)
+    local v = ns.TableFrame.view
+    if not s and v and v.history then v.history:Hide(); v.historyTid = nil end
+  end)
+end)
