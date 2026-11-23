@@ -5,19 +5,22 @@ local _, ns = ...
 -- for a ring view. A plate is a WoW unit frame (spec 5.5, mockup 08) in a bar
 -- of 26 px: on the bar's left end the seat's hero (ui/Portrait.lua, 30 px, with
 -- the class badge; the empty chair on a free seat), its ring gold and glowing
--- while the seat is on turn; the name 40 px in, in class colour; right of the
--- name a pip for every trick the seat took (the view's seatTricks, at most
--- eight); the game's mark for the seat (seatNote); on the plate on turn a gold
--- edge, the turn clock and a 3 px gold line along the bar's bottom as wide as
--- the share of the turn time left. A portrait is set only when the seat's hero
--- changes. TableFrame.plates is what the frame calls.
+-- while the seat is on turn; the name 40 px in, in class colour; under it,
+-- a pip for every trick the seat took (the view's seatTricks, at most eight) in
+-- a row centred on the bar's bottom edge, under the name's column and below the
+-- line of text, so a long name, the note and the clock never meet it; the
+-- game's mark for the seat (seatNote); on the plate on turn a gold edge, the
+-- turn clock and a 3 px gold line along the bar's bottom (under the pips) as
+-- wide as the share of the turn time left. A portrait is set only when the
+-- seat's hero changes. TableFrame.plates is what the frame calls.
 local TableFrame = ns.TableFrame
 local Theme, W, L, Portrait = ns.Theme, ns.W, ns.L, ns.Portrait
 
 local PLATE_W, PLATE_H = 190, 26          -- plate size before ns.HallLayout.plates sets the width
 local PORTRAIT, NAME_X = 30, 40           -- the hero centred on the bar's left end; the name after it
 local PLATE_NAME_INSET = NAME_X + 64      -- the plate width the portrait and the clock/note keep from the name
-local PIPS, PIP_W, PIP_H, PIP_GAP = 8, 5, 8, 3
+local PIPS, PIP_W, PIP_H, PIP_GAP = 8, 5, 8, 3 -- eight reach NAME_X + 61: inside the name's column on every plate
+local PIP_Y = 1                           -- the pips' middle over the bar's bottom edge, clear of the line of text
 local TURN_H = 3                          -- the turn bar along the bottom
 
 local function plateWidget(v, i)
@@ -51,10 +54,14 @@ local function plateWidget(v, i)
   bar:Hide()
   local tricks = {}
   for k = 1, PIPS do
-    local t = f:CreateTexture(nil, "ARTWORK")
+    local t = f:CreateTexture(nil, "OVERLAY")
     t:SetSize(PIP_W, PIP_H)
     t:SetColorTexture(Theme.rgb("banner"))
-    if k > 1 then t:SetPoint("LEFT", tricks[k - 1], "RIGHT", PIP_GAP, 0) end
+    if k == 1 then
+      t:SetPoint("LEFT", f, "BOTTOMLEFT", NAME_X, PIP_Y)
+    else
+      t:SetPoint("LEFT", tricks[k - 1], "RIGHT", PIP_GAP, 0)
+    end
     t:Hide()
     tricks[k] = t
   end
@@ -73,15 +80,18 @@ local function hero(p, client, name)
   p.portrait:set(who)
 end
 
--- `n` pips (nil: none, at most PIPS) right after the name's text.
+-- `n` pips (nil: none, at most PIPS).
 local function pips(p, n)
   n = n and math.min(n, PIPS) or 0
-  if n > 0 then
-    local first = p.tricks[1]
-    first:ClearAllPoints()
-    first:SetPoint("LEFT", p.name, "LEFT", math.min(p.name:GetStringWidth(), p.name:GetWidth()) + 4, 0)
-  end
   for k = 1, PIPS do p.tricks[k]:SetShown(k <= n) end
+end
+
+-- The turn bar as wide as the share of the turn time left (`left` s).
+local function fillBar(p, s, left)
+  local turn = type(s.turn) == "number" and s.turn > 0 and s.turn or nil
+  local w = p.frame:GetWidth()
+  if turn then w = w * math.min(left, turn) / turn end
+  p.bar:SetWidth(math.max(1, w))
 end
 
 -- The turn clock and the turn bar on the plate of the player on turn.
@@ -90,14 +100,11 @@ local function tick(v, s)
   if not left then return end
   local secs = math.ceil(left)
   local text = L("table.clock", math.floor(secs / 60), secs % 60)
-  local turn = type(s.turn) == "number" and s.turn > 0 and s.turn or nil
   for i = 1, #v.plates do
     local p = v.plates[i]
     if p.clock:IsShown() then
       p.clock:SetText(text)
-      local w = p.frame:GetWidth()
-      if turn then w = w * math.min(left, turn) / turn end
-      p.bar:SetWidth(math.max(1, w))
+      fillBar(p, s, left)
     end
   end
 end
@@ -130,8 +137,10 @@ local function render(v, s, client)
     p.note:SetText(view and view.seatNote and view.seatNote(s, i) or "")
     local onTurn = turn == i
     p.portrait:turn(onTurn and name ~= false and name ~= nil) -- an empty chair never glows
-    p.clock:SetShown(onTurn and s.deadline ~= nil)
-    p.bar:SetShown(onTurn and s.deadline ~= nil)
+    local timed = onTurn and s.deadline ~= nil
+    p.clock:SetShown(timed)
+    p.bar:SetShown(timed)
+    if timed then fillBar(p, s, s:left() or 0) end
     p.edges.setColor(Theme.rgb(onTurn and "gold" or "brass"))
     pips(p, view and view.seatTricks and view.seatTricks(s, i))
     p.frame:Show()

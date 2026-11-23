@@ -165,6 +165,27 @@ describe("ui: table frame", function()
     eq(p1.bar:IsVisible(), false); ok(v.plates[2].bar:IsVisible(), "the bar did not move")
   end)
 
+  it("on a narrow plate a long name, eight tricks, the note and the clock never meet; the turn bar is sized as it shows", function()
+    local w = withBots(); local T = w.ns.TableFrame
+    T.registerView("belot", { ring = true, update = function() end, seatNote = function() return "разд." end, seatTricks = function() return 9 end,
+      build = function(parent) local f = w.G.CreateFrame("Frame", nil, parent); f:SetSize(parent:GetWidth(), parent:GetHeight()); return f end })
+    w.ns.client:openTable{ game = "belot", access = "invite", turn = 45 }; w:advance(0)
+    local v, s = T.view, w.ns.client.session
+    s.seats[1] = "Константин Христофоров Димитров"; s.status, s.state = "live", { turn = 1 }; s.deadline = w.ns.client.env.now() + 30
+    local p = v.plates[1]; p.bar.width = nil
+    T.plates.render(v, s, w.ns.client)
+    eq(p.frame:GetWidth(), 165); eq(p.note:GetText(), "разд."); ok(p.clock:IsShown(), "no clock")
+    eq(p.bar:GetWidth(), 165 * 30 / 45)                                                 -- sized by render, before any tick
+    for k = 1, 8 do ok(p.tricks[k]:IsShown(), "pip " .. k) end                         -- at most eight
+    -- the pips: a fixed row under the name, on the bar's bottom edge, over the turn bar
+    eq(p.tricks[1].points, { { "LEFT", p.frame, "BOTTOMLEFT", 40, 1 } }); eq(p.tricks[1].layer, "OVERLAY")
+    for k = 2, 8 do eq(p.tricks[k].points, { { "LEFT", p.tricks[k - 1], "RIGHT", 3, 0 } }) end
+    local right, top = 40 + 8 * 5 + 7 * 3, 1 + 8 / 2
+    ok(right <= 165 - 64, "the pips reach into the note and clock column: " .. right)  -- the column the name keeps clear of
+    ok(top < (26 - 13) / 2, "the pips reach into the line of text")                    -- the note (13) and the clock (12) are centred
+    eq(p.name.points[1], { "LEFT", p.frame, "LEFT", 40, 0 }); eq(p.name:GetWidth(), 165 - 104)
+  end)
+
   it("the felt wears the faction: its texture, the crest as a watermark, the stitch", function()
     for _, case in ipairs({ { nil, "alliance", { 1, 1, 1, 0.12 } }, { "Horde", "horde", { 0, 0, 0, 0.45 } } }) do
       local w = guildWow(case[1]); local T = w.ns.Theme
@@ -312,7 +333,7 @@ describe("ui: table frame", function()
     eq({ v.area:GetSize() }, { 732, 440 }); eq({ v.felt:GetSize() }, { 732, 440 }); eq(v.banner:GetWidth(), 732)
     eq(v.wood.texCoord, { 0, 752 / wood, 0, 524 / wood })
     eq({ v.watermark:GetSize() }, { 264, 264 }); eq(v.watermark.points[1], { "CENTER", v.area, "CENTER", 0, 0.04 * 264 }) -- 0.6 x 440
-    local at ={ { 291, -388 }, { 10, -300 }, { 10, -80 }, { 291, -10 }, { 572, -80 }, { 572, -300 } }
+    local at = { { 291, -388 }, { 10, -300 }, { 10, -80 }, { 291, -10 }, { 572, -80 }, { 572, -300 } }
     for i, p in ipairs(at) do
       eq(v.plates[i].frame.points[1], { "TOPLEFT", v.area, "TOPLEFT", p[1], p[2] }); eq(v.plates[i].frame:GetWidth(), 150)
       ok(v.plates[i].frame:IsVisible(), "plate " .. i .. " hidden")
