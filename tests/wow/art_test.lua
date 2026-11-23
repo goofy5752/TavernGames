@@ -108,6 +108,17 @@ describe("art: sounds", function()
     w.G.SOUNDKIT = nil
     eq(A.sound("coins"), nil); eq(A.play("coins"), false); eq(#w.sounds, n + 1)
   end)
+
+  it("the applied skin's sound of a moment comes before the shared one", function()
+    local w = Wow.new{ ui = true }; local A, T = w.ns.Art, w.ns.Theme
+    w.G.SOUNDKIT.LOOT_WINDOW_COIN_SOUND, w.G.SOUNDKIT.HORDE_COINS = 120, 9
+    eq(T.SKINS.alliance.sounds, {}); eq(T.SKINS.horde.sounds, {})
+    T.SKINS.horde.sounds.coins = { "HORDE_COINS" }
+    eq(A.sound("coins"), 120) -- alliance applied: no skin sound
+    T.apply("horde"); eq(A.sound("coins"), 9)
+    T.SKINS.horde.sounds.coins = { "MISSING" }; eq(A.sound("coins"), 120) -- a name the client lacks falls through
+    T.SKINS.horde.sounds.coins = nil
+  end)
 end)
 
 describe("art: report", function()

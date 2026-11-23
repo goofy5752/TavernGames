@@ -86,11 +86,7 @@ local function buildAsk()
   f:SetFrameStrata("DIALOG")
   f:SetToplevel(true)
   f:EnableMouse(true)
-  local wood = W.tile(f, Theme.tex.wood, Theme.texSize.wood, ASK_W - 8, ASK_H - 8)
-  wood:SetPoint("TOPLEFT", f, "TOPLEFT", 4, -4)
-  wood:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -4, 4)
-  P.askWood = wood
-  W.nine(f, Theme.tex.frame, Theme.texSize.frame, 12, 12, "BORDER", true)
+  P.askWood = W.chrome(f, ASK_W, ASK_H).wood
   P.askTitle = W.Label(f, "heading", L("stake.ask.title"), 17)
   P.askTitle:SetJustifyH("CENTER")
   P.askTitle:SetPoint("TOP", f, "TOP", 0, -20)

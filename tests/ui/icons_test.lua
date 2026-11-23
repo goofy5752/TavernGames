@@ -45,4 +45,14 @@ describe("ui: game pictures and the title mug", function()
     ok(exists(file(MW.mug:GetTexture())), "media/mug.tga missing")
     eq(MW.title.points[1], { "LEFT", MW.mug, "RIGHT", 2, 0 })
   end)
+
+  it("the crest stands right of the title, the first tab past it", function()
+    local w = boot()
+    w.ns.MainWindow.show()
+    local MW, T = w.ns.MainWindow, w.ns.Theme
+    eq(MW.crest:GetTexture(), T.tex.crest_alliance); eq({ MW.crest:GetSize() }, { 28, 28 })
+    eq(MW.crest.points[1], { "LEFT", MW.title, "RIGHT", 6, 0 })
+    local first = MW.tabs[MW.order[1]].button
+    eq(first.points[1], { "BOTTOMLEFT", MW.title, "BOTTOMRIGHT", 60, -5 })
+  end)
 end)

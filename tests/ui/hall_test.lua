@@ -267,7 +267,7 @@ describe("ui: hall", function()
     eq(visible(view.rows), 9)
     local first, last = view.rows[1], view.rows[9]
     eq(first.title:GetText(), "Морски шах при |cffc79c6eГост 1|r")
-    eq(view.rows[2].title:GetText(), "Морски шах при |cfff3e2c0Гост 2|r") -- no class known: ink
+    eq(view.rows[2].title:GetText(), "Морски шах при |cfff2e6c8Гост 2|r") -- no class known: ink
     eq(first.seats:GetText(), "1/2"); eq(first.state:GetText(), "чака"); eq(first.action.text:GetText(), "Седни")
     eq(last.seats:GetText(), "2/2"); eq(last.state:GetText(), "тече"); eq(last.action.text:GetText(), "Гледай")
     w:click(first.action)

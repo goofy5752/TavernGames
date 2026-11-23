@@ -62,6 +62,43 @@ describe("wow adapter: db", function()
   end)
 end)
 
+describe("wow adapter: theme, deck and sound keys", function()
+  local CHAR = Wow.FIRST .. " - Forever"
+
+  it("the skin follows the faction at login; nothing is written to db.theme", function()
+    local w = Wow.new{ ui = true }; w.faction = "Horde"; w:boot()
+    eq(w.ns.Theme.skin, "horde"); eq(w.ns.db.theme, nil); eq(w.G.TavernGamesDB.char[CHAR].theme, nil)
+    eq({ w.ns.Theme.rgb("felt") }, { 0x5a / 255, 0x0f / 255, 0x0e / 255 })
+    local a = Wow.new{ ui = true }; a:boot()
+    eq(a.ns.Theme.skin, "alliance")
+  end)
+
+  it("a saved theme wins over the faction; an unknown one falls back but stays saved", function()
+    local w = Wow.new{ ui = true, saved = { char = { [CHAR] = { theme = "alliance" } } } }; w.faction = "Horde"; w:boot()
+    eq(w.ns.Theme.skin, "alliance")
+    local d = Wow.new{ ui = true, saved = { char = { [CHAR] = { theme = "darkmoon" } } } }; d.faction = "Horde"; d:boot()
+    eq(d.ns.Theme.skin, "horde"); eq(d.G.TavernGamesDB.char[CHAR].theme, "darkmoon")
+  end)
+
+  it("theme and deck are per character, sound is account-wide and defaults to on", function()
+    local w = Wow.new(); w:init()
+    local db, sv = w.ns.db, w.G.TavernGamesDB
+    eq(db.sound, true); eq(db.deck, nil)
+    db.theme, db.deck, db.sound = "horde", "orc", false
+    eq(sv.char[CHAR].theme, "horde"); eq(sv.char[CHAR].deck, "orc"); eq(sv.global.sound, false)
+    eq(sv.global.theme, nil); eq(sv.global.deck, nil); eq(sv.char[CHAR].sound, nil)
+    eq(db.theme, "horde"); eq(db.deck, "orc"); eq(db.sound, false)
+  end)
+
+  it("db.sound = false mutes Art.play", function()
+    local w = Wow.new(); w:init()
+    w.G.SOUNDKIT.LOOT_WINDOW_COIN_SOUND = 120
+    eq(w.ns.Art.play("coins"), true); eq(w.sounds, { { 120, "SFX" } })
+    w.ns.db.sound = false
+    eq(w.ns.Art.play("coins"), false); eq(#w.sounds, 1)
+  end)
+end)
+
 describe("wow adapter: own name", function()
   it("comes from the roster entry with my GUID; ready callbacks run before start", function()
     local w = Wow.new(); w.inGuild, w.roster = true, rosterWith(true)
@@ -374,7 +411,7 @@ describe("wow adapter: game events", function()
   it("classColor uses the class table and falls back to ink", function()
     local w = guildWow()
     eq({ w.ns.classColor("MAGE") }, { 0.25, 0.78, 0.92 })
-    eq({ w.ns.classColor("NOPE") }, { 243 / 255, 226 / 255, 192 / 255 })
+    eq({ w.ns.classColor("NOPE") }, { 242 / 255, 230 / 255, 200 / 255 }) -- the ink token
   end)
 
   it("creates no globals but TavernGamesDB, SLASH_TAVERNGAMES1 and SlashCmdList.TAVERNGAMES", function()

@@ -163,15 +163,20 @@ function Art.tag(kind, id, sub)
   return "|A:" .. c.atlas .. ":0:0|a"
 end
 
--- The SOUNDKIT id of the moment `key`, or nil.
-function Art.sound(key)
-  local kit, names = lookup("SOUNDKIT"), Art.SOUNDS[key]
-  if type(kit) ~= "table" or not names then return nil end
-  for _, name in ipairs(names) do
+local function firstSound(kit, names)
+  for _, name in ipairs(names or {}) do
     local soundId = rawget(kit, name)
     if type(soundId) == "number" then return soundId end
   end
-  return nil
+end
+
+-- The SOUNDKIT id of the moment `key`, or nil: the applied skin's names first
+-- (ns.Theme.S.sounds), then Art.SOUNDS.
+function Art.sound(key)
+  local kit = lookup("SOUNDKIT")
+  if type(kit) ~= "table" then return nil end
+  local skin = ns.Theme and ns.Theme.S and ns.Theme.S.sounds
+  return firstSound(kit, skin and skin[key]) or firstSound(kit, Art.SOUNDS[key])
 end
 
 -- Plays the moment's sound on the SFX channel -> true; false when muted or the client has none.
