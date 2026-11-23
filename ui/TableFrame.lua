@@ -318,6 +318,7 @@ function TableFrame.render()
     TableFrame.panels.renderPicker(v, client, s)
   end
   TableFrame.panels.renderFair(v, s)
+  ns.HandHistory.render(v, s) -- „История“ (ui/HandHistoryPanel.lua)
   renderStart(v, s, engine, client)
   TableFrame.tick()
 end
