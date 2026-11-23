@@ -11,7 +11,10 @@ local _, ns = ...
 -- A name counts once per gid: bodies of a gid with one content (a hash key) are one record
 -- (`by`: authors); across its records a debt-backed win or loss (staked R or S) beats a fun
 -- one, which beats a draw; on a tie a record with a seated or party author beats one
--- without, then the older keeps it. A record's at (and its e) is its oldest body by a
+-- without, then the older keeps it. A fun game is its opener's word (final review I2): a gid
+-- is "<opener>#<epoch>/<q>", and where a fun record by the opener names it, no other fun
+-- record of that gid counts for anybody (after a host change there is none: the rule above).
+-- A record's at (and its e) is its oldest body by a
 -- seated or party author, else its oldest body: an outsider's copy moves no game in time.
 -- Record {gid, g, at, by, e, sk, why, cash, state, counts[name] = "win"|"loss"|"draw"},
 -- lean (J3: Stats.dress names on demand); state "fun", "claim" (no author named and
@@ -121,6 +124,7 @@ end
 -- rule 5 across them: a name stays in the record of its highest weight, the first of it.
 local function group(out, id, es, x)
   local recs, byKey, backed, seated, best, party = {}, {}, {}, {}, {}, x and x.party or NONE
+  local opener, own, owned = str(id) and id:match("^(.*)#%d+/%d+$"), {}, false
   for _, e in ipairs(es) do
     if timed(e) then
       local k, a = #es > 1 and key(e) or "", Ledger.author(e.i)
@@ -131,9 +135,13 @@ local function group(out, id, es, x)
       end
       if not has(rec.by, a) then rec.by[#rec.by + 1] = a end
       if not backed[rec] and (has(list(e.n), a) or party[a]) then backed[rec], rec.e, rec.at = true, e, e.at end
+      if a == opener and fun(rec) and has(list(e.n), a) then own[rec], owned = true, true end
     end
   end
-  for _, rec in ipairs(recs) do seated[rec] = judge(rec, x) end
+  for _, rec in ipairs(recs) do
+    seated[rec] = judge(rec, x)
+    if owned and fun(rec) and not own[rec] then rec.counts, seated[rec] = {}, false end -- the opener's word stands
+  end
   local function weight(rec, how)
     return (how == "draw" and 1 or fun(rec) and 2 or 3) * 2 + (backed[rec] and 1 or 0)
   end

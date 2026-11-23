@@ -256,6 +256,49 @@ describe("ledger stats: forging routes", function()
     eq(fun.state, "fun"); eq(fun.counts, {})
   end)
 
+  -- Final review I2: a gid is "<opener>#<epoch>/<q>" (core/Session.lua), and a fun game is its opener's word.
+  local function hosted(k) return I .. "#1700000000/" .. k end
+  it("a loser's earlier fun R at the host's gid takes none of the host's wins, and no crown", function()
+    local b = book()
+    for k = 1, 5 do b.result(I, { gid = hosted(k), n = { I, M }, w = { 1 }, l = { 2 } }, nil, NOW - 100 + k) end
+    eq(board(b).king, I)
+    for k = 1, 5 do b.result(M, { gid = hosted(k), n = { I, M }, w = { 2 }, l = { 1 } }, nil, NOW - 5000 + k) end
+    local d = board(b)
+    eq(row(d.rows, I).wins, 5); eq(row(d.rows, I).games, 5); eq(row(d.rows, M).wins, 0); eq(row(d.rows, M).games, 5)
+    eq(d.king, I)
+    local g = games(b)
+    eq(#g, 10)
+    local forged = g[1].by[1] == M and g[1] or g[2]
+    eq(forged.by, { M }); eq(forged.counts, {}); eq(forged.state, "claim")
+  end)
+
+  it("one who never sat there and names itself in an earlier fun R at the host's gid gains nothing", function()
+    local b = book()
+    for k = 1, 5 do b.result(I, { gid = hosted(k), n = { I, M }, w = { 1 }, l = { 2 } }, nil, NOW - 100 + k) end
+    for k = 1, 5 do b.result(P, { gid = hosted(k), n = { P, I }, w = { 1 }, l = { 2 } }, nil, NOW - 5000 + k) end
+    local d = board(b)
+    eq(row(d.rows, I).wins, 5); eq(row(d.rows, I).games, 5); eq(row(d.rows, P), nil); eq(d.king, I)
+  end)
+
+  it("without a fun R of the opener that names it (a host that changed) the older seated record keeps the name", function()
+    local b = book()
+    b.result(M, { gid = hosted(1), n = { M, P }, w = { 1 }, l = { 2 } }, nil, NOW - 10) -- Мария took the table over
+    b.result(P, { gid = hosted(1), n = { M, P }, w = { 2 }, l = { 1 } }, nil, NOW - 50)
+    b.result(I, { gid = hosted(2), n = { M, P }, w = { 1 }, l = { 2 } }, nil, NOW - 10) -- the opener's, but it is not seated: nobody's
+    b.result(P, { gid = hosted(2), n = { M, P }, w = { 2 }, l = { 1 } }, nil, NOW - 50)
+    local d = board(b)
+    eq(row(d.rows, P).wins, 2); eq(row(d.rows, M).wins, 0); eq(row(d.rows, M).games, 2); eq(row(d.rows, I), nil)
+  end)
+
+  it("the opener's fun R takes nothing from a staked result at its gid", function()
+    local b = book()
+    b.result(M, { gid = hosted(1), n = { M, I }, w = { 1 }, l = { 2 }, sk = 1000 }, nil, NOW)
+    b.both(I, M, 1000, hosted(1), nil, NOW)
+    b.result(I, { gid = hosted(1), n = { I, M }, w = { 1 }, l = { 2 } }, nil, NOW - 10) -- the opener's "fun" win there
+    local r = board(b).rows
+    eq(row(r, M).wins, 1); eq(row(r, I).wins, 0); eq(row(r, I).games, 1)
+  end)
+
   it("a stranger's pending D at a fun gid changes nothing", function()
     local b = book()
     for k = 1, 5 do b.fun(I, k, I, M) end
