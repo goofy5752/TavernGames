@@ -21,7 +21,8 @@ local _, ns = ...
 -- No side sends more: a vector that does not fit goes in part, marked p = true (the
 -- authors the partner differs on first), and each exchange does some of the work.
 -- Of an author I hold stubs of, an R or S my heard exchanges carried a peer is not
--- sent it again (Sync:tail, core/LedgerSyncTail.lua).
+-- sent it again (Sync:tail, core/LedgerSyncTail.lua); a D, C, N, P or X is, last of
+-- all and at most once a day once it was carried (core/LedgerSyncAgain.lua).
 -- An asked exchange that ended with both f does net:settle(). A changed digest
 -- gives one GUILD HI (one per LEDGER_HI_GAP s). <= LEDGER_EXCHANGE_MAX entries sent
 -- and taken. A LEV of another author than its sender only inside an exchange with
@@ -46,7 +47,7 @@ Sync.arm = Net.arm -- fn(self) in seconds, unless the timer `field` is armed
 
 function Sync.new(client, ledger, net)
   return setmetatable({ client = client, L = ledger, net = net, by = {}, wait = {}, last = {}, out = {}, missed = {},
-    fix = {}, cur = {}, want = {}, high = Sync.marks(ledger), hot = {}, since = {}, owe = {}, stats = { sent = 0, got = 0 } }, Sync)
+    fix = {}, cur = {}, want = {}, high = Sync.marks(ledger), since = {}, owe = {}, got = {}, rot = {}, stats = { sent = 0, got = 0 } }, Sync)
 end
 
 function Sync.sorted(t) local out = {} for k in pairs(t) do out[#out + 1] = k end table.sort(out, byteLess) return out end
@@ -101,7 +102,7 @@ end
 
 function Sync:open(peer, ask)
   local x = { peer = peer, ask = ask, q = {}, qs = {}, sent = 0, took = 0, d0 = self.L:digest(true), lidOut = 0,
-    lids = 0, lidN = {}, lidMine = {}, lidAll = {}, lin = {}, pages = {}, items = {}, hw = {}, left = {} }
+    lids = 0, lidN = {}, lidMine = {}, lidAll = {}, lin = {}, pages = {}, items = {}, hw = {}, left = {}, ag = {}, re = {}, nre = 0 }
   self.by[peer], self.last[peer] = x, self.client.env.now()
   if ask then self.ask = x else self.serve = x end
   x.life = self.client:after(C.LEDGER_EX_MAX, function() self:finish(x, true) end)
@@ -177,8 +178,11 @@ function Sync:announce()
   presence:sendGuildHi(false)
 end
 
-function Sync:queue(x, bodies) -- bodies for exchange x to send, each once
-  for _, b in ipairs(bodies) do if not x.qs[b] then x.qs[b], x.q[#x.q + 1] = true, b end end
+-- Bodies for exchange x to send, each once, before its re-sent ones (the last x.nre of x.q);
+-- `again`: more of those, kept for Sync:resend (core/LedgerSyncAgain.lua).
+function Sync:queue(x, bodies, again)
+  for _, b in ipairs(bodies) do if not x.qs[b] then x.qs[b] = true; table.insert(x.q, #x.q - x.nre + 1, b) end end
+  for _, b in ipairs(again or {}) do x.ag[#x.ag + 1] = b end
 end
 
 function Sync:receive(sender, msg)
@@ -265,7 +269,7 @@ function Sync:pump()
   local msg = lev(room > 0 and Net.fit(room, Sync.BATCH_BYTES, lev) or 0)
   for _ = 1, #msg.ev do self:mark(x, table.remove(x.q, 1)) end -- the high-water marks (Sync:tail)
   x.sent, self.stats.sent = x.sent + #msg.ev, self.stats.sent + #msg.ev
-  if x.sent >= C.LEDGER_EXCHANGE_MAX then x.cut, x.rest, x.q = x.cut or #x.q > 0, x.q, {} end -- the next exchange continues
+  if x.sent >= C.LEDGER_EXCHANGE_MAX then x.cut, x.rest, x.q, x.nre = x.cut or #x.q > x.nre, x.q, {}, 0 end -- the next exchange continues
   msg.f = (#x.q == 0 and last(x)) or nil
   x.fMine, self.turn = msg.f, x
   local s = self.client.session

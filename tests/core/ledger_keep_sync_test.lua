@@ -365,8 +365,26 @@ describe("ledger F4 sync: no mark keeps a body from a peer that lacks it (bodies
     local t = 0
     while holds(c[ANA], Ledger.id(ZH, 41)) == 0 and t < 60 do sim:run(1); t = t + 1 end
     eq(holds(c[ANA], Ledger.id(ZH, 55)), 0)
+    sim:offline(ANA); sim:run(40); sim:online(ANA) -- Вера's exchange ended heard (Ана's f came first): its LEVs count as carried
+    for k = 1, 2 do give(c[ANA], { pay(ANA, k) }); hello(sim, ANA, VERA); sim:run(400) end
+    eq(holds(c[ANA], Ledger.id(ZH, 55)), 0) -- not again within a day of this session (Ruling F4-F) ...
+    sim:relog(VERA); sim:run(31) -- ... her next session sends them once more
+    for k = 3, 5 do give(c[ANA], { pay(ANA, k) }); hello(sim, ANA, VERA); sim:run(400) end
+    ok(kinds(c[ANA], ks))
+  end)
+
+  it("... or a day later in the same session", function()
+    local sim, c = world(ANA, VERA)
+    local ks = { D = 50, C = 51, P = 55, N = 57, X = 59 }
+    give(c[VERA], rs(ZH, 1, 40, OLD)); give(c[VERA], heavy(41, 60, EPOCH0, ks))
+    eq(pruneAll(c[VERA], 15), 40)
+    sim:offline(ANA); sim:relog(VERA); sim:run(31); sim:online(ANA)
+    hello(sim, ANA, VERA)
+    local t = 0
+    while holds(c[ANA], Ledger.id(ZH, 41)) == 0 and t < 60 do sim:run(1); t = t + 1 end
     sim:offline(ANA); sim:run(40); sim:online(ANA)
-    for k = 1, 8 do give(c[ANA], { pay(ANA, k) }); hello(sim, ANA, VERA); sim:run(400) end
+    sim:run(C.LEDGER_REFUSED_TTL)
+    for k = 1, 3 do give(c[ANA], { pay(ANA, k) }); hello(sim, ANA, VERA); sim:run(400) end
     ok(kinds(c[ANA], ks))
   end)
 
@@ -422,7 +440,7 @@ describe("ledger F4 sync: the marks in the store", function()
   end
   -- An exchange with `peer`, as Sync:open and Sync:vector make it, at its end: both f (heard), acted on ZH.
   local function ex(peer, L, acted, more)
-    local x = { peer = peer, hw = {}, left = {}, q = {}, rev0 = L.rev, acted = acted or { [ZH] = "s" }, fMine = true, fTheirs = true }
+    local x = { peer = peer, hw = {}, left = {}, q = {}, qs = {}, ag = {}, re = {}, nre = 0, rev0 = L.rev, acted = acted or { [ZH] = "s" }, fMine = true, fTheirs = true }
     for k, v in pairs(more or {}) do x[k] = v end
     return x
   end
@@ -451,7 +469,7 @@ describe("ledger F4 sync: the marks in the store", function()
     eq(L.store.hw, s.high)
   end)
 
-  it("a mark is noted in its exchange and committed only when the exchange was heard and not cut", function()
+  it("a mark is noted in its exchange and committed when the exchange was heard, cut or not", function()
     clock.t = EPOCH0
     local hw = {}
     for j = 1, C.LEDGER_HW_PEERS do hw["Пир" .. j] = { at = EPOCH0 - 1000 + j, a = {} } end
@@ -464,14 +482,20 @@ describe("ledger F4 sync: the marks in the store", function()
     eq(s.high[DARA], nil) -- nothing before its end
     s:ended(ex(DARA, L, nil, { fTheirs = false, hw = { [ZH] = 6 } })) -- the partner's last word never came
     s:ended(ex(DARA, L, nil, { hw = { [ZH] = 6 } }), true) -- capped
-    eq(s.high[DARA], nil); eq(s.hot[DARA], nil); eq(s.since[DARA], nil)
+    eq(s.high[DARA], nil); eq(s.since[DARA], nil)
     eq(#s:tail(ex(DARA, L), ZH, CELL), 3)
-    s:ended(ex(DARA, L, nil, { cut = true, hw = { [ZH] = 6 } })) -- cut: counts for this session only
-    eq(s.high[DARA], nil); eq(s.hot[DARA][ZH], 6)
-    eq(#s:tail(ex(DARA, L), ZH, CELL), 0) -- 4..6 went
-    s:ended(x) -- heard, not cut: committed, with the session's
-    eq(s.high[DARA].a[ZH], 6); eq(s.high[DARA].at, EPOCH0); eq(L.store.hw[DARA].a[ZH], 6); eq(s.hot[DARA], nil)
+    local b6 = L:get(Ledger.id(ZH, 6))
+    s:ended(ex(DARA, L, nil, { cut = true, hw = { [ZH] = 5 }, rest = { b6 } })) -- cut, heard: committed (final review I1)
+    eq(s.high[DARA].a[ZH], 5); eq(s.high[DARA].at, EPOCH0); eq(L.store.hw[DARA].a[ZH], 5)
     eq(s.high["Пир1"], nil); ok(s.high["Пир2"], "the next oldest stays")
+    local tail = s:tail(ex(DARA, L), ZH, CELL)
+    eq(#tail, 1); eq(tail[1], b6) -- 4 and 5 went
+    s:ended(ex(DARA, L, nil, { cut = true, hw = { [ZH] = 6 }, rest = { b6 } })) -- no mark reaches what was queued and not sent
+    eq(s.high[DARA].a[ZH], 5)
+    s:ended(x)
+    eq(s.high[DARA].a[ZH], 5) -- a mark only grows
+    s:ended(ex(DARA, L, nil, { hw = { [ZH] = 6 }, left = { b6 } }))
+    eq(s.high[DARA].a[ZH], 6); eq(#s:tail(ex(DARA, L), ZH, CELL), 0)
   end)
 
   it("a row lives LEDGER_HW_KEEP s from its first commit: a later commit keeps its date", function()
@@ -493,15 +517,18 @@ describe("ledger F4 sync: the marks in the store", function()
     eq(s2.high[DARA], nil)
   end)
 
-  it("the tail leaves out only an R or S: a D, C, N, P or X at or below the mark goes", function()
+  it("the tail leaves out for good only an R or S: a D, C, N, P or X at or below the mark is to be re-sent", function()
     clock.t = EPOCH0
     local s, L = sync({})
     stubbed(L, 4, 3)
     for _, e in ipairs(heavy(4, 9, EPOCH0, { D = 4, C = 5, N = 6, P = 7, X = 9 })) do eq(L:add(e, BOR), "new") end
     s:ended(ex(DARA, L, nil, { hw = { [ZH] = 9 } }))
-    local tail = s:tail(ex(DARA, L), ZH, CELL)
-    eq(#tail, 5) -- not the R at 8
-    for _, b in ipairs(tail) do ok(b.k ~= "R", b.k) end
+    local tail, again = s:tail(ex(DARA, L), ZH, CELL)
+    eq(#tail, 0); eq(#again, 5) -- not the R at 8
+    for _, b in ipairs(again) do ok(b.k ~= "R", b.k) end
+    local x = ex(DARA, L)
+    s:queue(x, tail, again); s:resend(x)
+    eq(#x.q, 5) -- they go, behind what no mark covers (core/LedgerSyncAgain.lua)
   end)
 
   it("an exchange that did not act on an author leaves that author's late bodies to be sent", function()

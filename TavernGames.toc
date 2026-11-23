@@ -45,6 +45,7 @@ core/LedgerSync.lua
 core/LedgerSyncPage.lua
 core/LedgerSyncVector.lua
 core/LedgerSyncTail.lua
+core/LedgerSyncAgain.lua
 core/Pay.lua
 core/PaySubject.lua
 core/PayGuard.lua

@@ -108,6 +108,7 @@ function Sync:vector(x)
     if x.ask and (not m or (m.x ~= t.x and m.n < t.n)) then want[a] = 2 end
   end
   if x.ask then self.want[x.peer] = want end
+  self:resend(x) -- the D, C, N, P and X below a mark go last, of every author
   for a in pairs(x.ask and {} or x.v) do if not mine[a] then back[a] = { n = 0, x = ZERO } end end
   local first = sorted(back)
   for a, m in pairs(extra) do back[a] = m end

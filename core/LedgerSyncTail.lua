@@ -1,17 +1,18 @@
 local _, ns = ...
 
 -- What goes of an author's tail in an exchange of core/LedgerSync.lua (F4, Decision R; J1 a, J5,
--- Task 2 review). A newcomer never gets the bodies I hold only as stubs, so its n stays below
+-- Ruling F4-F). A newcomer never gets the bodies I hold only as stubs, so its n stays below
 -- them and L:above(author, n) would resend it all every time. Each LEV notes the highest number
--- it carried of an author I hold stubs of (Sync:mark); Sync:tail leaves out an R or S at or
--- below the peer's mark that came to me before the last heard exchange that acted on its
--- author (L.came, self.since: memory, J5), unless that one queued and did not send it
--- (self.owe). Any other kind (D, C, N, P, X) always goes. Heard: both f, not capped. Its marks
--- count for the session (self.hot); not cut either, it commits them to the ledger store:
--- store.hw[peer] = {at = my epoch at the row's first commit (kept), a = {[author] = n}}, gone
--- LEDGER_HW_KEEP s after it, at most LEDGER_HW_PEERS rows (a new one drops the oldest); a load
--- drops malformed rows and cells and an author's I hold no stub of. A partner that holds
--- nothing of the author (a new install) is sent L:above, and its marks of that author go.
+-- it carried of an author I hold stubs of (Sync:mark). Sync:tail leaves out what is at or below
+-- the peer's mark and came to me before the last heard exchange that acted on its author
+-- (L.came, self.since: memory, J5), unless that one queued and did not send it (self.owe):
+-- an R or S for good, any other kind (D, C, N, P, X) to be re-sent last (core/LedgerSyncAgain.lua).
+-- Heard: both f, not capped; cut or not, it commits its marks to the ledger store (never above
+-- an entry it queued and did not send): store.hw[peer] = {at = my epoch at the row's first
+-- commit (kept), a = {[author] = n}}, gone LEDGER_HW_KEEP s after it, at most LEDGER_HW_PEERS
+-- rows (a new one drops the oldest); a load drops malformed rows and cells and an author's I
+-- hold no stub of. A partner that holds nothing of the author (a new install) is sent L:above,
+-- and its mark of that author goes.
 local Ledger, C, Util = ns.Ledger, ns.Const, ns.Util
 local Sync = ns.LedgerSync
 local byteLess, sorted, ZERO = Util.byteLess, Sync.sorted, ("0"):rep(12)
@@ -56,44 +57,42 @@ function Sync:row(peer, make)
   return rows[peer]
 end
 
--- Body b left for x's peer in a LEV (Sync:pump): x.left, and x.hw[author] when I hold stubs of it.
-function Sync:mark(x, b)
-  local a, k = Ledger.author(b.i)
-  x.left[#x.left + 1] = b
-  if a and self.L.sn[a] then x.hw[a] = math.max(x.hw[a] or 0, k) end
-end
-
 -- Exchange x ended (Sync:finish; capped: at LEDGER_EX_MAX or the page cap). Heard: what came to me
 -- before its x.rev0 is what the peer got or holds, of each author it acted on, save what it
--- queued and did not send (owed); its marks count; not cut either: they are committed.
+-- queued and did not send (owed, and no mark of it reaches that); its marks are committed.
 function Sync:ended(x, capped)
-  if not (x.fMine and x.fTheirs) or capped then return end
   local peer = x.peer
-  local since, owe, hot = self.since[peer] or {}, self.owe[peer] or setmetatable({}, { __mode = "k" }), self.hot[peer] or {}
-  self.since[peer], self.owe[peer], self.hot[peer] = since, owe, hot
+  if not (x.fMine and x.fTheirs) or capped then self.rot[peer] = (self.rot[peer] or 0) + (x.went or 0); return end
+  local since, owe = self.since[peer] or {}, self.owe[peer] or setmetatable({}, { __mode = "k" })
+  self.since[peer], self.owe[peer] = since, owe
   for a in pairs(x.rev0 and x.acted or {}) do since[a] = x.rev0 end
   for _, b in ipairs(x.left) do owe[b] = nil end
-  for _, list in ipairs({ x.rest or {}, x.q }) do for _, b in ipairs(list) do owe[b] = true end end
-  for a, k in pairs(x.hw) do hot[a] = math.max(hot[a] or 0, k) end
-  if x.cut or not next(hot) then return end
+  for _, list in ipairs({ x.rest or {}, x.q }) do
+    for _, b in ipairs(list) do
+      local a, k = Ledger.author(b.i)
+      if x.re[b] then x.acted[a] = nil else owe[b] = true end -- a re-sent one waits its turn (Sync:resend)
+      if not x.re[b] and x.hw[a] and x.hw[a] >= k then x.hw[a] = k - 1 end
+    end
+  end
+  self:carried(x)
+  if not next(x.hw) then return end
   local row = self:row(peer, true)
-  for a, k in pairs(hot) do row.a[a] = math.max(row.a[a] or 0, k) end
-  self.hot[peer] = nil
+  for a, k in pairs(x.hw) do row.a[a] = math.max(row.a[a] or 0, k) end
 end
 
 -- The bodies of author a that exchange x queues for a partner whose cell is t (nil: it lacks a):
--- L:above(a, n), less, when I hold stubs of a above n, the R and S Sync:ended let me leave out.
+-- L:above(a, n); when I hold stubs of a above n, less what Sync:ended lets me leave out -> those,
+-- and the D, C, N, P and X among the left out that are due again (Sync:resend).
 function Sync:tail(x, a, t)
-  local L, n, peer, hot = self.L, t and t.n or 0, x.peer, self.hot[x.peer] or {}
+  local L, n, peer = self.L, t and t.n or 0, x.peer
   local row = self:row(peer)
-  if not t or t.x == ZERO then -- it holds nothing of a: my marks of a are wrong
-    if row then row.a[a] = nil end
-    hot[a] = nil
-  end
-  local h = t and t.x ~= ZERO and L:stubTop(a) > n and math.max(row and row.a[a] or 0, hot[a] or 0) or 0
+  if row and (not t or t.x == ZERO) then row.a[a] = nil end -- it holds nothing of a: my mark of a is wrong
+  local h = t and t.x ~= ZERO and L:stubTop(a) > n and row and row.a[a] or 0
   if h <= n then return L:above(a, n) end
-  local since, owe, came = (self.since[peer] or {})[a] or 0, self.owe[peer] or {}, L.came
+  local since, owe, came, again = (self.since[peer] or {})[a] or 0, self.owe[peer] or {}, L.came, {}
   return L:above(a, n, function(k, b)
-    return k > h or (b.k ~= "R" and b.k ~= "S") or (came[b] or 0) > since or owe[b] == true
-  end)
+    if k > h or (came[b] or 0) > since or owe[b] == true then return true end
+    if b.k ~= "R" and b.k ~= "S" and self:due(peer, b) then again[#again + 1] = b end
+    return false
+  end), again
 end
