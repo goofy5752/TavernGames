@@ -415,6 +415,27 @@ describe("ui: hand history — the panel beside the table", function()
     end)
   end
 
+  it("at the screen's right edge the window opens on the table's left; back right once there is room", function()
+    local w = guildWow()
+    w.ns.client:openTable{ game = "santase", access = "guild", turn = 45 }
+    w:advance(0)
+    local TF = w.ns.TableFrame
+    local v, f = TF.view, TF.frame
+    -- the frame where the client has it (the fake has no layout: its left edge, in its own units)
+    f.left = 1920 - f:GetWidth() - 10
+    w:click(v.historyButton)
+    eq(v.history.points, { { "TOPRIGHT", f, "TOPLEFT", 0, 0 }, { "BOTTOMRIGHT", f, "BOTTOMLEFT", 0, 0 } })
+    -- scaled up (ui/Resize.lua) the same frame needs more room still: left; moved to the middle: right
+    f.left = 600; f:SetScale(1.5); w.ns.TableFrame.render()
+    eq(v.history.points[1], { "TOPRIGHT", f, "TOPLEFT", 0, 0 })
+    f:SetScale(1); f:GetScript("OnDragStop")(f) -- a drag ends: placed again
+    eq(v.history.points, { { "TOPLEFT", f, "TOPRIGHT", 0, 0 }, { "BOTTOMLEFT", f, "BOTTOMRIGHT", 0, 0 } })
+    -- dragged by its title bar to the right edge: left again
+    f.left = 1900 - f:GetWidth()
+    v.title:GetParent():GetScript("OnDragStop")(v.title:GetParent())
+    eq(v.history.points[1], { "TOPRIGHT", f, "TOPLEFT", 0, 0 })
+  end)
+
   it("the title bar's options line stops before the watchers and „История“", function()
     local w = guildWow()
     w.ns.client:openTable{ game = "belot", access = "guild", turn = 45 }
@@ -595,6 +616,34 @@ describe("ui: hand history — Холдем", function()
     for _, a in ipairs(H.tables["t#1"].hands[1].acts) do got[#got + 1] = table.concat({ a.street, a.seat, a.k, tostring(a.amt) }, " ") end
     eq(got, { "0 2 sb 5", "0 3 bb 10", "0 1 raise 30", "1 3 call 40", "2 3 check nil" })
     ok(lineWith(panel, "Kiro: " .. L("holdem.hist.call", "40")), "the call after the snapshot")
+  end)
+
+  it("a game that ends after its first hand: the next game's hand 1 is a record of its own", function()
+    local w, panel = setup(240, 400)
+    local H, L = w.ns.HandHistory, w.ns.L
+    local st = playHand(H, 1) -- game 1: hand 1, then the game ends
+    eq(#H.tables["t#1"].hands, 1)
+    local st2 = EH.new{ seats = { true, true, true } } -- game 2 at the same table (no state.g)
+    H.observe(hsess(st2, 1))
+    ok(EH.apply(st2, 0, { k = "hand" })); H.observe(hsess(st2, 1))
+    ok(EH.apply(st2, 0, { k = "deal", deck = EH.DECK })); H.observe(hsess(st2, 1))
+    HH.apply(st2, st2.turn, { k = "fold" }); H.observe(hsess(st2, 1))
+    local hands = H.tables["t#1"].hands
+    eq(#hands, 2)
+    eq({ hands[1].no, hands[2].no, #hands[1].acts, hands[1].done, hands[2].done }, { 1, 1, 12, true, nil })
+    eq(hands[2].acts[3], { street = 0, seat = 1, k = "fold" })
+    -- the same when the new game is first seen at its hand 1 (no idle state in between)
+    local st3 = EH.new{ seats = { true, true, true } }
+    ok(EH.apply(st3, 0, { k = "hand" })); ok(EH.apply(st3, 0, { k = "deal", deck = EH.DECK }))
+    local w2 = setup(240, 400)
+    local H2 = w2.ns.HandHistory
+    playHand(H2, 1)
+    -- a game 1 that reached hand 3, then game 2 at hand 1: the count went back
+    H2.tables["t#1"].hands[1].no = 3; H2.tables["t#1"].hands[1].key = ":3"
+    H2.observe(hsess(st3, 1))
+    eq(#H2.tables["t#1"].hands, 2)
+    H.draw(panel, hsess(st2, 1))
+    eq(lines(panel)[1], plain(L("table.historyHand", 1)) .. " · " .. plain(L("holdem.historyBlinds", "5", "10")))
   end)
 
   it("a record begun mid-hand: a short blind posts what it had", function()

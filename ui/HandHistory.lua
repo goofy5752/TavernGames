@@ -43,7 +43,8 @@ local function bookOf(s)
   return b
 end
 
--- The record of hand `no` of game `gid` (the engine's own identity: Холдем's state.g;
+-- The record of hand `no` of game `gid` (Холдем's state.g where core/Cash.lua set it at
+-- `start`, else none: a new game is seen by its hand count going back, see holdem();
 -- none for the card games, whose new match begins with a "deal" phase that closes the
 -- last hand): the newest one, or a new one on top while that is another hand, closed,
 -- or ended with its game (`over`: the state is still that game's end). Never s.gameNo,
@@ -200,6 +201,9 @@ local function diff(hand, st, was)
 end
 
 local function holdem(s, st, b)
+  local top = b.hands[#b.hands]
+  -- a new game at the table: its hand count is back at 0, or below the last hand's
+  if top and ((st.hand or 0) < 1 or st.hand < top.no) then top.closed = true end
   local inHand = E.holdem.inHand(st)
   local last = st.last and st.last.hand == st.hand and st.last or nil
   if not inHand and not last or (st.hand or 0) < 1 then return end

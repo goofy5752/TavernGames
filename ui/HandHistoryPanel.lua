@@ -217,13 +217,14 @@ end
 local function build(v)
   local f = ns.TableFrame.frame
   local panel = H.buildPanel(f, true)
-  panel:ClearAllPoints()
-  panel:SetPoint("TOPLEFT", f, "TOPRIGHT", 0, 0)
-  panel:SetPoint("BOTTOMLEFT", f, "BOTTOMRIGHT", 0, 0)
   panel:SetWidth(SIDE_W)
   W.dragBy(panel, f) -- dragging the side window moves the table with it
-  panel:SetScript("OnShow", function() H.draw(panel, ns.client and ns.client.session) end)
+  panel:SetScript("OnShow", function() H.place(v); H.draw(panel, ns.client and ns.client.session) end)
   v.history = panel
+  for _, handle in ipairs({ f, v.title:GetParent(), panel }) do -- the frame, its title bar: moved, placed again
+    handle:HookScript("OnDragStop", function() H.place(v) end)
+  end
+  H.place(v)
   local button = W.GhostButton(f, L("table.history"), "brassLight", function()
     panel:SetShown(not panel:IsShown())
   end)
@@ -231,6 +232,25 @@ local function build(v)
   button:SetFrameLevel(v.info:GetFrameLevel())
   button:SetPoint("RIGHT", v.info, "LEFT", -8, 0)
   v.historyButton = button
+end
+
+-- The side window right of the table frame, or left of it when it would pass the
+-- screen's right edge there (the frame is clamped to the screen, the window is not).
+function H.place(v)
+  local f, panel = ns.TableFrame.frame, v.history
+  local left, scale = f:GetLeft(), f:GetEffectiveScale()
+  local screen = UIParent:GetWidth() * UIParent:GetEffectiveScale()
+  local side = left and (left + f:GetWidth() + SIDE_W) * scale > screen and "left" or "right"
+  if panel.side == side then return end
+  panel.side = side
+  panel:ClearAllPoints()
+  if side == "left" then
+    panel:SetPoint("TOPRIGHT", f, "TOPLEFT", 0, 0)
+    panel:SetPoint("BOTTOMRIGHT", f, "BOTTOMLEFT", 0, 0)
+  else
+    panel:SetPoint("TOPLEFT", f, "TOPRIGHT", 0, 0)
+    panel:SetPoint("BOTTOMLEFT", f, "BOTTOMRIGHT", 0, 0)
+  end
 end
 
 -- The title bar's options line (v.meta) on one line, never wider than the room
@@ -259,6 +279,7 @@ function H.render(v, s)
   v.watchers:ClearAllPoints()
   v.watchers:SetPoint("RIGHT", kept and v.historyButton or v.info, "LEFT", -12, 0)
   fitMeta(v, kept)
+  if v.history:IsShown() then H.place(v) end
   local h = ns.TableFrame.frame:GetHeight()
   if v.history.h ~= h then -- the wood tiles, never stretches, as the frame's (TableFrame fit)
     v.history.h = h
