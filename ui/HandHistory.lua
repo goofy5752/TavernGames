@@ -16,8 +16,10 @@ local _, ns = ...
 --     even once the match is over and the view holds every face.
 --   Холдем: the blinds, every action (fold / check / call / bet / raise /
 --     all-in, from what each seat put in: st.p), the board, the result, the
---     hole cards of the seats in st.last.shown (the showdown) and my own two
---     cards (s.mySeat; marked as mine when drawn). Never a folded or unshown hand.
+--     hole cards of the seats in st.last.shown (the showdown), those an all-in
+--     turned up before it (E.faceUp, once every one of them is face up on my state:
+--     open = {{seat, cards, at = the street}}) and my own two cards (s.mySeat;
+--     marked as mine when drawn). Never a folded or unshown hand.
 --
 -- HandHistory.tables[tid] = { game, hands = { oldest … newest }, ver } and a
 -- hand = { key, no, names = {seat -> name}, … }:
@@ -25,7 +27,7 @@ local _, ns = ...
 --     under way), contract (Белот), tsuit, events = {{at = trick, k, seat, pts}},
 --     res (Сантасе);
 --   Холдем: sb, bb, acts = {{street, seat, k, amt}…}, board = {faces}, mine,
---     me, shown = {{seat, cards, cat}}, won = {{seat, amt}}, void, done.
+--     me, open, shown = {{seat, cards, cat}}, won = {{seat, amt}}, void, done.
 local E = ns.Engines
 
 local H = { MAX = 10, GAMES = { belot = true, santase = true, holdem = true }, tables = {} }
@@ -231,6 +233,17 @@ local function holdem(s, st, b)
     local f1, f2 = st.deck[mine.cards[1]], st.deck[mine.cards[2]]
     if f1 and f2 then hand.mine, hand.me = { f1, f2 }, me end
   end
+  local open = {}
+  for _, seat in ipairs(hand.done and {} or E.holdem.faceUp(st)) do -- rule 11a: all of them up on my state, or none yet
+    local p = st.p[seat]
+    local f1, f2 = st.deck[p.cards[1]], st.deck[p.cards[2]]
+    if not (f1 and f2) then open = nil; break end
+    open[#open + 1] = { seat = seat, cards = { f1, f2 }, at = st.street }
+  end
+  hand.open = hand.open or {}
+  local had = {}
+  for _, x in ipairs(hand.open) do had[x.seat] = true end
+  for _, x in ipairs(open or {}) do if not had[x.seat] then hand.open[#hand.open + 1] = x end end
   if last and not hand.done then
     hand.done, hand.void = true, last.void == true
     hand.shown, hand.won = {}, {}

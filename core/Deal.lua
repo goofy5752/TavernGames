@@ -24,30 +24,25 @@ local _, ns = ...
 -- (a new h, fresh seeds, the same dealer), and a stand during the shuffle
 -- reopens it at once. A shuffle that had every commit and was not dealt
 -- although nobody left closes "bad", "nodeal" (the dealer saw the seeds).
--- A player missing faces of its hand asks the dealer again (PRQ): at once
--- after adopting a dealt hand, else after FAIR_ASK_GAP. A dealer without its
--- deck (it came back without its saved round, core/DealKeep.lua: a /reload
--- alone keeps the deck and the hand goes on) or whose seat stands mid-hand:
--- the hand is void (EV seat 0
--- {k="void"}), nothing scores, and the deal is asked for again - from the
--- next seat (the count of deals is kept; an engine naming the dealer moves it
--- on itself), so a void never buys the same dealer another deck. A dealer
--- that lost its deck while the hand ran gives the hand up even when it ended
--- before the void came, if its seat played no card in it (Белот: passed
--- out): void, not "noreveal". A void is refused once the engine's next step
--- is its own (Белот: the score after the eighth trick). Voids and
--- no-deals are counted per dealer name and match (s.fairVoids) and the status
--- line names the dealer.
+-- A player missing faces of its hand asks the dealer again (PRQ): at once after adopting a dealt
+-- hand, else after FAIR_ASK_GAP. A dealer without its deck (it came back without its saved round,
+-- core/DealKeep.lua: a /reload alone keeps the deck and the hand goes on) or whose seat stands
+-- mid-hand: the hand is void (EV seat 0 {k="void"}), nothing scores, and the deal is asked for
+-- again - from the next seat (the count of deals is kept; an engine naming the dealer moves it on
+-- itself), so a void never buys the same dealer another deck. A dealer that lost its deck while
+-- the hand ran gives the hand up even when it ended before the void came, if its seat played no
+-- card in it (Белот: passed out): void, not "noreveal". A void is refused once the engine's next
+-- step is its own (Белот: the score after the eighth trick). Voids and no-deals are counted per
+-- dealer name and match (s.fairVoids) and the status line names the dealer.
 -- A seat whose own check failed where the others cannot see it tells the table:
 -- ACT {k="fair", op="protest", h, why} -> EV seat 0 {..., seat, why}, once per
 -- seat and hand. The others keep it as a claim about that hand (s.fairCry,
 -- Deal.claim): it changes no verdict and no colour of theirs.
--- Fouls (fair.foul, see Deal.close): "mine" (my commit or seed was replaced),
--- "commit" (a commit changed), "round" (a snapshot changed the round or
--- skipped events unasked), "play" (an event my engine refused), "forged" (a
--- move or a void in my name that I did not make), "announce" (the engine
--- named a seat whose announce its cards did not back, E.foul: every client
--- sees it when the hand is scored; fair.who and s.fairLast.who = that player).
+-- Fouls (fair.foul, see Deal.close): "mine" (my commit or seed was replaced), "commit" (a commit
+-- changed), "round" (a snapshot changed the round or skipped events unasked), "play" (an event my
+-- engine refused), "forged" (a move or a void in my name that I did not make), "announce" (the
+-- engine named a seat whose announce its cards did not back, E.foul: every client sees it when
+-- the hand is scored; fair.who and s.fairLast.who = that player).
 -- A member whose snapshot shows that a hand it held open was closed or
 -- replaced closes it "unseen" (it missed the end). A snapshot of the same
 -- dealt hand makes a reveal or void I asked for due again (it may have gone to
@@ -63,8 +58,8 @@ local _, ns = ...
 -- "announce" foul names), lost (dealer: my deck was gone while the hand ran),
 -- voidLate (dealer: the void asked again after the hand ended), revealed,
 -- out (the published seeds), wantOpen (host: the engine asked for the next
--- deal), replaced (the round an open replaced while
--- still "dealt")}; s.fairEarly[h][sender] = seeds that reached the dealer
+-- deal), replaced (the round an open replaced while still "dealt"), up (dealer: the
+-- faces of my show, Deal.sync)}; s.fairEarly[h][sender] = seeds that reached the dealer
 -- before its last commit event; s.fairN = hands dealt in this match;
 -- s.fairTimer (host) = the round's wait (FAIR_WAIT): for a shuffle from the
 -- open until the deal, for a reveal from the end of the hand. s.askTimer =
@@ -457,7 +452,7 @@ local function seedsIn(fair)
 end
 
 -- Dealer: every participant's seed is in -> the deck, and the deal is asked for
--- with the faces a watcher sees.
+-- with the faces the deal itself turns up (E.view `dealt`: no hand of an all-in).
 local function tryDeal(s)
   local fair, engine = s.fair, s:engine()
   if fair.dealing or fair.stage ~= "seed" or s.mySeat ~= fair.d then return end
@@ -466,7 +461,7 @@ local function tryDeal(s)
   local deck = Fair.deck(engine.DECK, list, Fair.handId(s.tid, fair.h))
   local full = Fair.full(s.state, s.state.deck)
   if not engine.apply(full, 0, { k = "deal", deck = deck }) then return end
-  local pub = engine.view(full, 0).deck
+  local pub = engine.view(full, 0, true).deck
   fair.deck, fair.pub, fair.sent, fair.dealing = deck, pub, {}, true
   ns.DealKeep.save(s)
   Deal.submit(s, { k = "fair", op = "deal", h = fair.h, deck = copy(pub) })
@@ -482,23 +477,16 @@ local function takeEarly(s)
   end
 end
 
--- Dealer, stage "dealt": faces public outside a play go to the host as one
--- show; every seated participant gets the faces only it sees, once.
+-- Dealer, stage "dealt": every seated participant gets the faces only it sees, once (again after
+-- its PRQ); then faces public outside a play (Холдем: an all-in's hands) go to the host as one
+-- show, once (fair.up), not again after a reload when my state already holds all but my own.
 function Deal.sync(s)
   local fair, engine = s.fair, s:engine()
   if not fair or fair.stage ~= "dealt" or not fair.deck or s.mySeat ~= fair.d then return end
   local full = Fair.full(s.state, fair.deck)
-  local known = engine.view(s.state, 0).deck
+  local known, now = engine.view(s.state, 0, true).deck, engine.view(full, 0, true).deck
   local function unsent(i, sent)
-    return known[i] == nil and fair.pub[i] == nil and (sent == nil or sent[i] == nil)
-  end
-  local show = {}
-  for i, f in pairs(engine.view(full, 0).deck) do
-    if unsent(i) then show[i] = f end
-  end
-  if next(show) then
-    for i, f in pairs(show) do fair.pub[i] = f end
-    Deal.submit(s, { k = "fair", op = "show", h = fair.h, cards = copy(show) })
+    return known[i] == nil and fair.pub[i] == nil and (sent == nil or (sent[i] == nil and now[i] == nil))
   end
   for _, q in ipairs(fair.p) do
     local name = s.seats[q]
@@ -506,7 +494,7 @@ function Deal.sync(s)
       local sent = fair.sent[q] or {}
       fair.sent[q] = sent
       local out = {}
-      for i, f in pairs(engine.view(full, q).deck) do
+      for i, f in pairs(engine.view(full, q, true).deck) do
         if unsent(i, sent) then out[i] = f end
       end
       if next(out) then
@@ -518,6 +506,18 @@ function Deal.sync(s)
         end
       end
     end
+  end
+  local show, up, own, fresh, other = {}, fair.up or {}, fair.sent[s.mySeat] or {}, false, false
+  for i, f in pairs(engine.view(full, 0).deck) do
+    if unsent(i) and up[i] == nil then
+      if s.state.deck[i] == nil or own[i] then show[i], fresh = f, fresh or s.state.deck[i] == nil end
+      other = other or not own[i]
+    end
+  end
+  if next(show) and (fresh or not other) then
+    for i, f in pairs(show) do up[i] = f end
+    fair.up = up
+    Deal.submit(s, { k = "fair", op = "show", h = fair.h, cards = copy(show) })
   end
 end
 

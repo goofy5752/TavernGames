@@ -53,6 +53,13 @@ RULES
 10. Everyone but one folds: he wins every pot at once, nobody shows, his cards stay hidden.
 11. Showdown: every live hand is shown (no mucking). The last bettor/raiser of the river shows first,
     else the first live player left of the button; then clockwise. Best five of seven (holdem_eval.lua).
+11a. All-in: once nobody can bet any more in this hand (phase street or showdown, 2+ live players, at
+    most one of them with chips behind: rule 9's run-out, or a river call to an all-in) every live hand is
+    face up at once, before the board runs out (E.faceUp, read from the public state alone: it changes no
+    state, so every client and every version holds the same one). E.view shows those hands, E.view(s,
+    seat, true) leaves them out (what a deal itself turns up); the dealer turns them up with a seat-0
+    {k="show"} (core/Deal.lua, Deal.sync). A folded hand is never one of them, nor is a hand a leave or an
+    away folds during the run-out; rules 10 and 15 still apply.
 12. Pots: contributions are layered by size. A layer only one player paid into is an uncalled bet and goes
     back to him. A pot is won only by live players who paid its whole layer; folded chips stay in the pot
     (a layer that only folded players paid into, which only a leave can cause, joins the pot below it).
@@ -785,11 +792,27 @@ function E.dealer(s)
   return nextSeat(s.button, function(i) return here(s, i) end)
 end
 
-function E.view(s, seat)
+-- rule 11a: the hands face up before the showdown -> {seats} in dealing order ({} while betting goes on)
+function E.faceUp(s)
+  if s.phase ~= "street" and s.phase ~= "showdown" then return {} end
+  local up, actors = {}, 0
+  for _, i in ipairs(s.order) do
+    if live(s, i) then up[#up + 1] = i end
+    if canAct(s, i) then actors = actors + 1 end
+  end
+  if #up < 2 or actors > 1 then return {} end
+  return up
+end
+
+-- dealt: only what the deal itself turns up, not the hands an all-in turns up (rule 11a)
+function E.view(s, seat, dealt)
   local v = copy(s)
   local vis = {}
   for _, i in ipairs(s.board) do vis[i] = true end
   for st in pairs(s.shown) do
+    for _, i in ipairs(s.p[st].cards) do vis[i] = true end
+  end
+  for _, st in ipairs(dealt and {} or E.faceUp(s)) do
     for _, i in ipairs(s.p[st].cards) do vis[i] = true end
   end
   local own = seat and s.p[seat]

@@ -496,6 +496,7 @@ local function public(st, seat)
   local last = st.last and st.last.hand == st.hand and st.last
   local function hole(q) for _, i in ipairs(st.p[q] and st.p[q].cards or {}) do pub[st.deck[i]] = true end end
   for _, q in ipairs(last and last.shown or {}) do hole(q) end
+  for _, q in ipairs(EH.faceUp(st)) do hole(q) end -- rule 11a: up at an all-in
   if seat then hole(seat) end
   return pub
 end
@@ -578,6 +579,65 @@ describe("ui: hand history — Холдем", function()
     for _, face in ipairs({ "2C", "5C", "4C", "7C" }) do neverShown(w3, face); notRecorded(w3, face) end
     ok(lineWith(panel3, plain(L("holdem.historyMine", card("3C") .. " " .. card("6C")))), "my own cards")
   end))
+
+  -- hand3 to an all-in on the turn: seat 1 calls, seat 2 folds, seat 3 checks; flop checked; turn: seat 3
+  -- all-in, seat 1 calls; the river 2D; seat 1's flush beats seat 3's. Observed as `seat` (session mk).
+  local function allinHand(H, seat, each, mk)
+    local st = hand3()
+    local function see() H.observe((mk or hsess)(st, seat)); if each then each(st) end end
+    see()
+    ok(EH.apply(st, 0, { k = "deal", deck = EH.DECK })); see()
+    local function act(a) HH.apply(st, st.turn, a); see() end
+    local function sys() HH.apply(st, 0, (EH.system(st))); see() end
+    act({ k = "call" }); act({ k = "fold" }); act({ k = "check" })
+    sys(); act({ k = "check" }); act({ k = "check" })
+    sys(); act({ k = "allin" }); act({ k = "call" })
+    eq({ st.phase, EH.faceUp(st) }, { "street", { 3, 1 } })
+    if each then each(st, "up") end
+    sys(); sys()
+    eq(st.phase, "done")
+    return st
+  end
+
+  it("an all-in turns the hands up under its street, before the river; the folded hand never", bothWays(function()
+    local w, panel = setup(240, 400)
+    local H, L, card = w.ns.HandHistory, w.ns.L, w.ns.HandHistory.card
+    local open
+    local st = allinHand(H, nil, function(s, up)
+      onlyPublic(w, panel, nil)(s)
+      if up then open = NS.Util.copy(H.tables["t#1"].hands[1].open) end
+    end)
+    eq(open, { { seat = 3, cards = { "3C", "6C" }, at = 2 }, { seat = 1, cards = { "4C", "7C" }, at = 2 } }) -- before the river came
+    H.draw(panel, hsess(st, nil))
+    local ls, from = lines(panel), nil
+    for i, t in ipairs(ls) do if t == plain(L("holdem.historyTurn", card("KC"))) then from = i end end
+    local got = {}
+    for i = from, #ls do got[#got + 1] = ls[i] end
+    eq(got, {
+      plain(L("holdem.historyTurn", card("KC"))),
+      "Kiro: " .. plain(L("holdem.hist.allin", "990")),
+      "Иван: " .. plain(L("holdem.hist.allin", "990")),               -- a call of all he has
+      plain(L("holdem.historyOpen", "Kiro", card("3C") .. " " .. card("6C"))),
+      plain(L("holdem.historyOpen", "Иван", card("4C") .. " " .. card("7C"))),
+      plain(L("holdem.historyRiver", card("2D"))),
+      plain(L("holdem.historyShow", "Kiro", card("3C") .. " " .. card("6C"), L("holdem.cat.6"))),
+      plain(L("holdem.historyShow", "Иван", card("4C") .. " " .. card("7C"), L("holdem.cat.6"))),
+      plain(L("holdem.historyWon", "Иван", "2005")),
+    })
+    neverShown(w, "2C", "folded"); neverShown(w, "5C", "folded"); notRecorded(w, "2C"); notRecorded(w, "5C")
+  end))
+
+  it("hands up on the state but not yet on my view (no show came: a host of the version before): none turned up", function()
+    local w, panel = setup(240, 400)
+    local H, L = w.ns.HandHistory, w.ns.L
+    local function bare(st, seat) local s = hsess(st, seat); s.state = EH.view(st, seat, EH.inHand(st)); return s end
+    local st = allinHand(H, 1, nil, bare)
+    H.draw(panel, hsess(st, 1))
+    eq(H.tables["t#1"].hands[1].open, {})
+    ok(not lineWith(panel, plain(L("holdem.historyOpen", "Kiro", ""))), table.concat(lines(panel), " / "))
+    local card = w.ns.HandHistory.card
+    ok(lineWith(panel, plain(L("holdem.historyShow", "Kiro", card("3C") .. " " .. card("6C"), L("holdem.cat.6")))), "shown at the showdown")
+  end)
 
   it("coins at a cash table, chips at a fun one (the table's own amounts)", function()
     local w, panel = setup(240, 400)
