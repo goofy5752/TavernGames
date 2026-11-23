@@ -221,6 +221,44 @@ describe("holdem at the table: hands up at an all-in", function()
     end)
   end)
 
+  it("a dealer that is not the host: it deals the streets, never the showdown the host now plays itself", function()
+    tableN(2); ok(cl[1]:startGame()); sim:run(3); toHand2(); local mark = #sim.sent
+    act("allin"); act("call"); sim:run(6)
+    eq(kinds(evs(W, mark)), { "allin", "call", "show", "street", "street", "street", "showdown" })
+    local function steps(k) return sim:count(function(m) local a = m.msg.t == "ACT" and m.msg.a
+      return type(a) == "table" and a.op == "step" and m.from == N[2] and type(a.a) == "table" and a.a.k == k end) end
+    eq({ steps("street"), steps("showdown") }, { 3, 0 }); fine({ cl[1], cl[2], w })
+  end)
+
+  it("the dealer reloads after its show: the show is not played again", function()
+    tableN(2); ok(cl[1]:startGame()); sim:run(3); toHand2(); local mark = #sim.sent
+    act("allin"); act("call")
+    local c2 = sim:relog(N[2]); sim.envs[N[2]].random = rnd(2); sim:run(2)
+    eq({ c2.session.fair.stage, c2.session.fair.deck ~= nil }, { "dealt", true })
+    sim:run(6)
+    local shows = 0
+    for _, a in ipairs(evs(W, mark)) do if a.k == "show" then shows = shows + 1 end end
+    eq({ shows, st().phase, #st().last.shown }, { 1, "done", 2 }); fine({ cl[1], c2, w })
+  end)
+
+  it("an old host refused the show, a seat reloads mid run-out: its PRQ gets its own cards back", function()
+    withOld(function()
+      tableN(3); ok(cl[1]:startGame()); sim:run(3); old(cl[1])
+      act("fold"); act("fold"); sim:run(5)
+      eq({ st().hand, st().button, st().order, st().turn, cl[2].session.fair.d }, { 2, 2, { 3, 1, 2 }, 2, 2 })
+      act("allin"); act("allin"); act("call")                                      -- stacks 995, 1005, 1000: all in
+      local mark = #sim.sent
+      local c3 = sim:relog(N[3]); sim.envs[N[3]].random = rnd(3); sim:run(2)
+      local mine = c3.session.state
+      ok(E.inHand(mine), "the run-out still goes on")
+      for _, i in ipairs(mine.p[3].cards) do ok(mine.deck[i] ~= nil, "seat 3 lacks its card " .. i) end
+      eq(sim:count(function(m) return m.msg.t == "PRQ" and m.from == N[3] end) > 0, true)
+      local back = 0
+      for k = mark + 1, #sim.sent do local m = sim.sent[k]; if m.msg.t == "PRV" and m.target == N[3] then back = back + 1 end end
+      eq(back, 1); sim:run(6); eq({ st().phase, #st().last.shown }, { "done", 3 }); fine({ cl[1], cl[2], w })
+    end)
+  end)
+
   it("an old player and an old watcher take the show like any event", function()
     withOld(function()
       tableN(3); ok(cl[1]:startGame()); sim:run(3); old(cl[3]); old(w); local mark = #sim.sent

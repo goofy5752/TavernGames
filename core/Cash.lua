@@ -16,7 +16,8 @@ local _, ns = ...
 --   plays `a` at seat 0 when it is the step the engine waits for, it carries
 --   every face the step deals (a street without them is refused) and it
 --   publishes only faces a watcher may then see (allPublic). One event a
---   street, one show at an all-in (rule 11a); a folded or unshown hand in none. A street event that
+--   street, one show at an all-in (rule 11a: then the host plays the showdown from its own state,
+--   E.system needs no face, the dealer is not asked); no folded or unshown hand. A street event that
 --   lacks a face of its own cards is the foul "deal" on every client (only a
 --   modified host plays one);
 -- - a hand that is over is sealed into the book (Book.seal), a shuffle whose
@@ -32,10 +33,9 @@ local _, ns = ...
 --   The turn clock: Session:armTimers and Member.timedOut.
 -- - the book's keys and the close of the game: core/BookKeys.lua (op "key", hooks table, leaving).
 -- Nothing is sent from the `table` hook (core/DealHooks.lua says why).
--- Session fields: s.stepTimer, s.stepWaits, s.dueKey, s.dueAt (armStep);
--- s.handSeen, s.handNames (the seats when the last hand began); s.backAsked;
--- s.forgedNext (a forged event before the round opened); the round's fair.who
--- = {[seat] = name} at the open, fair.openedAt (my clock), fair.missing.
+-- Session fields: s.stepTimer, s.stepWaits, s.dueKey, s.dueAt (armStep); s.handSeen, s.handNames
+-- (the seats when the last hand began); s.backAsked; s.forgedNext (a forged event before the round
+-- opened); the round's fair.who = {[seat] = name} at the open, fair.openedAt (my clock), fair.missing.
 local Cash = {}
 ns.Cash = Cash
 
