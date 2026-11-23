@@ -298,7 +298,7 @@ local function renderStart(v, s, engine, client)
   end
   v.line:ClearAllPoints()
   v.line:SetPoint("LEFT", shown and b or v.inviteButton, "RIGHT", 14, 0)
-  v.line:SetPoint("RIGHT", TableFrame.frame, "BOTTOMRIGHT", -(EDGE + 8), EDGE + 20)
+  v.line:SetPoint("RIGHT", TableFrame.frame, "BOTTOMRIGHT", -(EDGE + 24), EDGE + 20) -- clear of the resize grip
 end
 
 -- A countdown on the felt (the held start, a guest's bill line), `left` s to go: redrawn as its whole second changes.
@@ -430,7 +430,7 @@ function TableFrame.build()
   f:SetMovable(true)
   f:SetClampedToScreen(true)
   f:EnableMouse(true)
-  ns.Resize.attach(f, "table", 3)
+  ns.Resize.attach(f, "table", 6)
   local v = { plates = {} }
   TableFrame.view = v
 

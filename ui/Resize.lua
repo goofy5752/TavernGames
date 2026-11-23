@@ -8,10 +8,8 @@ local _, ns = ...
 -- Dialogs that open over a window follow its scale (Resize.follow).
 local Theme, L = ns.Theme, ns.L
 
-local Resize = { MIN = 0.6, MAX = 2.0, GRIP = 16 }
+local Resize = { MIN = 0.6, MAX = 2.0, GRIP = 24 }
 ns.Resize = Resize
-
-local GRIP_TEX = "Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up"
 local frames = {} -- key -> the window frame
 local followers = {} -- key -> { frame, ... }
 
@@ -122,9 +120,30 @@ local function onDown(grip, button)
   end)
 end
 
+-- The dots light up under the mouse: gold, and the backing a shade darker.
 local function tint(grip, on)
-  local c = Theme.color[on and "brassLight" or "brass"]
-  grip.tex:SetVertexColor(c[1], c[2], c[3], 1)
+  local c = Theme.color[on and "cream" or "gold"]
+  for _, d in ipairs(grip.dots) do d:SetColorTexture(c[1], c[2], c[3], 1) end
+  grip.bg:SetColorTexture(0, 0, 0, on and 0.85 or 0.65)
+end
+
+-- The grip's face, drawn with plain textures (no game art to miss): a dark
+-- square in the corner and six gold dots in a stair, the corner's own sign
+-- for "pull here". Dot (col, row) counts from the bottom-right.
+local DOTS = { { 0, 0 }, { 1, 0 }, { 2, 0 }, { 0, 1 }, { 1, 1 }, { 0, 2 } }
+local DOT, STEP, PAD = 4, 6, 4
+
+local function face(grip)
+  local bg = grip:CreateTexture(nil, "BACKGROUND")
+  bg:SetAllPoints(grip)
+  grip.bg = bg
+  grip.dots = {}
+  for _, p in ipairs(DOTS) do
+    local d = grip:CreateTexture(nil, "OVERLAY")
+    d:SetSize(DOT, DOT)
+    d:SetPoint("BOTTOMRIGHT", grip, "BOTTOMRIGHT", -(PAD + p[1] * STEP), PAD + p[2] * STEP)
+    grip.dots[#grip.dots + 1] = d
+  end
 end
 
 -- Makes window `f` resizable under `key`: a grip in its bottom-right corner,
@@ -139,10 +158,7 @@ function Resize.attach(f, key, inset)
   grip:SetFrameLevel(f:GetFrameLevel() + 20)
   grip:RegisterForClicks("LeftButtonUp", "RightButtonUp")
   grip:EnableMouse(true)
-  local tex = grip:CreateTexture(nil, "OVERLAY")
-  tex:SetAllPoints(grip)
-  tex:SetTexture(GRIP_TEX)
-  grip.tex = tex
+  face(grip)
   tint(grip, false)
   grip:SetScript("OnMouseDown", onDown)
   grip:SetScript("OnMouseUp", stopDrag)
