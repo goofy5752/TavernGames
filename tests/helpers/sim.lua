@@ -73,6 +73,7 @@ function Sim:newEnv(name, opts)
     me = name,
     guid = sim:guidOf(name),
     cls = opts.cls or "WARRIOR",
+    race = opts.race, sex = opts.sex, -- UnitRace's file name and UnitSex (core/Presence.lua HI); none unless named
     db = opts.db or { lang = "bg", introDone = false, busy = false, snoozeUntil = 0, debug = false, minimap = {} },
   }
   -- `done` (optional), the done-callback of AceComm's SendCommMessage: here at once.

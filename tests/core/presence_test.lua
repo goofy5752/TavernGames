@@ -19,6 +19,41 @@ describe("presence", function()
     eq(list[2], {name=B, cls="PRIEST", guid=envB.guid, at=nil, incompatible=false})
   end)
 
+  it("my HI names my race and sex; a peer's are kept, malformed ones dropped", function()
+    local sim = Sim.new(); local a = sim:add(A, {cls="MAGE", race="Scourge", sex=3}); local b = sim:add(B, {cls="PRIEST"})
+    sim:run(1)
+    local hi = sim.sent[1]
+    eq(hi.from, A); eq(hi.channel, "GUILD"); eq(hi.msg.t, "HI"); eq(hi.msg.race, "Scourge"); eq(hi.msg.sex, 3)
+    eq(b.presence:get(A).race, "Scourge"); eq(b.presence:get(A).sex, 3)
+    eq(a.presence:get(B).race, nil); eq(a.presence:get(B).sex, nil) -- B's client names neither
+    local function hiOf(race, sex) a:receive("GUILD", C, {v=1, t="HI", cls="ROGUE", id="Player-0000-00000003", race=race, sex=sex}) end
+    local function seen() local p = a.presence:get(C); return { p.race, p.sex } end
+    hiOf("Tauren", 2); eq(seen(), { "Tauren", 2 })
+    eq(a.presence:list()[1], {name=C, cls="ROGUE", guid="Player-0000-00000003", at=nil, incompatible=false, race="Tauren", sex=2})
+    hiOf(("x"):rep(300), 7); eq(seen(), { nil, nil })
+    hiOf({}, "2"); eq(seen(), { nil, nil })
+    hiOf("Night Elf", 2.5); eq(seen(), { nil, nil })
+    hiOf("", 0); eq(seen(), { nil, nil })
+    hiOf("Scourge|t", 1); eq(seen(), { nil, nil })
+    hiOf(("a"):rep(17), true); eq(seen(), { nil, nil })
+    hiOf(("a"):rep(16), 3); eq(seen(), { ("a"):rep(16), 3 })
+    a:receive("GUILD", C, {v=1, t="HI", cls="WARLOCK", id="Player-0000-00000003"}) -- an old client
+    eq(seen(), { nil, nil }); eq(a.presence:get(C).cls, "WARLOCK")
+  end)
+
+  it("a change of race or sex alone redraws the peers", function()
+    local sim = Sim.new(); local a = sim:add(A, {cls="MAGE"})
+    local n = 0; a:on("peers", function() n = n + 1 end)
+    local function hiOf(race, sex) a:receive("GUILD", C, {v=1, t="HI", cls="ROGUE", id="Player-0000-00000003", race=race, sex=sex}) end
+    hiOf("Tauren", 2); eq(n, 1)
+    hiOf("Tauren", 2); eq(n, 1)
+    hiOf("Tauren", 3); eq(n, 2)
+    hiOf("Orc", 3); eq(n, 3)
+    hiOf(("x"):rep(300), 3); eq(n, 4); eq(a.presence:get(C).race, nil)
+    hiOf({}, 3); eq(n, 4)
+    hiOf(nil, nil); eq(n, 5)
+  end)
+
   it("drops a peer on BYE, on peerOffline and after 300 s of silence", function()
     local sim = Sim.new()
     local a = sim:add(A, {cls="MAGE"}); local b = sim:add(B, {cls="PRIEST"})

@@ -284,6 +284,26 @@ describe("wow adapter: game events", function()
     eq(fired, 1); eq(env.now(), w.clock); eq(env.epoch(), Wow.EPOCH0 + 2)
   end)
 
+  it("unitOf: me is player; a grouped guild member by GUID; nobody else", function()
+    local w = guildWow()
+    local unitOf = w.ns.Adapter.unitOf
+    eq(unitOf(ME), "player"); eq(unitOf(B), nil); eq(unitOf(nil), nil)
+    w.units.party2 = B_GUID; eq(unitOf(B), "party2") -- B_GUID: my own roster scan's
+    w.visible.party2 = false; eq(unitOf(B), nil)    -- far away or offline: no 3D portrait
+    w.visible.party2 = nil
+    w.party.raid = true; eq(unitOf(B), nil)         -- in a raid only raid units count
+    w.units.raid7 = B_GUID; eq(unitOf(B), "raid7"); eq(unitOf(ME), "player")
+    w.party.raid = false; w.units.raid7 = nil
+    eq(unitOf("Тодор Ангелов"), nil)                -- grouped or not, no roster GUID
+    local C = "Яна Жекова"
+    w:member(C)
+    w:deliver("GUILD", C, { v = 1, t = "HI", cls = "PRIEST", id = "Player-1-00000099" })
+    w.units.party3 = "Player-1-00000099"; eq(unitOf(C), nil) -- a GUID only in a HI does not count
+    w.units.party3 = "Player-1-" .. C; eq(unitOf(C), "party3")
+    w.G.UnitIsVisible = nil
+    eq(unitOf(C), nil); eq(unitOf(B), nil); eq(unitOf(ME), "player")
+  end)
+
   it("PLAYER_LOGOUT stops the client with a BYE and nothing else, even when seated", function()
     local w = guildWow()
     local c = w.ns.client
@@ -295,6 +315,31 @@ describe("wow adapter: game events", function()
     w:fire("PLAYER_LOGOUT")
     eq(c.running, false)
     eq(#w.sent, n + 1); eq(w.sent[#w.sent].msg.t, "BYE")
+  end)
+
+  it("my HI names UnitRace's file name and UnitSex; a peer's reach presence; bots have neither", function()
+    local w = Wow.new(); w.inGuild, w.roster = true, rosterWith(true)
+    w.race, w.sex = { "Нежит", "Scourge", 5 }, 3
+    w:boot(); w:fire("GUILD_ROSTER_UPDATE")
+    local c = w.ns.client
+    eq(c.env.race, "Scourge"); eq(c.env.sex, 3)
+    local hi = w:sentOf("HI")[1].msg
+    eq(hi.race, "Scourge"); eq(hi.sex, 3); eq(hi.cls, "MAGE"); eq(hi.v, 1)
+    w:deliver("GUILD", B, { v = 1, t = "HI", cls = "PRIEST", id = B_GUID, race = "Tauren", sex = 2 })
+    eq(c.presence:get(B).race, "Tauren"); eq(c.presence:get(B).sex, 2)
+    w:deliver("GUILD", B, { v = 1, t = "HI", cls = "PRIEST", id = B_GUID, race = ("x"):rep(300), sex = 7 })
+    eq(c.presence:get(B).race, nil); eq(c.presence:get(B).sex, nil)
+    local bot = w.ns.Adapter.botEnv("Бот Иванов", "PRIEST"); eq(bot.race, nil); eq(bot.sex, nil)
+    for _, case in ipairs({ { {}, 1 }, { { "Нежит" }, 0 }, { { "Нежит", 5 }, "3" } }) do
+      local w2 = Wow.new(); w2.inGuild, w2.roster = true, rosterWith(true)
+      w2.race, w2.sex = case[1], case[2]
+      w2:boot(); w2:fire("GUILD_ROSTER_UPDATE")
+      eq(w2.ns.client.env.race, nil); eq(w2.ns.client.env.sex, nil)
+    end
+    local w3 = Wow.new(); w3.inGuild, w3.roster = true, rosterWith(true)
+    w3.G.UnitSex = nil
+    w3:boot(); w3:fire("GUILD_ROSTER_UPDATE")
+    eq(w3.ns.client.env.race, "Human"); eq(w3.ns.client.env.sex, nil)
   end)
 
   it("a loading screen sets env.loading and, when it ends, env.loadedAt (the dice blame nobody for it)", function()

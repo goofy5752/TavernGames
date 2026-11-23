@@ -44,6 +44,12 @@ describe("wire", function()
     eq(wire:unpack(wire:pack(ina)), ina); eq(wire:unpack(wire:pack(hnd)), hnd)
   end)
 
+  it("an HI with race and sex survives the wire", function()
+    local hi = { v = 1, t = "HI", ver = "0.1.0", cls = "PRIEST", id = "Player-1-00000002", at = "Иван Петров#1763650000",
+                 re = false, ld = "0123abcd", race = "Scourge", sex = 3 }
+    eq(wire:unpack(wire:pack(hi)), hi)
+  end)
+
   it("non-table payloads and bad input never raise", function()
     eq(wire:unpack(wire:pack("just a string")), nil)
     eq(wire:unpack(nil), nil)

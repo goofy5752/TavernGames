@@ -225,6 +225,41 @@ local function groupedWith(name)
   return false
 end
 
+-- My race (UnitRace's file name, "Scourge") and sex (UnitSex: 2 male, 3 female)
+-- for the portraits in my HI (core/Presence.lua); nil what the client does not say.
+local function raceSex()
+  local unitRace, unitSex = Adapter.fn("UnitRace"), Adapter.fn("UnitSex")
+  local race, sex
+  if unitRace then
+    local ok, _, file = pcall(unitRace, "player")
+    race = ok and type(file) == "string" and file or nil
+  end
+  if unitSex then
+    local ok, got = pcall(unitSex, "player")
+    sex = ok and (got == 2 or got == 3) and got or nil
+  end
+  return race, sex
+end
+
+-- The unit my client shows `name` (normalized full name) as: "player" for me;
+-- for anyone else the unit of my own party or raid whose GUID is the one my guild
+-- roster scan lists for that name (never a GUID a player announced about itself),
+-- and only while UnitIsVisible says the client can draw it (far away or offline
+-- a portrait would be a question mark). nil otherwise, or without UnitIsVisible.
+function Adapter.unitOf(name)
+  local env = Adapter.env
+  if name == nil then return nil end
+  if env and name == env.me then return "player" end
+  local guid, visible = Adapter.guids[name], Adapter.fn("UnitIsVisible")
+  if not (guid and visible) then return nil end
+  local raid = asks(IsInRaid) and true or false
+  for i = 1, raid and 40 or 4 do
+    local unit = (raid and "raid" or "party") .. i
+    if asks(UnitGUID, unit) == guid then return asks(visible, unit) and unit or nil end
+  end
+  return nil
+end
+
 -- A bot's env (Bots.spawn replaces send); bots keep their settings in memory.
 -- Of the roll and group calls a bot has only env.random (see ns.RollChat.env).
 function Adapter.botEnv(name, cls)
@@ -282,6 +317,7 @@ function Adapter.createClient(name, send)
   local env = baseEnv(name, UnitGUID("player"), cls)
   env.send, env.status, env.inGroup, env.db, env.log = send, status, inGroup, ns.db, Adapter.log
   env.groupedWith = groupedWith
+  env.race, env.sex = raceSex()
   env.money, env.trade, env.mail, env.date = money, ns.Trade, ns.Mail, localDate
   local guild = GetGuildInfo("player")
   env.guild = guild and guild .. "-" .. GetRealmName() or nil

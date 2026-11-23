@@ -11,14 +11,25 @@ local C = ns.Const
 local byteLess = ns.Util.byteLess
 
 local function public(p)
-  return { name = p.name, cls = p.cls, guid = p.guid, at = p.at, incompatible = p.incompatible }
+  return { name = p.name, cls = p.cls, guid = p.guid, at = p.at, incompatible = p.incompatible, race = p.race, sex = p.sex }
+end
+
+-- A peer's race (UnitRace's file name, "Scourge") and sex (UnitSex: 2 male, 3
+-- female), for the portraits. Anything else is nil (the class icon): the race
+-- becomes part of an atlas name (wow/Art.lua), so only plain letters pass.
+local function race(v)
+  return type(v) == "string" and #v >= 1 and #v <= 16 and v:find("^%a+$") and v or nil
+end
+
+local function sex(v)
+  return (v == 2 or v == 3) and v or nil
 end
 
 function Presence.new(client)
   local db = client.env.db
   return setmetatable({
     client = client,
-    peers = {},      -- name -> { name, cls, guid, at, incompatible }
+    peers = {},      -- name -> { name, cls, guid, at, incompatible, race, sex }
     heardAt = {},    -- name -> env.now() of the last message
     expiry = {},     -- name -> timer handle
     at = nil,        -- own table id
@@ -45,11 +56,12 @@ function Presence:mayReturn(tid)
 end
 
 -- My HI; `ld` is the digest of my ledger (none without a guild: a bot), the last
--- settled one while its x values are being hashed (core/LedgerHash.lua).
+-- settled one while its x values are being hashed (core/LedgerHash.lua); `race`
+-- and `sex` are env.race and env.sex (a bot has neither).
 function Presence:hi(re)
   local env, L = self.client.env, self.client.ledger
   return { v = C.PROTOCOL, t = "HI", ver = C.VERSION, cls = env.cls, id = env.guid, at = self.at, re = re,
-    ld = L and L:digest(true) or nil }
+    ld = L and L:digest(true) or nil, race = env.race, sex = env.sex }
 end
 
 -- My GUILD HI. While my ledger's digest is being hashed it waits for it (a few
@@ -154,8 +166,9 @@ function Presence:receive(channel, sender, msg)
     local cls = type(msg.cls) == "string" and msg.cls or nil
     local guid = type(msg.id) == "string" and msg.id or nil
     local at = type(msg.at) == "string" and msg.at or nil
-    if new or p.cls ~= cls or p.guid ~= guid or p.at ~= at or p.incompatible then
-      p.cls, p.guid, p.at, p.incompatible = cls, guid, at, false
+    local r, s = race(msg.race), sex(msg.sex)
+    if new or p.cls ~= cls or p.guid ~= guid or p.at ~= at or p.race ~= r or p.sex ~= s or p.incompatible then
+      p.cls, p.guid, p.at, p.race, p.sex, p.incompatible = cls, guid, at, r, s, false
       self:changed()
     end
     if msg.re == true then self.client:send("WHISPER", sender, self:hi(false)) end
