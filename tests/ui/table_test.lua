@@ -183,7 +183,28 @@ describe("ui: table frame", function()
     local right, top = 40 + 8 * 5 + 7 * 3, 1 + 8 / 2
     ok(right <= 165 - 64, "the pips reach into the note and clock column: " .. right)  -- the column the name keeps clear of
     ok(top < (26 - 13) / 2, "the pips reach into the line of text")                    -- the note (13) and the clock (12) are centred
-    eq(p.name.points[1], { "LEFT", p.frame, "LEFT", 40, 0 }); eq(p.name:GetWidth(), 165 - 104)
+    -- the name ends 4 px before the note („разд.“, 32.5 px at 13): the column it kept before reached into the note
+    eq(p.name.points[1], { "LEFT", p.frame, "LEFT", 40, 0 }); eq(p.name:GetWidth(), 165 - 42 - 40 - 32.5 - 4)
+    ok(40 + p.name:GetWidth() <= 165 - 42 - p.note:GetStringWidth(), "the name runs into the note")
+  end)
+
+  it("a Холдем plate (150 px): a stack in coins or a big fun stack never runs over the name, nor into the clock", function()
+    local w = withBots(); local T = w.ns.TableFrame; local note = ""
+    T.registerView("holdem", { size = { 760, 532 }, ring = true, update = function() end, seatNote = function() return note end,
+      build = function(parent) local f = w.G.CreateFrame("Frame", nil, parent); f:SetSize(parent:GetWidth(), parent:GetHeight()); return f end })
+    w.ns.client:openTable{ game = "holdem", access = "invite", turn = 45 }; w:advance(0)
+    local v, s = T.view, w.ns.client.session
+    s.seats[1] = "Константинов"; s.status, s.state = "live", { turn = 1 }; s.deadline = w.ns.client.env.now() + 30 -- 12 characters, on turn
+    local p = v.plates[1]
+    -- the stack -> the name's width and the note's font size
+    for _, case in ipairs({ { w:coins("199g 95s"), 24, 8 }, { w:coins("9g 95s"), 32, 8 }, { "100000", 34, 10 }, { "1000", 38, 13 }, { "995", 44.5, 13 } }) do
+      note = case[1]; T.plates.render(v, s, w.ns.client)
+      local nameRight, noteLeft, noteRight = 40 + p.name:GetWidth(), 150 - 42 - p.note:GetStringWidth(), 150 - 42
+      eq({ p.frame:GetWidth(), p.note:GetText(), p.name:GetWidth(), (select(2, p.note:GetFont())) }, { 150, case[1], case[2], case[3] })
+      ok(nameRight <= noteLeft, "the name runs over the note: " .. nameRight .. " > " .. noteLeft)
+      ok(noteLeft >= 40 and nameRight <= 150, "outside the plate")
+      ok(p.clock:IsShown() and 150 - 6 - p.clock:GetStringWidth() >= noteRight, "the note meets the clock")
+    end
   end)
 
   it("the felt wears the faction: its texture, the crest as a watermark, the stitch", function()

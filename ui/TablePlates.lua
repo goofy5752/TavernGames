@@ -19,6 +19,7 @@ local Theme, W, L, Portrait = ns.Theme, ns.W, ns.L, ns.Portrait
 local PLATE_W, PLATE_H = 190, 26          -- plate size before ns.HallLayout.plates sets the width
 local PORTRAIT, NAME_X = 30, 40           -- the hero centred on the bar's left end; the name after it
 local PLATE_NAME_INSET = NAME_X + 64      -- the plate width the portrait and the clock/note keep from the name
+local NOTE_RIGHT, NOTE_GAP, NAME_MIN = 42, 4, 32 -- the note ends 42 px in (the clock's room); a gap to the name; the least name a wide note leaves
 local PIPS, PIP_W, PIP_H, PIP_GAP = 8, 5, 8, 3 -- eight reach NAME_X + 61: inside the name's column on every plate
 local PIP_Y = 1                           -- the pips' middle over the bar's bottom edge, clear of the line of text
 local TURN_H = 3                          -- the turn bar along the bottom
@@ -46,7 +47,7 @@ local function plateWidget(v, i)
   clock:SetPoint("RIGHT", f, "RIGHT", -6, 0)
   local note = W.Label(f, "heading", "", 13)
   note:SetJustifyH("CENTER")
-  note:SetPoint("RIGHT", f, "RIGHT", -42, 0)
+  note:SetPoint("RIGHT", f, "RIGHT", -NOTE_RIGHT, 0)
   local bar = f:CreateTexture(nil, "ARTWORK")
   bar:SetColorTexture(Theme.rgb("gold"))
   bar:SetHeight(TURN_H)
@@ -109,6 +110,15 @@ local function tick(v, s)
   end
 end
 
+-- The note, and the name's width in what the note leaves: the name ends NOTE_GAP before the
+-- note, never past its old column; the note shrinks (W.fit) so that the name keeps NAME_MIN
+-- if it can (a stack in coins at Холдем). The two never meet, whatever the note.
+local function noteAndName(p, w, text)
+  local room = w - NOTE_RIGHT - NAME_X
+  W.fit(p.note, text, room - NAME_MIN - NOTE_GAP)
+  p.name:SetWidth(math.max(0, math.min(w - PLATE_NAME_INSET, room - p.note:GetStringWidth() - NOTE_GAP)))
+end
+
 -- Places the plates on the grid of ns.HallLayout.plates, or around the felt
 -- (ns.HallLayout.ring) for a ring view -> the number of rows.
 local function render(v, s, client)
@@ -125,7 +135,6 @@ local function render(v, s, client)
     p.frame:ClearAllPoints()
     p.frame:SetPoint("TOPLEFT", v.area, "TOPLEFT", spot[1], spot[2])
     p.frame:SetWidth(spot[3])
-    p.name:SetWidth(spot[3] - PLATE_NAME_INSET)
     if name then
       p.name:SetText(name)
       p.name:SetTextColor(W.nameColor(client, name))
@@ -134,7 +143,7 @@ local function render(v, s, client)
       p.name:SetTextColor(Theme.rgb("inkDim"))
     end
     hero(p, client, name or nil)
-    p.note:SetText(view and view.seatNote and view.seatNote(s, i) or "")
+    noteAndName(p, spot[3], view and view.seatNote and view.seatNote(s, i) or "")
     local onTurn = turn == i
     p.portrait:turn(onTurn and name ~= false and name ~= nil) -- an empty chair never glows
     local timed = onTurn and s.deadline ~= nil

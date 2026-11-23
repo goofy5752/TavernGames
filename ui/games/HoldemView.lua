@@ -33,7 +33,7 @@ local CHIP, CHIP_GAP = 16, 3
 local BOARD_X, BOARD_Y, BOARD_STEP = 254, -176, 46
 local CENTRE_X, POT_Y, TEXT_Y = 366, -156, -250
 local LEFT_X, NOTE_Y, LOG_Y, LEFT_W = 12, -366, -396, 270 -- the note in the close button's place (never both)
-local LABEL, LABEL_MIN, LABEL_PAD = 13, 10, 6 -- a button label shrinks to fit its button
+local LABEL, LABEL_MIN, LABEL_PAD = 13, 8, 6 -- a button label shrinks to fit its button (8: W.fit's floor; 199g 95s at a cash table)
 local FOLDED_ALPHA, OFF_ALPHA = 0.5, 0.5
 -- The finished hand's words with a hand category: the index of the category in the model's text.
 local CAT_AT = { ["holdem.won"] = 4, ["holdem.split"] = 3, ["holdem.log"] = 5, ["holdem.logSplit"] = 4 }
