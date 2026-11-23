@@ -258,6 +258,7 @@ function W.seal(parent, size)
   f.disc:SetTexture(Theme.tex.chair)
   f.disc:SetVertexColor(Theme.rgb("banner"))
   f.crest = W.crest(f, size * 0.62)
+  f.crest:SetDrawLayer("ARTWORK", 1) -- on the wax, not under it
   f.crest:SetPoint("CENTER", f, "CENTER")
   f.crest:SetAlpha(0.85)
   return f
