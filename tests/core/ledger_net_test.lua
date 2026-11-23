@@ -194,6 +194,72 @@ describe("ledger net: live entries", function()
     for j = mark + 1, #sim.sent do if sim.sent[j].from == I then after = after + 1 end end
     eq(after, 0)
   end)
+
+  it("a payment that names me is announced once when it becomes mine to count", function()
+    local sim, i, m, p = setup()
+    i:stop(); i = sim:relog(I); sim:run(1); sim:settle() -- a clean logout: a crash comes back to here
+    local paid, mPaid, pPaid = record(i, "paid"), record(m, "paid"), record(p, "paid")
+    -- My own record of М's payment to me: announced at once, to me only.
+    local mine = i.ledgerNet:make("P", { f = M, c = 500, how = "hand" })
+    eq(#paid, 1); eq(paid[1], { { id = mine.i, from = M, to = I, c = 500, how = "hand", at = mine.at } })
+    eq(#mPaid, 0)
+    sim:run(2)
+    eq(#paid, 1); eq(#pPaid, 0) -- М, the payer, sees it by my live LEV
+    eq(mPaid, { { { id = mine.i, from = M, to = I, c = 500, how = "hand", at = mine.at } } })
+    -- М records my payment to him: announced on his client by his make, on mine by his live LEV.
+    local theirs = m.ledgerNet:make("P", { f = I, c = 300, how = "mail" })
+    eq(#mPaid, 2)
+    sim:run(2)
+    eq(#paid, 2); eq(paid[2], { { id = theirs.i, from = I, to = M, c = 300, how = "mail", at = theirs.at } })
+    -- The same LEV again: a dup.
+    m:send("GUILD", nil, { v = 1, t = "LEV", ev = { Ledger.wire(theirs) } }); sim:run(1)
+    eq(#paid, 2)
+    -- A payment between М and П, a debt naming me, a P under my name I did not make (asked: un), a forged one (denied).
+    p.ledgerNet:make("P", { f = M, c = 700, how = "trade" })
+    m.ledgerNet:make("D", { gid = G1, g = "ttt", f = I, t = M, c = 100, why = "lost" })
+    sim:run(2)
+    eq(#paid, 2); eq(#pPaid, 1); eq(#mPaid, 3)
+    eq(i.ledgerNet:take(pay(I, 9, M, 5), I, true), "new")
+    ok(i.ledger:get(I .. ":9").un, "put to me"); eq(#paid, 2)
+    -- An entry of М's that his own X denies already.
+    local denied = pay(M, 9, I, 40)
+    local held = select(2, Ledger.new({}, I, function() return EPOCH0 end):add(denied, M))
+    eq(i.ledgerNet:take(entry(M, 10, "X", { r = denied.i, h = held.h }), M, true), "new")
+    eq(i.ledgerNet:take(denied, M, true), "new"); eq(i.ledger:denied(i.ledger:get(denied.i)), true)
+    eq(#paid, 2)
+    -- The sync path: the same entry in a client that lost it (a crash) is taken quietly.
+    i = sim:crash(I); sim:run(1)
+    local again = record(i, "paid")
+    eq(i.ledger:get(theirs.i), nil)
+    eq(i.ledgerNet:take(Ledger.wire(m.ledger:get(theirs.i)), P, false), "new")
+    eq(#again, 0)
+    -- My entry made in the login queue is announced when the queue closes.
+    eq(i.ledgerNet:make("P", { f = P, c = 60, how = "trade" }), "queued")
+    eq(#again, 0)
+    sim:settle()
+    eq(#again, 1); eq(again[1][1].from, P); eq(again[1][1].to, I); eq(again[1][1].c, 60)
+  end)
+
+  it("a forged payment under my name at or below my saved counter is denied and never announced", function()
+    local sim = setup()
+    local i = veteran(sim, I, 20)
+    local paid = record(i, "paid")
+    eq(i.ledgerNet:take(pay(I, 5, M, 5), I, true), "new")
+    eq(#xs(i), 1); eq(i.ledger:denied(i.ledger:get(I .. ":5")), true)
+    eq(#paid, 0)
+  end)
+
+  it("an entry made again after an id collision is not announced twice", function()
+    local sim, i = setup()
+    local paid = record(i, "paid")
+    local soon = i.ledgerNet:make("P", { f = M, c = 8, how = "hand" })
+    eq(#paid, 1); eq(paid[1][1].id, soon.i)
+    eq(i.ledgerNet:take(pay(I, 1, P, 800), P), "twin")
+    sim:run(3)
+    local again = i.ledger:get(I .. ":2")
+    eq(again.k, "P"); eq(again.c, 8); eq(i.ledger:has(soon.i, soon.h), false) -- made again under a fresh id
+    eq(#paid, 1)
+  end)
 end)
 
 describe("ledger net: my name", function()

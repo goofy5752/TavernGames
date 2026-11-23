@@ -145,6 +145,7 @@ ui/games/HoldemModel.lua
 ui/games/HoldemView.lua
 ui/games/HoldemCashView.lua
 ui/InviteToast.lua
+ui/SettleToast.lua
 ui/HelpBook.lua
 ui/Intro.lua
 ui/Settings.lua
