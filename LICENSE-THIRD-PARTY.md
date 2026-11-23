@@ -71,3 +71,16 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
+
+## Game icons
+
+From [game-icons.net](https://game-icons.net), repository https://github.com/game-icons/icons commit `82d948812bfe3f269ef8f731dcdb07b08160edc4`, retrieved 2026-11-23. License: [Creative Commons Attribution 3.0 Unported (CC BY 3.0)](https://creativecommons.org/licenses/by/3.0/). The source SVGs are kept unmodified in `tools/game-icons/`. `tools/gen_game_icons.py` renders them to `media/games/*.tga` (64 x 64, white silhouettes; the addon tints them).
+
+| Game | File | Icon | Author |
+|---|---|---|---|
+| Belot | `media/games/belot.tga` | `aussiesim/card-jack-clubs.svg` | Aussiesim |
+| Santase | `media/games/santase.tga` | `aussiesim/card-queen-hearts.svg` | Aussiesim |
+| Backgammon | `media/games/tabla.tga` | `delapouite/backgammon.svg` | Delapouite, https://delapouite.com |
+| Texas Hold'em | `media/games/holdem.tga` | `lorc/poker-hand.svg` | Lorc, https://lorcblog.blogspot.com |
+| Tic-tac-toe | `media/games/ttt.tga` | `delapouite/tic-tac-toe.svg` | Delapouite, https://delapouite.com |
+| Death Roll | `media/games/deathroll.tga` | `lorc/skull-crossed-bones.svg` | Lorc, https://lorcblog.blogspot.com |

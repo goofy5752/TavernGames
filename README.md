@@ -228,7 +228,7 @@ Bug reports, rule corrections (especially for regional Belot and Santase variant
 ## License and credits
 
 - Tavern Games is released under the [MIT License](LICENSE).
-- The bundled libraries (Ace3, LibDeflate, LibDataBroker-1.1, LibDBIcon-1.0) and the Alegreya SC and PT Sans fonts keep their own licenses; see [LICENSE-THIRD-PARTY.md](LICENSE-THIRD-PARTY.md).
+- The bundled libraries (Ace3, LibDeflate, LibDataBroker-1.1, LibDBIcon-1.0), the Alegreya SC and PT Sans fonts, and the game icons from [game-icons.net](https://game-icons.net) (CC BY 3.0, by Lorc, Delapouite and Aussiesim) keep their own licenses; see [LICENSE-THIRD-PARTY.md](LICENSE-THIRD-PARTY.md).
 - World of Warcraft® is a trademark of Blizzard Entertainment, Inc. This project is not affiliated with or endorsed by Blizzard Entertainment.
 
 ---

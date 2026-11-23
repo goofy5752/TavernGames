@@ -310,14 +310,15 @@ def tex_info(rng):
     return w, h, render(w, h, px)
 
 
-def tex_icon(rng):
+def tex_icon(rng, bare=False):
+    """The mug on dark wood; `bare`: the mug alone on a clear background."""
     w = h = 64
     grain = [(PeriodicNoise(rng, 2, 16), 1.0), (PeriodicNoise(rng, 4, 32), 0.5)]
 
     def px(x, y):
         # Dark wood background (square: the minimap button crops it round).
         col = mix(WOOD_DARK, WOOD_LIGHT, 0.6 * fbm(grain, x, y, w, h))
-        out = col + (1.0,)
+        out = col + ((0.0 if bare else 1.0),)
         # Handle: a brass ring on the right.
         handle = cover(abs(math.hypot(x - 44.0, y - 34.0) - 8.0) - 2.5) * (1.0 if x > 40.0 else 0.0)
         out = over(out, brass_at((y - 24.0) / 20.0), handle)
@@ -336,6 +337,10 @@ def tex_icon(rng):
         out = over(out, mix(CREAM, INK, clamp((y - 8.0) / 14.0)), foam)
         return out
     return w, h, render(w, h, px)
+
+
+def tex_mug(rng):
+    return tex_icon(rng, bare=True)
 
 
 # Cards are drawn at 40x58 on screen from a 64x128 file, so one file pixel is
@@ -533,6 +538,7 @@ TEXTURES = [
     ("card", tex_card), ("card_back", tex_card_back), ("suits", tex_suits),
     ("point", tex_point), ("checker", tex_checker), ("dice", tex_dice),
     ("oval", tex_oval), ("chip", tex_chip),
+    ("mug", tex_mug),  # last: the files before it keep their random draws
 ]
 
 

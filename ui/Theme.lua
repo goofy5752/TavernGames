@@ -53,6 +53,7 @@ local Theme = {
     card = { 64, 128 }, card_back = { 64, 128 }, suits = { 128, 32 }, -- suits: club, diamond, heart, spade
     point = { 32, 128 }, checker = 64, dice = { 128, 64 }, -- Табла: dice = faces 1-4 on top, 5 and 6 below
     oval = { 512, 256 }, chip = 32, -- Холдем: the oval table and a chip
+    mug = 64, -- the addon icon's mug alone, by the window title
   },
 }
 
@@ -64,6 +65,13 @@ ns.Theme = Theme
 function Theme.rgb(token)
   local c = Theme.color[token]
   return c[1], c[2], c[3]
+end
+
+-- The picture of game `id` (media/games/<id>.tga, white, tinted by the caller;
+-- tools/gen_game_icons.py) -> its path, or nil for a game without one.
+local GAME_ICONS = { belot = true, santase = true, tabla = true, holdem = true, ttt = true, deathroll = true }
+function Theme.gameIcon(id)
+  if GAME_ICONS[id] then return MEDIA .. "games\\" .. id end
 end
 
 -- Sets font `token` (heading | ui | uiBold) at layout size `size` on a

@@ -167,8 +167,15 @@ local function build()
   bar:SetScript("OnDragStart", function() f:StartMoving() end)
   bar:SetScript("OnDragStop", function() f:StopMovingOrSizing() end)
 
+  -- The addon's mug (its minimap and AddOns-list icon, without the wood) before the title.
+  local mug = bar:CreateTexture(nil, "ARTWORK")
+  mug:SetSize(34, 34)
+  mug:SetPoint("LEFT", f, "TOPLEFT", EDGE + 2, TITLE_Y)
+  mug:SetTexture(Theme.tex.mug)
+  MainWindow.mug = mug
+
   local title = W.Label(bar, "heading", L("addon.title"), 20)
-  title:SetPoint("LEFT", f, "TOPLEFT", EDGE + 10, TITLE_Y)
+  title:SetPoint("LEFT", mug, "RIGHT", 2, 0)
   MainWindow.title = title
 
   local close = W.Close(f)
