@@ -103,7 +103,7 @@ end
 local function sync()
   local v, db = Settings.view, ns.db
   local lang = db.lang or ns.Locale.lang()
-  local theme = Theme.resolve(db.theme, (UnitFactionGroup("player")))
+  local theme = Theme.resolve(db.theme, ns.Adapter.faction())
   local newLang, newTheme = lang ~= ns.Locale.lang(), theme ~= Theme.skin
   v.langBg:setChecked(lang == "bg")
   v.langEn:setChecked(lang == "en")

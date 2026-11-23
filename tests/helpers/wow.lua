@@ -320,7 +320,7 @@ function Wow.new(opts)
       TavernGamesDB = true, CUSTOM_CLASS_COLORS = true, SOUNDKIT = true, issecretvalue = true, InviteUnit = true,
       debugprofilestop = true, GetFramerate = true,
       GetFileIDFromPath = true, C_Texture = true, SetPortraitTexture = true, SetPortraitToTexture = true,
-      UnitSex = true, UnitIsVisible = true,
+      UnitSex = true, UnitIsVisible = true, UnitFactionGroup = true,
     }
     setmetatable(G, { __index = function(_, k)
       if optional[k] then return nil end

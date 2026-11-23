@@ -115,10 +115,15 @@ function Adapter.fn(...)
   return nil
 end
 
+-- A value the game gave that may be compared and tested: not a secret value.
+local function usable(v)
+  local secret = Adapter.fn("issecretvalue")
+  return not (secret and secret(v))
+end
+
 -- A copper value the game gave that can be used: a number from 0, not a secret value.
 function Adapter.plain(v)
-  local secret = Adapter.fn("issecretvalue")
-  return type(v) == "number" and v >= 0 and not (secret and secret(v))
+  return type(v) == "number" and v >= 0 and usable(v)
 end
 
 function Adapter.say(text)
@@ -207,10 +212,12 @@ local function inGroup(guid)
   return IsGUIDInGroup ~= nil and IsGUIDInGroup(guid) and true or false
 end
 
+-- fn(...)'s first answer, or nil when it raises, is absent or is secret.
 local function asks(fn, ...)
   if type(fn) ~= "function" then return nil end
   local ok, got = pcall(fn, ...)
-  return ok and got or nil
+  if not ok or not usable(got) then return nil end
+  return got or nil
 end
 
 -- env.groupedWith(name): is `name` (normalized full name) in my party or raid?
@@ -254,12 +261,22 @@ function Adapter.unitOf(name)
   if env and name == env.me then return "player" end
   local guid, visible = Adapter.guids[name], Adapter.fn("UnitIsVisible")
   if not (guid and visible) then return nil end
-  local raid = asks(IsInRaid) and true or false
-  for i = 1, raid and 40 or 4 do
-    local unit = (raid and "raid" or "party") .. i
-    if asks(UnitGUID, unit) == guid then return asks(visible, unit) and unit or nil end
-  end
-  return nil
+  -- One pcall over the walk: a unit whose answer is secret or raises is no unit.
+  local ok, unit = pcall(function()
+    local raid = asks(IsInRaid) and true or false
+    for i = 1, raid and 40 or 4 do
+      local u = (raid and "raid" or "party") .. i
+      if asks(UnitGUID, u) == guid then return asks(visible, u) and u or nil end
+    end
+  end)
+  return ok and unit or nil
+end
+
+-- My character's faction ("Alliance", "Horde", ...), or nil when the client
+-- does not say (no UnitFactionGroup, a raise or a secret value).
+function Adapter.faction()
+  local got = asks(Adapter.fn("UnitFactionGroup"), "player")
+  return type(got) == "string" and got or nil
 end
 
 -- A bot's env (Bots.spawn replaces send); bots keep their settings in memory.
@@ -489,7 +506,7 @@ function addon:OnInitialize()
 end
 
 function addon:OnEnable()
-  if ns.Theme then ns.Theme.apply(ns.Theme.resolve(ns.db.theme, (UnitFactionGroup("player")))) end
+  if ns.Theme then ns.Theme.apply(ns.Theme.resolve(ns.db.theme, Adapter.faction())) end
   notFoundPattern = Adapter.pattern(ERR_CHAT_PLAYER_NOT_FOUND_S)
   offlinePattern = Adapter.pattern(ERR_FRIEND_OFFLINE_S)
   addFilter("CHAT_MSG_SYSTEM", hideNotFound)

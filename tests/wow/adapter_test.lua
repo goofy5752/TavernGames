@@ -341,6 +341,23 @@ describe("wow adapter: game events", function()
     eq(unitOf(C), nil); eq(unitOf(B), nil); eq(unitOf(ME), "player")
   end)
 
+  it("unitOf: a secret GUID or visibility is no unit, and a raise on the walk is nil, not an error", function()
+    local w = guildWow()
+    local unitOf, G = w.ns.Adapter.unitOf, w.G
+    local SECRET = setmetatable({}, { __eq = function() error("compared a secret") end })
+    w.units.party2 = B_GUID; eq(unitOf(B), "party2")
+    G.issecretvalue = function(v) return v == SECRET or v == B_GUID end -- in combat: the GUID itself is secret
+    eq(unitOf(B), nil)
+    G.issecretvalue = function(v) return rawequal(v, SECRET) end
+    w.units.party1 = SECRET; eq(unitOf(B), "party2")                     -- a secret unit is skipped
+    local isVisible = G.UnitIsVisible
+    G.UnitIsVisible = function() return SECRET end; eq(unitOf(B), nil)   -- a secret answer is no
+    G.UnitIsVisible = isVisible
+    G.issecretvalue = function(v) if v == B_GUID then error("tainted") end return false end
+    eq(unitOf(B), nil)                                                    -- touching it raises: nil
+    G.issecretvalue = nil; w.units.party1 = nil; eq(unitOf(B), "party2")
+  end)
+
   it("PLAYER_LOGOUT stops the client with a BYE and nothing else, even when seated", function()
     local w = guildWow()
     local c = w.ns.client

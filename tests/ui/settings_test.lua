@@ -4,6 +4,7 @@ local Wow = require("wow")
 local function settings(opts)
   local w = Wow.new{ ui = true, saved = opts and opts.saved }
   if opts and opts.faction then w.faction = opts.faction end
+  if opts and opts.noFaction then rawset(w.G, "UnitFactionGroup", nil) end
   w:boot(); w:firstRunDone(); w:fire("PLAYER_LOGIN")
   w.ns.MainWindow.show("settings")
   return w, w.ns.Settings.view
@@ -48,6 +49,15 @@ describe("ui: settings, Облик and Тесте", function()
     ok(#w:texts("Новият облик идва след презареждане") == 1); eq(#w:texts("Новият език"), 0)
     w:click(v.langBg)
     ok(#w:texts("Новият облик идва след презареждане") == 1)
+  end)
+
+  it("a client without UnitFactionGroup boots, registers its events and dresses in Alliance", function()
+    local w, v = settings{ noFaction = true }
+    eq(w.G.UnitFactionGroup, nil); eq(w.ns.Theme.skin, "alliance"); eq(w.ns.Adapter.faction(), nil)
+    local registered = false
+    for _, f in ipairs(w.frames) do if f.events.PLAYER_LOGOUT then registered = true end end
+    ok(registered, "OnEnable registered the events")
+    eq(v.themeTiles.alliance.pressed, true); eq(v.reload:IsShown(), false)
   end)
 
   it("an unknown saved theme reads as the faction's, is left alone and raises nothing", function()

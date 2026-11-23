@@ -58,6 +58,22 @@ describe("ui: the hero portrait", function()
     eq({ peer.cls, peer.race, peer.sex, peer.unit }, { "MAGE", "Orc", 2, nil })
     eq(P.who(fake, "Nobody").unit, nil)
   end)
+  it("a group member the client cannot draw (UnitIsVisible false) has no unit: the race icon", function()
+    local w2 = Wow.new{ ui = true }
+    w2.inGuild, w2.roster = true, { { name = B .. "-Forever", online = true, guid = "Player-1-00000002" },
+                                     { name = "Иван Петров-Forever", online = true, guid = Wow.GUID } }
+    w2:boot(); w2:firstRunDone(); w2:fire("PLAYER_LOGIN"); w2:fire("GUILD_ROSTER_UPDATE")
+    w2:hasAtlas("raceicon128-orc-male")
+    local peer = { name = B, cls = "MAGE", race = "Orc", sex = 2 }
+    local c = { env = w2.ns.client.env, presence = { get = function(_, n) if n == B then return peer end end } }
+    local q = w2.ns.Portrait.new(w2.G.UIParent, 40)
+    w2.units.party1 = "Player-1-00000002"
+    local who = w2.ns.Portrait.who(c, B); eq(who.unit, "party1")
+    q:set(who); eq(q.source, "unit")
+    w2.visible.party1 = false
+    who = w2.ns.Portrait.who(c, B); eq(who.unit, nil)
+    q:set(who); eq({ q.source, q.tex:GetAtlas() }, { "race", "raceicon128-orc-male" })
+  end)
   it("without the check APIs a portrait is the silhouette and nothing raises", function()
     local w2 = boot({ ui = true, noArt = true })
     local q = w2.ns.Portrait.new(w2.G.UIParent, 40, { badge = true })
