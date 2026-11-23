@@ -42,6 +42,20 @@ describe("ui: „Добави ботове“ at the table", function()
     eq(s.ns.TableFrame.view.botsButton:IsVisible(), false)
   end)
 
+  it("never at a table for real gold: a cash Холдем table gets no button, and bots refuse to fill it", function()
+    local s = Staked.guildWow()
+    assert(s.ns.client:openTable{ game = "holdem", access = "guild", turn = 45, stake = 1000, opt = { blinds = 10 } })
+    s:advance(0)
+    local sess = s.ns.client.session
+    ok(sess.stake and s.ns.Stakes.cash(sess), "not a cash table")
+    eq(s.ns.Bots.canFill(sess), false)
+    eq(s.ns.TableFrame.view.botsButton:IsVisible(), false)
+    local seated = sess:seatedCount()
+    s:slash("bots fill"); s:advance(0); s:advance(1); s:advance(5)
+    eq(sess:seatedCount(), seated) -- no bot sat down
+    for _, name in ipairs(sess.seats) do ok(not (name and s.ns.bots and s.ns.bots.isBot[name]), "a bot sat at a cash table") end
+  end)
+
   it("hidden when the table is full or its game runs", function()
     local w = guildWow()
     local _, v = hostTable(w)
