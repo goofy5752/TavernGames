@@ -37,6 +37,7 @@ core/LedgerNet.lua
 core/LedgerSend.lua
 core/LedgerQueue.lua
 core/LedgerRefused.lua
+core/LedgerStub.lua
 core/LedgerSync.lua
 core/LedgerSyncPage.lua
 core/LedgerSyncVector.lua

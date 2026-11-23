@@ -4,7 +4,8 @@ local _, ns = ...
 -- The store is a plain table the caller owns (saved variables):
 --   ev[author][n] = the first body of an id; tw[author][n] = its further
 --   versions (at most 3); me[name] = {seq, born}, my counter; rf = the entries I
---   refused (core/LedgerRefused.lua). An author's x, the
+--   refused (core/LedgerRefused.lua); st = the stubs of R/S bodies that left the store
+--   (core/LedgerStub.lua: held for x, n, the digest, the four of an id). An author's x, the
 --   vector and the digest: core/LedgerHash.lua (L.xc, cached per author until that
 --   author's bodies change; hashed in slices).
 -- A load files every sound body again (hashing nothing); a
@@ -56,7 +57,7 @@ function Ledger.new(store, me, epoch)
   local rec = store.me[me]
   if not (type(rec) == "table" and whole(rec.seq) and rec.seq >= 0 and rec.seq <= Ledger.ID_MAX
     and type(rec.born) == "number") then rec, store.me[me] = nil, nil end
-  local L = setmetatable({ store = store, me = me, epoch = epoch, rev = 0, top = {}, run = {}, rc = {}, deny = {}, xc = {}, il = {}, dirty = {}, act = {},
+  local L = setmetatable({ store = store, me = me, epoch = epoch, rev = 0, top = {}, run = {}, rc = {}, deny = {}, xc = {}, il = {}, dirty = {}, act = {}, sn = {},
     fresh = rec == nil, adopting = rec == nil, base = rec and rec.seq or 0 }, Store)
   L:refusedLoad()
   for a, byN in pairs(ev) do
@@ -68,6 +69,7 @@ function Ledger.new(store, me, epoch)
       end
     end
   end
+  L:stubLoad()
   if L.fresh then for _, k in ipairs(keys(store.ev[me], nil)) do L:bump(k) end end
   return L
 end
@@ -92,8 +94,8 @@ function Store:index(a, n, b, d)
   if type(b.at) == "number" and b.at > (self.act[a] or 0) then self.act[a] = b.at end -- the author's newest entry (the sync's order)
 end
 function Store:advance(a)
-  local k, ev = self.run[a] or 0, self.store.ev[a]
-  while ev[k + 1] do k = k + 1 end
+  local k, ev, sn = self.run[a] or 0, self.store.ev[a] or {}, self.sn[a] or {}
+  while ev[k + 1] or sn[k + 1] do k = k + 1 end
   self.run[a] = k
 end
 -- Adds body b to id (a, n), or (gone) removes it from an id that holds more than one.
@@ -138,6 +140,7 @@ function Store:add(e, from)
   local b = Ledger.wire(e)
   b.h, b.rh = nil, b.h
   b.h = Ledger.hash(b)
+  if self:stubbed(a, n, b.h) then return "dup", b end
   local held, old = self:bodies(a, n), self:same(a, n, b)
   if old then
     if from == a and not old.dr then old.dr, old.rl, self.rev = true, nil, self.rev + 1 end
@@ -145,7 +148,7 @@ function Store:add(e, from)
   end
   if (b.k == "R" or b.k == "S") and (self.rc[a] or 0) >= C.LEDGER_AUTHOR_MAX then return nil, "full" end
   if from == a then b.dr = true elseif from ~= nil then b.rl = true end
-  if #held >= BODIES_MAX then
+  if #held + (self.sn[a] and self.sn[a][n] or 0) >= BODIES_MAX then
     -- Over the cap: a body its author denied goes first, else the highest h; never one I made.
     held[#held + 1] = b
     local loser
@@ -166,11 +169,11 @@ function Store:record()
   return me[self.me]
 end
 -- My next entry of `kind`, added -> entry | nil, reason ("full": no number is left).
--- A number already held under my name (a kept far id) is skipped.
+-- A number already held under my name (a kept far id, a stub) is skipped.
 function Store:make(kind, fields)
   local rec = self:record()
   local n = rec.seq + 1
-  while self:has(Ledger.id(self.me, n)) do n = n + 1 end
+  while self:has(Ledger.id(self.me, n)) or (self.sn[self.me] and self.sn[self.me][n]) do n = n + 1 end
   if n > Ledger.ID_MAX then return nil, "full" end
   local e = Util.copy(fields)
   e.k, e.i, e.at = kind, Ledger.id(self.me, n), self.epoch()

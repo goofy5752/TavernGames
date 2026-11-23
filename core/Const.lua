@@ -87,6 +87,10 @@ ns.Const = {
   LEDGER_REFUSED_TTL = 86400, -- an entry I refused is remembered, and not asked for again, this long (core/LedgerRefused.lua)
   LEDGER_REFUSED_MAX = 50,    -- refused entries remembered per author
   LEDGER_REFUSED_AUTHORS = 200, -- authors with remembered refusals
+  LEDGER_AUTHOR_ROOM = 500,   -- an author past LEDGER_AUTHOR_MAX less this many R+S bodies has its oldest stubbed (core/LedgerStub.lua)
+  LEDGER_PRUNE_WAIT = 60,     -- the prune runs this long after login
+  LEDGER_PRUNE_STEP = 500,    -- bodies one prune call visits
+  LEDGER_IL_IDLE = 2592000,   -- an author whose newest entry is older than this keeps no sorted list once hashed
 
   PAY_WINDOW = 300, -- a trade completes a payment when the payer's PAY came within this long
   PAY_GUARD = 86400, -- gold that left me guards its debt against a second payment this long, or until the creditor's P

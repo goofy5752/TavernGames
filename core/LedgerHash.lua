@@ -11,13 +11,15 @@ local _, ns = ...
 -- is put in or taken out at its place, and only its first build of a session
 -- sorts, in slices too (Store:work). A body I refused
 -- and still remember (core/LedgerRefused.lua) counts as held in x, and in n where
--- it fills a hole below the highest body I hold. The client hashes
+-- it fills a hole below the highest body I hold. A stub (core/LedgerStub.lua) counts as
+-- its body did, in x and in n. An author whose newest entry is older than LEDGER_IL_IDLE
+-- keeps no sorted list once hashed (Decision M5). The client hashes
 -- LEDGER_HASH_ITEMS items a frame (Net:hash, core/LedgerSend.lua; L.kick asks for
 -- it), and whoever needs fresh values waits for them (Net:fresh): a vector, the
 -- GUILD HI with my digest, the sync's comparisons. L:vector() and L:digest()
 -- called while stale finish the work at once (a store without a client, a
 -- test); L:digest(true) gives the last settled digest instead (nil: none yet).
-local Ledger, Sha256 = ns.Ledger, ns.Sha256
+local Ledger, Sha256, C = ns.Ledger, ns.Sha256, ns.Const
 local Store = Ledger.Store
 local concat, sort, byteLess, min = table.concat, table.sort, ns.Util.byteLess, math.min
 local insert, remove, floor = table.insert, table.remove, math.floor
@@ -51,7 +53,7 @@ end
 -- Is an x still to be hashed?
 function Store:hashing() return next(self.dirty) ~= nil end
 
--- The "<id>:<h>" of author a's bodies and of its bodies I refused, in no order: a walk, no sort
+-- The "<id>:<h>" of author a's bodies, its stubs and its bodies I refused, in no order: a walk, no sort
 -- (Store:above sorts every number of the author at once; residual 25).
 function Store:items(a)
   local items, tw = {}, self.store.tw[a] or {}
@@ -59,14 +61,15 @@ function Store:items(a)
     items[#items + 1] = b.i .. ":" .. b.h
     for _, t in ipairs(tw[n] or {}) do items[#items + 1] = t.i .. ":" .. t.h end
   end
+  for _, s in ipairs(self:stubs(a)) do items[#items + 1] = a .. ":" .. s.n .. ":" .. s.h end
   for _, r in ipairs(self:refusals(a)) do items[#items + 1] = a .. ":" .. r.n .. ":" .. r.h end
   return items
 end
 
--- The highest k with 1..k all held or refused, a refused number counting only below the highest held one.
+-- The highest k with 1..k all held, stubbed or refused, a refused number counting only below the highest held one.
 function Store:reach(a)
-  local k, ev, rn, top = self.run[a] or 0, self.store.ev[a] or {}, self.rn[a], self.top[a] or 0
-  while rn and k < top and (ev[k + 1] or rn[k + 1]) do k = k + 1 end
+  local k, ev, sn, rn, top = self.run[a] or 0, self.store.ev[a] or {}, self.sn[a] or {}, self.rn[a], self.top[a] or 0
+  while ev[k + 1] or sn[k + 1] or (rn and k < top and rn[k + 1]) do k = k + 1 end
   return k
 end
 
@@ -119,20 +122,21 @@ function Store:work(n)
       job.at, n, self.hashed = job.at + k, n - k, (self.hashed or 0) + k
     end
     if job.at > total then
-      self.xc[job.a], self.il[job.a], self.dirty[job.a], self.job = job.sha:hex():sub(1, 12), job.il, nil, nil
+      local idle = (self.act[job.a] or 0) < self.epoch() - C.LEDGER_IL_IDLE
+      self.xc[job.a], self.il[job.a], self.dirty[job.a], self.job = job.sha:hex():sub(1, 12), not idle and job.il or nil, nil, nil
     end
   end
 end
 
 -- {[author] = {n, x}}: n the highest k with 1..k all held (Store:reach), x as in the header (12 hex);
--- an author of whom I only remember refusals has n = 0.
+-- an author of whom I hold only stubs or remembered refusals is listed with its n too.
 function Store:vector()
   if self:hashing() then self:work() end
   local out = {}
   for a, byN in pairs(self.store.ev) do
     if next(byN) then out[a] = { n = self:reach(a), x = self.xc[a] } end
   end
-  for a in pairs(self.store.rf) do out[a] = out[a] or { n = 0, x = self.xc[a] } end
+  for _, set in ipairs({ self.store.st, self.store.rf }) do for a in pairs(set) do out[a] = out[a] or { n = self:reach(a), x = self.xc[a] } end end
   return out
 end
 
