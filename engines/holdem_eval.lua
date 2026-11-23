@@ -30,6 +30,28 @@ local function encode(cat, ks)
   return v
 end
 
+-- Category and tie-break ranks of ranks r (any count, rank desc) that make no straight or flush: grouped by
+-- count, then rank. Returns cat, ks.
+local function classify(r)
+  local groups = {}
+  for i = 1, #r do
+    local g = groups[#groups]
+    if g and g.r == r[i] then g.n = g.n + 1 else groups[#groups + 1] = { r = r[i], n = 1 } end
+  end
+  table.sort(groups, function(a, b) if a.n ~= b.n then return a.n > b.n end return a.r > b.r end)
+  local ks = {}
+  for i, g in ipairs(groups) do ks[i] = g.r end
+  local n1, n2 = groups[1].n, groups[2] and groups[2].n
+  local cat
+  if n1 == 4 then cat = H.QUADS
+  elseif n1 == 3 and n2 == 2 then cat = H.FULL
+  elseif n1 == 3 then cat = H.TRIPS
+  elseif n1 == 2 and n2 == 2 then cat = H.TWOPAIR
+  elseif n1 == 2 then cat = H.PAIR
+  else cat = H.HIGH end
+  return cat, ks
+end
+
 -- score of exactly five faces
 function H.rank5(f)
   local r, flush = {}, true
@@ -51,23 +73,7 @@ function H.rank5(f)
     return encode(cat, { top }), cat
   end
   if flush then return encode(H.FLUSH, r), H.FLUSH end
-  -- group ranks: by count desc, then rank desc (r is already rank desc)
-  local groups = {}
-  for i = 1, 5 do
-    local g = groups[#groups]
-    if g and g.r == r[i] then g.n = g.n + 1 else groups[#groups + 1] = { r = r[i], n = 1 } end
-  end
-  table.sort(groups, function(a, b) if a.n ~= b.n then return a.n > b.n end return a.r > b.r end)
-  local ks = {}
-  for i, g in ipairs(groups) do ks[i] = g.r end
-  local n1, n2 = groups[1].n, groups[2].n
-  local cat
-  if n1 == 4 then cat = H.QUADS
-  elseif n1 == 3 and n2 == 2 then cat = H.FULL
-  elseif n1 == 3 then cat = H.TRIPS
-  elseif n1 == 2 and n2 == 2 then cat = H.TWOPAIR
-  elseif n1 == 2 then cat = H.PAIR
-  else cat = H.HIGH end
+  local cat, ks = classify(r)
   return encode(cat, ks), cat
 end
 
@@ -93,6 +99,29 @@ function H.best(faces)
   end
   rec(1, 1)
   return bestScore, bestCat, bestPick
+end
+
+-- What 1..7 faces make, as { cat, name, ranks }: the category (H.HIGH..H.SFLUSH), its H.NAMES entry and the
+-- ranks that define it, most significant first: the straight's top card (the wheel is 5), the grouped ranks
+-- then the kickers otherwise (full house { trips, pair }, two pair { high, low, kicker }), the five ranks of
+-- a flush. Fewer than five faces (my hole cards alone) only group: a high card or a pair. Pure; the input is
+-- not touched.
+function H.describe(faces)
+  if #faces < 5 then
+    local r = {}
+    for i, f in ipairs(faces) do r[i] = H.rank(f) end
+    table.sort(r, function(a, b) return a > b end)
+    local cat, ks = classify(r)
+    return { cat = cat, name = H.NAMES[cat], ranks = ks }
+  end
+  local score = H.best(faces)
+  local cat = math.floor(score / 15 ^ 5)
+  local rest, ks = score - cat * 15 ^ 5, {}
+  for i = 4, 0, -1 do
+    local k = math.floor(rest / 15 ^ i) % 15
+    if k > 0 then ks[#ks + 1] = k end
+  end
+  return { cat = cat, name = H.NAMES[cat], ranks = ks }
 end
 
 return H
