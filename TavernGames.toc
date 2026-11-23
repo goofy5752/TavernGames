@@ -122,6 +122,7 @@ ui/Hall.lua
 ui/LedgerTab.lua
 ui/BookList.lua
 ui/BoardTab.lua
+ui/HistoryTab.lua
 ui/Minimap.lua
 ui/TableFrame.lua
 ui/TablePanels.lua

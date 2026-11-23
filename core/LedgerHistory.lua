@@ -9,7 +9,8 @@ local _, ns = ...
 -- are dressed when a row first comes on screen (Stats.dress). With `name`: only lines
 -- that name it. One entry is cached: the last (store, rev, name) asked.
 -- Line: {kind = "game", at, rec} | {kind = "pay", at, f, t (its author), c, how, rl} |
--- {kind = "denied", at, entry}. Order: at desc, game < pay < denied, then id bytes.
+-- {kind = "denied", at, entry}. Order: at desc, game < pay < denied, then id bytes, then
+-- the body hash (twin bodies of one id).
 local Ledger, View = ns.Ledger, ns.LedgerView
 local byteLess = ns.Util.byteLess
 
@@ -34,28 +35,29 @@ end
 local function before(p, q)
   if p.at ~= q.at then return p.at > q.at end
   if p.kind ~= q.kind then return RANK[p.kind] < RANK[q.kind] end
-  return byteLess(p.id, q.id)
+  if p.id ~= q.id then return byteLess(p.id, q.id) end
+  return byteLess(p.h, q.h)
 end
 
 local function build(L, name)
   local out, Stats = {}, ns.LedgerStats
-  local function put(line, id) line.id = id; out[#out + 1] = line end
+  local function put(line, id, h) line.id, line.h = id, h or ""; out[#out + 1] = line end
   for _, rec in ipairs(Stats.games(L)) do
-    if not name or Stats.named(rec, name) then put({ kind = "game", at = rec.at, rec = rec }, rec.e.i) end
+    if not name or Stats.named(rec, name) then put({ kind = "game", at = rec.at, rec = rec }, rec.e.i, rec.e.h) end
   end
   local v = View.of(L)
   for _, e in ipairs(v.pays) do
     if not name or e.f == name or Ledger.author(e.i) == name then
-      put({ kind = "pay", at = at(e), f = e.f, t = Ledger.author(e.i), c = e.c, how = e.how, rl = e.rl }, e.i)
+      put({ kind = "pay", at = at(e), f = e.f, t = Ledger.author(e.i), c = e.c, how = e.how, rl = e.rl }, e.i, e.h)
     end
   end
   for _, e in ipairs(View.denied(v)) do
     if DENIED[e.k] and type(e.i) == "string" and (not name or names(e, name)) then
-      put({ kind = "denied", at = at(e), entry = e }, e.i)
+      put({ kind = "denied", at = at(e), entry = e }, e.i, e.h)
     end
   end
   table.sort(out, before)
-  for _, line in ipairs(out) do line.id = nil end
+  for _, line in ipairs(out) do line.id, line.h = nil, nil end
   return out
 end
 
