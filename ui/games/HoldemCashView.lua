@@ -210,7 +210,7 @@ function V.build(f)
   c.panel = panel
   panel:SetSize(PANEL_W, PANEL_H)
   panel:SetPoint("TOPRIGHT", f, "TOPRIGHT", -8, -34)
-  panel:SetFrameLevel(f:GetFrameLevel() + 20)
+  panel:SetFrameLevel(f:GetFrameLevel() + ns.Cards.TOP + 20) -- above the bill, as before it rose over the cards
   panel:EnableMouse(true)
   c.title = W.Label(panel, "heading", L("cash.panel"), 14)
   c.title:SetPoint("TOPLEFT", panel, "TOPLEFT", 10, -8)
@@ -233,7 +233,7 @@ function V.build(f)
   c.buyBox = box
   box:SetSize(PANEL_W, 34)
   box:SetPoint("TOPRIGHT", f, "TOPRIGHT", -8, -34)
-  box:SetFrameLevel(f:GetFrameLevel() + 20)
+  box:SetFrameLevel(f:GetFrameLevel() + ns.Cards.TOP + 20)
   box:EnableMouse(true)
   c.minus = W.Button(box, L("holdem.minus"), function() stepBuy(f, -1) end, true)
   c.minus:SetSize(26, 22)

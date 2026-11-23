@@ -267,6 +267,8 @@ function Frames.factory(G, onCreate)
       shown = true, alpha = 1, points = {}, width = 0, height = 0,
       events = {}, scripts = {}, regions = {}, children = {}, enabled = true,
     }, mt)
+    -- A child starts one level above its parent, as in the client.
+    if parent and parent.GetFrameLevel then f.level = parent:GetFrameLevel() + 1 end
     if kind == "EditBox" then f.focus = focus end
     if parent and parent.children then parent.children[#parent.children + 1] = f end
     if name then G[name] = f end

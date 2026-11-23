@@ -154,6 +154,11 @@ function CARD:level(n)
   self.over:SetFrameLevel(n + 3)
 end
 Cards.LEVELS = 4
+-- A fan holds at most MAX cards (a Белот hand) and its cards span the TOP
+-- levels above the fan's own: a panel over the felt (the board and its fan sit
+-- 1 and 2 above it) adds TOP to its level to draw above every card.
+Cards.MAX = 8
+Cards.TOP = Cards.LEVELS * (Cards.MAX + 1)
 
 -- One card, 40 x 58 px times `scale` (default 1).
 function Cards.card(parent, scale)

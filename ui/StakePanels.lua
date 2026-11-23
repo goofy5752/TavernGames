@@ -304,7 +304,7 @@ local function buildBill(v)
   b.fill:SetColorTexture(20 / 255, 10 / 255, 5 / 255, 0.92)
   b:SetSize(BILL_W, BILL_TOP + BILL_ROW)
   b:SetPoint("BOTTOM", v.area, "BOTTOM", 0, BILL_Y)
-  b:SetFrameLevel(v.area:GetFrameLevel() + 12)
+  b:SetFrameLevel(v.area:GetFrameLevel() + ns.Cards.TOP + 12) -- above a full hand (ui/Cards.lua)
   b:EnableMouse(true)
   -- The header strip: the title left, „Към залата“ and „Реванш на същата маса“ right.
   b.title = W.Label(b, "heading", L("bill.title"), 14)

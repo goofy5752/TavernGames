@@ -1115,3 +1115,30 @@ describe("ui: a cash table in the dialog and the question", function()
     end
   end)
 end)
+
+describe("ui: the panels over a full hand (final fix)", function()
+  it("the bill and its buttons, the banner, the picker and the stand question draw above every card of a full hand", function()
+    for _, case in ipairs({ { "belot", { B, C, D }, 8 }, { "santase", { B }, 6 } }) do
+      local game, n = case[1], case[3]
+      local w = readyWow()
+      local tid = host(w, game, 10000, case[2])
+      local v = w.ns.TableFrame.view
+      w:deliver("WHISPER", B, { v = 1, t = "STD", tid = tid }); w:advance(0) -- a forfeit mid-hand: the cards stay
+      ok(v.bill:IsVisible(), "no bill: " .. game)
+      local f = w.ns.TableFrame.built[game]
+      eq(f:GetFrameLevel(), v.area:GetFrameLevel() + 1, game)
+      local hand = {}
+      for k = 1, n do hand[k] = { i = k, face = "QH", mode = "raised" } end
+      f.myFan:set(hand)
+      local last = f.myFan.cards[n]
+      local top = last.over:GetFrameLevel()
+      eq(top, f.myFan.frame:GetFrameLevel() + w.ns.Cards.LEVELS * n + 3, game)
+      for name, frame in pairs({ bill = v.bill, rematch = v.bill.rematch, toHall = v.bill.toHall, banner = v.banner,
+                                 picker = v.picker, confirm = v.confirm }) do
+        ok(frame:GetFrameLevel() > top, game .. ": " .. name .. " at " .. frame:GetFrameLevel() .. ", the last card's top at " .. top)
+      end
+      ok(v.bill:GetFrameLevel() > v.banner:GetFrameLevel(), "the bill under the banner")
+      ok(v.confirm:GetFrameLevel() > v.picker:GetFrameLevel(), "the stand question under the picker")
+    end
+  end)
+end)
