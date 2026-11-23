@@ -14,7 +14,7 @@ local _, ns = ...
 -- warning are always shown; ⓘ is the ledger topic. The dialog redraws twice a
 -- second, on "ledger" and on "paySent", and it closes when nothing is owed any more.
 local Theme, W, L = ns.Theme, ns.W, ns.L
-local money = ns.Util.money
+local money = ns.W.money
 
 local P = {
   name = nil,   -- the creditor shown

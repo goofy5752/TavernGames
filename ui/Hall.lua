@@ -81,8 +81,8 @@ local function color(fs, token) fs:SetTextColor(Theme.rgb(token)) end
 local function stakeText(rec)
   if rec.stake == nil then return nil end
   local engine = ns.Games.engine(rec.game)
-  if engine and engine.stakeOf then return L("hall.blinds", ns.Util.money(rec.stake / 2), ns.Util.money(rec.stake)) end
-  return L("table.stake", ns.Util.money(rec.stake))
+  if engine and engine.stakeOf then return L("hall.blinds", ns.W.money(rec.stake / 2), ns.W.money(rec.stake)) end
+  return L("table.stake", ns.W.money(rec.stake))
 end
 
 -- Sits in `seat` of table rec; a staked table asks first.

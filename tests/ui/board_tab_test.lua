@@ -69,8 +69,8 @@ describe("ui: the tab „Класация“", function()
     eq(#rows, 2)
     local r = rows[1]
     eq(plain(r.who), ME); eq(r.name, ME); eq(r.games, "2"); eq(r.wins, "2"); eq(r.pct, "100%")
-    eq(plain(r.net), "+5g"); eq(r.bar, 1); eq(r.fav, "Морски шах")
-    eq(rows[2].name, B); eq(plain(rows[2].net), "−5g"); eq(rows[2].bar, -1); eq(rows[2].pct, "0%")
+    eq(plain(r.net), w:coins("+5g")); eq(r.bar, 1); eq(r.fav, "Морски шах")
+    eq(rows[2].name, B); eq(plain(rows[2].net), w:coins("−5g")); eq(rows[2].bar, -1); eq(rows[2].pct, "0%")
   end)
 
   it("a net with silver and a zero net are written", function()
@@ -80,7 +80,7 @@ describe("ui: the tab „Класация“", function()
     local rows = Bd(w).lines(w.ns.client, "all", nil).rows
     local by = {}
     for _, x in ipairs(rows) do by[x.name] = x end
-    eq(plain(by[B].net), "−3g 20s"); eq(plain(by[C].net), "0"); eq(by[C].bar, 0)
+    eq(plain(by[B].net), w:coins("−3g 20s")); eq(plain(by[C].net), "0"); eq(by[C].bar, 0)
   end)
 
   it("the king line names the highest net; an empty period says the throne is empty", function()

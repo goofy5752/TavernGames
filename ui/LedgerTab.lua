@@ -19,7 +19,7 @@ local _, ns = ...
 -- redraws on "ledger" (on the next frame, only while it is shown) and on show;
 -- while it is shown the ⓘ of the title bar opens the ledger topic.
 local Theme, W, L = ns.Theme, ns.W, ns.L
-local View, Ledger, money = ns.LedgerView, ns.Ledger, ns.Util.money
+local View, Ledger, money = ns.LedgerView, ns.Ledger, ns.W.money
 
 local LedgerTab = {
   view = nil,
@@ -29,8 +29,9 @@ ns.LedgerTab = LedgerTab
 
 local BOOK_W, PAD, HEAD_H, ROW_H, ROWS, FOOT_H = 760, 14, 52, 26, 16, 24
 local AGE_W, MARGIN = 56, 22
--- Fixed columns, one line each (clipped, never wrapped): 22 + 300 + 8 + 120 + 170 + 10 + 56 + 6 <= the row.
-local WHO_W, MARK_W, AMOUNT_W = 300, 120, 170
+-- Fixed columns, one line each (clipped, never wrapped): 22 + 286 + 8 + 120 + 196 + 10 + 56 + 6 <= the row.
+-- The amount fits „остават 99g 98s от 99g 99s“ with a coin for each letter.
+local WHO_W, MARK_W, AMOUNT_W = 286, 120, 196
 local GROUP = { open = 1, pending = 2, contested = 3, paid = 4, denied = 5 }
 local MARK = { pending = "ledger.pending", contested = "ledger.contested" }
 local HOW = { trade = "pay.trade", mail = "pay.mail", hand = "accounts.settle" }
@@ -199,7 +200,7 @@ local function fillRow(v, r, i)
   r.who:SetText(l.who)
   r.mark:SetText(l.mark or "")
   r.mark:SetShown(l.mark ~= nil)
-  r.amount:SetText(l.amount)
+  W.fit(r.amount, l.amount, AMOUNT_W)
   if l.state == "paid" then r.amount:SetTextColor(PAID[1], PAID[2], PAID[3]) else r.amount:SetTextColor(Theme.rgb("felt")) end
   r.age:SetText(l.age)
   r.strike:SetShown(l.state == "paid")

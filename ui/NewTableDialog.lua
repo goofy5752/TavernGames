@@ -9,7 +9,7 @@ local _, ns = ...
 -- „Отвори“ → client:openTable (the stake in copper, ns.Stake.fromParts; a bad
 -- amount keeps the dialog open with the reason).
 local Theme, W, L, C = ns.Theme, ns.W, ns.L, ns.Const
-local money = ns.Util.money
+local money = ns.W.money
 
 local D = {
   options = {}, -- option id -> choice group, for the game the dialog is open on

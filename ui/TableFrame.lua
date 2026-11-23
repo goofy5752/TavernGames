@@ -372,7 +372,7 @@ function TableFrame.render()
   v.watchers:SetText(L("table.watchers", watchers))
   v.watchers:SetShown(watchers > 0)
   local blinds = s.stake and ns.StakePanels.blinds(s.game, s.stake) -- a cash table shows its blinds, not its big blind as a stake
-  v.stake:SetText(blinds and L("table.blinds", blinds) or s.stake and L("table.stake", ns.Util.money(s.stake)) or "")
+  v.stake:SetText(blinds and L("table.blinds", blinds) or s.stake and L("table.stake", ns.W.money(s.stake)) or "")
   v.stake:SetShown(s.stake ~= nil)
   local billLeft = ns.StakePanels.bill(v, s) -- before the board: its view hides its own result line under the bill
   renderBoard(v, s, renderPlates(v, s, client))

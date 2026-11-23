@@ -109,7 +109,7 @@ describe("ui: the tab „Тефтер“", function()
     debt(w, B, C, 50000)
     debt(w, D, C, 20000)
     local v = open(w)
-    ok(v.head:IsVisible(), "no head"); eq(v.head:GetText(), "Открити дългове в гилдията: 7g в 2 записа")
+    ok(v.head:IsVisible(), "no head"); eq(v.head:GetText(), w:coins("Открити дългове в гилдията: 7g в 2 записа"))
     eq(v.empty:IsVisible(), false)
   end)
 
@@ -127,12 +127,12 @@ describe("ui: the tab „Тефтер“", function()
     open(w)
     eq(states(w), { "open", "open", "pending", "contested", "paid", "denied" })
     eq(shown(w), {
-      { "Дара Колева » Тодор Ангелов", "2g", "днес" },
-      { "Мария Стоянова » Тодор Ангелов", "остават 2g от 5g", "днес" },
-      { "Дара Колева » Мария Стоянова", "6g", "днес", "чака потвърждение" },
-      { "Тодор Ангелов » Мария Стоянова", "3g", "днес", "оспорен" },
-      { "Тодор Ангелов » Дара Колева", "4g", "днес" },
-      { "Дара Колева » Мария Стоянова", "1g", "днес", "отречено от автора си" },
+      { "Дара Колева » Тодор Ангелов", w:coins("2g"), "днес" },
+      { "Мария Стоянова » Тодор Ангелов", w:coins("остават 2g от 5g"), "днес" },
+      { "Дара Колева » Мария Стоянова", w:coins("6g"), "днес", "чака потвърждение" },
+      { "Тодор Ангелов » Мария Стоянова", w:coins("3g"), "днес", "оспорен" },
+      { "Тодор Ангелов » Дара Колева", w:coins("4g"), "днес" },
+      { "Дара Колева » Мария Стоянова", w:coins("1g"), "днес", "отречено от автора си" },
     })
     local rows = T(w).rows
     table.sort(rows, function(p, q) return p.index < q.index end)
@@ -149,11 +149,11 @@ describe("ui: the tab „Тефтер“", function()
     contest(w, fought)
     debt(w, B, C, 10000)
     local v = open(w)
-    eq(v.head:GetText(), "Открити дългове в гилдията: 1g в 1 записа")
+    eq(v.head:GetText(), w:coins("Открити дългове в гилдията: 1g в 1 записа"))
     local marks = {}
     for _, l in ipairs(shown(w)) do marks[#marks + 1] = l[4] or "-" end
     eq(marks, { "-", "чака потвърждение", "оспорен" })
-    eq(v.foot:GetText(), "Най-голям длъжник: Мария Стоянова (1g)")
+    eq(v.foot:GetText(), w:coins("Най-голям длъжник: Мария Стоянова (1g)"))
   end)
 
   it("a denied entry is „отречено“; one I got directly from its author „отречено от автора си“", function()
@@ -167,7 +167,7 @@ describe("ui: the tab „Тефтер“", function()
     local marks = {}
     for _, l in ipairs(shown(w)) do marks[l[1]] = l[4] end
     eq(marks, { ["Мария Стоянова » Дара Колева"] = "отречено", ["Дара Колева » Тодор Ангелов"] = "отречено от автора си" })
-    eq(T(w).head:IsVisible(), true); eq(T(w).head:GetText(), "Открити дългове в гилдията: 0c в 0 записа")
+    eq(T(w).head:IsVisible(), true); eq(T(w).head:GetText(), w:coins("Открити дългове в гилдията: 0c в 0 записа"))
     eq(T(w).foot:IsVisible(), false)
   end)
 
@@ -178,7 +178,7 @@ describe("ui: the tab „Тефтер“", function()
     deny(w, p)
     open(w)
     eq(states(w), { "open", "denied" })
-    eq(shown(w)[2], { "Мария Стоянова » Тодор Ангелов", "5g", "днес", "отречено от автора си" })
+    eq(shown(w)[2], { "Мария Стоянова » Тодор Ангелов", w:coins("5g"), "днес", "отречено от автора си" })
   end)
 
   it("a relayed entry carries „пренесено“ in its tooltip", function()
@@ -216,7 +216,7 @@ describe("ui: the tab „Тефтер“", function()
     local w = readyWow()
     debt(w, B, C, 50000); debt(w, B, D, 20000); debt(w, D, C, 60000)
     local v = open(w)
-    ok(v.foot:IsVisible(), "no foot"); eq(plain(v.foot:GetText()), "Най-голям длъжник: Мария Стоянова (7g)")
+    ok(v.foot:IsVisible(), "no foot"); eq(plain(v.foot:GetText()), w:coins("Най-голям длъжник: Мария Стоянова (7g)"))
     paid(w, B, C, 50000); paid(w, B, D, 20000); paid(w, D, C, 60000)
     eq(v.foot:IsVisible(), false)
     eq(states(w), { "paid", "paid", "paid" })
@@ -301,7 +301,7 @@ describe("ui: the tab „Тефтер“", function()
     local marks = {}
     for _, l in ipairs(shown(w)) do marks[#marks + 1] = l[4] or "-" end
     eq(marks, { "-", "оспорен · спор за сумата" })
-    eq(shown(w)[1][2], "остават 99g 98s от 99g 99s")
+    eq(shown(w)[1][2], w:coins("остават 99g 98s от 99g 99s"))
   end)
 
   it("two hundred rows scroll and build only the visible widgets", function()
@@ -317,10 +317,10 @@ describe("ui: the tab „Тефтер“", function()
     eq(#v.lines, 200)
     ok(#v.rows <= v.ROWS + 2, "built " .. #v.rows .. " row widgets for " .. v.ROWS .. " rows")
     local first = shown(w)[1]
-    eq(first[2], "3g") -- the newest: 1g + 200 * 1s
+    eq(first[2], w:coins("3g")) -- the newest: 1g + 200 * 1s
     for _ = 1, 400 do v.scroll.scripts.OnMouseWheel(v.scroll, -1) end
     local after = shown(w)
-    eq(after[#after][2], "1g 1s") -- the oldest
+    eq(after[#after][2], w:coins("1g 1s")) -- the oldest
     ok(#v.rows <= v.ROWS + 2, "scrolling built more widgets: " .. #v.rows)
     eq(v.scroll.contentHeight, 200 * v.ROW_H)
   end)

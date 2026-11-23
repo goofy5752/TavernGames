@@ -118,9 +118,9 @@ describe("ui: main window", function()
     w.money = 1843200
     local MW = w.ns.MainWindow
     MW.show()
-    eq(MW.gold:GetText(), "184g 32s")
+    eq(MW.gold:GetText(), w:coins("184g 32s"))
     w.money = 123456; w:fire("PLAYER_MONEY")
-    eq(MW.gold:GetText(), "12g 34s 56c")
+    eq(MW.gold:GetText(), w:coins("12g 34s 56c"))
     eq(#w:texts(w.ns.L("main.gold")), 1)
   end)
 
@@ -310,8 +310,11 @@ describe("ui: hall", function()
     local tid = tbl(w, B, { B, false }, "open", "|TInterface\\Icons\\x:16|t")
     local t = w.ns.Hall.view.tables[1]
     eq(t.tid, tid)
-    eq(#w:texts("Непозната игра"), 2) -- on the table top and in the label under it
-    eq(#w:texts("|T"), 0)
+    eq(#w:texts("Непозната игра"), 2); -- on the table top and in the label under it
+    eq(#w:texts("Icons\\x"), 0); eq(#w:texts("|T"), 1)
+    for _, fs in ipairs(w:texts("|T")) do -- the one texture tag shown is a coin of the gold in my bags
+      eq(fs, w.ns.MainWindow.gold); eq(fs:GetText(), w.ns.W.money(w.money))
+    end
     local sent = #w.sent
     w:click(t.chairs[2].button)
     eq(w.ns.Hall.view.footer:GetText(), w.ns.L("refused.version"))

@@ -10,7 +10,7 @@ local _, ns = ...
 --   the range's ends (both always reachable) and „Потвърди“, which is client:buy(n).
 -- `line(client, ev)` is the words of one finished hand (the client event "hand"), one row per winner.
 local W, L, Theme = ns.W, ns.L, ns.Theme
-local money, Names = ns.Util.money, ns.Names
+local money, Names = ns.W.money, ns.Names
 
 local V = {}
 ns.HoldemCashView = V
@@ -127,7 +127,7 @@ local function setRow(c, i, y, cells, head)
       cell:SetWidth(j == 1 and NAME_W or COL_W)
       cell:SetWordWrap(false)
     end
-    cell:SetText(cells[j] or "")
+    W.fit(cell, cells[j] or "", one and math.huge or cell:GetWidth()) -- an amount shrinks to its column, never clips
     cell:SetTextColor(Theme.rgb(head and "inkDim" or (j == 1 or one) and "ink" or "inkDim"))
     cell:SetShown(cells[j] ~= nil)
     if one then h = math.max(ROW_H, cell:GetStringHeight() + 4) end
@@ -178,7 +178,7 @@ local function stepBuy(f, d)
   local r = c.range
   if not (r and c.n) then return end
   c.n = math.max(r.lo, math.min(r.hi, c.n + d * r.step))
-  c.amount:SetText(cash(c.n))
+  W.fit(c.amount, cash(c.n), c.amount:GetWidth())
 end
 
 -- The words of a refusal code of client:buy (a short line per code; any other code is named).
@@ -273,7 +273,7 @@ function V.update(f, s, m)
     c.buy.text:SetText(L(bought == 0 and "cash.buy" or "cash.rebuy"))
     if c.buyBox:IsShown() then
       c.n = math.max(lo, math.min(cash_.hi, c.n or cash_.hi))
-      c.amount:SetText(cash(c.n))
+      W.fit(c.amount, cash(c.n), c.amount:GetWidth())
     end
   else
     c.buyBox:Hide()
