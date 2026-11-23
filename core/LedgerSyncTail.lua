@@ -66,6 +66,7 @@ function Sync:ended(x, capped)
   local since, owe = self.since[peer] or {}, self.owe[peer] or setmetatable({}, { __mode = "k" })
   self.since[peer], self.owe[peer] = since, owe
   for a in pairs(x.rev0 and x.acted or {}) do since[a] = x.rev0 end
+  for a in pairs(x.held or {}) do x.acted[a] = nil end -- held back by its day stamp: not given up on (Sync:fixed)
   for _, b in ipairs(x.left) do owe[b] = nil end
   for _, list in ipairs({ x.rest or {}, x.q }) do
     for _, b in ipairs(list) do
@@ -85,14 +86,14 @@ end
 -- and the D, C, N, P and X among the left out that are due again (Sync:resend).
 function Sync:tail(x, a, t)
   local L, n, peer = self.L, t and t.n or 0, x.peer
-  local row = self:row(peer)
+  local row = self:row(peer); x.held = x.held or {} -- (the authors whose day-stamped bodies it left out, Sync:ended)
   if row and (not t or t.x == ZERO) then row.a[a] = nil end -- it holds nothing of a: my mark of a is wrong
   local h = t and t.x ~= ZERO and L:stubTop(a) > n and row and row.a[a] or 0
   if h <= n then return L:above(a, n) end
   local since, owe, came, again = (self.since[peer] or {})[a] or 0, self.owe[peer] or {}, L.came, {}
   return L:above(a, n, function(k, b)
     if k > h or (came[b] or 0) > since or owe[b] == true then return true end
-    if b.k ~= "R" and b.k ~= "S" and self:due(peer, b) then again[#again + 1] = b end
+    if b.k ~= "R" and b.k ~= "S" then if self:due(peer, b) then again[#again + 1] = b else x.held[a] = true end end
     return false
   end), again
 end

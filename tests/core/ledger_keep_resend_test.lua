@@ -365,7 +365,12 @@ describe("ledger F4 sync: the second pass (Sync:tail, Sync:resend)", function()
     x = ex(L)
     run(s, x, 99)
     s:ended(x)
-    eq(x.acted[ZH], "s")
+    eq(x.acted[ZH], nil); eq(x.held[ZH], true) -- the four of the first exchange are stamped for the day: held back, ZH is not given up on (N1)
+    clock.now = C.LEDGER_REFUSED_TTL
+    x = ex(L)
+    run(s, x, 99)
+    s:ended(x)
+    eq(x.acted[ZH], "s") -- the stamp is over: nothing is held back
   end)
 end)
 

@@ -643,4 +643,56 @@ describe("ledger F4: the prune of a session (Net:prune)", function()
   end)
 end)
 
+describe("ledger F4 sync: a stamped money body is not given up on (N1)", function()
+  local PAY = 61
+  local function setup()
+    local sim, c = world(ANA, VERA) -- Ана, the lower name, is the newcomer and asks
+    local ks = { D = 50, C = 51, P = 55, N = 57, X = 59 }
+    give(c[VERA], rs(ZH, 1, 40, OLD)); give(c[VERA], heavy(41, 60, EPOCH0, ks))
+    eq(pruneAll(c[VERA], 15), 40)
+    local v = sim:relog(VERA); sim:run(31) -- every body loaded from disk
+    hello(sim, ANA, VERA); sim:run(400) -- a normal exchange: Ана holds 41..60
+    ok(kinds(c[ANA], ks))
+    return sim, c, v
+  end
+  -- Exchanges every 400 s (each with a new difference) for up to `limit` s: when does Ана hold `id`?
+  local function within(sim, c, id, limit)
+    local t0, k = sim.clock, 0
+    while sim.clock - t0 < limit do
+      if holds(c[ANA], id) == 1 then return sim.clock - t0 end
+      k = k + 1
+      give(c[ANA], { pay(ANA, 100 + k) }); hello(sim, ANA, VERA); sim:run(400)
+    end
+    return holds(c[ANA], id) == 1 and sim.clock - t0 or nil
+  end
+
+  it("P1: the asker missed the holder's LEVs of a heard exchange: the P arrives by the stamp's end", function()
+    local sim, c, v = setup()
+    sim:run(3 * 3600)
+    local list = {}
+    for n = 61, 80 do list[#list + 1] = n == 75 and pay(ZH, n) or rs(ZH, n, n, EPOCH0)[1] end
+    give(v, list)
+    hello(sim, ANA, VERA)
+    local t = 0
+    while holds(c[ANA], Ledger.id(ZH, 61)) == 0 and t < 600 do sim:run(1); t = t + 1 end
+    eq(holds(c[ANA], Ledger.id(ZH, 61)), 1); eq(holds(c[ANA], Ledger.id(ZH, 75)), 0)
+    sim:offline(ANA); sim:run(40); sim:online(ANA) -- the rest of Вера's LEVs are lost, her exchange ended heard
+    local at = within(sim, c, Ledger.id(ZH, 75), C.LEDGER_REFUSED_TTL + 2 * C.LEDGER_PEER_GAP + 1000)
+    ok(at, "the P never arrived")
+  end)
+
+  it("P2: the peer got a P in a heard exchange, then crashed back to its last clean save", function()
+    local sim, c, v = setup()
+    sim:keep(ANA, sim.envs[ANA].db) -- a clean logout
+    sim:run(3600)
+    give(v, { pay(ZH, PAY) })
+    hello(sim, ANA, VERA); sim:run(400)
+    eq(holds(c[ANA], Ledger.id(ZH, PAY)), 1)
+    c[ANA] = sim:crash(ANA); sim:run(31)
+    eq(holds(c[ANA], Ledger.id(ZH, PAY)), 0)
+    local at = within(sim, c, Ledger.id(ZH, PAY), C.LEDGER_REFUSED_TTL + 2 * C.LEDGER_PEER_GAP + 1000)
+    ok(at, "the P never arrived")
+  end)
+end)
+
 ns.LedgerNet.size = stand
