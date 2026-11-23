@@ -41,10 +41,15 @@ local function book()
     if draw then w, l = {}, {} end
     return b.result(author, { gid = gid(k), g = game, n = { a, z }, w = w, l = l }, nil, NOW + k)
   end
-  -- A staked game at gid(k): a won, z lost and z confirmed it (its own D).
+  -- A debt of an honest staked game: t's claim, then f's own D (both sides' word).
+  function b.both(f, t, c, g, game, at)
+    b.debt(t, f, t, c, g, at, game)
+    return b.debt(f, f, t, c, g, at, game)
+  end
+  -- A staked game at gid(k): a won, z lost; a claimed the debt and z confirmed it (its own D).
   function b.staked(k, a, z, c, game, at)
     b.result(a, { gid = gid(k), g = game, n = { a, z }, w = { 1 }, l = { 2 }, sk = c }, nil, at or NOW + k)
-    return b.debt(z, z, a, c, gid(k), at or NOW + k, game)
+    return b.both(z, a, c, gid(k), game, at or NOW + k)
   end
   return b
 end
@@ -109,7 +114,7 @@ describe("ledger stats: the trust rule", function()
   it("Belot: two confirmed pairs, four names, the leaver's partner draws", function()
     local b = book()
     b.result(M, { g = "belot", n = { I, M, P, Q }, w = { 2, 4 }, l = { 1 }, sk = 10000, why = "left" })
-    b.debt(I, I, M, 10000, G1, nil, "belot"); b.debt(I, I, Q, 10000, G1, nil, "belot")
+    b.both(I, M, 10000, G1, "belot"); b.both(I, Q, 10000, G1, "belot")
     local g = games(b)[1]
     eq(g.counts, { [I] = "loss", [M] = "win", [Q] = "win", [P] = "draw" }); eq(g.state, "confirmed"); eq(g.why, "left")
   end)
@@ -135,10 +140,10 @@ describe("ledger stats: the trust rule", function()
     local b = book()
     -- won: I owes M at gid(1), confirmed by I (its own D); the S's own w/l say the opposite
     b.stand(I, M, gid(1), { I, M }, { 1 }, { 2 })
-    b.debt(I, I, M, 3000, gid(1), nil, "holdem")
+    b.both(I, M, 3000, gid(1), "holdem")
     -- lost: M owes I at gid(2)
     b.stand(I, M, gid(2), { I, M })
-    b.debt(M, M, I, 2000, gid(2), nil, "holdem")
+    b.both(M, I, 2000, gid(2), "holdem")
     -- pending: I's claim on M at gid(3), never confirmed
     b.stand(I, M, gid(3), { I, M })
     b.debt(I, M, I, 2000, gid(3), nil, "holdem")
@@ -152,7 +157,7 @@ describe("ledger stats: the trust rule", function()
   it("Холдем: the stander's own S with a confirmed debt counts, without one it adds nothing", function()
     local b = book()
     b.stand(M, M, gid(1), { I, M })
-    b.debt(M, M, I, 2000, gid(1), nil, "holdem")
+    b.both(M, I, 2000, gid(1), "holdem")
     b.stand(M, M, gid(2), { I, M }) -- a copied or empty cash gid: no debt
     local g = games(b)
     eq(g[1].counts, { [M] = "loss" }); eq(g[2].counts, {}); eq(g[2].state, "claim")
@@ -194,7 +199,7 @@ describe("ledger stats: the trust rule", function()
     eq(g.names, nil); eq(g.win, nil); eq(g.lose, nil)
     ok(Stats.named(g, M)); ok(not Stats.named(g, P))
     b.stand(I, M, gid(1), { I, M })
-    b.debt(I, I, M, 3000, gid(1), nil, "holdem")
+    b.both(I, M, 3000, gid(1), "holdem")
     local s = games(b)[2]
     eq({ Stats.dress(s) }, { { M }, { [M] = true }, {} }); ok(Stats.named(s, M)); ok(not Stats.named(s, I))
   end)
@@ -241,31 +246,98 @@ describe("ledger stats: forging routes", function()
     eq(row(r, I).wins, 1); eq(row(r, I).games, 1); eq(row(r, M).games, 1); eq(row(r, M).wins, 0)
   end)
 
-  it("a fun R copied onto a staked gid counts for nobody", function()
+  it("a fun R copied onto a staked gid cannot change the staked outcome", function()
     local b = book()
-    b.result(I, { gid = gid(1), n = { I, M }, w = { 1 }, l = { 2 }, sk = 1000 })
-    b.debt(I, M, I, 1000, gid(1))
-    b.result(M, { gid = gid(1), n = { M, I }, w = { 1 }, l = { 2 } }) -- M's "fun" win at the same game
-    for _, g in ipairs(games(b)) do eq(g.counts, {}) end
-    eq(board(b).rows, {})
+    b.staked(1, I, M, 1000)
+    b.result(M, { gid = gid(1), n = { M, I }, w = { 1 }, l = { 2 } }, nil, NOW) -- M's "fun" win at the same game, earlier
+    local r = board(b).rows
+    eq(row(r, I).wins, 1); eq(row(r, I).games, 1); eq(row(r, M).wins, 0); eq(row(r, M).games, 1)
+    local fun = games(b)[1]
+    eq(fun.state, "fun"); eq(fun.counts, {})
+  end)
+
+  it("a stranger's pending D at a fun gid changes nothing", function()
+    local b = book()
+    for k = 1, 5 do b.fun(I, k, I, M) end
+    b.debt(P, Q, P, 100, gid(3), NOW + 3) -- P's own claim that Q owes it at I's fun game: never confirmed
+    local d = board(b)
+    eq(row(d.rows, I).wins, 5); eq(row(d.rows, I).games, 5); eq(row(d.rows, I).honour, { kind = "wins", n = 5 })
+    eq(d.king, I)
+    eq(games(b)[3].counts, { [I] = "win", [M] = "loss" }); eq(games(b)[3].state, "fun")
+  end)
+
+  it("an outsider's earlier copy of a fun R moves no game out of the week", function()
+    local b = book()
+    b.result(I, { gid = gid(1), n = { I, M }, w = { 1 }, l = { 2 } }, nil, NOW)
+    b.result(P, { gid = gid(1), n = { I, M }, w = { 1 }, l = { 2 } }, nil, NOW - 40 * DAY)
+    local g = games(b)
+    eq(#g, 1); eq(g[1].at, NOW); eq(g[1].by, { P, I })
+    eq(row(board(b, { period = "week" }).rows, I).wins, 1)
+  end)
+
+  it("an outsider's earlier staked copy changes no period, filter or favourite game", function()
+    local b = book()
+    b.staked(1, I, M, 1000)
+    b.result(P, { gid = gid(1), g = "dice", n = { I, M }, w = { 1 }, l = { 2 }, sk = 1000 }, nil, NOW - 40 * DAY)
+    b.result(P, { gid = gid(1), n = { I, M }, w = { 1 }, l = { 2 }, sk = 1000 }, nil, NOW - 39 * DAY)
+    local week = board(b, { period = "week" }).rows
+    eq(row(week, I).games, 1); eq(row(week, I).wins, 1); eq(row(week, M).games, 1)
+    eq(row(board(b, { game = "ttt" }).rows, I).games, 1); eq(row(board(b, { game = "dice" }).rows, I), nil)
+    eq(row(board(b).rows, I).fav, "ttt")
+    for _, rec in ipairs(games(b)) do if rec.g == "dice" then eq(rec.counts, {}); eq(rec.state, "claim") end end
+  end)
+
+  it("an outsider's earlier copy breaks no run", function()
+    local b = book()
+    for k = 1, 4 do b.fun(I, k, I, M) end
+    b.fun(M, 50, M, I) -- M beat I, later
+    b.result(P, { gid = gid(50), n = { M, I }, w = { 1 }, l = { 2 } }, nil, NOW + 2) -- the same content, dated inside I's run
+    eq(row(board(b).rows, I).honour, { kind = "wins", n = 4 })
+    b = book()
+    for k = 1, 4 do b.fun(I, k, I, M) end
+    b.staked(50, M, I, 1000)
+    b.result(P, { gid = gid(50), g = "dice", n = { M, I }, w = { 1 }, l = { 2 }, sk = 1000 }, nil, NOW + 2)
+    b.result(P, { gid = gid(50), n = { M, I }, w = { 1 }, l = { 2 }, sk = 1000 }, nil, NOW + 2)
+    eq(row(board(b).rows, I).honour, { kind = "wins", n = 4 }); eq(row(board(b).rows, I).fav, "ttt")
+  end)
+
+  it("a forger's self-confirmed debt and a result naming seven others give no draws", function()
+    local b = book()
+    for k = 1, 4 do b.fun(I, k, I, M) end
+    local n = { P, Q, I, M }
+    for j = 1, 5 do n[#n + 1] = "Жертва Номер" .. j end
+    b.debt(P, P, Q, 100, gid(99), NOW + 2) -- P's own D: confirmed at once, Q never spoke
+    b.result(P, { gid = gid(99), n = n, w = { 2 }, l = { 1 }, sk = 100 }, nil, NOW + 2)
+    local r = board(b).rows
+    eq(row(r, I).games, 4); eq(row(r, I).pct, 100); eq(row(r, I).honour, { kind = "wins", n = 4 })
+    eq(row(r, M).games, 4)
+    for j = 1, 5 do eq(row(r, "Жертва Номер" .. j), nil) end
+  end)
+
+  it("an outsider's staked R that counts is labelled by its debts, not a claim", function()
+    local b = book()
+    b.result(P, { gid = gid(1), n = { I, M }, w = { 1 }, l = { 2 }, sk = 1000 })
+    b.both(M, I, 1000, gid(1))
+    local g = games(b)[1]
+    eq(g.counts, { [I] = "win", [M] = "loss" }); eq(g.state, "confirmed")
   end)
 
   it("an outsider's S adds no sitting", function()
     local b = book()
     b.stand(I, M, gid(1), { I, M })
-    b.debt(M, M, I, 2000, gid(1), nil, "holdem")
+    b.both(M, I, 2000, gid(1), "holdem")
     b.stand(P, I, gid(1), { I, M }) -- P sat nowhere: an extra sitting for I
     local g = games(b)
     local extra = g[1].by[1] == P and g[1] or g[2]
     eq(extra.counts, {}); eq(extra.state, "claim")
-    eq(row(board(b).rows, I).games, 0); eq(row(board(b).rows, I).net, 2000)
+    eq(row(board(b).rows, I).games, 0); eq(row(board(b).rows, I).net, 2000); eq(row(board(b).rows, M).games, 1)
   end)
 
   it("extra S of one seat at one gid count once", function()
     local b = book()
     b.stand(I, M, gid(1), { I, M }, nil, nil, 20000)
     b.stand(I, M, gid(1), { I, M }, nil, nil, 30000)
-    b.debt(M, M, I, 2000, gid(1), nil, "holdem")
+    b.both(M, I, 2000, gid(1), "holdem")
     eq(#games(b), 2); eq(row(board(b).rows, M).games, 1)
   end)
 
@@ -442,5 +514,45 @@ describe("ledger stats: cost", function()
     local spent = os.clock() - t0
     eq(#g, 50000); eq(#d.rows, 10); eq(d.rows[1].games, 10000)
     ok(spent < 1.5, "board over 50000 results took " .. spent .. " s")
+  end)
+
+  -- One gid flooded: the board and the history are linear in the bodies of a gid.
+  local function standIn(entries)
+    local L = { rev = 1, epoch = function() return NOW end }
+    function L:each(fn) for _, e in ipairs(entries) do fn(e) end end
+    function L:denied() return false end
+    return L
+  end
+  local function spend(L)
+    local t0 = os.clock()
+    local g = Stats.games(L)
+    Stats.board(L, { period = "all", now = NOW }); Stats.board(L, { period = "week", now = NOW, game = "ttt" })
+    ns.LedgerHistory.lines(L); ns.LedgerHistory.lines(L, M)
+    return g, os.clock() - t0
+  end
+
+  it("one author's 4500 distinct results at one gid stay under the bound", function()
+    local entries, F = {}, "Фалшив Играч"
+    for n = 1, 4500 do
+      entries[n] = { i = F .. ":" .. n, k = "R", at = NOW + n, gid = "Маса#1/1", g = "ttt",
+        n = { F, M, "А", "Б", "В", "Г", "Д", "Е" }, w = { 1, 3, 4, 5, 6, 7, 8 }, l = { 2, (n % 7) + 3, n } }
+    end
+    local g, spent = spend(standIn(entries))
+    eq(#g, 4500)
+    ok(spent < 0.3, "4500 results at one gid took " .. spent .. " s")
+  end)
+
+  it("two authors with 4000 S each at one gid raise nothing and stay under the bound", function()
+    local entries, G = {}, "Маса#2/1"
+    for _, who in ipairs({ I, M }) do
+      for n = 1, 4000 do
+        entries[#entries + 1] = { i = who .. ":" .. n, k = "S", at = NOW + n, gid = G, g = "holdem", f = who, c = 100 * n,
+          sk = 100, n = { I, M }, w = {}, l = {} }
+      end
+    end
+    entries[#entries + 1] = { i = I .. ":9001", k = "R", at = NOW, gid = G, g = "holdem", n = { I, M }, w = { 1 }, l = { 2 } }
+    local g, spent = spend(standIn(entries))
+    eq(#g, 8001)
+    ok(spent < 0.3, "8000 S at one gid took " .. spent .. " s")
   end)
 end)
