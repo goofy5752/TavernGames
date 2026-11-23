@@ -165,6 +165,22 @@ describe("ui: the amounts on the felt", function()
     eq({ f.pot:GetText(), f.seat[2].bet:GetText(), f.seat[2].chip:IsVisible() }, { "Пот 15", "5", true })
   end)
 
+  it("the biggest cash amounts on the buttons shrink to fit, keeping the padding", function()
+    local w, View, f = setup()
+    local st = E.new{ seats = { true, true, true }, opt = { rebuy = "top", blinds = 200 }, staked = true, names = { A, B, C } }
+    for seat = 1, 3 do ok(E.apply(st, seat, { k = "buy", n = 20000 })) end -- the top buy-in of the biggest blinds: 200g
+    ok(E.apply(st, 0, { k = "hand" })); ok(E.apply(st, 0, { k = "deal", deck = E.DECK }))
+    View.update(f, sess(st, 1)); f.want = 19995; View.update(f, f.session) -- the amount I set, kept until the next event
+    local function size(b) return (select(2, b.text:GetFont())) end
+    eq({ f.raiseButton.text:GetText(), f.callButton.text:GetText(), f.allinButton.text:GetText() },
+       { w:coins("Вдигам до 199g 95s"), w:coins("Плащам 2g"), w:coins("Ва банк 200g") })
+    for _, b in ipairs({ f.raiseButton, f.callButton, f.allinButton }) do
+      ok(b.text:GetStringWidth() <= b:GetWidth() - 6, plain(b.text:GetText()) .. " leaves no padding: " .. b.text:GetStringWidth())
+      ok(size(b) >= 8, "below the floor")
+    end
+    ok(size(f.raiseButton) < 10, "the raise label did not shrink below the old floor")
+  end)
+
   it("the same hand reads the same amounts either way", function()
     local w, View, f = setup()
     local Util, CHIP = w.ns.Util, w.ns.HoldemCash.CHIP

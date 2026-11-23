@@ -804,7 +804,7 @@ describe("ui: the staked table of Сантасе, Белот and Табла (F2)
     ok(v.bill:IsVisible(), "no bill")
     eq(billLines(v), { { L("bill.left.team", "Мария"), "" }, { w:coins("Мария дължи на Иван 1g"), L("bill.pending") },
                        { w:coins("Мария дължи на Тодор 1g"), L("bill.pending") } })
-    eq(v.bill:GetHeight(), 32 + 4 * 18) -- the leave line takes two rows
+    eq(v.bill:GetHeight(), 32 + 3 * 18) -- the leave line fits its row: the name's colour code takes no room
     -- My partner leaves: I owe nothing and am owed nothing, so no bill and the view's own line.
     w.ns.client:stand(); w:advance(2) -- another table (its id has another second in it)
     local tid2 = host(w, "belot", 10000, { B, C, D })

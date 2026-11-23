@@ -118,9 +118,9 @@ function FontString:SetShadowOffset(x, y) self.shadow = { x, y } end
 function FontString:SetShadowColor(...) self.shadowColor = { ... } end
 function FontString:SetDrawLayer(layer, sub) self.layer, self.sublayer = layer, sub end
 -- Half the font size per character; an inline texture or atlas tag (a coin)
--- is one square of the font size, as the client draws it.
+-- is one square of the font size, as the client draws it; a colour code takes no room.
 function FontString:GetStringWidth()
-  local text = (self.text or ""):gsub("|T.-|t", "MM"):gsub("|A.-|a", "MM")
+  local text = (self.text or ""):gsub("|T.-|t", "MM"):gsub("|A.-|a", "MM"):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
   local _, n = text:gsub("[^\128-\191]", "")
   return n * (self.font and self.font[2] or 12) * 0.5
 end
