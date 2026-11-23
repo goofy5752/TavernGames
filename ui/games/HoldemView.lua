@@ -9,7 +9,10 @@ local _, ns = ...
 -- while the deal is still shuffled, mine dimmed once I folded), its bet with
 -- a chip or after a hand what it won, the dealer's disc and the blinds' marks
 -- at the plates; the line of text, the note of a close and the log of the
--- last hand. On my turn the bet buttons: „½ пот“, „Пот“, „Ва банк“, − and +
+-- last hand. Every chip count on the felt is View.amount: coins (chips x
+-- HoldemCash.CHIP) at a cash table, where a chip is real silver; the bare
+-- number at a fun one, with a chip in the skin's bannerHi beside a bet. On
+-- my turn the bet buttons: „½ пот“, „Пот“, „Ва банк“, − and +
 -- for the amount, „Пас“, „Чек“ / „Плащам“, „Залагам“ / „Вдигам до“; the host
 -- of a running game has „Приключи“. The amount the buttons set is the view's
 -- memory (`want`) until any table event; after an accepted action the buttons
@@ -34,10 +37,22 @@ local LABEL, LABEL_MIN, LABEL_PAD = 13, 10, 6 -- a button label shrinks to fit i
 local FOLDED_ALPHA, OFF_ALPHA = 0.5, 0.5
 -- The finished hand's words with a hand category: the index of the category in the model's text.
 local CAT_AT = { ["holdem.won"] = 4, ["holdem.split"] = 3, ["holdem.log"] = 5, ["holdem.logSplit"] = 4 }
+-- The model's words with a chip count: the index of the amount in the model's text.
+local AMOUNT_AT = { ["holdem.won"] = 3, ["holdem.wonFold"] = 3, ["holdem.split"] = 2, ["holdem.log"] = 4,
+  ["holdem.logFold"] = 4, ["holdem.logSplit"] = 3, ["holdem.toCall"] = 2 }
 -- The words after a hand, in gold.
 local AFTER = { ["holdem.won"] = true, ["holdem.wonFold"] = true, ["holdem.split"] = true, ["holdem.void"] = true, ["holdem.closed"] = true }
 
 local View = { ring = true, size = { 760, 532 } }
+
+-- Is s a table for real money (ns.Stakes.cash) -> bool.
+function View.cash(s) return ns.Stakes.cash(s) end
+
+-- A chip count on the felt: coins at a cash table (ns.HoldemCashView.coins), the number at a fun one.
+function View.amount(s, chips)
+  if View.cash(s) then return ns.HoldemCashView.coins(chips) end
+  return tostring(chips)
+end
 
 ---------------------------------------------------------------------------
 -- Acting
@@ -149,11 +164,11 @@ local function place(f, k, plate)
   end
   p.chip = f:CreateTexture(nil, "ARTWORK")
   p.chip:SetTexture(Theme.tex.chip)
+  p.chip:SetVertexColor(Theme.rgb("bannerHi")) -- a fun table's chip, in the skin's colour
   p.chip:SetSize(CHIP, CHIP)
   p.chip:Hide()
   p.bet = W.Label(f, "ui", "", 12)
   p.bet:SetWordWrap(false)
-  p.bet:SetPoint("LEFT", p.chip, "RIGHT", CHIP_GAP, 0)
   p.bet:Hide()
   p.mark = mark(f, plate[1] + MARK_X, plate[2])
   return p
@@ -234,18 +249,20 @@ function View.seatNote(s, seat)
   local ms = M.build(s).seats[seat]
   if not ms then return "" end
   if NOTE[ms.st] then return L(NOTE[ms.st]) end
-  return tostring(ms.chips)
+  return View.amount(s, ms.chips)
 end
 
 -- The model's words {key, args…} in the locale: the category by its name,
--- each name in its class colour when `colour`.
-local function words(t, colour)
+-- the amount by View.amount, each name in its class colour when `colour`.
+local function words(s, t, colour)
   local key, at = t[1], CAT_AT[t[1]]
   local args = {}
   for k = 2, at or #t do
     local x = t[k]
     if k == at then
       x = L("holdem.cat." .. tostring(x))
+    elseif k == AMOUNT_AT[key] then
+      x = View.amount(s, x)
     elseif type(x) == "string" and colour then
       x = W.colored(ns.client, x)
     end
@@ -266,22 +283,27 @@ local function drawCards(p, ms, m, folded)
   end
 end
 
--- The bet with a chip, or after a hand what the seat won; the pair centred on the table's bet offset.
-local function drawBet(f, p, k, ms)
+-- The bet, or after a hand what the seat won, centred on the table's bet offset: at a fun
+-- table with a chip before it, at a cash table alone (its coin is in the text).
+local function drawBet(f, s, p, k, ms)
   local text, colour
   if ms and ms.bet then
-    text, colour = tostring(ms.bet), "gold"
+    text, colour = View.amount(s, ms.bet), "gold"
   elseif ms and ms.won and ms.won > 0 then
-    text, colour = "+" .. ms.won, "good"
+    text, colour = "+" .. View.amount(s, ms.won), "good"
   end
+  local chip = text ~= nil and not View.cash(s)
   if text then
     p.bet:SetText(text)
     p.bet:SetTextColor(Theme.rgb(colour))
-    local width = CHIP + CHIP_GAP + p.bet:GetStringWidth()
+    local lead = chip and CHIP + CHIP_GAP or 0
+    local x = BET[k][1] - (lead + p.bet:GetStringWidth()) / 2
     p.chip:ClearAllPoints()
-    p.chip:SetPoint("LEFT", f, "TOPLEFT", BET[k][1] - width / 2, BET[k][2])
+    p.chip:SetPoint("LEFT", f, "TOPLEFT", x, BET[k][2])
+    p.bet:ClearAllPoints()
+    p.bet:SetPoint("LEFT", f, "TOPLEFT", x + lead, BET[k][2])
   end
-  p.chip:SetShown(text ~= nil)
+  p.chip:SetShown(chip)
   p.bet:SetShown(text ~= nil)
 end
 
@@ -294,23 +316,23 @@ local function drawMark(p, ms)
   m:SetShown(kind ~= nil)
 end
 
-local function drawSeats(f, m)
+local function drawSeats(f, s, m)
   mapSeats(f, m.me)
   for seat = 1, SEATS do
     local p, ms = f.seat[seat], m.seats[seat]
     drawCards(p, ms, m, ms ~= nil and ms.folded == true)
-    drawBet(f, p, (seat - m.me) % SEATS, ms)
+    drawBet(f, s, p, (seat - m.me) % SEATS, ms)
     drawMark(p, ms)
   end
 end
 
-local function drawTable(f, m)
+local function drawTable(f, s, m)
   for j = 1, 5 do
     local c, face = f.board[j], m.board[j]
     if face then c.card:set(face) end
     c:SetShown(face ~= nil)
   end
-  if m.pot > 0 then f.pot:SetText(L("holdem.pot", m.pot)) end
+  if m.pot > 0 then f.pot:SetText(L("holdem.pot", View.amount(s, m.pot))) end
   f.pot:SetShown(m.pot > 0)
 end
 
@@ -338,23 +360,23 @@ local function drawButtons(f, s, m)
   local r = a and a.raise
   setButton(f, f.foldButton, a ~= nil)
   setButton(f, f.callButton, a ~= nil and (a.check or a.call) ~= nil,
-    a and (a.check and L("holdem.check") or a.call and L("holdem.call", a.call)))
-  setButton(f, f.raiseButton, r ~= nil, r and L(r.k == "bet" and "holdem.bet" or "holdem.raise", m.to))
+    a and (a.check and L("holdem.check") or a.call and L("holdem.call", View.amount(s, a.call))))
+  setButton(f, f.raiseButton, r ~= nil, r and L(r.k == "bet" and "holdem.bet" or "holdem.raise", View.amount(s, m.to)))
   for _, b in ipairs({ f.minusButton, f.plusButton, f.halfButton, f.potButton }) do setButton(f, b, r ~= nil) end
-  setButton(f, f.allinButton, a ~= nil and a.allin ~= nil, a and a.allin and L("holdem.allin", a.allin))
+  setButton(f, f.allinButton, a ~= nil and a.allin ~= nil, a and a.allin and L("holdem.allin", View.amount(s, a.allin)))
   f.closeButton:SetShown(m.host and s.status == "live" and not m.closing and not m.over)
 end
 
-local function drawWords(f, m)
+local function drawWords(f, s, m)
   local t = m.text
   if t then
-    f.text:SetText(words(t, true))
+    f.text:SetText(words(s, t, true))
     f.text:SetTextColor(Theme.rgb(AFTER[t[1]] and "gold" or "ink"))
   end
   f.text:SetShown(t ~= nil)
-  if m.note then f.note:SetText(words(m.note)) end
+  if m.note then f.note:SetText(words(s, m.note)) end
   f.note:SetShown(m.note ~= nil)
-  if m.log then f.log:SetText(words(m.log)) end
+  if m.log then f.log:SetText(words(s, m.log)) end
   f.log:SetShown(m.log ~= nil)
 end
 
@@ -364,10 +386,10 @@ function View.update(f, s)
   if f.key ~= key then f.key, f.want, f.sent = key, nil, nil end
   local m = M.build(s, f.want)
   f.model = m
-  drawSeats(f, m)
-  drawTable(f, m)
+  drawSeats(f, s, m)
+  drawTable(f, s, m)
   drawButtons(f, s, m)
-  drawWords(f, m)
+  drawWords(f, s, m)
   ns.HoldemCashView.update(f, s, m)
 end
 

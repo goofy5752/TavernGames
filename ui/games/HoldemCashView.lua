@@ -4,7 +4,7 @@ local _, ns = ...
 -- over the felt of ns.HoldemView from the model's `cash` (ns.HoldemModel):
 --   „Сметка“ at the felt's top right opens a panel of three tabs: „Ти срещу всеки“ (per opponent what it took
 --   from me, what I took, the net), „Всички“ (every seat's buy-in, chips and net) and „Ръце“ (the newest
---   30 hands of this table heard in this run, `lines`). A chip is one silver (HoldemCash.CHIP).
+--   30 hands of this table heard in this run, `lines`). A chip is one silver (HoldemCash.CHIP); `coins(chips)`: in coins.
 --   „Вход“ (my seat has bought nothing) or „Докупи“ (it has), while the model has a range (`cash.lo`: never
 --   inside my hand, after the close, while my stake is still asked): a stepper of 10 big blinds between
 --   the range's ends (both always reachable) and „Потвърди“, which is client:buy(n).
@@ -27,7 +27,8 @@ local kept = {} -- tid -> {line, ...}, the newest first, for this run
 -- The words of a hand
 ---------------------------------------------------------------------------
 
-local function cash(chips) return money(chips * ns.HoldemCash.CHIP) end
+function V.coins(chips) return money(chips * ns.HoldemCash.CHIP) end
+local cash = V.coins
 
 -- The signed amount of a net (the sign of a loss only).
 local function signed(chips) return chips < 0 and "-" .. cash(-chips) or cash(chips) end
