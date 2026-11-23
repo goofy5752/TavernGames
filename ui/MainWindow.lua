@@ -208,6 +208,7 @@ local function build()
   f:SetScript("OnEvent", onEvent)
   f:SetScript("OnShow", onShow)
   f:Hide()
+  ns.Sounds.window(f)
   layoutTabs()
 end
 

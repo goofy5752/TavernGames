@@ -470,6 +470,7 @@ function TableFrame.build()
 
   f:SetScript("OnUpdate", TableFrame.tick)
   f:Hide()
+  ns.Sounds.window(f)
 end
 
 ns.ready(function(client)

@@ -448,7 +448,7 @@ describe("ui: settings", function()
     eq(w.ns.db.lang, "en"); eq(v.langEn.checked, true); eq(v.langBg.checked, false)
     eq(w.ns.Locale.lang(), "bg") -- applied by the reload
     ok(v.reload:IsVisible(), "no reload prompt")
-    eq(v.reloadButton.text:GetText(), "Презареди")
+    eq(v.reloadButton.text:GetText(), "Презареди сега")
     eq(w.reloads, 0)
     w:click(v.reloadButton)
     eq(w.reloads, 1)

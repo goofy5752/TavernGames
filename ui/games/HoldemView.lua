@@ -386,6 +386,9 @@ function View.update(f, s)
   if f.key ~= key then f.key, f.want, f.sent = key, nil, nil end
   local m = M.build(s, f.want)
   f.model = m
+  local hand = s.state.hand or 0
+  ns.Sounds.once("deal", s.tid .. ":" .. hand, s.tid, hand > 0)
+  if View.cash(s) then ns.Sounds.once("coins", s.tid .. ":" .. hand .. ":" .. m.pot, s.tid, m.pot > 0) end
   drawSeats(f, s, m)
   drawTable(f, s, m)
   drawButtons(f, s, m)
