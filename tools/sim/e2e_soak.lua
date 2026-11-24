@@ -214,13 +214,19 @@ local function live(sim, name)
 end
 
 -- The client that hosts tid live now (the newest epoch if two think so).
+-- The client that hosts tid live now: of two (a fork), the one more clients follow, then the newer epoch.
 local function hostOf(sim, tid)
-  local best
+  local best, bestN
   for _, name in ipairs(T.names) do
     local c = live(sim, name)
     local s = c and c.session
     if s and s.tid == tid and s.role == "host" and s.status == "live" and not sim.offlineSet[name] then
-      if not best or (s.epoch or 0) > (best.session.epoch or 0) then best = c end
+      local n = 0
+      for _, other in ipairs(T.names) do
+        local o = live(sim, other)
+        if o and o.session and o.session.tid == tid and o.session.host == name then n = n + 1 end
+      end
+      if not best or n > bestN or (n == bestN and (s.epoch or 0) > (best.session.epoch or 0)) then best, bestN = c, n end
     end
   end
   return best
@@ -433,6 +439,7 @@ local function runTable(idx, seed, game, staked)
     local hands = game == "holdem" and rng(3, 14) or nil
     local closed = false
     local disruptions = rng() < 0.15 and 0 or rng(1, 3)
+    if os.getenv("SOAK_CALM") then disruptions = 0 end -- honest play, nothing goes wrong: every debt should end confirmed
     local plan = {}
     for _ = 1, disruptions do plan[#plan + 1] = { at = rng(2, game == "ttt" and 8 or 60), kind = KINDS[rng(1, #KINDS)] } end
     local steps = 0
@@ -977,7 +984,12 @@ for idx = 1, TABLES do
   for _, k in ipairs({ "noR", "away", "forks", "handForks", "unHeld" }) do stats[k] = stats[k] + (T[k] or 0) end
   stats.claims = stats.claims + #(T.claims or {})
   for _, e in ipairs(T.events) do local k = e:match("^(%S+)"); stats.events[k] = (stats.events[k] or 0) + 1 end
-  for k, n in pairs(T.status or {}) do stats.status[k] = (stats.status[k] or 0) + n end
+  for k, n in pairs(T.status or {}) do
+    stats.status[k] = (stats.status[k] or 0) + n
+    local label = T.game .. (T.staked and "/staked" or "/fun")
+    stats.byStatus = stats.byStatus or {}
+    stats.byStatus[label .. " " .. k] = (stats.byStatus[label .. " " .. k] or 0) + n
+  end
   if #T.fail > 0 then
     g.failed = g.failed + 1
     stats.failed = stats.failed + 1
@@ -1000,6 +1012,9 @@ print("  disruptions: " .. table.concat(ev, " "))
 local st = {}
 for _, k in ipairs(sortedKeys(stats.status)) do st[#st + 1] = k .. "=" .. stats.status[k] end
 print("  debts: " .. table.concat(st, " ") .. "; bad hands (explained) " .. stats.bad)
+local bs = {}
+for _, k in ipairs(sortedKeys(stats.byStatus or {})) do bs[#bs + 1] = k .. "=" .. stats.byStatus[k] end
+print("  debts by game: " .. table.concat(bs, ", "))
 print(string.format("  host claims by silence %d; settlements only a fork saw %d, hands that differ on a fork %d", stats.claims, stats.forks, stats.handForks))
 print(string.format("  known gaps (not failures): results with no R (the host died before its entry went out) %d,", stats.noR))
 print(string.format("    debts no claim exists for (the creditor never applied the event: cut off or crashed) %d,", stats.away))
