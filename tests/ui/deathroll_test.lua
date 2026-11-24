@@ -306,17 +306,17 @@ describe("ui: Death Roll view", function()
 end)
 
 describe("ui: Death Roll ladder, short names", function()
-  it("two Ivans an initial, a bot its cog; long names shrink, then wrap: the seven cells always fit the trail", function()
+  it("two Ivans an initial, a bot its cog; an unreal 40-letter word may wrap: the seven cells always fit the trail", function()
     local w, V, View = setup()
-    local seats = { "Ivan Petrovski", "Ivan Kolev", "Bot Barleybrewster", "Konstantinopolskiovich Velikov" }
+    local seats = { "Ivan Petrovski", "Ivan Kolev", "Bot Barleybrewster", "Konstantinopolskiovichvelikopreslavskiev Velikov" }
     local s = { seats = seats, status = "live", role = "watcher", client = { env = {} },
       gameOver = function() return false end,
       state = { start = 100, max = 30, turn = 2, players = { 1, 2, 3, 4 },
         rolls = { { seat = 1, n = 80 }, { seat = 2, n = 60 }, { seat = 3, n = 50 }, { seat = 4, n = 40 }, { seat = 1, n = 30 } } } }
     View.update(V, s)
     eq({ V.cells[2].label:GetText(), V.cells[3].label:GetText(), (V.cells[4].label:GetText():gsub("\n", "")) },
-      { "Ivan P.", "Ivan K.", "Barleybrewster " .. MARK }) -- the bot's name broken by its letters in its cell
-    eq((V.cells[5].label:GetText():gsub("\n", "")), "Konstantinopolskiovich")
+      { "Ivan P.", "Ivan K.", "Barleybrewster " .. MARK }) -- whole: the trail gives the longer labels more room
+    eq((V.cells[5].label:GetText():gsub("\n", "")), "Konstantinopolskiovichvelikopreslavskiev")
     -- inside the 512 px trail: the first cell's left and the last cell's right (anchored on the top's middle)
     local first, last = V.cells[1].frame.points[1], V.cells[7].frame.points[1]
     ok(first[4] >= -256, "the trail starts left of the view: " .. first[4])
@@ -331,9 +331,34 @@ describe("ui: Death Roll ladder, short names", function()
     end
     -- a wrapped name pushes the caption down, so the two never meet
     local tall = V.cells[5].label:GetStringHeight()
-    ok(tall > 16, "the long name did not wrap")
+    ok(tall > 16, "the 40-letter word did not wrap")
     eq(V.caption.points[1][5], -(10 + 60 + 10 + tall - 16))
     -- a hover names the whole
     w:hover(V.cells[5].frame); eq(w.G.GameTooltip.lines, { seats[4] })
+  end)
+end)
+
+-- QA follow-up: a WoW name's word has at most 12 letters; the widest ones show whole on one line.
+describe("ui: Death Roll ladder, 12-letter names", function()
+  it("seven cells of the widest 12-letter names and two Ivans: every label one line, whole, at 9 or more", function()
+    local w, V, View = setup()
+    local seats = { "Mormogwathum Ironfoot", "Wolfgarmmund Deepforge", "Ivan Petrovski", "Ivan Kolevski", "Mwaargrimmon Ash" }
+    local s = { seats = seats, status = "live", role = "watcher", client = { env = {} },
+      gameOver = function() return false end,
+      state = { start = 1000, max = 30, turn = 2, players = { 1, 2, 3, 4, 5 },
+        rolls = { { seat = 1, n = 800 }, { seat = 2, n = 600 }, { seat = 3, n = 500 }, { seat = 4, n = 400 }, { seat = 5, n = 300 },
+                  { seat = 1, n = 30 } } } }
+    View.update(V, s)
+    local seen = 0
+    for i = 1, 7 do
+      local fs = V.cells[i].label
+      if fs:IsVisible() and (fs:GetText() or "") ~= "" then
+        seen = seen + 1
+        ok(not fs:GetText():find("\n", 1, true), "a name broken: " .. fs:GetText())
+        ok(select(2, fs:GetFont()) >= 9, "unreadable: " .. fs:GetText())
+      end
+    end
+    ok(seen >= 6, "cells drawn: " .. seen)
+    eq(V.cells[3].label:GetText(), "Ivan P.")
   end)
 end)

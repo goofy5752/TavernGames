@@ -217,15 +217,17 @@ end
 -- `text` on the one-line font string fs, its font one point smaller at a
 -- time (down to `floor`, default FIT_MIN) until it fits `width`: an amount in
 -- a fixed column is made smaller, never clipped. The font fs had at its first
--- fit is its size.
+-- fit is its size. The last step stops at `floor` itself (a font of 10.92 can
+-- reach 9, not only 9.92).
 local FIT_MIN = 8
 function W.fit(fs, text, width, floor)
   fs.fitFont = fs.fitFont or { fs:GetFont() }
   local path, size, flags = fs.fitFont[1], fs.fitFont[2], fs.fitFont[3]
+  floor = floor or FIT_MIN
   fs:SetFont(path, size, flags)
   fs:SetText(text)
-  while size - 1 >= (floor or FIT_MIN) and W.textWidth(fs) > width do
-    size = size - 1
+  while size > floor and W.textWidth(fs) > width do
+    size = math.max(floor, size - 1)
     fs:SetFont(path, size, flags)
   end
 end

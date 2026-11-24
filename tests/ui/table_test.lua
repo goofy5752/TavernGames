@@ -196,28 +196,41 @@ describe("ui: table frame", function()
       build = function(parent) local f = w.G.CreateFrame("Frame", nil, parent); f:SetSize(parent:GetWidth(), parent:GetHeight()); return f end })
     w.ns.client:openTable{ game = "holdem", access = "invite", turn = 45 }; w:advance(0)
     local v, s = T.view, w.ns.client.session
-    s.seats[1] = "Константинов"; s.status, s.state = "live", { turn = 1 }; s.deadline = w.ns.client.env.now() + 30 -- 12 characters, on turn
+    s.status, s.state = "live", { turn = 1 }; s.deadline = w.ns.client.env.now() + 30 -- seat 1 on turn: its clock shows
     local p = v.plates[1]
-    -- the stack -> the name's width, the note's font size and lines: the name keeps 32 px at least, the note never goes
-    -- under 9 and wraps on two lines in what the name leaves (the bar holds them), never into the name
-    for _, case in ipairs({ { w:coins("199g 95s"), 32, 9, 2 }, { w:coins("9g 95s"), 32, 9, 2 }, { "100000", 37, 9, 1 }, { "1000", 46, 9, 1 },
-      { "995", 50.5, 9, 1 } }) do
-      note = case[1]; T.plates.render(v, s, w.ns.client)
-      local noteW = (p.note.fixedWidth or 0) > 0 and p.note.fixedWidth or p.note:GetStringWidth()
-      local nameRight, noteLeft, noteRight = 40 + p.name:GetWidth(), 150 - 42 - noteW, 150 - 42
-      eq(p.note:GetStringHeight(), case[4] * 9 * 1.25); ok(p.note:GetStringHeight() <= 26, "the note passes the bar")
-      eq({ p.frame:GetWidth(), p.note:GetText(), p.name:GetWidth(), (select(2, p.note:GetFont())) }, { 150, case[1], case[2], case[3] })
-      ok(nameRight <= noteLeft, "the name runs over the note: " .. nameRight .. " > " .. noteLeft)
-      ok(noteLeft >= 40 and nameRight <= 150, "outside the plate")
-      ok(p.clock:IsShown() and 150 - 6 - p.clock:GetStringWidth() >= noteRight, "the note meets the clock")
+    -- QA follow-up: a WoW name's word has at most 12 letters; the widest Latin ones („Mormogwathum“ is 63 px at 9 in
+    -- PT Sans) and the collision form („Ivan P.“) show whole on one line at 9 or more, on turn with a big stack too:
+    -- a name that does not fit beside the note gets the bar's upper line, the note the lower one
+    local cases = { w:coins("1199g 95s"), w:coins("199g 95s"), w:coins("9g 95s"), "100000", "1000", "995", "" }
+    for _, seats in ipairs({ { "Mormogwathum Ironfoot", "Ivan Kolevski" }, { "Wolfgarmmund Deepforge", "Ivan Kolevski" },
+      { "Ivan Petrovski", "Ivan Kolevski" } }) do
+      s.seats[1], s.seats[2] = seats[1], seats[2]
+      local short = w.ns.Names.short(seats[1], s.seats)
+      for _, turn in ipairs({ 1, 2 }) do
+        s.state.turn = turn
+        for _, text in ipairs(cases) do
+          note = text; T.plates.render(v, s, w.ns.client)
+          local why = short .. " / " .. text .. " / turn " .. turn
+          eq(p.name:GetText(), short, why .. ": the name broken") -- whole, one line
+          eq(p.name:GetStringHeight(), select(2, p.name:GetFont()) * 1.25, why .. ": not one line")
+          ok(select(2, p.name:GetFont()) >= 9 and (text == "" or select(2, p.note:GetFont()) >= 9), why .. ": unreadable")
+          local right = turn == 1 and 42 or 6
+          local noteW = (p.note.fixedWidth or 0) > 0 and p.note.fixedWidth or p.note:GetStringWidth()
+          local stacked = p.name.points[1][5] ~= 0
+          if stacked then
+            eq({ p.name.points[1][5], p.note.points[1][5] }, { 6.5, -4 })
+            ok(p.name:GetWidth() >= 64, why .. ": the name's line holds no 12-letter name: " .. p.name:GetWidth())
+            ok(150 - right - noteW >= 40, why .. ": the note passes the portrait")
+            ok(p.note:GetStringHeight() <= 13 * 1.25, why .. ": the note's line passes the bar")
+          else
+            ok(40 + p.name:GetWidth() <= 150 - right - noteW, why .. ": the name runs over the note")
+            ok(p.note:GetStringHeight() <= 26, why .. ": the note passes the bar")
+          end
+          eq(p.note.points[1][4], -right)
+          if turn == 1 then ok(p.clock:IsShown() and 150 - 6 - p.clock:GetStringWidth() >= 150 - right, why .. ": the note meets the clock") end
+        end
+      end
     end
-    -- off turn the plate shows no clock: the note takes its room, the name keeps its size on one line (QA)
-    note = w:coins("199g 95s"); s.state.turn = 2; T.plates.render(v, s, w.ns.client)
-    eq(p.clock:IsShown(), false); eq(p.note.points[1], { "RIGHT", p.frame, "RIGHT", -6, 0 })
-    local noteW = (p.note.fixedWidth or 0) > 0 and p.note.fixedWidth or p.note:GetStringWidth()
-    eq(p.name:GetWidth(), 150 - 6 - 40 - noteW - 4)
-    ok(40 + p.name:GetWidth() <= 150 - 6 - noteW, "the name runs over the note")
-    eq(p.name:GetStringHeight(), select(2, p.name:GetFont()) * 1.25) -- one line
   end)
 
   it("plates: the short names among the seats (two Ivans an initial, a bot its cog), the whole name on hover, never cut", function()

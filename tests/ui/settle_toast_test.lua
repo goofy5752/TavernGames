@@ -241,3 +241,16 @@ describe("the „Уредено“ toast and the invitation toast", function()
     eq(T(w).frame.points, { { "TOP", w.G.UIParent, "TOP", 0, -160 } })
   end)
 end)
+
+-- QA follow-up: a 12-letter first word (the widest Latin kind) shows whole in the toast's line, at 9 or more.
+describe("the „Уредено“ toast and a 12-letter name", function()
+  it("names the payer whole: the word never broken by its letters", function()
+    local w = readyWow()
+    local M = "Mormogwathum Ironfoot"
+    debt(w, ME, M, 50000)
+    lev(w, M, "P", { f = ME, c = 50000, how = "mail" })
+    local text = T(w).title:GetText()
+    ok(plain(text):find("Mormogwathum", 1, true), "the name broken or missing: " .. plain(text))
+    ok(select(2, T(w).title:GetFont()) >= 9, "unreadable")
+  end)
+end)

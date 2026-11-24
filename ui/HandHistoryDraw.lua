@@ -11,6 +11,7 @@ local H = ns.HandHistory
 local Kit = ns.HistoryKit
 
 local X0, SLOT, NUM, STREET_W = 6, 48, 17, 58 -- the rows' inset, a trick card's slot, the trick number's column, a street's name
+local NAME_LEAST = math.ceil(W.WRAP_MIN / Theme.fontScale.ui) -- a card's name at its least (9.1 once scaled)
 local SMALL, SMALL_H = Kit.CARD.small[1], Kit.CARD.small[2]
 local NORMAL_W, NORMAL_H = Kit.CARD.normal[1], Kit.CARD.normal[2]
 local FOLD = { 0x8c / 255, 0x82 / 255, 0x70 / 255 }
@@ -29,14 +30,27 @@ function R.trick(P, row, y, wd, first)
   if not first then line(P, X0, y, wd) end
   y = y + 4
   P:text(X0, y + 16, 14, tostring(row.n), "heading", 12, "inkDim", "CENTER")
-  local tall = 0
+  -- A name under its card in the card's slot; when one does not hold its slot on one line at its
+  -- least size (a WoW name's word has up to 12 letters), the names take two lines, the odd cards'
+  -- on the first and the even cards' on the second, each as wide as two slots: never broken.
+  local stagger = false
   for k = 1, row.slots do
-    local c, sx = row.cards[k], X0 + NUM + (k - 1) * SLOT
-    P:card(sx + (SLOT - 2 - NORMAL_W) / 2, y, "normal", c and c.face, c and c.won and "won" or nil)
-    if c then
-      local _, h = P:text(sx, y + NORMAL_H + 2, SLOT - 2, c.name, "ui", 10, c.color, "CENTER")
-      if c.full then P:hover(sx, y + NORMAL_H + 2, SLOT - 2, h, c.full) end
-      tall = math.max(tall, h)
+    local c = row.cards[k]
+    if c and P:measure(c.name, "ui", NAME_LEAST) > SLOT - 2 then stagger = true end
+  end
+  local tall, first = 0, 0
+  for pass = 1, stagger and 2 or 1 do
+    for k = 1, row.slots do
+      local c, sx = row.cards[k], X0 + NUM + (k - 1) * SLOT
+      if pass == 1 then P:card(sx + (SLOT - 2 - NORMAL_W) / 2, y, "normal", c and c.face, c and c.won and "won" or nil) end
+      if c and (not stagger or (k % 2 == 1) == (pass == 1)) then
+        local nx, nw, ny = sx, SLOT - 2, y + NORMAL_H + 2 + (pass == 2 and first or 0)
+        if stagger then nw = 2 * SLOT - 4; nx = math.max(0, math.min(wd + X0 - nw, sx + (SLOT - 2) / 2 - nw / 2)) end
+        local _, h = P:text(nx, ny, nw, c.name, "ui", 10, c.color, "CENTER")
+        if c.full then P:hover(nx, ny, nw, h, c.full) end
+        if pass == 1 then first = math.max(first, h) end
+        tall = math.max(tall, (pass == 2 and first or 0) + h)
+      end
     end
   end
   local px = X0 + NUM + row.slots * SLOT

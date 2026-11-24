@@ -345,7 +345,33 @@ describe("ui: hand history — Белот", function()
     eq(lines(H, s)[1], L("table.historyHand", 2))
   end)
 
-  it("names: the first word, a bot's own name, an initial for two alike; long names wrap, never past the edge", function()
+  -- QA follow-up: a WoW name's word has at most 12 letters; the widest Latin ones and the collision form show
+  -- whole on one line under their cards, at 9 or more, in a box that holds them in the real font (64 px at 9).
+  it("12-letter names under the cards: whole, one line each, the row's names on two lines", function()
+    local w, panel = setup()
+    local H = w.ns.HandHistory
+    local names = { "Mormogwathum Ironfoot", "Ivan Petrovski", "Wolfgarmmund Deepforge", "Ivan Kolevski" }
+    book(H, "A", { { { "JS", "7S", "AS", "8S" }, 1, 2 } }, names)
+    local s = bsess(EB.new{ first = 1 }, 1)
+    H.draw(panel, s)
+    local seen, lines = {}, {}
+    for _, p in ipairs(panel.pool.placed) do
+      local t = p.r.objectType == "FontString" and plain(p.r.text or "")
+      if t == "Mormogwathum" or t == "Wolfgarmmund" or t == "Ivan P." or t == "Ivan K." then
+        seen[t] = true
+        ok(not p.r.text:find("\n", 1, true), "broken: " .. t)
+        ok(select(2, p.r:GetFont()) >= 9, "unreadable: " .. t)
+        ok(p.box >= 64, "a box narrower than a 12-letter name in the real font: " .. t .. " " .. p.box)
+        lines[p.y] = true
+      end
+    end
+    eq(seen, { Mormogwathum = true, Wolfgarmmund = true, ["Ivan P."] = true, ["Ivan K."] = true })
+    local n = 0
+    for _ in pairs(lines) do n = n + 1 end
+    eq(n, 2) -- the odd cards' names on one line, the even cards' on the next
+  end)
+
+  it("names: the first word, a bot's own name, an initial for two alike; a name wider than its slot staggers the row's names, never past the edge", function()
     local w, panel = setup()
     local H = w.ns.HandHistory
     local Fit = require("fit")
@@ -355,19 +381,23 @@ describe("ui: hand history — Белот", function()
     eq(lines(H, s)[4], "1. Ivan P. JS · Barleybrewster[bot] 7S* · Ivan K. AS · Number12[bot] 8S +31 them")
     H.draw(panel, s)
     ok(Fit.check(panel.pool, panel.textW, "Белот, long names") > 20, "widgets checked")
-    -- the bot's long name under its card: smaller, then on two lines, all of it
-    local found
+    -- QA follow-up: the bot's long name does not hold its slot: the row's names take two lines, the odd cards'
+    -- on the first, the even cards' on the second, each two slots wide; no name is broken by its letters
+    local found, ivan
     for _, p in ipairs(panel.pool.placed) do
-      if p.r.objectType == "FontString" and nm(plain(p.r.text):gsub("\n", "")) == "Barleybrewster[bot]" then found = p.r end
+      if p.r.objectType == "FontString" and nm(plain(p.r.text)) == "Barleybrewster[bot]" then found = found or p end
+      if p.r.objectType == "FontString" and plain(p.r.text) == "Ivan P." then ivan = ivan or p end
     end
-    ok(found and found.text:find("\n", 1, true), "the name wraps: " .. tostring(found and found.text))
+    ok(found and not found.r.text:find("\n", 1, true), "the name broken: " .. tostring(found and found.r.text))
+    ok(found.y > ivan.y, "the second card's name is not on the second line")
+    eq(found.box, 2 * 48 - 4)
     -- a hover over a name under its card gives the whole name
     local areas = {}
     for _, p in ipairs(panel.pool.placed) do if p.r.objectType == "Frame" and p.r.name then areas[#areas + 1] = p.r end end
     eq(#areas, 8) -- two tricks of four cards
     w:hover(areas[1]); eq(w.G.GameTooltip.lines, { "Ivan Petrov" }) -- no realm
     areas[1].scripts.OnLeave(areas[1])
-    w:hover(areas[2]); eq(w.G.GameTooltip.lines, { "Bot Barleybrewster" })
+    w:hover(areas[3]); eq(w.G.GameTooltip.lines, { "Bot Barleybrewster" }) -- the even cards' names come after the odd ones
   end)
 
   it("a passed-out deal says so; a deal voided in the auction does not", function()

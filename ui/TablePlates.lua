@@ -145,7 +145,9 @@ end
 -- under W.WRAP_MIN) into what is left; still too wide, it wraps (W.fitWrap: „199g 95s“ on
 -- two lines at 9 fit the bar). The name shrinks, then wraps: never cut. The clock keeps its
 -- room right of the note (NOTE_RIGHT) while it shows; a plate without a clock gives the note
--- that room too (NOTE_EDGE), so a long name keeps its size off turn.
+-- that room too (NOTE_EDGE), so a long name keeps its size off turn. A name that holds the room
+-- on one line at 9 but not beside the note gets the bar's upper line and the note its lower one:
+-- a name's word (12 letters at most in WoW) is never broken by its letters.
 local function widthOf(fs, text, floor)
   W.fit(fs, text, floor and 0 or math.huge, floor)
   return W.textWidth(fs)
@@ -159,12 +161,32 @@ local function widestWord(fs, text) -- at the font fs has now
   fs:SetText(text)
   return most
 end
+-- Two lines in the bar (STACK): the name in the upper, the note in the lower, each at most STACK_SIZE.
+local STACK_UP, STACK_DOWN, STACK_SIZE = 6.5, -4, 10
+local function capped(fs)
+  local path, size, flags = fs:GetFont()
+  if size > STACK_SIZE then fs:SetFont(path, STACK_SIZE, flags) end
+end
 local function noteAndName(p, w, text, name, clocked)
   local right = clocked and NOTE_RIGHT or NOTE_EDGE
   p.note:ClearAllPoints()
-  p.note:SetPoint("RIGHT", p.frame, "RIGHT", -right, 0)
+  p.name:ClearAllPoints()
   local room = w - right - NAME_X
   local least = widthOf(p.note, text, W.WRAP_MIN)
+  local nameLeast = widthOf(p.name, name, W.WRAP_MIN)
+  -- a name that fits the room on one line at 9, but not beside the note: the note goes under it
+  if text ~= "" and nameLeast <= room and nameLeast + NOTE_GAP + least > room then
+    p.name:SetPoint("LEFT", p.frame, "LEFT", NAME_X, STACK_UP)
+    p.note:SetPoint("RIGHT", p.frame, "RIGHT", -right, STACK_DOWN)
+    p.note:SetWidth(0)
+    W.fitWrap(p.name, name, room)
+    capped(p.name)
+    if least <= room then W.fit(p.note, text, room, W.WRAP_MIN) else W.fitWrap(p.note, text, room) end
+    capped(p.note)
+    return
+  end
+  p.name:SetPoint("LEFT", p.frame, "LEFT", NAME_X, 0)
+  p.note:SetPoint("RIGHT", p.frame, "RIGHT", -right, 0)
   local want = math.max(NAME_MIN, math.min(widthOf(p.name, name), room - NOTE_GAP - least))
   local noteW = math.max(room - want - NOTE_GAP, widestWord(p.note, text))
   p.note:SetWidth(0)
