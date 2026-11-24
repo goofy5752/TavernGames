@@ -152,7 +152,7 @@ function Succession.yields(s, sender, m)
   if m.f ~= true then return false end
   Succession.follow(s, sender, m.e, seats)
   -- Its snapshot may show my seat stood up offline: no foul of that host's (core/StakesWatch.lua),
-  -- but only when my client really was cut off: it had heard nobody at all (s.claimQuiet) when
+  -- but only when my client really was cut off: it had heard no guild traffic (s.claimQuiet) when
   -- it claimed. A host that goes silent to one seat alone cannot buy its stand an "unseen".
   s.yielded = s.claimQuiet == true
   s:requestSync()
@@ -318,7 +318,7 @@ function Succession.claim(s)
   if s.stakeAsk then return ns.Stake.standUp(s.client, s) end
   local oldHost, oldHeard = s.host, s.hostHeard
   local base = { e = heldEpoch(s), q = s.seq }
-  local heard = s.client.heardAt -- my client's last message from anybody (Client:receive)
+  local heard = s.client.heardAt -- my client's last guild message from anybody (Client:receive)
   s.epoch = s.epoch + 1
   becomeHost(s, oldHost, oldHeard, base)
   s.claimedFrom = oldHost
