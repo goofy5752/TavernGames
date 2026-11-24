@@ -28,7 +28,7 @@ local LedgerTab = {
 }
 ns.LedgerTab = LedgerTab
 
-local BOOK_W, PAD, HEAD_H, ROW_H, ROWS, FOOT_H = 760, 14, 52, 26, 16, 24
+local BOOK_W, PAD, ROW_H, ROWS, FOOT_H = 760, 14, 26, 16, 24
 local AGE_W, MARGIN = 56, 22
 -- Fixed columns (shrunk, then wrapped, never cut; two lines at 9 fit the row): 22 + 286 + 8 + 120 + 196 + 10 + 56 + 6 <= the row.
 -- The amount fits „остават 99g 98s от 99g 99s“ with a coin for each letter.
@@ -259,8 +259,7 @@ function LedgerTab.build(page)
   local head = W.Label(panel, "dim", "", 12)
   head:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -4)
   local book = CreateFrame("Frame", nil, panel)
-  book:SetPoint("TOPLEFT", panel, "TOPLEFT", 10, -HEAD_H)
-  book:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -10, 10)
+  W.bookUnder(book, panel, head, 10)
   W.paper(book)
   local seal = W.seal(book, 56)
   local margin = book:CreateTexture(nil, "BORDER")
