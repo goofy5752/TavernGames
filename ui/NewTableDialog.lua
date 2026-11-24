@@ -89,8 +89,10 @@ local function optionSet(id, mode)
   for _, o in ipairs(engine and engine.options or {}) do
     if o.at == nil or o.at == mode then options[#options + 1] = o end
   end
-  local set = { frame = frame, groups = {}, width = WIDTH, count = #options, extra = 0, id = id }
-  local y = D.optionsY
+  -- An engine with a game clock hides the turn row: its option rows start at that place.
+  local timed = engine ~= nil and engine.clock == true
+  local set = { frame = frame, groups = {}, width = WIDTH, count = #options - (timed and 1 or 0), extra = 0, id = id }
+  local y = timed and D.turnY or D.optionsY
   for _, o in ipairs(options) do
     rowLabel(frame, "opt." .. id .. "." .. o.id, y)
     local group, x = choiceGroup(), VALUE_X
@@ -280,7 +282,8 @@ local function build()
   end
 
   y = y - 3 * 24 - 12
-  rowLabel(body, "dialog.turn", y)
+  D.turnY = y
+  D.turnLabel = rowLabel(body, "dialog.turn", y)
   D.turn = choiceGroup()
   for i, s in ipairs(C.TURN_CHOICES) do
     addOption(D.turn, body, L("dialog.seconds", s), s, VALUE_X + (i - 1) * 54, y, 52)
@@ -313,6 +316,9 @@ function D.open(gameId)
   showGroup(D.stakeFun, not staked)
   showGroup(D.stakeGold, staked)
   D.stake = staked and D.stakeGold or D.stakeFun
+  local timed = engine ~= nil and engine.clock == true
+  D.turnLabel:SetShown(not timed) -- the game time stands in for the turn time (D.turn keeps its default)
+  showGroup(D.turn, not timed)
   D.goldBox:SetText("")
   D.silverBox:SetText("")
   D.access.set("guild")

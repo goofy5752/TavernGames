@@ -176,6 +176,16 @@ function W.optionText(game, id, value)
   return s
 end
 
+-- The time line of a table: „Време за партия 10 мин“ for an engine with a
+-- game clock (Шах), else „45 с на ход“. `opt` is the table's options.
+function W.timeText(game, turn, opt)
+  local engine = ns.Games.engine(game)
+  if engine and engine.clock then
+    return L("opt." .. game .. ".clock") .. " " .. W.optionText(game, "clock", opt and opt.clock)
+  end
+  return L("hall.turn", turn)
+end
+
 -- The inline tag of a coin ("gold" | "silver" | "copper"): the client's icon
 -- when it has one (ns.Art), else our cell of the `coins` strip.
 local COIN_CELL = { gold = "0:32", silver = "32:64", copper = "64:96" }
