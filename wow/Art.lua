@@ -73,7 +73,7 @@ local SOUND_KEYS = { "open", "close", "deal", "trick", "coins", "settled", "ches
 -- What /tavern probe art reports by type(); the last three are of a scratch frame and texture.
 local APIS = {
   "GetFileIDFromPath", "C_Texture.GetAtlasInfo", "UnitFactionGroup", "UnitRace", "UnitSex", "UnitIsVisible",
-  "SetPortraitTexture", "SetPortraitToTexture", "PlaySound", "ReloadUI",
+  "SetPortraitTexture", "SetPortraitToTexture", "PlaySound", "PlaySoundFile", "ReloadUI",
 }
 
 local function capital(s) return s:sub(1, 1):upper() .. s:sub(2):lower() end
@@ -192,6 +192,20 @@ function Art.play(key)
   local soundId, play = Art.sound(key), lookup("PlaySound")
   if not soundId or type(play) ~= "function" then return false end
   return (pcall(play, soundId, "SFX"))
+end
+
+-- Our own sound files (media/sounds, Холдем: ui/games/HoldemSounds.lua), played by name.
+Art.SOUND_DIR = "Interface\\AddOns\\TavernGames\\media\\sounds\\"
+Art.FILES = { turn = true, tick = true, tickLast = true, timeout = true, check = true, call = true, bet = true,
+  allin = true, fold = true, deal = true, board = true, win = true }
+
+-- Plays our file `name` (Art.FILES) on the SFX channel -> true; false when muted, unknown or the client
+-- has no PlaySoundFile.
+function Art.playFile(name)
+  if ns.db and ns.db.sound == false then return false end
+  local play = lookup("PlaySoundFile")
+  if not Art.FILES[name] or type(play) ~= "function" then return false end
+  return (pcall(play, Art.SOUND_DIR .. name .. ".ogg", "SFX"))
 end
 
 -- Every asset of every kind, in report order: { kind, id, sub } triples.

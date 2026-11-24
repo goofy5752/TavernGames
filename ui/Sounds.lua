@@ -1,8 +1,9 @@
 local _, ns = ...
 
 -- The game's few quiet sounds (spec 5.6): a window opens and closes, a hand is
--- dealt, my own trick, coins in the pot of a cash table. Each goes through
--- ns.Art.play (the SFX channel, muted by db.sound = false).
+-- dealt, my own trick. Each goes through ns.Art.play (the SFX channel, muted
+-- by db.sound = false). Холдем has a poker room's sounds of its own files
+-- instead (ui/games/HoldemSounds.lua).
 local Sounds = {}
 ns.Sounds = Sounds
 
