@@ -63,7 +63,7 @@ describe("lobby and seating", function()
 
   it("openTable refuses busy, unknown game, bad access, bad turn", function()
     local sim, a = setup()
-    eq({ a:openTable{game="chess", access="guild", turn=45} }, { nil, "game" })
+    eq({ a:openTable{game="nosuchgame", access="guild", turn=45} }, { nil, "game" })
     eq({ a:openTable{game="ttt", access="public", turn=45} }, { nil, "access" })
     eq({ a:openTable{game="ttt", access="guild", turn=50} }, { nil, "turn" })
     eq(a.session, nil)
