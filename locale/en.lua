@@ -39,7 +39,7 @@ T["help.santase.strict"] = "Once the stock runs out or someone closes it, you mu
 T["help.santase.marriage"] = "A king and a queen of one suit are worth 20 points, and in trumps they are worth 40. When it is your turn and you hold both, a “Declare 20” or “Declare 40” button appears. You press it and play the king or the queen. The points count as soon as you have at least one trick."
 T["help.santase.swap"] = "Have the nine of trumps and at least one trick? When it is your turn, “Swap the nine” trades it for the face-up card under the stock. It works only while the stock has more than two cards."
 T["help.santase.close"] = "Think you will reach 66 without drawing? Press “Close” when it is your turn and the stock has more than two cards. Nobody draws any more. If you do not reach 66, the other player takes 2 games, or 3 if they had no trick by then."
-T["help.santase.score"] = "The hand ends by itself as soon as someone collects 66. That player takes 1 game. If the other has under 33 points, they take 2. If the other has not a single trick, they take 3. The last trick is worth 10 points when the stock was played to the end."
+T["help.santase.score"] = "The hand ends by itself as soon as someone collects 66. That player takes 1 game. If the other has under 33 points, they take 2. If the other has not a single trick, they take 3. The last trick is worth 10 points when the stock was played to the end. If the cards run out at 65 to 65, the hand is a tie and nobody takes a game."
 T["help.santase.time"] = "If your time runs out, the addon plays your weakest allowed card. You do not lose by forfeit. After the match the host presses “New game”."
 T["help.santase.fair"] = "Below the table it says whether the last hand is “verified”. To see what that means, read the topic about the fair deal."
 
@@ -439,6 +439,7 @@ T["suit.S"] = "spades"
 -- Santase
 T["santase.marry20"] = "Declare 20"
 T["santase.marry40"] = "Declare 40"
+T["santase.marryBoth"] = "Declare 20 / 40"
 T["santase.swap"] = "Swap the nine"
 T["santase.close"] = "Close"
 T["santase.pick"] = "Pick the king or the queen"
