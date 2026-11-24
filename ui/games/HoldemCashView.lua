@@ -207,7 +207,7 @@ function V.build(f)
   c.buy:SetPoint("TOPRIGHT", f, "TOPRIGHT", -98, -8)
   for _, b in ipairs({ c.button, c.buy }) do b:Hide() end
 
-  local panel = W.Panel(f)
+  local panel = W.Panel(f, W.SOLID) -- solid: the plates under it do not show through
   c.panel = panel
   panel:SetSize(PANEL_W, PANEL_H)
   panel:SetPoint("TOPRIGHT", f, "TOPRIGHT", -8, -34)
@@ -230,7 +230,7 @@ function V.build(f)
   c.scroll.content:SetWidth(PANEL_W - 22)
   panel:Hide()
 
-  local box = W.Panel(f) -- the stepper of a buy-in
+  local box = W.Panel(f, W.SOLID) -- the stepper of a buy-in
   c.buyBox = box
   box:SetSize(PANEL_W, 34)
   box:SetPoint("TOPRIGHT", f, "TOPRIGHT", -8, -34)

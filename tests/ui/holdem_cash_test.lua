@@ -635,3 +635,12 @@ describe("ui: the end of my own cash-out", function()
     eq(#w.ns.HoldemCashView.lines("t#9"), 0)
   end)
 end)
+
+-- QA (layout): over the felt's right side the panel was translucent: a plate's name and stack showed through its rows.
+describe("ui: the account panel over the felt", function()
+  it("the panel and the buy-in stepper lie on a solid ground", function()
+    local _, _, f = setup()
+    ok(f.cash.panel.fill.color[4] >= 0.9, "the panel lets the plates through")
+    ok(f.cash.buyBox.fill.color[4] >= 0.9, "the stepper lets the plates through")
+  end)
+end)

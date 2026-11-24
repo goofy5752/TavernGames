@@ -318,8 +318,12 @@ local function contains(list, x)
 end
 
 local function drawSide(f, st, m)
-  f.title:SetText(L("tabla.title", L("tabla.var." .. tostring(m.var)), m.game))
-  f.score:SetText(L("tabla.score", m.score.me, m.score.op))
+  -- the right column, WIDTH - COL_X wide: shrunk, then wrapped, never past the view's edge
+  local col = WIDTH - COL_X
+  local h = W.fitWrap(f.title, L("tabla.title", L("tabla.var." .. tostring(m.var)), m.game), col)
+  f.score:ClearAllPoints()
+  f.score:SetPoint("TOPLEFT", f, "TOPLEFT", COL_X, -math.max(24, 4 + h + 2))
+  W.fitWrap(f.score, L("tabla.score", m.score.me, m.score.op), col)
   local dice = m.dice
   local shown = dice ~= nil and not (m.rolling and st.phase == "open")
   for k = 1, 2 do
@@ -330,7 +334,7 @@ local function drawSide(f, st, m)
     end
     d:SetShown(shown)
   end
-  f.stepsLeft:SetText(L("tabla.stepsLeft", #m.left))
+  W.fitWrap(f.stepsLeft, L("tabla.stepsLeft", #m.left), WIDTH - COL_X)
   f.stepsLeft:SetShown(st.phase == "move")
   for _, pair in ipairs({ { f.undoButton, m.canUndo }, { f.doneButton, m.canDone } }) do
     local b, on = pair[1], pair[2] and not f.sent

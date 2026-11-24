@@ -254,3 +254,14 @@ describe("ui: Сантасе view", function()
     -- (2 s, not 3: a bot that takes the trick leads the next one 1.5 s later, at 3 s)
   end)
 end)
+
+-- QA (layout): the trump card lay under the stock with its corner (the rank) under the pile.
+describe("ui: Сантасе's trump card", function()
+  it("lies left of the stock, its corner in sight", function()
+    local w, V = santaseWithBot()
+    local trump, stock = V.trumpCard.frame.points[1], V.stockCard.frame.points[1]
+    ok(trump[4] < stock[4], "the trump card is not left of the stock")
+    ok(stock[4] - trump[4] >= 18, "its corner is under the stock: " .. (stock[4] - trump[4]))
+    ok(trump[4] >= 0, "past the view's left edge")
+  end)
+end)

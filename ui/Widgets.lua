@@ -320,12 +320,14 @@ function W.dragBy(handle, target)
   handle:SetScript("OnMouseDown", function() target:Raise() end)
 end
 
--- A dark translucent panel with a thin brass edge (mockup `.panel`).
-function W.Panel(parent)
+-- A dark translucent panel with a thin brass edge (mockup `.panel`); `ground` {r, g, b, a}
+-- in place of the translucent black (W.SOLID: a panel over the felt that hides what is under it).
+W.SOLID = { 20 / 255, 10 / 255, 5 / 255, 0.95 }
+function W.Panel(parent, ground)
   local f = CreateFrame("Frame", nil, parent)
   local fill = f:CreateTexture(nil, "BACKGROUND")
   fill:SetAllPoints(f)
-  fill:SetColorTexture(0, 0, 0, 0.38)
+  fill:SetColorTexture(unpack(ground or { 0, 0, 0, 0.38 }))
   f.fill = fill
   local r, g, b = Theme.rgb("brassDim")
   local function line(p1, p2, horizontal)
