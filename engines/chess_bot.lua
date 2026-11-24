@@ -6,7 +6,7 @@ local _, ns = ...
 local E = ns.Engines.chess
 local R = ns.ChessRules
 
-E.BOT_NODES = 3000 -- positions searched for one move: Kiwipete 41 ms with the JIT off (4000: 51 ms)
+E.BOT_NODES = 3000 -- positions searched for one move; the search ends by itself near 600 (3000 nodes = about 41 ms, JIT off)
 E.botCount = 0     -- positions searched by the last call
 
 local VALUE = { 100, 300, 300, 500, 900, 0 }
@@ -69,11 +69,13 @@ end
 local count, cap, stopped
 
 -- Negamax value of pos for the side to move. depth > 0: every move;
--- depth 0: captures only, with stand-pat.
+-- depth 0: captures only, each followed by the static value (depth -1), so the
+-- capture ply is one ply. Stands pat even in check (no evasions are searched).
 local function search(pos, depth, alpha, beta, ply)
   if count >= cap then stopped = true; return 0 end
   count = count + 1
   local stand = evaluate(pos.board) * pos.side
+  if depth < 0 then return stand end
   local best = -INF
   if depth == 0 then
     if stand >= beta then return stand end -- no need to generate the captures
@@ -88,7 +90,7 @@ local function search(pos, depth, alpha, beta, ply)
   for i = 1, #list do
     local child = R.copy(pos)
     R.make(child, list[i])
-    local v = -search(child, depth > 0 and depth - 1 or 0, -beta, -alpha, ply + 1)
+    local v = -search(child, depth - 1, -beta, -alpha, ply + 1)
     if stopped then return 0 end
     if v > best then best = v end
     if v > alpha then alpha = v end
@@ -111,7 +113,18 @@ local function root(pos)
     if v > best then best, tied = v, { list[i] }
     elseif v == best then tied[#tied + 1] = list[i] end
   end
-  if #tied == 0 then tied[1] = list[1] end
+  if #tied == 0 then
+    -- The cap came inside the first root move: no move has a searched score.
+    -- Last resort, the static value of the position after each move.
+    best = -INF
+    for i = 1, #list do
+      local child = R.copy(pos)
+      R.make(child, list[i])
+      local v = -evaluate(child.board) * child.side
+      if v > best then best, tied = v, { list[i] }
+      elseif v == best then tied[#tied + 1] = list[i] end
+    end
+  end
   return tied
 end
 

@@ -16,13 +16,21 @@ describe("chess bot", function()
   end)
 
   it("does not hang its queen to a pawn", function()
-    -- Qd4 may take d5 (guarded by the e6 pawn) or a7 (free): it never plays Qxd5.
-    local s = Chess.at("4k3/p7/4p3/3p4/3Q4/8/8/4K3 w - - 0 1")
+    -- Qd4 may take d5 (guarded by the e6 pawn: a lost queen) or the free rook on a7.
+    local s = Chess.at("4k3/r7/4p3/3p4/3Q4/8/8/4K3 w - - 0 1")
+    eq(E.bot(s, s.turn, first), { k = "move", f = sq("d4"), t = sq("a7") })
+    -- The same with the queen on the other side: Qg4 may take d7 (guarded by the king) or the free rook on h5.
+    s = Chess.at("3k4/3p4/8/7r/6Q1/8/8/4K3 w - - 0 1")
+    eq(E.bot(s, s.turn, first), { k = "move", f = sq("g4"), t = sq("h5") })
+  end)
+
+  it("still moves when the cap comes in the first root move", function()
+    local s, keep = Chess.at("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3KB1R w KQkq - 0 1"), E.BOT_NODES
+    E.BOT_NODES = 1
     local a = E.bot(s, s.turn, first)
-    ok(a.t ~= sq("d5"), "the queen took the guarded pawn")
-    -- The same with a black rook on a8.
-    s = Chess.at("r3k3/p7/4p3/3p4/3Q4/8/8/4K3 w - - 0 1")
-    ok(E.bot(s, s.turn, first).t ~= sq("d5"), "the queen took the guarded pawn")
+    E.BOT_NODES = keep
+    ok(a and R.find(s, a.f, a.t, a.p), "no legal move")
+    ok(E.botCount <= 1)
   end)
 
   it("equal moves are chosen by the random it is given", function()
