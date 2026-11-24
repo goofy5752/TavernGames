@@ -41,7 +41,7 @@ local WHISPERED = {
 
 local TIMERS = {
   "announceTimer", "heartbeatTimer", "tickTimer", "pingTimer", "turnTimer", "systemTimer",
-  "sweepTimer", "silenceTimer", "fairTimer", "askTimer", "autoTimer", "stepTimer", "keysTimer", "bookTimer", "idleTimer", "holdTimer",
+  "sweepTimer", "silenceTimer", "fairTimer", "askTimer", "autoTimer", "stepTimer", "keysTimer", "bookTimer", "idleTimer", "holdTimer", "claimTimer",
 }
 
 -- message, emit and refuse are shared with core/Member.lua and core/Succession.lua.
@@ -106,9 +106,9 @@ end
 
 -- Ordered event (seat, a) on seats/state/status, host and members alike. Seat 0
 -- carries the table events sit/stand/start/abort, an event an extension's
--- `table` hook applies, or an engine system action.
+-- `table` hook applies, or an engine system action; dt: a move's time, for an engine with `clock` (core/Clock.lua).
 -- Returns true, or nil when the event does not fit (nothing is changed).
-function Session:apply(seat, a)
+function Session:apply(seat, a, dt)
   if type(a) ~= "table" then return nil end
   local engine, k = self:engine(), seat == 0 and a.k
   if k == "sit" or k == "stand" then
@@ -128,7 +128,7 @@ function Session:apply(seat, a)
     if self.status ~= "live" or type(seat) ~= "number" then return nil end
     if seat ~= 0 or not self:hook("table", a) then
       local trial = copy(self.state)
-      if not engine.apply(trial, seat, a) then return nil end
+      if not engine.apply(trial, seat, a, engine.clock and dt or nil) then return nil end
       self.state = trial
     end
   end
@@ -206,6 +206,7 @@ function Session:armTimers()
     end)
   end
   local seat = self.state.turn
+  if engine.clock then return ns.Clock.arm(self, engine, seat) end -- the chess clock: the time left of the seat on turn
   if seat then
     self.deadline = client.env.now() + self.turn
     if engine.view and seat ~= self.mySeat and not engine.publicAuto then return end
@@ -222,13 +223,14 @@ end
 -- the turn, or an event an extension calls `still` leaves the running turn alone.
 function Session:event(seat, a, skip, auto)
   local turn = self.state and self.state.turn
-  if not self:apply(seat, a) then return false end
+  local dt = ns.Clock.stamp(self, seat, a) -- nil but for a move at a table with a clock
+  if not self:apply(seat, a, dt) then return false end
   self.seq = self.seq + 1
   local k = seat == 0 and a.k
   if k ~= "sit" and (k ~= "stand" or self.state and self.state.turn ~= turn) and not self:hook("still", seat, a) then self:armTimers() end
   local m = message("EV", {
     tid = self.tid, e = self.epoch, q = self.seq, seat = seat, a = a,
-    auto = auto or nil, left = self:left(),
+    auto = auto or nil, dt = dt, left = self:left(),
   })
   local members = self:members()
   for i = 1, #members do

@@ -106,10 +106,12 @@ end
 
 -- The engine state of a new game: `first` when that seat is occupied, else the
 -- lowest occupied seat begins; opts.staked at a staked table. With
--- engine.view: my seat's view of it.
+-- engine.view: my seat's view of it. No `first` for an engine with
+-- `firstSeat` (chess: white): E.nextFirst after a game, else that seat.
 function Session:newGame(first)
   local seats, lowest = occupied(self.seats)
   local engine = self:engine()
+  if first == nil and engine.firstSeat then first = (self.state and engine.nextFirst(self.state, seats)) or engine.firstSeat end
   local state = engine.new({ first = seats[first] and first or lowest, seats = seats, opt = copy(self.opt), staked = self.stake ~= nil,
     names = self.stake ~= nil and copy(self.seats) or nil }) -- a staked engine's own roster (Холдем: who bought what)
   if engine.view then return engine.view(state, self.mySeat or 0) end
@@ -229,6 +231,7 @@ function Session.startGame(client)
   local engine = s:engine()
   local seats, first = occupied(s.seats)
   if engine.nextFirst and s.state then first = engine.nextFirst(s.state, seats) or first end
+  if engine.firstSeat and not s.state then first = nil end -- a first game: newGame gives it engine.firstSeat
   s:event(0, { k = "start", first = first })
   s:recordChanged()
   return true
