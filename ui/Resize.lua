@@ -77,9 +77,16 @@ function Resize.bounds(key, alone)
 end
 
 -- Scales `f` to `s`, its top-left corner held at (left, top) in UIParent units.
+-- The corner is kept inside the screen: grown past the right or bottom edge, the window
+-- would be drawn clamped inside it with its anchor still outside, and the next drag
+-- would stick to that edge until the cursor made up the difference (W.onScreen).
 local function place(f, s, left, top)
   f:SetScale(s)
   if left and top then
+    local sw, sh = UIParent:GetWidth(), UIParent:GetHeight()
+    local w, h = (f:GetWidth() or 0) * s, (f:GetHeight() or 0) * s
+    if sw and sw > 0 then left = math.max(0, math.min(left, sw - w)) end
+    if sh and sh > 0 then top = math.min(sh, math.max(top, h)) end
     f:ClearAllPoints()
     f:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", left / s, top / s)
   end

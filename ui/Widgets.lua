@@ -331,14 +331,35 @@ function W.bookUnder(book, panel, last, inset)
   book:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -10, inset)
 end
 
+-- Anchors window `f` (a child of UIParent) by its top-left corner where it is seen:
+-- inside the screen. A window clamped to the screen is drawn inside it even when its
+-- anchor lies past an edge (scaled up near the right edge, moved by code); the client
+-- then starts a drag from that unseen anchor, and the window sticks to the edge until
+-- the cursor has made up the difference. With the anchor on the screen, a drag moves
+-- the window from the first pixel, wherever it is. -> true when it was moved.
+function W.onScreen(f)
+  local left, top = f:GetLeft(), f:GetTop()
+  if not (left and top) then return false end
+  local k = f:GetEffectiveScale() / UIParent:GetEffectiveScale() -- the window's units -> UIParent's
+  local w, h = (f:GetWidth() or 0) * k, (f:GetHeight() or 0) * k
+  local sw, sh = UIParent:GetWidth(), UIParent:GetHeight()
+  local l, t = left * k, top * k
+  local L = math.max(0, math.min(l, sw - w))
+  local T = math.min(sh, math.max(t, h))
+  f:ClearAllPoints()
+  f:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", L / k, T / k)
+  return math.abs(L - l) > 0.01 or math.abs(T - t) > 0.01
+end
+
 -- A left-button drag on `handle` moves `target` (default: the handle itself, a
 -- movable window), and any press on it raises the target above its siblings. The
 -- resize grip is a child that takes its own press and registers no drag, so
--- it never moves the window.
+-- it never moves the window. The drag starts from where the window is seen
+-- (W.onScreen): the client moves it from its anchor, and ends it where it was let go.
 function W.dragBy(handle, target)
   target = target or handle
   handle:RegisterForDrag("LeftButton")
-  handle:SetScript("OnDragStart", function() target:Raise(); target:StartMoving() end)
+  handle:SetScript("OnDragStart", function() target:Raise(); W.onScreen(target); target:StartMoving() end)
   handle:SetScript("OnDragStop", function() target:StopMovingOrSizing() end)
   handle:SetScript("OnMouseDown", function() target:Raise() end)
 end
