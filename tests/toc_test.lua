@@ -98,4 +98,22 @@ describe(".pkgmeta", function()
     ok(lines("ui/games/HoldemCashView.lua") < 300, "HoldemCashView.lua " .. lines("ui/games/HoldemCashView.lua"))
     ok(lines("core/Pay.lua") < 240, "Pay.lua " .. lines("core/Pay.lua")); ok(lines("core/PaySubject.lua") < 80, "PaySubject.lua " .. lines("core/PaySubject.lua")); ok(lines("core/PayGuard.lua") < 120, "PayGuard.lua " .. lines("core/PayGuard.lua"))
   end)
+
+  it("the chess files keep their limits", function()
+    local LIMITS = {
+      { "engines/chess_rules.lua", 420 }, { "engines/chess_san.lua", 140 }, { "engines/chess.lua", 360 },
+      { "engines/chess_bot.lua", 220 }, { "core/Clock.lua", 240 }, { "core/StakesChess.lua", 220 },
+      { "ui/games/ChessModel.lua", 200 }, { "ui/games/ChessPanels.lua", 300 }, { "ui/games/ChessView.lua", 420 },
+      { "ui/ChessHistory.lua", 120 },
+    }
+    for _, l in ipairs(LIMITS) do
+      local f = io.open(l[1], "r")
+      if f then -- Task 10 removes this guard: every file exists by then
+        f:close()
+        local n = 0; for _ in io.lines(l[1]) do n = n + 1 end
+        ok(n < l[2], l[1] .. " " .. n)
+      end
+    end
+    ok(true)
+  end)
 end)

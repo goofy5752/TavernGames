@@ -98,6 +98,7 @@ engines/holdem_cash.lua
 engines/holdem.lua
 engines/tabla.lua
 engines/belot.lua
+engines/chess_rules.lua
 
 # Locale
 locale/bg.lua
