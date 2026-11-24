@@ -188,6 +188,24 @@ describe("ui: W.fitWrap shrinks, then wraps: never clips", function()
     W.fitWrap(fs, "|cffff0000Barleybrewster|r", 46)
     eq(fs:GetText(), "|cffff0000Barleybrewster|r")
   end)
+
+  -- Review: a colour-coded word wider than the room was never broken; a width of 0 meant unbounded.
+  it("a colour-coded word too wide is broken by the client where it can; the width is never 0", function()
+    local w = boot(); local W = w.ns.W
+    local fs = W.Label(w.G.UIParent, "ui", "", 12)
+    fs:SetFont(w.ns.Theme.font.ui, 12, "")
+    W.fitWrap(fs, "|cffff0000Barleybrewster|r", 46) -- no SetNonSpaceWrap (an old client): no fault
+    local nonSpace
+    fs.SetNonSpaceWrap = function(_, on) nonSpace = on end
+    W.fitWrap(fs, "|cffff0000Barleybrewster|r", 46)
+    eq(nonSpace, true)
+    W.fitWrap(fs, "Barleybrewster", 46) -- broken by its letters here: the client's own breaking off
+    eq(nonSpace, false)
+    W.fitWrap(fs, "Ivan", 0)
+    eq(fs:GetWidth(), 1)
+    W.fitWrap(fs, "Ivan", -5)
+    eq(fs:GetWidth(), 1)
+  end)
 end)
 
 describe("ui: a name on screen (ui/NameTag.lua)", function()

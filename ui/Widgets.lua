@@ -235,19 +235,26 @@ end
 -- `text` on font string fs within `width`, never clipped: first W.fit makes it
 -- smaller (down to `floor`, default WRAP_MIN); when it still does not fit it
 -- wraps at the spaces, and a word wider than `width` on its own (a long name,
--- no colour codes in it) is broken by its letters onto the next line. The row
--- grows taller, never wider -> the text's height.
+-- no colour codes in it) is broken by its letters onto the next line; one with colour
+-- codes, which those letters must not split, the client breaks itself (SetNonSpaceWrap,
+-- where the client has it). The row grows taller, never wider -> the text's height.
+-- A width under 1 is 1 (SetWidth(0) would leave the text unbounded).
 W.WRAP_MIN = 9
 local function letters(s) return s:gmatch("[%z\1-\127\194-\244][\128-\191]*") end
 function W.fitWrap(fs, text, width, floor)
+  width = math.max(1, width)
   W.fit(fs, text, width, floor or W.WRAP_MIN)
   fs:SetWordWrap(true)
+  local coded = false -- a colour-coded word wider than the room
   if W.textWidth(fs) > width then
     local out = {}
     for space, word in text:gmatch("(%s*)(%S*)") do
       out[#out + 1] = space
       fs:SetText(word)
-      if word ~= "" and not word:find("|", 1, true) and W.textWidth(fs) > width then
+      if word ~= "" and W.textWidth(fs) > width and word:find("|", 1, true) then
+        coded = true
+        out[#out + 1] = word
+      elseif word ~= "" and W.textWidth(fs) > width then
         local line = ""
         for ch in letters(word) do
           fs:SetText(line .. ch)
@@ -260,6 +267,7 @@ function W.fitWrap(fs, text, width, floor)
     end
     fs:SetText(table.concat(out))
   end
+  if fs.SetNonSpaceWrap then fs:SetNonSpaceWrap(coded) end
   fs:SetWidth(width)
   return fs:GetStringHeight()
 end
