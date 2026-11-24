@@ -90,6 +90,15 @@ end
 
 local TEXT_W = SettleToast.WIDTH - 3 * PAD - COIN
 
+-- 160 px under the screen's top, or under the invitation toast while that shows (both stand there).
+function SettleToast.place()
+  local f = SettleToast.frame
+  if not f then return end
+  local inv = ns.InviteToast and ns.InviteToast.frame
+  f:ClearAllPoints()
+  if inv and inv:IsShown() then f:SetPoint("TOP", inv, "BOTTOM", 0, -8) else f:SetPoint("TOP", UIParent, "TOP", 0, -160) end
+end
+
 -- Shows record p for SECONDS, with the coin sound.
 function SettleToast.show(client, p)
   local t = SettleToast
@@ -99,6 +108,7 @@ function SettleToast.show(client, p)
   W.fitWrap(t.sub, sub, TEXT_W)
   t.shown = p
   t.timer = C_Timer.NewTimer(t.SECONDS, function() t.timer = nil; SettleToast.close() end)
+  SettleToast.place()
   t.frame:Show()
   t.frame:Raise()
   ns.Art.play("settled")

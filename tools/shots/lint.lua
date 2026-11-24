@@ -292,6 +292,20 @@ local function checkScreen(scene, w, where, sh, sw)
             detail = rectText(rc) .. " on " .. sw .. "x" .. sh }, where)
     end
   end
+  -- The toasts the addon puts up by itself never lie over each other.
+  local TOASTS = { InviteToast = true, SettleToast = true }
+  for i = 1, #wins do
+    for j = i + 1, #wins do
+      local a, b = wins[i], wins[j]
+      if TOASTS[a.name] and TOASTS[b.name] then
+        local ra, rb = Shim.rect(a.frame), Shim.rect(b.frame)
+        if math.min(ra[3], rb[3]) - math.max(ra[1], rb[1]) > 1 and math.min(ra[4], rb[4]) - math.max(ra[2], rb[2]) > 1 then
+          add({ check = "overlap", scene = scene, win = a.name, site = a.name .. " & " .. b.name, what = "toasts over each other",
+                detail = rectText(ra) .. " and " .. rectText(rb) }, where)
+        end
+      end
+    end
+  end
   local small, minPx, example = 0, math.huge, nil
   for _, d in ipairs(drawn(w, own)) do
     if d.kind == "text" and cut(d.full, d.clip) then

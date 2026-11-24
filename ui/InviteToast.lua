@@ -51,6 +51,8 @@ local function build()
   f:SetToplevel(true)
   f:EnableMouse(true)
   InviteToast.border = W.chrome(f, InviteToast.WIDTH, InviteToast.HEIGHT).frame
+  -- the „Уредено“ toast stands under this one while it shows (ui/SettleToast.lua), never over it
+  for _, script in ipairs({ "OnShow", "OnHide" }) do f:HookScript(script, function() if ns.SettleToast then ns.SettleToast.place() end end) end
 
   local title = W.Label(f, "heading", "", 15)
   title:SetTextColor(Theme.rgb("brassLight"))
