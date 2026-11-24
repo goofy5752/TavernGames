@@ -1,6 +1,10 @@
 ## Interface: 16001
 ## Title: Tavern Games
-## Version: 0.1.0
+## Notes: Guild games in a tavern: Belot, Santase, Backgammon, Texas Hold'em, Chess, Tic-tac-toe and Death Roll, for fun or for gold.
+## Author: goofy5752
+## Version: 1.0.0
+## X-Website: https://github.com/goofy5752/TavernGames
+## X-License: MIT
 ## SavedVariables: TavernGamesDB
 ## IconTexture: Interface\AddOns\TavernGames\media\icon
 

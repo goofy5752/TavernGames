@@ -4,7 +4,7 @@ local _, ns = ...
 ns.Const = {
   PROTOCOL = 1,
   PREFIX = "TAVG",
-  VERSION = "0.1.0",
+  VERSION = "1.0.0",
   REPO = "https://github.com/goofy5752/TavernGames", -- the source code (Settings, „За аддона“)
   AUTHOR = "goofy5752",
 
