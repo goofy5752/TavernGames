@@ -39,9 +39,12 @@ local GAME_H, ROW_H = 40, 40
 -- Chair name labels fit around a table of at most this many seats; at a larger
 -- one only the tooltips name the players. A label is the short name (ui/NameTag.lua)
 -- in CHAIR_LABEL_W (SIDE_LABEL_W beside a chair at the side), the host's on the top in HOST_W:
--- shrunk, then wrapped, never cut.
+-- shrunk, then wrapped, never cut. A side chair's name stays in its table's cell of the floor:
+-- beside the chair when the cell leaves it SIDE_MIN at least, else under the chair, between
+-- the table's top and the cell's edge (four columns leave no room beside it).
 local LABELLED_SEATS = 4
-local CHAIR_LABEL_W, SIDE_LABEL_W, HOST_W = 76, 60, TOP_SIZE - 8
+local CHAIR_LABEL_W, SIDE_LABEL_W, HOST_W, SIDE_MIN = 76, 60, TOP_SIZE - 8, 40
+local CHAIR_HALF = 13 -- half a chair
 
 local MESSAGES = { noguild = "hall.noguild", wait = "hall.wait", empty = "hall.empty" }
 
@@ -286,7 +289,8 @@ local function chairWidget(t, i)
   return c
 end
 
-local function fillTable(t, rec, client, compact)
+-- `half`: half the width of the table's cell on the floor.
+local function fillTable(t, rec, client, compact, half)
   t.rec, t.tid = rec, rec.tid
   local mine = here(client, rec)
   t.game:SetText(gameName(rec.game))
@@ -314,17 +318,26 @@ local function fillTable(t, rec, client, compact)
     -- A chair at the side has its name beside it, outward, clear of the portrait (centred
     -- on it, the chair hid its ends); a chair above or below, its name over or under it.
     local side = math.abs(x) > math.abs(y) + 1
+    local width = CHAIR_LABEL_W
     c.label:ClearAllPoints()
     if side then
-      c.label:SetPoint(x > 0 and "LEFT" or "RIGHT", c.button, x > 0 and "RIGHT" or "LEFT", x > 0 and 2 or -2, 0)
-      c.label:SetJustifyH(x > 0 and "LEFT" or "RIGHT")
+      local beside = math.min(SIDE_LABEL_W, (half or math.huge) - math.abs(x) - CHAIR_HALF - 2)
+      if beside >= SIDE_MIN then
+        width = beside
+        c.label:SetPoint(x > 0 and "LEFT" or "RIGHT", c.button, x > 0 and "RIGHT" or "LEFT", x > 0 and 2 or -2, 0)
+        c.label:SetJustifyH(x > 0 and "LEFT" or "RIGHT")
+      else -- under the chair: clear of the top (its rim) and inside the cell
+        width = 2 * math.max(12, math.min(half - math.abs(x), math.abs(x) - (TOP_SIZE / 2 - 2)))
+        c.label:SetPoint("TOP", c.button, "BOTTOM", 0, -2)
+        c.label:SetJustifyH("CENTER")
+      end
     else
       c.label:SetPoint("CENTER", t.frame, "CENTER", x * k, y * k)
       c.label:SetJustifyH("CENTER")
     end
     c.empty = not name
     if name then
-      W.fitWrap(c.label, W.short(name, rec.seats), side and SIDE_LABEL_W or CHAIR_LABEL_W)
+      W.fitWrap(c.label, W.short(name, rec.seats), width)
       c.label:SetTextColor(nameColor(client, name))
       c.label:SetShown(labelled)
       c.button:SetEnabled(false)
@@ -414,7 +427,7 @@ local function renderFloor(v, recs, client)
   local slots = HallLayout.slots(#recs, v.floorW, v.floorH)
   for i, rec in ipairs(recs) do
     local t = tableWidget(v, i)
-    fillTable(t, rec, client, HallLayout.columns(#recs) >= 4)
+    fillTable(t, rec, client, HallLayout.columns(#recs) >= 4, v.floorW / HallLayout.columns(#recs) / 2)
     t.frame:ClearAllPoints()
     t.frame:SetPoint("CENTER", v.floor, "TOPLEFT", slots[i][1], LIFT - slots[i][2])
     t.frame:Show()

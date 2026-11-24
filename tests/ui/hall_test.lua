@@ -613,7 +613,7 @@ describe("ui: short names in the hall, the whole name on hover", function()
     -- each label in its column: shrunk, then wrapped, never cut
     for i = 1, 3 do
       local fs = t.chairs[i].label
-      ok(fs:GetUnboundedStringWidth() <= 76 or fs.wordWrap, "chair label " .. i); ok(select(2, fs:GetFont()) >= 9 * 0.91 - 0.01, "readable")
+      ok(fs:GetUnboundedStringWidth() <= 76 or fs.wordWrap, "chair label " .. i); ok(select(2, fs:GetFont()) >= 9 - 0.01, "readable")
     end
   end)
 
@@ -644,5 +644,60 @@ describe("ui: short names in the hall, the whole name on hover", function()
     eq(byName[K].status:GetText(), "на маса при " .. w.ns.W.paint("Ivan P.", w.ns.W.nameColor(w.ns.client, P)))
     w:hover(byName[K].frame); eq(w.G.GameTooltip.lines, { K })
     byName[K].frame.scripts.OnLeave(byName[K].frame); eq(w.G.GameTooltip:IsShown(), false)
+  end)
+end)
+
+-- QA (layout): with seven tables (four columns) a side chair's name beside it ran under the next table's top.
+describe("ui: a side chair's name stays in its table's cell", function()
+  local LONG = { "Thorgrimsson Deepforge", "Barleybrewster Ironfoot", "Mirabelle Stormwhisper", "Ivan Kolevski" }
+
+  -- The x range (from the table's centre) of chair i's label, from its anchor and width.
+  local function span(t, i)
+    local c, x = t.chairs[i], 60 * (i == 2 and 1 or -1)
+    local p, wd = c.label.points[1], c.label:GetWidth()
+    if p[1] == "TOP" then return x - wd / 2, x + wd / 2 end
+    if p[1] == "LEFT" then return x + 13 + p[4], x + 13 + p[4] + wd end
+    return x - 13 + p[4] - wd, x - 13 + p[4]
+  end
+
+  it("beside the chair while the cell has room, under it in four columns; never past the cell", function()
+    for _, count in ipairs({ 1, 7 }) do
+      local w = guildWow()
+      w.ns.MainWindow.show()
+      hi(w, LONG[1], "MAGE")
+      tbl(w, LONG[1], LONG, "live", "belot")
+      for k = 2, count do tbl(w, "Host" .. k, { "Host" .. k, false }) end
+      local v = w.ns.Hall.view
+      local t
+      for _, x in ipairs(v.tables) do if x.rec and x.rec.host == LONG[1] and x.frame:IsShown() then t = x end end
+      local half = v.floorW / w.ns.HallLayout.columns(count) / 2
+      for _, i in ipairs({ 2, 4 }) do
+        local fs = t.chairs[i].label
+        ok(fs:IsShown(), "no label")
+        eq(fs.points[1][1], count == 1 and (i == 2 and "LEFT" or "RIGHT") or "TOP")
+        local l, r = span(t, i)
+        ok(l >= -half - 0.5 and r <= half + 0.5, count .. " tables: chair " .. i .. "'s name past its cell: " .. l .. ".." .. r .. " / " .. half)
+        if fs.points[1][1] == "TOP" then ok(math.min(math.abs(l), math.abs(r)) >= 94 / 2 - 2 - 0.5, "over the table's top") end
+        ok(select(2, fs:GetFont()) >= 9, "unreadable")
+      end
+    end
+  end)
+end)
+
+-- QA (layout): a long name in „В кръчмата сега“ ran into its status („at …'s table“) on the same row.
+describe("ui: „В кръчмата сега“ rows", function()
+  it("the status takes what the name leaves: shrunk, then wrapped, never over it", function()
+    local w = guildWow()
+    w.ns.MainWindow.show()
+    local LONGEST = "Добромирослава Великотърновска"
+    local tid = tbl(w, LONGEST, { LONGEST, false }, "open", "santase")
+    hi(w, LONGEST, "MAGE", tid)
+    local v, row = w.ns.Hall.view, nil
+    for _, r in ipairs(v.peers) do if r.frame:IsVisible() and r.peerName == LONGEST then row = r end end
+    local nameRight = 28 + math.min(w.ns.HallPeers.NAME_W(v), w.ns.W.textWidth(row.name))
+    local statusLeft = v.peerW - 2 - row.status:GetWidth()
+    ok(nameRight <= statusLeft, "the status over the name: " .. nameRight .. " > " .. statusLeft)
+    ok(select(2, row.status:GetFont()) >= 9, "unreadable")
+    ok(row.status:GetStringHeight() <= 26 and row.name:GetStringHeight() <= 26, "past the row")
   end)
 end)

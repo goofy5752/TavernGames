@@ -85,7 +85,9 @@ function HallPeers.render(v, client)
     W.fitWrap(r.name, W.short(p.name, names), HallPeers.NAME_W(v)) -- the short name among the list's
     r.portrait:set(ns.Portrait.who(client, p.name))
     r.name:SetTextColor(ns.classColor(p.cls))
-    r.status:SetText(whereIs(client, p, byTid))
+    -- where they are, right of the name: shrunk, then wrapped in what the name leaves, never over it
+    local nameW = math.min(HallPeers.NAME_W(v), W.textWidth(r.name))
+    W.fitWrap(r.status, whereIs(client, p, byTid), math.max(40, v.peerW - 2 - 28 - nameW - 8))
     local offer = Hall.selected == p.name and HallPeers.canInviteName(client, p.name)
     if offer then selectedListed = true end
     r.invite:SetShown(offer)
