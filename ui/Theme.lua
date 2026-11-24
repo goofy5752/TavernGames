@@ -35,6 +35,7 @@ local Theme = {
     bone = hex("f3e8d0"),       -- the light checker
     walnut = hex("3b1d10"),     -- the dark checker
     glow = hex("ffd100"),       -- a legal target
+    clockLow = hex("ff5a4a"),   -- a chess clock under 30 s
   },
   -- Headings keep the tavern face (Alegreya SC); every other text is PT Sans.
   font = {
@@ -74,6 +75,19 @@ Theme.skinTexSize = {
   cameo = { 64, 64 }, ribbon = { 64, 16 }, sil = { 512, 64 },
 }
 
+-- The chess textures (media/chess/, tools/gen_chess_textures.py), {w, h} px: <skin>_<w|b><p n b r q k>
+-- (piece style B), the light and dark square of each skin, the dot, the capture ring and the check glow.
+Theme.chessTexSize = { dot = { 64, 64 }, ring = { 64, 64 }, check = { 64, 64 } }
+for _, skin in ipairs({ "alliance", "horde" }) do
+  Theme.chessTexSize["sq_" .. skin .. "_l"], Theme.chessTexSize["sq_" .. skin .. "_d"] = { 64, 64 }, { 64, 64 }
+  for _, colour in ipairs({ "w", "b" }) do
+    for _, piece in ipairs({ "p", "n", "b", "r", "q", "k" }) do Theme.chessTexSize[skin .. "_" .. colour .. piece] = { 128, 128 } end
+  end
+end
+
+-- The path of chess texture `name`.
+function Theme.chessTex(name) return MEDIA .. "chess\\" .. name end
+
 for name in pairs(Theme.texSize) do Theme.tex[name] = MEDIA .. name end
 for name in pairs(Theme.skinTexSize) do Theme.tex[name] = MEDIA .. "skin\\" .. name end
 
@@ -92,6 +106,7 @@ Theme.SKINS = {
       brass = hex("d8ab4a"), brassLight = hex("f6d98c"), brassDim = hex("6f4f18"),
       banner = hex("1b3f75"), bannerHi = hex("2c5ea6"), deep = hex("0a1830"),
       accent = hex("5fa8ff"), lantern = hex("9cc4ff"), paperHead = hex("173a6e"),
+      sqLast = hex("ffd65a"), sqSel = hex("ffe27a"), sqDot = hex("0a1830"), coord = hex("f6d98c"), -- the chess board (alpha: ChessView)
     },
     tex = skinTex("alliance"), woodTint = { 0.85, 0.85, 0.85 }, floor = "stone", sounds = {},
   },
@@ -101,6 +116,7 @@ Theme.SKINS = {
       brass = hex("9a8f86"), brassLight = hex("d6ccc0"), brassDim = hex("3a3431"),
       banner = hex("6e1410"), bannerHi = hex("a3241b"), deep = hex("170b09"),
       accent = hex("ff7a3d"), lantern = hex("ff9a2a"), paperHead = hex("7a1a12"),
+      sqLast = hex("ff8c32"), sqSel = hex("ffb066"), sqDot = hex("1e0604"), coord = hex("e6d3b0"),
     },
     tex = skinTex("horde"), woodTint = { 0.62, 0.58, 0.58 }, floor = "planks", sounds = {},
   },

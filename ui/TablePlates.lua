@@ -23,6 +23,7 @@ local NOTE_RIGHT, NOTE_GAP, NAME_MIN = 42, 4, 32 -- the note ends 42 px in (the 
 local PIPS, PIP_W, PIP_H, PIP_GAP = 8, 5, 8, 3 -- eight reach NAME_X + 61: inside the name's column on every plate
 local PIP_Y = 1                           -- the pips' middle over the bar's bottom edge, clear of the line of text
 local TURN_H = 3                          -- the turn bar along the bottom
+local CLOCK_LOW = 300                     -- tenths: a seat clock under 30 s turns clockLow
 
 local function plateWidget(v, i)
   local p = v.plates[i]
@@ -90,8 +91,29 @@ local function fillBar(p, s, left)
   p.bar:SetWidth(math.max(1, w))
 end
 
--- The turn clock and the turn bar on the plate of the player on turn.
+-- A view with seatClock(s, seat) (-> tenths | "none" | nil, chess) shows the clock of every seat:
+-- ns.ChessModel.clockText, in clockLow under CLOCK_LOW tenths, else gold; "none" is the sign for no
+-- limit with no bar; the turn bar only on the plate on turn of a timed game, as wide as the time left of the base.
+local function seatClock(p, s, view, seat)
+  local t = view.seatClock(s, seat)
+  p.clock:SetShown(t ~= nil)
+  local number = type(t) == "number"
+  local base = s.state and s.state.base
+  local bar = number and base and s.state.turn == seat
+  p.bar:SetShown(bar or false)
+  if t == nil then return end
+  p.clock:SetText(ns.ChessModel.clockText(number and t or nil))
+  p.clock:SetTextColor(Theme.rgb(number and t < CLOCK_LOW and "clockLow" or "gold"))
+  if bar then p.bar:SetWidth(math.max(1, p.frame:GetWidth() * math.min(t, base) / base)) end
+end
+
+-- The turn clock and the turn bar on the plate of the player on turn (a view with seatClock: on every plate).
 local function tick(v, s)
+  local view = TableFrame.views[s.game]
+  if view and view.seatClock then
+    for i = 1, #s.seats do if v.plates[i] then seatClock(v.plates[i], s, view, i) end end
+    return
+  end
   local left = s:left()
   if not left then return end
   local secs = math.ceil(left)
@@ -119,7 +141,9 @@ end
 local function render(v, s, client)
   local n, view = #s.seats, TableFrame.views[s.game]
   local spots, rows
-  if view and view.ring then
+  if view and view.plateSpots then
+    spots, rows = view.plateSpots(s, v.areaW, v.areaH)
+  elseif view and view.ring then
     spots, rows = ns.HallLayout.ring(n, v.areaW, v.areaH, s.mySeat or 1)
   else
     spots, rows = ns.HallLayout.plates(n, v.areaW)
@@ -141,10 +165,14 @@ local function render(v, s, client)
     noteAndName(p, spot[3], view and view.seatNote and view.seatNote(s, i) or "")
     local onTurn = turn == i
     p.portrait:turn(onTurn and name ~= false and name ~= nil) -- an empty chair never glows
-    local timed = onTurn and s.deadline ~= nil
-    p.clock:SetShown(timed)
-    p.bar:SetShown(timed)
-    if timed then fillBar(p, s, s:left() or 0) end
+    if view and view.seatClock then
+      seatClock(p, s, view, i)
+    else
+      local timed = onTurn and s.deadline ~= nil
+      p.clock:SetShown(timed)
+      p.bar:SetShown(timed)
+      if timed then fillBar(p, s, s:left() or 0) end
+    end
     p.edges.setColor(Theme.rgb(onTurn and "gold" or "brass"))
     pips(p, view and view.seatTricks and view.seatTricks(s, i))
     p.frame:Show()

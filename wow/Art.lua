@@ -63,8 +63,12 @@ Art.SOUNDS = {
   trick = { "IG_BACKPACK_OPEN" },
   coins = { "LOOT_WINDOW_COIN_SOUND", "MONEY_FRAME_OPEN" },
   settled = { "LOOT_WINDOW_COIN_SOUND", "ACHIEVEMENT_MENU_OPEN" }, -- a coin sound on the settled toast (spec 5.4)
+  chessMove = { "IG_ABILITY_ICON_DROP" },     -- chess (ui/games/ChessView.lua): a quiet move, a capture, a check, the end
+  chessCapture = { "IG_BACKPACK_CLOSE" },
+  chessCheck = { "IG_PLAYER_INVITE" },
+  chessEnd = { "IG_QUEST_LIST_COMPLETE" },
 }
-local SOUND_KEYS = { "open", "close", "deal", "trick", "coins", "settled" }
+local SOUND_KEYS = { "open", "close", "deal", "trick", "coins", "settled", "chessMove", "chessCapture", "chessCheck", "chessEnd" }
 
 -- What /tavern probe art reports by type(); the last three are of a scratch frame and texture.
 local APIS = {
