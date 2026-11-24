@@ -271,6 +271,24 @@ scene("santase", function()
   write("santase", found, { found.ns.TableFrame.frame })
 end)
 
+-- My lead with „Затвори“ offered and a last trick on the felt: the buttons beside my hand
+-- (made only when named).
+scene("santase_close", function()
+  local found
+  for seed = 1, 40 do
+    local w = boot{ seed = seed }
+    local s = myTable(w, "santase")
+    local okStop = play(w, function(st, _, mine)
+      return mine and st.phase == "play" and #st.trick == 0 and st.closed == nil and #st.stock > 2
+        and #(st.last or {}) > 0
+    end, 240, 1)
+    if okStop then found = w; break end
+  end
+  assert(found, "santase: no lead with a last trick found")
+  run(found, 0.5)
+  write("santase_close", found, { found.ns.TableFrame.frame })
+end, true)
+
 scene("tabla", function()
   local w = boot{ seed = 3 }
   myTable(w, "tabla")

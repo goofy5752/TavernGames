@@ -18,7 +18,7 @@ local E = ns.Engines.santase
 
 local WIDTH, HEIGHT = 512, 260
 local OPP_SCALE, OPP_STEP, LAST_SCALE = 0.8, 20, 0.7
-local MID_Y = -70                    -- top of the stock, the trick and the buttons
+local MID_Y = -70                    -- top of the stock, the trick and the last trick
 local TRICK_GAP = 16                 -- between the two cards of the trick
 local STOCK_X, TRUMP_DX = 30, -20    -- the stock's left edge; the trump card that far left of it, its corner (rank, suit) in sight
 local LAST_X = 72                    -- left edge of the last trick, right of the centre
@@ -301,7 +301,9 @@ local function drawStock(f, m)
   f.trumpText:SetShown(m.tsuit ~= nil)
 end
 
--- The visible buttons stacked at the right edge from the top of the middle band.
+-- The visible buttons stacked at the right edge from the bottom up, beside my hand (they are
+-- moves of my cards): „Затвори“ lowest, then the swap, the marriage on top. Up in the middle
+-- band they stood over „Последна взятка“ and its cards.
 local function drawButtons(f, m)
   local b = m.buttons
   f.marryButton.text:SetText(L(b.marryBoth and "santase.marryBoth" or b.marry == 40 and "santase.marry40" or "santase.marry20"))
@@ -310,12 +312,13 @@ local function drawButtons(f, m)
   f.marryButton:SetShown(b.marry ~= nil)
   f.swapButton:SetShown(b.swap ~= nil)
   f.closeButton:SetShown(b.close)
-  local y = MID_Y
-  for _, button in ipairs(f.buttons) do
+  local y = MY_FAN_Y
+  for i = #f.buttons, 1, -1 do
+    local button = f.buttons[i]
     if button:IsShown() then
       button:ClearAllPoints()
-      button:SetPoint("TOPRIGHT", f, "TOPRIGHT", 0, y)
-      y = y - BUTTON_H - BUTTON_GAP
+      button:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", 0, y)
+      y = y + BUTTON_H + BUTTON_GAP
     end
   end
 end
