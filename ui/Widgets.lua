@@ -230,6 +230,38 @@ function W.fit(fs, text, width, floor)
   end
 end
 
+-- `text` on font string fs within `width`, never clipped: first W.fit makes it
+-- smaller (down to `floor`, default WRAP_MIN); when it still does not fit it
+-- wraps at the spaces, and a word wider than `width` on its own (a long name,
+-- no colour codes in it) is broken by its letters onto the next line. The row
+-- grows taller, never wider -> the text's height.
+W.WRAP_MIN = 9
+local function letters(s) return s:gmatch("[%z\1-\127\194-\244][\128-\191]*") end
+function W.fitWrap(fs, text, width, floor)
+  W.fit(fs, text, width, floor or W.WRAP_MIN)
+  fs:SetWordWrap(true)
+  if W.textWidth(fs) > width then
+    local out = {}
+    for space, word in text:gmatch("(%s*)(%S*)") do
+      out[#out + 1] = space
+      fs:SetText(word)
+      if word ~= "" and not word:find("|", 1, true) and W.textWidth(fs) > width then
+        local line = ""
+        for ch in letters(word) do
+          fs:SetText(line .. ch)
+          if line ~= "" and W.textWidth(fs) > width then out[#out + 1] = line .. "\n"; line = ch else line = line .. ch end
+        end
+        out[#out + 1] = line
+      else
+        out[#out + 1] = word
+      end
+    end
+    fs:SetText(table.concat(out))
+  end
+  fs:SetWidth(width)
+  return fs:GetStringHeight()
+end
+
 -- The first word of a player's name ("Иван Петров" -> "Иван").
 function W.firstWord(name) return ns.Names.first(name) end
 

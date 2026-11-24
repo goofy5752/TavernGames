@@ -168,3 +168,24 @@ describe("ui: W.fit measures the whole text (final fix)", function()
     eq(W.textWidth(bare), 7) -- a client without GetUnboundedStringWidth
   end)
 end)
+
+describe("ui: W.fitWrap shrinks, then wraps: never clips", function()
+  it("a short text keeps its size; a long one shrinks to the floor, then wraps; a long word breaks", function()
+    local w = boot(); local W = w.ns.W
+    local fs = W.Label(w.G.UIParent, "ui", "", 12)
+    fs:SetFont(w.ns.Theme.font.ui, 12, "") -- 6 px a character in the fake
+    local h = W.fitWrap(fs, "Ivan", 46)
+    eq({ fs:GetText(), select(2, fs:GetFont()), fs.wordWrap, fs:GetWidth(), h }, { "Ivan", 12, true, 46, 15 })
+    W.fitWrap(fs, "Barleybrew", 46) -- 10 characters: 60 px at 12, 45 at 9
+    eq({ fs:GetText(), (select(2, fs:GetFont())) }, { "Barleybrew", 9 })
+    -- 14 characters at the floor (4.5 px): 63 px in 46, broken after 10 letters
+    W.fitWrap(fs, "Barleybrewster", 46)
+    eq({ fs:GetText(), (select(2, fs:GetFont())) }, { "Barleybrew\nster", 9 })
+    -- words wrap at their spaces; only the word too long alone is broken
+    W.fitWrap(fs, "a Barleybrewster b", 46)
+    eq(fs:GetText(), "a Barleybrew\nster b")
+    -- a colour-coded word is never cut inside its codes
+    W.fitWrap(fs, "|cffff0000Barleybrewster|r", 46)
+    eq(fs:GetText(), "|cffff0000Barleybrewster|r")
+  end)
+end)
