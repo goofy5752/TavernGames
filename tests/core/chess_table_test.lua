@@ -246,9 +246,9 @@ describe("chess at the table", function()
       ok(c:act(list[1 + (ply * 7) % #list]))
     end
 
-    -- Every message both ways 0.4 s late (the plan's 0.8 s each way is left to
-    -- the in-game follow-up: 16 tenths a move, 320 after 20 of mine, over the
-    -- 200 of tolerance(20); a round trip over about 1 s is charged in a long game).
+    -- Every message both ways 0.4 s late, 96 moves of 5 s (48 of mine): my
+    -- round trip is credited to each move of mine (Clock.countOwn), so the
+    -- lag does not pile up in my sum.
     it("an honest host under lag is not charged", function()
       local function lag(sim, name)
         local env = sim.envs[name]
@@ -261,8 +261,8 @@ describe("chess at the table", function()
       local sim, host, guest = open(30, SK, function(sim) lag(sim, H); lag(sim, G) end)
       wait(sim, 1)
       local played, ply = {}, 0
-      for _ = 1, 4000 do
-        if ply >= 40 or host.session.state.phase ~= "play" then break end
+      for _ = 1, 8000 do -- tenths: 96 moves of 5.4 s
+        if ply >= 96 or host.session.state.phase ~= "play" then break end
         for _, c in ipairs({ host, guest }) do
           local s = c.session
           local st = s.state
@@ -277,13 +277,13 @@ describe("chess at the table", function()
         wait(sim, 0.1)
       end
       wait(sim, 2)
-      eq(#host.session.state.moves, 40)
+      eq(#host.session.state.moves, 96)
       eq(guest.session.stakeFoul, nil)
       local own, opp = guest.session.clockOwn, guest.session.clockOpp
-      eq(own.n, 20); eq(opp.n, 20)
+      eq(own.n, 48); eq(opp.n, 48)
       ok(own.sum <= ns.Clock.tolerance(own.n), "own " .. own.sum)
       ok(opp.sum <= ns.Clock.tolerance(opp.n), "opp " .. opp.sum)
-      ok(math.abs(own.sum - 8 * own.n) < 1, "the round trip, 8 tenths a move, is the player's: own " .. own.sum)
+      ok(math.abs(own.sum) < 1, "the round trip is credited: own " .. own.sum)
       ok(math.abs(opp.sum) < 1, "opp " .. opp.sum)
     end)
 
@@ -398,6 +398,71 @@ describe("chess at the table", function()
       eq(#guest.session.state.moves, 2)
       eq(guest.session.stakeFoul, "forged")
       eq(guest.session.claimTimer, nil)
+    end)
+
+    it("a claim meets a host gone offline: no foul, its seat's stand decides", function()
+      local sim, host, guest = claimable(SK)
+      ok(guest.presence:get(H) ~= nil)
+      ok(ns.Clock.claim(guest)); sim:run(0)
+      host:stop(); sim:run(0) -- a logout: its BYE takes it off my presence
+      eq(guest.presence:get(H), nil)
+      sim:run(C.AUTO_GRACE + 1)
+      eq(guest.session.claimTimer, nil)
+      eq(guest.session.stakeFoul, nil)
+    end)
+
+    it("a claim meets a host my presence still lists: forged", function()
+      local sim, host, guest = claimable(SK)
+      ok(ns.Clock.claim(guest)); sim:run(0)
+      sim:offline(H) -- silent, but no BYE: still listed
+      sim:run(C.AUTO_GRACE + 1)
+      ok(guest.presence:get(H) ~= nil)
+      eq(guest.session.stakeFoul, "forged")
+    end)
+
+    -- The host's move to the guest is lost: the guest's turn comes by a
+    -- resync snapshot (no login), `after` seconds into it.
+    local function resynced(after)
+      local dropped = false
+      local sim, host, guest = open(5, SK, function(sim)
+        tamper(sim, H, function(m)
+          if m.t == "EV" and type(m.a) == "table" and m.a.k == "move" and m.seat == 1 and not dropped then
+            dropped = true
+            return nil
+          end
+          return m
+        end)
+      end)
+      ok(guest:act(move("e2e4"))); sim:run(0)
+      ok(host:act(move("e7e5"))); sim:run(0)
+      local t0 = sim.clock
+      eq(#guest.session.state.moves, 1)
+      if after then sim:run(after); guest.session:requestSync(); sim:run(0) end
+      for _ = 1, 60 do
+        if #guest.session.state.moves == 2 then break end
+        sim:run(1)
+      end
+      eq(#guest.session.state.moves, 2)
+      eq(guest.session.clockSeen, false)
+      eq(guest.session.stakeFoul, "unseen") -- the snapshot's own verdict: a move I did not see (core/StakesWatch.lua)
+      return sim, host, guest, t0
+    end
+
+    -- Before the fix both flags were forged: the resync's stakeTurn counts as seen.
+    it("after a resync, a flag my clock agrees with is no forgery", function()
+      local sim, host, guest, t0 = resynced(3)
+      eq(guest.session.clockAt, t0 + 3)
+      sim:run(305 + C.AUTO_GRACE + 1) -- my first move earned 5 s
+      over(guest, 1, "flag")
+      eq(guest.session.stakeFoul, "unseen")
+    end)
+
+    it("after a resync, a flag my clock cannot confirm is unseen, never forged", function()
+      local sim, host, guest, t0 = resynced(nil) -- the host's heartbeat finds the gap
+      ok(guest.session.clockAt - t0 > C.AUTO_GRACE + 1, "late enough that my clock cannot agree")
+      sim:run(305 + C.AUTO_GRACE + 1)
+      over(guest, 1, "flag")
+      eq(guest.session.stakeFoul, "unseen")
     end)
 
     it("a claim an honest host answers ends in its flag", function()

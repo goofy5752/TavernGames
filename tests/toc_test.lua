@@ -102,7 +102,7 @@ describe(".pkgmeta", function()
   it("the chess files keep their limits", function()
     local LIMITS = {
       { "engines/chess_rules.lua", 420 }, { "engines/chess_san.lua", 140 }, { "engines/chess.lua", 360 },
-      { "engines/chess_bot.lua", 220 }, { "core/Clock.lua", 240 }, { "core/StakesChess.lua", 220 },
+      { "engines/chess_bot.lua", 220 }, { "core/Clock.lua", 280 }, { "core/StakesChess.lua", 220 },
       { "ui/games/ChessModel.lua", 200 }, { "ui/games/ChessPanels.lua", 300 }, { "ui/games/ChessView.lua", 420 },
       { "ui/ChessHistory.lua", 120 },
     }
