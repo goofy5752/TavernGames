@@ -31,6 +31,10 @@ Hall.RIGHT_W = 250 -- the right column: „Сметки“ (ui/Accounts.lua) ove
 Hall.ACCOUNTS_H = 190
 local FOOTER_H, HEADER_H = 22, 28
 local TABLE_SIZE, TOP_SIZE, CHAIR_R, LABEL_R = 150, 94, 60, 80
+-- A table reaches about 75 px above its centre (the top chair) but 125 px below it
+-- (the label and „Затвори“ hang under the frame), so it sits LIFT px above its
+-- cell centre: the bottom row keeps its button on the carpet.
+local LIFT = 24
 local GAME_H, ROW_H = 40, 40
 -- Chair name labels fit around a table of at most this many seats; at a larger
 -- one only the tooltips name the players.
@@ -398,7 +402,7 @@ local function renderFloor(v, recs, client)
     local t = tableWidget(v, i)
     fillTable(t, rec, client)
     t.frame:ClearAllPoints()
-    t.frame:SetPoint("CENTER", v.floor, "TOPLEFT", slots[i][1], -slots[i][2])
+    t.frame:SetPoint("CENTER", v.floor, "TOPLEFT", slots[i][1], LIFT - slots[i][2])
     t.frame:Show()
   end
   for i = #recs + 1, #v.tables do
