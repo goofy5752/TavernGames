@@ -9,6 +9,8 @@ luajit tools/shots/scenes.lua && python tools/shots/render.py
 
 Run it from the repo root. You can also name scenes, for example `luajit tools/shots/scenes.lua hall belot` followed by
 `python tools/shots/render.py hall belot`. It needs LuaJIT, and Python with Pillow and numpy.
+The scenes `history_belot`, `history_long` (the longest names), `history_santase` and `history_chess` show the „История“
+window open beside a table, to check it against mockup 10; they are made only when named and are not README pictures.
 
 ## How it works
 

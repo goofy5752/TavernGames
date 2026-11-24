@@ -183,7 +183,8 @@ local function play(w, stop, limit, think, choose)
 end
 
 local Scenes, ORDER = {}, {}
-local function scene(name, fn) Scenes[name] = fn; ORDER[#ORDER + 1] = name end
+-- `extra`: a scene for checking the UI, made only when named (not a README picture).
+local function scene(name, fn, extra) Scenes[name] = fn; if not extra then ORDER[#ORDER + 1] = name end end
 
 ---------------------------------------------------------------------------
 
@@ -301,6 +302,76 @@ scene("holdem", function()
   run(found, 0.5)
   write("holdem", found, { found.ns.TableFrame.frame, v.history })
 end)
+
+-- The „История“ window open beside a table (mockup 10), for checking it: these scenes are made only
+-- when named (luajit tools/shots/scenes.lua history_belot history_long history_santase history_chess).
+-- `game` played by me and bots until stop(st).
+local function withHistory(w, stop, limit, think, choose)
+  local okStop = play(w, function(st, _, mine) return mine and stop(st) end, limit or 900, think or 1, choose)
+  local v = w.ns.TableFrame.view
+  if v.historyButton:IsVisible() and not v.history:IsShown() then w:click(v.historyButton) end
+  run(w, 0.5)
+  return okStop, v
+end
+
+-- Белот: the third deal under way (two closed above it), the trick on the table half played.
+scene("history_belot", function()
+  local w = boot{ seed = 11 }
+  myTable(w, "belot")
+  local okStop, v = withHistory(w, function(st) return st.phase == "play" and (st.round or 1) >= 3 and (st.trickNo or 1) >= 4 and #(st.trick or {}) == 2 end, 1200)
+  assert(okStop, "history_belot: no third deal")
+  -- the hand under way, and the one before it opened by a click on its header
+  local H = w.ns.HandHistory
+  local blocks = H.blocks(w.ns.client.session)
+  if blocks[2] then H.toggle(blocks[2].hand, false); H.draw(v.history, w.ns.client.session) end
+  write("history_belot", w, { w.ns.TableFrame.frame, v.history })
+end, true)
+
+-- The same window with the longest names a table can have (two-word names, a bot's long one).
+scene("history_long", function()
+  local w = boot{ seed = 11 }
+  myTable(w, "belot")
+  local okStop, v = withHistory(w, function(st) return st.phase == "play" and (st.round or 1) >= 2 and (st.trickNo or 1) >= 3 and #(st.trick or {}) == 3 end, 1200)
+  assert(okStop, "history_long: no second deal")
+  local H, s = w.ns.HandHistory, w.ns.client.session
+  for _, hand in ipairs(H.tables[s.tid].hands) do
+    hand.names = { "Brannoc", "Bot Barleybrewster", "Ivan Petrov", "Ivan Kolevski" }
+  end
+  H.draw(v.history, s)
+  write("history_long", w, { w.ns.TableFrame.frame, v.history })
+end, true)
+
+-- Сантасе: the second hand under way, the first closed to its result.
+scene("history_santase", function()
+  local found
+  for seed = 1, 40 do
+    local w = boot{ seed = seed }
+    myTable(w, "santase")
+    -- a hand after the first with an event (a marriage, the nine, the close) and a few tricks
+    local function events()
+      local b = w.ns.HandHistory.tables[w.ns.client.session.tid]
+      local top = b and b.hands[#b.hands]
+      return top and #top.events or 0
+    end
+    local okStop, v = withHistory(w, function(st)
+      return st.phase == "play" and (st.hand or 1) >= 2 and (st.ntr[1] + st.ntr[2]) >= 4 and events() > 0
+    end, 900, 1, function(_, _, legal) -- I declare a marriage when I can
+      for _, a in ipairs(legal) do if a.k == "marry" or a.k == "swap9" then return a end end
+    end)
+    if okStop then found = { w, v }; break end
+  end
+  assert(found, "history_santase: no second hand with an event")
+  write("history_santase", found[1], { found[1].ns.TableFrame.frame, found[2].history })
+end, true)
+
+-- Шах: a game well under way, the history window open beside the board.
+scene("history_chess", function()
+  local w = boot{ seed = 5 }
+  myTable(w, "chess")
+  local okStop, v = withHistory(w, function(st) return #st.moves >= 24 end, 1200, 2)
+  assert(okStop, "history_chess: no long game")
+  write("history_chess", w, { w.ns.TableFrame.frame, v.history })
+end, true)
 
 scene("chess", function()
   local w = boot{ seed = 5 }
