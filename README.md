@@ -7,7 +7,7 @@
 [![WoW Forever](https://img.shields.io/badge/WoW-Forever%201.60.1-b0813f)](#installation)
 [![Interface](https://img.shields.io/badge/Interface-16001-7a1f24)](TavernGames.toc)
 [![Lua](https://img.shields.io/badge/Lua-5.1-2c2d72?logo=lua)](#development)
-[![Tests](https://img.shields.io/badge/tests-2372%20passing-2e7d32)](#development)
+[![Tests](https://img.shields.io/badge/tests-2373%20passing-2e7d32)](#development)
 [![Languages](https://img.shields.io/badge/UI-English%20%7C%20Български-e9c98a)](#languages)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
@@ -21,7 +21,7 @@
 
 Every table is either **just for fun** or **staked in gold and silver**. The addon never moves gold by itself. It keeps a **guild-wide debt ledger**, fills in the amount for a **trade** or a **mail**, and you press the button. The addon runs on GUILD and WHISPER addon messages only, so it needs no server, website or external service.
 
-> **Status: alpha.** All seven games, stakes, the ledger, the leaderboard and the history are built and covered by 2372 automated tests. In-game testing on WoW Forever is in progress. Please [open an issue](../../issues) if something misbehaves.
+> **Status: alpha.** All seven games, stakes, the ledger, the leaderboard and the history are built and covered by 2373 automated tests. In-game testing on WoW Forever is in progress. Please [open an issue](../../issues) if something misbehaves.
 
 ## Table of contents
 
@@ -68,7 +68,7 @@ Every table is either **just for fun** or **staked in gold and silver**. The add
 | **Santase** (Сантасе, Sixty-six) | 2 | Trick-taking card game | 24-card deck, closing, marriages (20 / 40), trump nine exchange, match to 11 game points |
 | **Backgammon** (Табла) | 2 | Board game with dice | Bulgarian Tabla; the dice are rolled by commit-reveal between both players, so neither can choose them |
 | **Texas Hold'em** | 2–6 | Poker | Chip tables for fun, plus cash tables with real gold buy-ins |
-| **Chess** (Шах) | 2 | Board game | Full FIDE rules (castling, en passant, promotion, mate, stalemate, threefold repetition, 50 moves), a clock of 5 to 30 minutes with +5 s a move, offering a draw and resigning, a bot opponent, and staked games where a draw owes nothing |
+| **Chess** (Шах) | 2 | Board game | FIDE move rules with automatic draws (castling, en passant, promotion, mate, stalemate, threefold repetition, 50 moves), a clock of 5 to 30 minutes with +5 s a move, offering a draw and resigning, a practice bot in the tester bot mode, and staked games where a draw owes nothing |
 | **Tic-tac-toe** (Морски шах) | 2 | Board game | First to 3 wins, quick games between raids |
 | **Death Roll** | 2–5, in a group | Dice | The classic `/roll` duel: each roll sets the new maximum, and whoever rolls 1 loses |
 
@@ -83,7 +83,7 @@ Card games need hidden information, so a deck that every client can compute is n
 3. **The dealer rotates every hand**, and the whole deck is revealed and checked after the hand.
 4. **Every client runs the rules.** An illegal move, a forged deal or a changed record is caught by the other clients, and the hand is disputed, not paid.
 
-Games with no hidden information (Backgammon, Tic-tac-toe, Death Roll) are checked fully by every client. Death Roll uses the server's own `/roll`, which everyone in the group sees, and Backgammon dice are rolled by commit-reveal between both players.
+Games with no hidden information (Backgammon, Tic-tac-toe, Death Roll, Chess) are checked fully by every client. Death Roll uses the server's own `/roll`, which everyone in the group sees, and Backgammon dice are rolled by commit-reveal between both players.
 
 ### Gold stakes, the ledger and payments
 
@@ -182,7 +182,7 @@ It currently targets WoW Forever (Interface 16001). Other clients may need a dif
 <details>
 <summary><b>Can I play against bots?</b></summary>
 
-There are no AI opponents. A tester-only bot mode exists for development.
+There are no AI opponents. A tester bot mode exists for development and testing; in Chess it gives you a practice opponent.
 </details>
 
 ## Known limitations
@@ -195,7 +195,7 @@ There are no AI opponents. A tester-only bot mode exists for development.
 
 ## Development
 
-The addon is written in **Lua 5.1** and has a headless test suite of **2372 tests** that runs outside the game with stubbed WoW APIs.
+The addon is written in **Lua 5.1** and has a headless test suite of **2373 tests** that runs outside the game with stubbed WoW APIs.
 
 ```bash
 # needs Lua 5.1 or LuaJIT on PATH (or tools/lua/lua5.1.exe)
@@ -242,7 +242,7 @@ Bug reports, rule corrections (especially for regional Belot and Santase variant
 - **Общ тефтер на дълговете:** всички в гилдията виждат кой на кого дължи. Дълг се записва само след потвърждение от клиента на длъжника.
 - **Плащане с трейд или поща:** аддонът попълва сумата, а бутона натискаш ти. Аддонът никога не мести голд сам.
 - **Честно раздаване:** всички участват в разбъркването на тестето (commit-reveal), раздаващият се сменя всяка ръка и всеки клиент проверява всеки ход.
-- **Шах:** пълни правила (рокада, мимоходно вземане, превръщане на пешка), часовник от 5 до 30 минути, реми по съгласие, предаване, бот за противник и игра със залог, при която реми не дължи нищо.
+- **Шах:** FIDE правила за ходовете с автоматично реми (рокада, мимоходно вземане, превръщане на пешка), часовник от 5 до 30 минути, реми по съгласие, предаване, тренировъчен бот в тестовия режим с ботове и игра със залог, при която реми не дължи нищо.
 - **Холдем със злато:** вход от 40 до 100 големи блайнда, докупуване и сметка между всеки двама играчи.
 - **Класация и история:** седмица, месец и всичко, титлата „Кралят/Кралицата на механата“, хронология на игрите и сравнение между двама играчи.
 - **Разтегаеми прозорци:** хващаш ъгъла на прозореца или на масата и го правиш колкото искаш голям. Всичко вътре се уголемява заедно с него.

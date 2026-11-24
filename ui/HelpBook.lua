@@ -1,6 +1,6 @@
 local _, ns = ...
 
--- The rules book (spec 5.3а): a 640 x 520 sheet of cream paper in the brass
+-- The rules book (spec 5.3а): a 640 x 540 sheet of cream paper in the brass
 -- frame, titled „Книжка с правила“. The topics of core/Help.lua are listed on
 -- the left; the right side shows the chosen topic's blocks: "p" as text,
 -- "example" as an indented italic block with a brass rule on its left, "board"

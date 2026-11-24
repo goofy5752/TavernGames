@@ -4,7 +4,8 @@ local _, ns = ...
 -- a hand of the chess book is one game,
 --   { key, no, names = {seat -> name}, white = seat, moves = { san, … }, res = { winner, reason, left } | nil }.
 -- A game still running grows with each move. It is the same game while white stays the same
--- and the move list does not shrink; otherwise (a rematch: white changes, or a fresh list)
+-- and the move list does not shrink and the entry is not over while the state is running again;
+-- otherwise (a rematch: white changes, a fresh list, or a game that ended without a move)
 -- a new one begins. Never s.gameNo, which every adopted snapshot moves on. A snapshot
 -- (b.jump) rereads the whole list from the state, which is what every update does here.
 local L = ns.L
@@ -16,7 +17,7 @@ local END = { stalemate = "chess.end.stalemate", repetition = "chess.end.repetit
 local function record(s, st, b)
   local top = b.hands[#b.hands]
   local moves = st.moves or {}
-  if not top or top.white ~= st.white or #moves < #top.moves then
+  if not top or top.white ~= st.white or #moves < #top.moves or (top.res and st.phase ~= "over") then
     local no = (top and top.no or 0) + 1
     top = { key = "chess:" .. no, no = no, names = {}, white = st.white, moves = {} }
     b.hands[#b.hands + 1] = top

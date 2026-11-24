@@ -81,6 +81,21 @@ describe("ui: the chess table history", function()
     eq(H.tables["t#1"].hands[10].no, 14)
   end)
 
+  it("a game that ends with no move is not overwritten by the next one of the same white", function()
+    H.observe(nil)
+    local st = new()
+    feed(st)
+    st.phase, st.turn, st.result = "over", nil, { winner = 1, reason = "resign" }
+    feed(st)
+    eq(#H.tables["t#1"].hands, 1)
+    eq(H.tables["t#1"].hands[1].res, { winner = 1, reason = "resign" })
+    feed(new()) -- the same white, no move yet
+    local hands = H.tables["t#1"].hands
+    eq(#hands, 2)
+    eq(hands[1].res, { winner = 1, reason = "resign" })
+    eq(hands[2].res, nil)
+  end)
+
   it("the panel prints it in my language", function()
     H.observe(nil)
     local st = new()
