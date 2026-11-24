@@ -52,6 +52,7 @@ core/PayGuard.lua
 core/Presence.lua
 core/Lobby.lua
 core/Succession.lua
+core/Clock.lua
 core/Session.lua
 core/Member.lua
 core/Rolls.lua

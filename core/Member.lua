@@ -148,6 +148,7 @@ function Member.adopt(client, sender, m)
   client.session = s
   -- The extensions hear of a new host and of the state this snapshot replaced.
   if prevHost and prevHost ~= sender then s:hook("hostChanged") end
+  ns.Clock.adopted(s, prevState) -- the chess clock: a login or another turn begins it now, unseen
   s:hook("adopted", prevState, m, how)
   s:armAuto()
   if not s.pingTimer then s:schedulePing() end
@@ -244,6 +245,7 @@ end
 -- while an ACT I sent on this turn before my deadline is still unmatched in
 -- s.sent: the host dropped my move.
 function Member.timedOut(s, m)
+  if s:engine().clock then return ns.Clock.flagDue(s, m) end -- the chess clock: a flag due by my clock
   local engine, at = s:engine(), s.turnAt
   if m.auto ~= true or not (engine.publicAuto or (s.stake and not engine.view)) or not at or type(s.turn) ~= "number" then return false end
   if s.client.env.now() < at + s.turn then return false end
@@ -331,18 +333,20 @@ local function onEvent(client, sender, m)
   -- own SIT note for this table and stake stands.
   if Member.staleSeat(s, m) then return ns.Stake.standUp(client, s) end
   local engine = s:engine()
+  ns.Clock.before(s, m) -- the host's dt against my clock, before Member.mine takes my move off s.sent
   if m.seat == s.mySeat and (engine.view or (s.stake and not engine.idle)) and not Member.mine(s, m.a) and not Member.timedOut(s, m) then
     s:hook("forged", m.seat, m.a, m.auto)
   elseif Member.unasked(s, m.seat, m.a) then
     s:hook("forged", m.seat, m.a)
   end
   local turn = s.state and s.state.turn
-  if not s:apply(m.seat, m.a) then
+  if not s:apply(m.seat, m.a, m.dt) then
     s:hook("refused", m.seat, m.a)
     client.events:emit("desync", s.tid)
     return s:requestSync()
   end
   s.seq = m.q
+  ns.Clock.after(s, m)
   if not (s.mySeat and s.state and s.state.turn == s.mySeat) then
     s.turnAt = nil
   elseif turn ~= s.mySeat or not s.turnAt then
