@@ -15,6 +15,35 @@ The scenes `names_hall`, `names_belot`, `names_deathroll` and `names_ledger` (wh
 long two-word names, two players with one first word and bots, to check the short names, the bot mark and that no text
 is cut; they too are made only when named.
 
+## The layout checker
+
+```
+luajit tools/shots/lint.lua                 # every lint scene, both languages, both factions: about 20 s
+luajit tools/shots/lint.lua --quick belot   # English and the Alliance only; named scenes only
+luajit tools/shots/lint.lua --shots hall    # also writes lint_<scene>_<lang>_<faction>_{min,max,one}.json
+SHOTS_OUT=some/dir python tools/shots/render.py lint_hall_bg_h_min   # draws one of them elsewhere
+```
+
+`lint.lua` builds every window of the addon with long two-word names, two players with one first word at
+one table, bots, a 24-letter guild name and the biggest amounts (`lint_scenes.lua`: the hall and its list,
+every game table with the „История“ window, a cash Hold'em, the tavern window's tabs, the rules book, the
+new-table dialog of every game, the pay dialog, the stake questions, the toasts, the bill, the intro, the
+„Покани“ picker, the question before „Стани“). Each runs in English with the Alliance and in Bulgarian with
+the Horde (the hall and Belot also the other way round), then on four screens (1024x768, 1365x768, 1820x768,
+1920x1080 UI units; a 1080p screen) at the window scales 0.6, 0.8, 1, 1.3, 1.6 and 2, as `Resize.set` caps
+them. It checks:
+
+- **fit**: no text is cut or ends in "..." in its box (the shim's line breaking, `Shim.cut`);
+- **overlap**: no two texts of one window overlap, and no text lies under a texture drawn after it;
+- **inside**: every region lies inside its window (the „История“ window and the new-table dialog count as
+  windows of their own);
+- **screen**: every window lies on the screen (clamped frames are moved back on it, as the client does);
+- **readable**: no text is under 8 px on screen (font size x scale x 1080 / UIParent's height);
+- **sideways**: no scroll child is wider than its scroll frame, and nothing is clipped at its sides.
+
+What is meant to be so is in `lint_allow.lua`, each entry with its reason. The findings go to stdout and
+`tools/shots/build/lint.txt`; the last line counts them, and the exit code is 0 only when none is open.
+
 ## How it works
 
 1. `scenes.lua` boots the tests' fake WoW client (`tests/helpers/wow.lua`, `frames.lua`) with the `ui/` files, in

@@ -23,7 +23,9 @@ local CLASS_COLORS = {
 local RACES = { Alliance = { "Human", "Human", 1 }, Horde = { "Orc", "Orc", 2 } }
 
 -- A fresh client in a guild, English UI, the player's name known, logged in.
--- opts.faction: "Alliance" (default) | "Horde"; opts.members: more guild members (online).
+-- opts.faction: "Alliance" (default) | "Horde"; opts.members: more guild members (online);
+-- opts.lang: "en" (default) | "bg"; opts.guild: the guild's name; opts.money: copper in my bags;
+-- opts.screen: {w, h}, UIParent's size (default the tests' 1920 x 1080).
 -- The client art tools/shots/client_art.py took out of the WoW install (none: the addon's stand-ins show).
 local CLIENT_ART = Shim.loadClientArt()
 
@@ -52,7 +54,8 @@ local function boot(opts)
   w.faction = opts.faction or "Alliance"
   w.race = RACES[w.faction]
   w.sex = 2
-  w.inGuild, w.guildName = true, GUILD
+  w.inGuild, w.guildName = true, opts.guild or GUILD
+  if opts.screen then w.G.UIParent:SetSize(opts.screen[1], opts.screen[2]) end
   w.roster = { { name = ME .. "-Forever", online = true, guid = Wow.GUID } }
   for _, m in ipairs(opts.members or {}) do
     w.roster[#w.roster + 1] = { name = m .. "-Forever", online = true, guid = "Player-1-" .. m }
@@ -61,8 +64,8 @@ local function boot(opts)
   w.G.UnitClass = function() return "Mage", "MAGE", 8 end
   w.money = opts.money or 2473650
   w:boot()
-  w.ns.db.lang, w.ns.db.introDone = "en", true
-  w.ns.Locale.set("en")
+  w.ns.db.lang, w.ns.db.introDone = opts.lang or "en", true
+  w.ns.Locale.set(opts.lang or "en")
   w:fire("GUILD_ROSTER_UPDATE")
   w:fire("PLAYER_LOGIN")
   w:advance(0)
@@ -450,7 +453,8 @@ members = function(w, list)
   w:advance(0); w:advance(0)
 end
 
-ledgerHistory = function(w)
+-- `big`: the debts are large amounts (up to 9,999,999 gold).
+ledgerHistory = function(w, big)
   members(w)
   local seq, games = {}, 0
   local now = w.G.GetServerTime()
@@ -480,12 +484,16 @@ ledgerHistory = function(w)
     if k % 4 == 0 then
       local loser, winner = win == 1 and b or a, win == 1 and a or b
       local c = ({ 50000, 120000, 25000, 300000, 80000, 15000, 42000 })[(k / 4) % 7 + 1]
+      if big then c = ({ 99999999999, 1234567890, 98765432100, 300000, 45678912345, 15000, 999999900 })[(k / 4) % 7 + 1] end
       if loser ~= ME then
         send(loser, "D", { gid = host .. "#1/" .. games, g = g, f = loser, t = winner, c = c, why = "lost" }, ago - 60)
         -- Some debts are paid back by hand later.
         if k % 3 == 0 and winner ~= ME then send(winner, "P", { f = loser, c = c, how = "hand" }, ago - 7200) end
       end
     end
+  end
+  if big then -- the largest debt there can be, to me
+    send(MEMBER_NAMES[1], "D", { gid = MEMBER_NAMES[1] .. "#1/99", g = "belot", f = MEMBER_NAMES[1], t = ME, c = 99999999999, why = "lost" }, 30)
   end
   run(w, 3)
 end
@@ -623,6 +631,16 @@ scene("belot_horde", function()
 end)
 
 ---------------------------------------------------------------------------
+
+-- tools/shots/lint.lua takes the scenes and their helpers as a library.
+if SHOTS_LIB then
+  return {
+    Scenes = Scenes, boot = boot, run = run, runUntil = runUntil, play = play, myTable = myTable, botsOn = botsOn,
+    members = members, ledgerHistory = ledgerHistory, hall = hall, withHistory = withHistory, tttChoice = tttChoice,
+    write = write, MEMBERS = MEMBERS, MEMBER_NAMES = MEMBER_NAMES, CLASS_COLORS = CLASS_COLORS, OUT = OUT,
+    setMe = function(name) ME = name end, me = function() return ME end, clientArt = CLIENT_ART,
+  }
+end
 
 local wanted = { ... }
 -- --art: the client files the addon may ask for (wow/Art.lua's file candidates), one per line, for client_art.py.
