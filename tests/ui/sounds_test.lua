@@ -1,6 +1,6 @@
 local Wow = require("wow")
 
-local ME, BOT = "Иван Петров", "Бот Иванов"
+local ME, BOT = "Иван Петров", "Bot Ivanov"
 -- The sound ids the test client's SOUNDKIT gives each moment's first name (wow/Art.lua SOUNDS).
 local OPEN, CLOSE, DEAL, TRICK, COIN = 501, 502, 503, 504, 120
 

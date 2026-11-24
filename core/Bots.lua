@@ -52,7 +52,7 @@ local C = ns.Const
 local copy = ns.Util.copy
 
 local MAX_BOTS = 12
-local STARTERS = { { "Бот Иванов", "PRIEST" }, { "Bot Barleybrew", "WARRIOR" }, { "Бот Петрова", "MAGE" } }
+local STARTERS = { { "Bot Ivanov", "PRIEST" }, { "Bot Barleybrew", "WARRIOR" }, { "Bot Petrova", "MAGE" } }
 local SPARE_CLASSES = { "ROGUE", "HUNTER", "WARLOCK", "DRUID", "PALADIN", "SHAMAN", "PRIEST", "WARRIOR", "MAGE" }
 local ACCEPT_AFTER, MOVE_AFTER, REMATCH_AFTER, START_AFTER, FILL_AFTER = 1, 1.5, 2, 2, 1
 
@@ -270,7 +270,7 @@ function Bots:idle()
   end
   if #self.list >= MAX_BOTS then return nil end
   local n = #self.list + 1
-  return self:spawn("Бот Номер" .. n, SPARE_CLASSES[(n - 1) % #SPARE_CLASSES + 1])
+  return self:spawn("Bot Number" .. n, SPARE_CLASSES[(n - 1) % #SPARE_CLASSES + 1])
 end
 
 -- An idle bot for a table of `game` (default "ttt") -> bot, game | nil (not a

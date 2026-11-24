@@ -4,7 +4,7 @@ local Wow = require("wow")
 -- "session" event and the „История“ panel inside the table frame, for Белот, Сантасе and Холдем.
 -- What matters most: it never shows a card the table has not seen face up.
 local A, B, C, D = "Иван Петров", "Мария Стоянова", "Kiro Barley", "Пешо Тодоров"
-local BOT = "Бот Иванов"
+local BOT = "Bot Ivanov"
 
 local function guildWow()
   local w = Wow.new{ ui = true }
@@ -217,7 +217,7 @@ end)
 local DM = { "KH", "QH", "TS", "AS", "JC", "QC", "JD", "AD", "9S", "KC", "TC", "AC",
              "JH", "9D", "QD", "KD", "TD", "9H", "TH", "AH", "JS", "QS", "KS", "9C" }
 
--- I open Сантасе „Само поканени“ and „Бот Иванов“ takes the invitation: a real table.
+-- I open Сантасе „Само поканени“ and „Bot Ivanov“ takes the invitation: a real table.
 local function santaseWithBot()
   local w = withBots()
   w.ns.client:openTable{ game = "santase", access = "invite", turn = 45 }
@@ -270,11 +270,11 @@ describe("ui: hand history — Сантасе", function()
     local panel = v.history
     eq(lines(panel)[1], plain(L("table.historyHand", 1)))
     ok(lineWith(panel, L("santase.trump", w.ns.Cards.suitName("H"))), "no trump line")
-    local t1 = lineWith(panel, "1.", "Иван " .. card("AD"), "Бот " .. card("JC"), L("table.historyWon", "Иван"))
+    local t1 = lineWith(panel, "1.", "Иван " .. card("AD"), "Bot " .. card("JC"), L("table.historyWon", "Иван"))
     local marry = lineWith(panel, L("santase.historyMarry", "Иван", 40))
-    local t2 = lineWith(panel, "2.", "Иван " .. card("KH"), "Бот " .. card("QC"), L("table.historyWon", "Иван"))
+    local t2 = lineWith(panel, "2.", "Иван " .. card("KH"), "Bot " .. card("QC"), L("table.historyWon", "Иван"))
     local closed = lineWith(panel, L("santase.historyClose", "Иван"))
-    local t3 = lineWith(panel, "3.", "Иван " .. card("QH"), "Бот " .. card("AS"), L("table.historyWon", "Иван"))
+    local t3 = lineWith(panel, "3.", "Иван " .. card("QH"), "Bot " .. card("AS"), L("table.historyWon", "Иван"))
     local res = lineWith(panel, L("santase.hand.won", "Иван", 3))
     ok(t1 and marry and t2 and closed and t3 and res, table.concat(lines(panel), " / "))
     local ls, at = lines(panel), {}

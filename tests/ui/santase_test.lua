@@ -1,7 +1,7 @@
 local Wow = require("wow")
 
 local ME = "Иван Петров"
-local BOT = "Бот Иванов"
+local BOT = "Bot Ivanov"
 
 -- In a guild, booted with the ui/ files, own name resolved, PLAYER_LOGIN fired.
 local function guildWow()
@@ -24,7 +24,7 @@ local function withBots()
   return w
 end
 
--- I open Сантасе „Само поканени“, „Бот Иванов“ takes the invitation through
+-- I open Сантасе „Само поканени“, „Bot Ivanov“ takes the invitation through
 -- the „Покани“ picker and a hand is dealt: the view's frame and the view.
 local function santaseWithBot()
   local w = withBots()
@@ -192,7 +192,7 @@ describe("ui: Сантасе view", function()
     eq(View.model(s, false).text, { "santase.yourTurn" })
     s.gameOver = function() return true end
     eq(View.model(s, false).text, { "santase.match", BOT })
-    w.ns.TableFrame.render(); eq(#plainTexts(w, "Бот Иванов печели партията!"), 1)
+    w.ns.TableFrame.render(); eq(#plainTexts(w, "Bot Ivanov печели партията!"), 1)
   end)
 
   it("„Смени деветката“ shows only when the swap is legal", function()
@@ -220,14 +220,14 @@ describe("ui: Сантасе view", function()
     st.phase, st.res = "hand", { winner = 1, gp = 2, reason = "66" }; show(w, st)
     eq(#plainTexts(w, "Иван Петров взима ръката: +2"), 1); eq(View.seatNote(s, 1), "")
     st.phase, st.winner = "match", 2; show(w, st)
-    eq(#plainTexts(w, "Бот Иванов печели партията!"), 1)
+    eq(#plainTexts(w, "Bot Ivanov печели партията!"), 1)
   end)
 
   it("a player who left is named although the seat is empty now", function()
     local w, V, View = boot(); local s = w.ns.client.session
     local st = E.view(full(), 1); show(w, st)
     s.seats[2] = false; E.leave(st, 2); show(w, st)
-    eq(#plainTexts(w, "Бот Иванов стана от масата."), 1)
+    eq(#plainTexts(w, "Bot Ivanov стана от масата."), 1)
     eq(View.model(s, false).text, { "santase.match", ME }) -- without the view's memory: the winner
   end)
 
@@ -239,11 +239,11 @@ describe("ui: Сантасе view", function()
     eq(V.text:IsVisible(), true); eq(plain(V.text:GetText()), "Твой ход") -- a running match keeps its line
     st.phase, st.winner = "match", 2
     P.shown = false; View.update(V, s)
-    eq(V.text:IsVisible(), true); eq(plain(V.text:GetText()), "Бот Иванов печели партията!")
+    eq(V.text:IsVisible(), true); eq(plain(V.text:GetText()), "Bot Ivanov печели партията!")
     P.shown = true; View.update(V, s)
     eq(V.text:IsVisible(), false)
     P.shown = false; View.update(V, s)
-    eq(V.text:IsVisible(), true); eq(plain(V.text:GetText()), "Бот Иванов печели партията!")
+    eq(V.text:IsVisible(), true); eq(plain(V.text:GetText()), "Bot Ivanov печели партията!")
   end)
 
   it("solo against a bot from a real deal: six faces for me, six backs for the bot, a click plays", function()

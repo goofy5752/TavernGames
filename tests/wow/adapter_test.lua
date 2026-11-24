@@ -138,7 +138,7 @@ describe("wow adapter: own name", function()
     local c = w.ns.client
     ok(c, "no client"); eq(c.env.me, Wow.FIRST); ok(w.ns.bots, "no bots")
     w:advance(1)
-    ok(c.presence:get("Бот Иванов"), "bot not seen"); eq(#w.sent, 0)
+    ok(c.presence:get("Bot Ivanov"), "bot not seen"); eq(#w.sent, 0)
   end)
 
   it("joining a guild later starts the name lookup", function()
@@ -383,7 +383,7 @@ describe("wow adapter: game events", function()
     eq(c.presence:get(B).race, "Tauren"); eq(c.presence:get(B).sex, 2)
     w:deliver("GUILD", B, { v = 1, t = "HI", cls = "PRIEST", id = B_GUID, race = ("x"):rep(300), sex = 7 })
     eq(c.presence:get(B).race, nil); eq(c.presence:get(B).sex, nil)
-    local bot = w.ns.Adapter.botEnv("Бот Иванов", "PRIEST"); eq(bot.race, nil); eq(bot.sex, nil)
+    local bot = w.ns.Adapter.botEnv("Bot Ivanov", "PRIEST"); eq(bot.race, nil); eq(bot.sex, nil)
     for _, case in ipairs({ { {}, 1 }, { { "Нежит" }, 0 }, { { "Нежит", 5 }, "3" } }) do
       local w2 = Wow.new(); w2.inGuild, w2.roster = true, rosterWith(true)
       w2.race, w2.sex = case[1], case[2]

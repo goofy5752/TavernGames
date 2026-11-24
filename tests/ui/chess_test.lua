@@ -1,7 +1,7 @@
 local Wow = require("wow")
 local Chess = require("chess")
 
-local A, BOT = "Иван Петров", "Бот Иванов"
+local A, BOT = "Иван Петров", "Bot Ivanov"
 local sq = Chess.sq
 
 -- In a guild, booted with the ui/ files, own name resolved, PLAYER_LOGIN fired; bots on and heard.

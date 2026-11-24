@@ -3,7 +3,7 @@ local ns = Sim.ns
 local Bots, E = ns.Bots, ns.Engines and ns.Engines.ttt
 
 local A = "Иван Петров"
-local STARTERS = { "Бот Иванов", "Bot Barleybrew", "Бот Петрова" }
+local STARTERS = { "Bot Ivanov", "Bot Barleybrew", "Bot Petrova" }
 
 local function seated(seats, name)
   for i = 1, #seats do
@@ -34,8 +34,8 @@ describe("bots", function()
     local sim = Sim.new()
     local a, envA = sim:add(A, { cls = "MAGE" }); local bots = Bots.enable(a, envA, sim.makeEnv)
     sim:run(1) -- let the bots' HI reach a's Presence before inviting
-    local tid = a:openTable{ game = "ttt", access = "invite", turn = 45 }; ok(a:invite("Бот Иванов")); sim:run(5)
-    eq(a.session.seats[2], "Бот Иванов")
+    local tid = a:openTable{ game = "ttt", access = "invite", turn = 45 }; ok(a:invite("Bot Ivanov")); sim:run(5)
+    eq(a.session.seats[2], "Bot Ivanov")
     for _ = 1, 400 do
       local s = a.session
       if s.state and s.state.phase == "match" then break end
@@ -45,8 +45,8 @@ describe("bots", function()
     eq(a.session.state.phase, "match")
     eq(sim:count(function(m) return m.channel == "GUILD" and m.from ~= A end), 0)
     eq(sim:count(function(m) return m.channel == "GUILD" and m.msg.tid == tid
-      and m.msg.s and (m.msg.s[1] == "Бот Иванов" or m.msg.s[2] == "Бот Иванов") end), 0)
-    eq(sim:count(function(m) return m.channel == "WHISPER" and m.target == "Бот Иванов" end), 0)
+      and m.msg.s and (m.msg.s[1] == "Bot Ivanov" or m.msg.s[2] == "Bot Ivanov") end), 0)
+    eq(sim:count(function(m) return m.channel == "WHISPER" and m.target == "Bot Ivanov" end), 0)
     ok(#bots.list == 3)
   end)
 
@@ -73,7 +73,7 @@ describe("bots", function()
     for _ = 1, 9 do ok(bots:hostTable()) end
     sim:run(3)
     eq(#a.lobby:tables(), 9); eq(#bots.list, 9)
-    ok(a.presence:get("Бот Номер9"), "spawned bot unknown")
+    ok(a.presence:get("Bot Number9"), "spawned bot unknown")
     for _ = 10, 12 do ok(bots:hostTable()) end
     eq(bots:hostTable(), nil); eq(#bots.list, 12)
     sim:run(3)
@@ -88,7 +88,7 @@ describe("bots", function()
     local bots = Bots.enable(a, envA, sim.makeEnv)
     bots:hostTable()
     sim:run(1)
-    ok(envA.send ~= orig); ok(a.presence:get("Бот Иванов") ~= nil)
+    ok(envA.send ~= orig); ok(a.presence:get("Bot Ivanov") ~= nil)
     eq(#a.lobby:tables(), 1)
     Bots.disable(bots); sim:run(1)
     ok(envA.send == orig)
@@ -101,8 +101,8 @@ describe("bots", function()
     local a, envA = sim:add(A, { cls = "MAGE" }); Bots.enable(a, envA, sim.makeEnv)
     sim:run(1)
     local tid = a:openTable{ game = "ttt", access = "invite", turn = 45 }; sim:run(1)
-    ok(a:invite("Бот Иванов")); sim:run(3)
-    eq(a.session.seats, { A, "Бот Иванов" })
+    ok(a:invite("Bot Ivanov")); sim:run(3)
+    eq(a.session.seats, { A, "Bot Ivanov" })
     local mark = #sim.sent
     local b = sim:add(B, { cls = "ROGUE" }); sim:run(3)
     local words = { tid, STARTERS[1], STARTERS[2], STARTERS[3] }
@@ -126,7 +126,7 @@ describe("bots", function()
     local tid = a:openTable{ game = "ttt", access = "invite", turn = 45 }; sim:run(1)
     ok(b.lobby:get(tid), "B never saw the table"); eq(b.presence:get(A).at, tid)
     local mark = #sim.sent
-    ok(a:invite("Бот Иванов")); sim:run(1)
+    ok(a:invite("Bot Ivanov")); sim:run(1)
     eq(b.lobby:get(tid), nil); eq(b.presence:get(A).at, nil)
     sim:run(20)
     local ends, leaks = 0, 0
@@ -136,15 +136,15 @@ describe("bots", function()
       elseif mentions(m.msg, { tid }) then leaks = leaks + 1 end
     end
     eq(ends, 1); eq(leaks, 0)
-    eq(a.session.seats[2], "Бот Иванов")
+    eq(a.session.seats[2], "Bot Ivanov")
   end)
 
   it("disable while seated at a bot table leaves it without a word on the guild channel", function()
     local sim = Sim.new()
     local a, envA = sim:add(A, { cls = "MAGE" }); local bots = Bots.enable(a, envA, sim.makeEnv)
     local tid = a:openTable{ game = "ttt", access = "invite", turn = 45 }; sim:run(1)
-    ok(a:invite("Бот Петрова")); sim:run(3)
-    eq(a.session.seats[2], "Бот Петрова")
+    ok(a:invite("Bot Petrova")); sim:run(3)
+    eq(a.session.seats[2], "Bot Petrova")
     local mark = #sim.sent
     Bots.disable(bots); sim:run(2)
     eq(a.session, nil); eq(a.lobby:get(tid), nil)
@@ -167,7 +167,7 @@ describe("bots for any game", function()
   it("one human plays Death Roll against two bots: real rolls for me, table rolls for them, nobody invited", function()
     local sim, a = setup()
     local tid = a:openTable{ game = "deathroll", access = "invite", turn = 45, opt = { start = 100 } }; ok(tid)
-    ok(a:invite("Бот Иванов")); ok(a:invite("Bot Barleybrew"))
+    ok(a:invite("Bot Ivanov")); ok(a:invite("Bot Barleybrew"))
     local mark = #sim.sent -- the real TBL and its END (once a bot was invited) are out
     sim:run(5); eq(a.session:seatedCount(), 3)
     ok(a:startGame()); sim.nextRolls, sim.nextRandom = { 50, 20, 5, 1 }, { 40, 30, 15, 10, 4, 2 }
@@ -230,10 +230,10 @@ describe("bots for any game", function()
   it("one human plays a whole Сантасе match against a bot; every hand is checked; nothing leaves the machine", function()
     local sim, a = setup()
     local fair, results = {}, 0; a:on("fair", function(e) fair[#fair + 1] = e.verdict end); a:on("result", function() results = results + 1 end)
-    local tid = a:openTable{ game = "santase", access = "invite", turn = 45 }; ok(tid); ok(a:invite("Бот Иванов"))
+    local tid = a:openTable{ game = "santase", access = "invite", turn = 45 }; ok(tid); ok(a:invite("Bot Ivanov"))
     local mark = #sim.sent -- the real TBL and its END (once the bot was invited) are out
     sim:run(5)
-    eq(a.session.seats[2], "Бот Иванов"); eq({ a:startGame() }, { nil, "mode" })
+    eq(a.session.seats[2], "Bot Ivanov"); eq({ a:startGame() }, { nil, "mode" })
     for _ = 1, 6000 do
       local st = a.session.state; if ns.Engines.santase.over(st) then break end
       if st.turn == 1 then a:playAuto() end; sim:run(1)
@@ -364,7 +364,7 @@ describe("bots for any game", function()
   it("one human and a bot play a whole Табла match through all three variants; nothing leaves the machine", function()
     local sim, a = setup(); local E = ns.Engines.tabla
     local fair, res, vars = {}, {}, {}; a:on("fair", function(e) fair[#fair + 1] = e.verdict end); a:on("result", function(r) res[#res + 1] = r end)
-    local tid = a:openTable{ game = "tabla", access = "invite", turn = 45 }; ok(tid); ok(a:invite("Бот Иванов"))
+    local tid = a:openTable{ game = "tabla", access = "invite", turn = 45 }; ok(tid); ok(a:invite("Bot Ivanov"))
     local mark = #sim.sent; sim:run(5); eq(a.session:seatedCount(), 2); eq(a.session.status, "live")
     for _ = 1, 40000 do
       local st = a.session.state; if E.over(st) then break end
@@ -459,8 +459,8 @@ describe("bots for any game", function()
   it("a bot plays chess with me", function()
     local sim, a = setup()
     local Chess = ns.Engines.chess
-    local tid = a:openTable{ game = "chess", access = "invite", turn = 45 }; ok(tid); ok(a:invite("Бот Иванов")); sim:run(5)
-    eq(a.session.seats[2], "Бот Иванов")
+    local tid = a:openTable{ game = "chess", access = "invite", turn = 45 }; ok(tid); ok(a:invite("Bot Ivanov")); sim:run(5)
+    eq(a.session.seats[2], "Bot Ivanov")
     if a.session.status ~= "live" then ok(a:startGame()); sim:run(1) end
     -- whoever is white moves first; the bot answers my move (Task 4 makes it the bot, seat 2)
     sim:run(3)
