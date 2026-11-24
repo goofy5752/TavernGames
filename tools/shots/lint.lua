@@ -1,5 +1,6 @@
 -- The layout checker: every lint scene (tools/shots/lint_scenes.lua), in both languages and both
--- factions, on four screens and six window scales, checked for text that does not fit, overlaps,
+-- factions, on four screens and six window scales, checked for text that does not fit, a word broken
+-- by its letters (a name's 12 letters must hold one line), overlaps,
 -- regions outside their window, windows off the screen, text too small to read and sideways
 -- scrolling. What is meant to be so is on the allow-list (tools/shots/lint_allow.lua), each entry
 -- with its reason. Run from the repo root:
@@ -185,6 +186,10 @@ local function checkLayout(scene, w, where)
     local rect = d.full
     if d.kind == "text" then
       local lines, wasCut, inkRect = layout(d)
+      if d.r.lintBroken and d.r.text == d.r.lintBroken then
+        add({ check = "broken", scene = scene, win = winName, site = site, what = plain(d.r.lintWhole or ""):sub(1, 60),
+              detail = "a word broken by letters: " .. plain(d.r.text):sub(1, 60) }, where)
+      end
       if wasCut then
         add({ check = "fit", scene = scene, win = winName, site = site, what = plain(d.r.text):sub(1, 60),
               detail = "cut to: " .. plain(table.concat(lines, " / ")):sub(1, 90) }, where)
@@ -427,7 +432,7 @@ for pass = 1, 2 do
   end
 end
 local summary = {}
-for _, check in ipairs({ "fit", "overlap", "inside", "screen", "readable", "sideways" }) do
+for _, check in ipairs({ "fit", "broken", "overlap", "inside", "screen", "readable", "sideways" }) do
   local c = counts[check] or { open = 0, allowed = 0 }
   summary[#summary + 1] = string.format("%s %d open/%d allowed", check, c.open, c.allowed)
 end

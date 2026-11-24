@@ -24,8 +24,8 @@ luajit tools/shots/lint.lua --shots hall    # also writes lint_<scene>_<lang>_<f
 SHOTS_OUT=some/dir python tools/shots/render.py lint_hall_bg_h_min   # draws one of them elsewhere
 ```
 
-`lint.lua` builds every window of the addon with long two-word names, two players with one first word at
-one table, bots, a 24-letter guild name and the biggest amounts (`lint_scenes.lua`: the hall and its list,
+`lint.lua` builds every window of the addon with long two-word names (their first words the widest 12-letter
+ones), two players with one first word at one table, bots, a 24-letter guild name and the biggest amounts (`lint_scenes.lua`: the hall and its list,
 every game table with the „История“ window, a cash Hold'em, the tavern window's tabs, the rules book, the
 new-table dialog of every game, the pay dialog, the stake questions, the toasts, the bill, the intro, the
 „Покани“ picker, the question before „Стани“). Each runs in English with the Alliance and in Bulgarian with
@@ -34,6 +34,9 @@ the Horde (the hall and Belot also the other way round), then on four screens (1
 them. It checks:
 
 - **fit**: no text is cut or ends in "..." in its box (the shim's line breaking, `Shim.cut`);
+- **broken**: no shown text is one `W.fitWrap` broke by its letters. The scenes' first names are the widest
+  12-letter Latin words (a WoW name's word has 12 letters at most, Latin on Forever): "Mwaargrimmon" (mine),
+  "Mormogwathum", "Wolfgarmmund", and the two Ivans' "Ivan P." / "Ivan K."; every one must show whole;
 - **overlap**: no two texts of one window overlap, and no text lies under a texture drawn after it;
 - **inside**: every region lies inside its window (the „История“ window and the new-table dialog count as
   windows of their own);

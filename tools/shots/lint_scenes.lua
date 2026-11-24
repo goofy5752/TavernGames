@@ -1,23 +1,35 @@
 -- The layout checker's scenes (tools/shots/lint.lua): every window of the addon with long two-word
 -- names, two players with one first word at one table, bots, a long guild name and big amounts.
+-- A WoW character's name word is at most 12 letters, Latin on Forever: the first words are the
+-- widest such words ("Mwaargrimmon" is mine, "Mormogwathum", "Wolfgarmmund"), which must never break.
 -- Each scene is fn(P) -> the sandbox, P = {lang = "en"|"bg", faction = "Alliance"|"Horde"}.
 -- S: tools/shots/scenes.lua as a library (boot, play, myTable, ...).
 return function(S)
-  local ME = "Mirabelle Stormwhisper"
-  local LONG = { "Barleybrewster Ironfoot", "Thorgrimsson Deepforge", "Ivan Petrovski", "Ivan Kolevski" }
-  local CYR = "Добромирослава Великотърновска"
-  local BOT = "Bot Barleybrewster" -- a bot's long name
+  local ME = "Mwaargrimmon Ashmantle" -- my own plate is the one on turn: a wide 12-letter first word there too
+  local LONG = { "Mormogwathum Ironfoot", "Wolfgarmmund Deepforge", "Ivan Petrovski", "Ivan Kolevski" }
+  local CYR = "Mirabelle Stormwhisper" -- (the name was Cyrillic before: names are Latin on Forever)
+  local BOT = "Bot Barleybrew" -- the addon's own bot names are its STARTERS (core/Bots.lua)
   local GUILD = { en = "Brotherhood of Ironforge", bg = "Братството на Сребърната" } -- 24 letters, WoW's longest
   local BAGS = 99999999999 -- 9,999,999g 99s 99c
   local MEMBERS = {
-    { "Barleybrewster Ironfoot", "WARRIOR" }, { "Thorgrimsson Deepforge", "PALADIN" }, { "Ivan Petrovski", "MAGE" },
+    { "Mormogwathum Ironfoot", "WARRIOR" }, { "Wolfgarmmund Deepforge", "PALADIN" }, { "Ivan Petrovski", "MAGE" },
     { "Ivan Kolevski", "ROGUE" }, { "Elowen Moonwhisperwind", "DRUID" }, { "Kazrik Shadowmantle", "WARLOCK" },
     { "Odric Lightbringer", "PRIEST" }, { CYR, "HUNTER" },
   }
 
   local function boot(P, seed)
     S.setMe(ME)
-    return S.boot{ seed = seed or 9, faction = P.faction, lang = P.lang, guild = GUILD[P.lang], money = BAGS }
+    local w = S.boot{ seed = seed or 9, faction = P.faction, lang = P.lang, guild = GUILD[P.lang], money = BAGS }
+    -- W.fitWrap notes the text it broke by letters (the checker's "broken" check finds it still shown)
+    local W = w.ns.W
+    local fitWrap = W.fitWrap
+    W.fitWrap = function(fs, text, ...)
+      local h = fitWrap(fs, text, ...)
+      fs.lintBroken = fs:GetText() ~= text and fs:GetText() or nil
+      fs.lintWhole = text
+      return h
+    end
+    return w
   end
 
   -- The guild's members (long names) and their ledger with big debts; one debt of mine to pay.
@@ -37,11 +49,12 @@ return function(S)
   -- the history window's hands too; drawn again.
   local function rename(w, botToo)
     local s, v, H = w.ns.client.session, w.ns.TableFrame.view, w.ns.HandHistory
-    local pool, k = { LONG[1], LONG[3], LONG[4], CYR, LONG[2] }, 0
+    -- with a bot: the bot and the two widest names; without: the widest and the two Ivans
+    local pool, k = botToo and { BOT, LONG[1], LONG[2], CYR, LONG[3] } or { LONG[1], LONG[3], LONG[4], LONG[2], CYR }, 0
     for i = 1, #s.seats do
       if i ~= s.mySeat and s.seats[i] then
         k = k + 1
-        s.seats[i] = (botToo and k == 1) and BOT or pool[k]
+        s.seats[i] = pool[k]
       end
     end
     local b = H.tables[s.tid]
@@ -73,7 +86,7 @@ return function(S)
       for k2, v2 in pairs(extra or {}) do m[k2] = v2 end
       w:deliver("GUILD", host, m)
     end
-    tbl(LONG[3], "belot", "live", { LONG[3], LONG[4], LONG[1], LONG[2] })
+    tbl(LONG[3], "belot", "live", { LONG[3], LONG[1], LONG[4], LONG[2] }) -- the widest names on the side chairs
     tbl(CYR, "santase", "open", { CYR, false })
     tbl("Kazrik Shadowmantle", "holdem", "open", { "Kazrik Shadowmantle", "Odric Lightbringer", false, false, false, false },
       { sk = 20000, o = { betting = "nl", blinds = 200, rebuy = "top" } })
@@ -166,7 +179,7 @@ return function(S)
   -- news line at the bottom (the longest start refusal), the frame's narrowest room between the buttons.
   game("belot_lines", "belot", 11, function(st, _, mine)
     return mine and st.phase == "play" and (st.trickNo or 1) >= 2
-  end, { bot = true, limit = 1200, after = function(w)
+  end, { limit = 1200, after = function(w)
     local Deal = w.ns.Deal
     Deal.status = function() return "fair.lapse", LONG[1], 3 end
     Deal.claim = function() return LONG[2] end
