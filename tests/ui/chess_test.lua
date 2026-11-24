@@ -239,6 +239,22 @@ describe("ui: the chess view", function()
     eq({ p[1].clock:GetText(), p[2].clock:GetText() }, { "∞", "∞" })
   end)
 
+  -- Review: an untimed plate kept the 42 px of a running clock for its note; it needs only the sign's.
+  it("without a limit the note leaves only the sign's room, and never runs under it", function()
+    local w, T = setup(nil, 0)
+    local W = w.ns.W
+    for _, p in ipairs(T.view.plates) do
+      local pt = p.note.points[1]
+      eq({ pt[1], pt[3] }, { "RIGHT", "RIGHT" })
+      local right, sign = -pt[4], 6 + W.textWidth(p.clock) -- the clock stands 6 in, as wide as its text
+      eq(p.clock:GetText(), "∞")
+      ok(right >= sign + 2, "the note under the sign: " .. right .. " < " .. sign)
+      ok(right < 42, "the room of a running clock kept: " .. right)
+    end
+    local _, T2 = setup(nil, 10) -- a timed game keeps the clock's whole room
+    for _, p in ipairs(T2.view.plates) do eq(-p.note.points[1][4], 42) end
+  end)
+
   it("a view without seatClock keeps the plates as they were", function()
     local w = guildWow()
     local client, T = w.ns.client, w.ns.TableFrame
