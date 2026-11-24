@@ -6,7 +6,8 @@ local _, ns = ...
 -- returns: the strip of pieces each seat took (small, overlapping, with „+N“ for the lead)
 -- under the opponent's plate and over mine (the plates are the table frame's, placed by
 -- the view's plateSpots), and between them the move list on parchment in a W.Scroll, two
--- moves a row (number, white, black), the last one marked, scrolled to the end at a new move.
+-- moves a row (number, white, black: each move its piece's icon and squares, ns.HistoryKit.move),
+-- the last one marked, scrolled to the end at a new move.
 -- Panels.promotion(f, cell, colour, onPick) is the four pieces in a skin frame over the
 -- promotion square, Panels.confirmResign(f, onYes) the small „Предай се?“ dialog.
 local Theme, W, L = ns.Theme, ns.W, ns.L
@@ -16,7 +17,6 @@ ns.ChessPanels = Panels
 
 local LETTER = { "p", "n", "b", "r", "q", "k" }
 local TAKEN_SIZE, TAKEN_STEP, TAKEN_MAX = 22, 11, 15
-local ROW_H, NO_W, SAN_W = 18, 30, 76
 local SQUARE, PROMO_LEVEL, DIALOG_W, DIALOG_H = 56, 30, 250, 96
 
 -- The texture path of a piece (1..6 white, -1..-6 black) in the applied skin.
@@ -49,30 +49,9 @@ local function fillStrip(s, taken, lead)
   s.lead:SetText(lead and ("+" .. lead) or "")
 end
 
-local function listRow(p, k)
-  local row = p.rows[k]
-  if row then return row end
-  local c = p.scroll.content
-  local y = -(k - 1) * ROW_H
-  row = { no = W.Label(c, "paper", "", 13), white = W.Label(c, "paper", "", 13), black = W.Label(c, "paper", "", 13) }
-  row.mark = c:CreateTexture(nil, "BACKGROUND")
-  row.mark:SetColorTexture(Theme.rgb("goldLo"))
-  row.mark:SetHeight(ROW_H - 2)
-  row.no:SetPoint("TOPLEFT", c, "TOPLEFT", 4, y - 1)
-  row.white:SetPoint("TOPLEFT", c, "TOPLEFT", NO_W + 8, y - 1)
-  row.black:SetPoint("TOPLEFT", c, "TOPLEFT", NO_W + 8 + SAN_W, y - 1)
-  p.rows[k] = row
-  return row
-end
-
-local function paint(fs, text, last)
-  fs:SetText(text or "")
-  if last then fs:SetTextColor(Theme.rgb("goldHi")) else fs:SetTextColor(Theme.rgb("woodDark")) end
-end
-
 -- Builds the strips and the move list in the board frame `f` (-> f.side).
 function Panels.build(f)
-  local p = { rows = {} }
+  local p = {}
   f.side = p
   p.top, p.bottom = strip(f, Panels.TOP_STRIP), strip(f, -(f:GetHeight() - Panels.PLATE_H - 8 - Panels.STRIP_H))
   local book = CreateFrame("Frame", nil, f)
@@ -85,6 +64,7 @@ function Panels.build(f)
   p.scroll:SetPoint("BOTTOMRIGHT", book, "BOTTOMRIGHT", -14, 14)
   p.scroll:SetSize(Panels.W - 28, Panels.LIST_H - 28)
   p.scroll.content:SetWidth(Panels.W - 28)
+  p.pool = ns.HistoryKit.pool(p.scroll.content, true)
   return p
 end
 
@@ -94,25 +74,17 @@ function Panels.update(f, s, m)
   local mine = m.bottom == 1 and st.white or 3 - st.white
   fillStrip(p.bottom, m.taken[mine], m.lead[mine])
   fillStrip(p.top, m.taken[3 - mine], m.lead[3 - mine])
-  for k, r in ipairs(m.rows) do
-    local row = listRow(p, k)
-    paint(row.no, r.no .. ".", false)
-    paint(row.white, r.white, r.lastWhite)
-    paint(row.black, r.black, r.lastBlack)
-    row.mark:ClearAllPoints()
-    local lastW, lastB = r.lastWhite, r.lastBlack
-    row.mark:SetPoint("TOPLEFT", p.scroll.content, "TOPLEFT", (lastW and NO_W + 6 or NO_W + 6 + SAN_W), -(k - 1) * ROW_H - 1)
-    row.mark:SetWidth(SAN_W - 4)
-    row.mark:SetShown(lastW or lastB or false)
-    for _, fs in ipairs({ row.no, row.white, row.black }) do fs:Show() end
-  end
-  for k = #m.rows + 1, #p.rows do
-    local row = p.rows[k]
-    row.no:Hide(); row.white:Hide(); row.black:Hide(); row.mark:Hide()
+  -- redrawn only when the list changed: its length, the last move, the skin of the icons
+  local key = #st.moves .. ":" .. tostring(st.moves[#st.moves] and st.moves[#st.moves].san) .. ":" .. tostring(Theme.skin) .. ":" .. ns.Locale.lang()
+  if p.drawn ~= key then
+    p.drawn = key
+    p.pool:begin()
+    p.height = ns.HistoryKit.moveRows(p.pool, 0, 0, Panels.W - 28, m.rows, { paper = true })
+    p.pool:finish()
   end
   local grew = #m.rows ~= (p.shownRows or 0)
   p.shownRows = #m.rows
-  p.scroll:setContentHeight(#m.rows * ROW_H + 4)
+  p.scroll:setContentHeight(p.height + 4)
   if grew then
     p.scroll:SetVerticalScroll(math.max(0, p.scroll.contentHeight - p.scroll:GetHeight()))
     p.scroll:update()

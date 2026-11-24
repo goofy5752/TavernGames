@@ -84,16 +84,59 @@ describe("ui: the chess model", function()
     eq(M.build(sess(st, 2)).lead, { [1] = 1 + 3 + 9 + 3 + 5 + 1 })
   end)
 
-  it("the move list in two languages", function()
+  it("the move list: two moves a row, each its piece and squares", function()
     local st = new("g1f3 g8f6")
     local m = M.build(sess(st, 2))
-    eq(m.rows, { { no = 1, white = "Кf3", black = "Кf6", lastWhite = false, lastBlack = true } })
-    eq(M.build(sess(new("g1f3"), 2)).rows, { { no = 1, white = "Кf3", lastWhite = true, lastBlack = false } })
+    local nf3 = { piece = 2, from = "g1", to = "f3", capture = false, check = false, mate = false, san = "Nf3" }
+    local nf6 = { piece = -2, from = "g8", to = "f6", capture = false, check = false, mate = false, san = "Nf6" }
+    eq(m.rows, { { no = 1, white = nf3, black = nf6, lastWhite = false, lastBlack = true } })
+    eq(M.build(sess(new("g1f3"), 2)).rows, { { no = 1, white = nf3, lastWhite = true, lastBlack = false } })
     eq(M.san("e8=Q+"), "e8=Д+"); eq(M.san("O-O"), "O-O"); eq(M.san("exd5"), "exd5"); eq(M.san("Rxe1#"), "Тxe1#")
     w.ns.Locale.set("en")
-    eq(M.build(sess(st, 2)).rows[1].white, "Nf3"); eq(M.build(sess(st, 2)).rows[1].black, "Nf6")
     eq(M.san("e8=Q+"), "e8=Q+")
     w.ns.Locale.set("bg")
+  end)
+
+  -- The move `n` of the game played from the start: its description, the fields asked.
+  local function nth(words, n, keys)
+    local list = new(words).moves
+    local d = w.ns.ChessMoves.describe(list)[n or #list]
+    local out = {}
+    for _, k in ipairs(keys) do out[k] = d[k] end
+    return out
+  end
+  local K = { "piece", "from", "to", "take", "ep", "castle", "promo", "check", "mate", "capture" }
+
+  it("describes every kind of move: quiet, capture, en passant, castling, promotion, check, mate", function()
+    eq(nth("e2e4", 1, K), { piece = 1, from = "e2", to = "e4", capture = false, check = false, mate = false })
+    eq(nth("e2e4 d7d5 e4d5", 3, K), { piece = 1, from = "e4", to = "d5", take = -1, capture = true, check = false, mate = false })
+    eq(nth("e2e4 d7d5 e4d5 d8d5", 4, K), { piece = -5, from = "d8", to = "d5", take = 1, capture = true, check = false, mate = false })
+    eq(nth("e2e4 a7a6 e4e5 d7d5 e5d6", 5, K), -- en passant takes the pawn beside, not the empty square
+      { piece = 1, from = "e5", to = "d6", take = -1, ep = true, capture = true, check = false, mate = false })
+    eq(nth("e2e4 e7e5 g1f3 b8c6 f1c4 g8f6 e1g1", 7, K),
+      { piece = 6, from = "e1", to = "g1", castle = "K", capture = false, check = false, mate = false })
+    eq(nth("d2d4 d7d5 b1c3 b8c6 c1f4 c8f5 d1d2 d8d7 e1c1 e8c8", 9, K),
+      { piece = 6, from = "e1", to = "c1", castle = "Q", capture = false, check = false, mate = false })
+    eq(nth("d2d4 d7d5 b1c3 b8c6 c1f4 c8f5 d1d2 d8d7 e1c1 e8c8", 10, K),
+      { piece = -6, from = "e8", to = "c8", castle = "Q", capture = false, check = false, mate = false })
+    eq(nth("a2a4 b7b5 a4b5 a7a6 b5a6 c8b7 a6b7 h7h6 b7a8q", 9, K), -- a capture that promotes
+      { piece = 1, from = "b7", to = "a8", take = -4, promo = 5, capture = true, check = false, mate = false })
+    eq(nth("e2e4 f7f6 d1h5", 3, K), { piece = 5, from = "d1", to = "h5", capture = false, check = true, mate = false })
+    eq(nth("f2f3 e7e5 g2g4 d8h4", 4, K), { piece = -5, from = "d8", to = "h4", capture = false, check = false, mate = true })
+    -- the list grows: the cached moves stay, the new one is described from the position they left
+    local st = new("e2e4 d7d5")
+    eq(#w.ns.ChessMoves.describe(st.moves), 2)
+    Chess.play(st, "e4d5")
+    eq(w.ns.ChessMoves.describe(st.moves)[3].take, -1)
+  end)
+
+  it("a list that does not start at the start position: read from its SAN", function()
+    local st = Chess.at("4k3/1P6/8/8/8/8/8/4K2R w K - 0 1")
+    Chess.play(st, "b7b8q e8d7 e1g1")
+    local d = w.ns.ChessMoves.describe(st.moves)
+    eq({ d[1].piece, d[1].promo, d[1].from, d[1].to }, { 1, 5, "b7", "b8" })
+    eq({ d[2].piece, d[2].to }, { -6, "d7" })
+    eq({ d[3].piece, d[3].castle }, { 6, "K" })
   end)
 
   it("clockText", function()
@@ -141,5 +184,67 @@ describe("ui: the chess model", function()
     eq(M.build(sess(resigned, 1)).banner, B .. " се предаде")
     local drawn = new(); drawn.offer = 1; w.ns.Engines.chess.apply(drawn, 2, { k = "accept" })
     eq(M.build(sess(drawn, 1)).banner, "Реми по съгласие")
+  end)
+end)
+
+describe("ui: a chess move in its cell (ns.HistoryKit.move)", function()
+  local Fit = require("fit")
+  local Kit = w.ns.HistoryKit
+  local function pool()
+    local f = w.G.CreateFrame("Frame", nil, w.G.UIParent)
+    f:SetSize(400, 400)
+    return Kit.pool(f, true)
+  end
+  -- the widest moves: a capture that promotes and mates; castling with check; a plain capture with check
+  local WIDE = {
+    { piece = 1, from = "b7", to = "a8", capture = true, take = -4, promo = 5, mate = true, check = false },
+    { piece = -6, from = "e8", to = "c8", castle = "Q", capture = false, check = true, mate = false },
+    { piece = 5, from = "d1", to = "h5", capture = true, take = -1, check = true, mate = false },
+  }
+
+  it("a quiet move is one line: the icon, from → to", function()
+    local p = pool()
+    p:begin()
+    local h = Kit.move(p, 0, 0, 85, { piece = 2, from = "g1", to = "f3", capture = false, check = false, mate = false })
+    p:finish()
+    eq(h, 20)
+    local texts = {}
+    for _, x in ipairs(p.placed) do if x.r.objectType == "FontString" then texts[#texts + 1] = x.r.text end end
+    eq(texts, { "g1", "→", "f3" })
+    eq({ p.placed[1].r.texture, p.placed[2].r.texture:match("alliance_wn$") }, { w.ns.Theme.tex.chair, "alliance_wn" }) -- on its light disc
+  end)
+
+  it("the widest cells never pass their column: smaller first, then the tags on a second line; nothing dropped", function()
+    for _, width in ipairs({ 83, 116, 60 }) do
+      for _, d in ipairs(WIDE) do
+        local p = pool()
+        p:begin()
+        local h = Kit.move(p, 0, 0, width, d, { paper = width == 83, last = true })
+        p:finish()
+        Fit.check(p, width, "cell " .. width .. " " .. d.from .. d.to)
+        local icons, tags = 0, {}
+        for _, x in ipairs(p.placed) do
+          if x.r.texture and x.r.texture:find("chess", 1, true) then icons = icons + 1 end
+          if x.r.objectType == "FontString" then tags[x.r.text] = true end
+        end
+        -- every part is there: the piece, the taken piece, the new piece; the tags
+        eq(icons, 1 + (d.take and 1 or 0) + (d.promo and 1 or 0), "icons in " .. width)
+        local L = w.ns.L
+        if d.mate then ok(tags[L("chess.history.mate")], "mate tag") end
+        if d.check then ok(tags[L("chess.history.check")], "check tag") end
+        if d.castle then ok(tags[L("chess.history.castle")], "castle tag") end
+        if width == 60 then ok(h >= 40, "two lines in a narrow cell") end
+      end
+    end
+  end)
+
+  it("the table's list: number, white, black; the rows grow, never widen", function()
+    local p = pool()
+    p:begin()
+    local rows = { { no = 1, white = WIDE[1], black = WIDE[2], lastBlack = true }, { no = 2, white = WIDE[3] } }
+    local h = Kit.moveRows(p, 0, 0, 192, rows, { paper = true })
+    p:finish()
+    Fit.check(p, 192, "the parchment list")
+    ok(h > 2 * 20, "a row grew: " .. h)
   end)
 end)
