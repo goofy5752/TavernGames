@@ -359,6 +359,7 @@ local function cardValue(b, face)
   local trump = b == "A" or b == suitOf(face)
   return (trump and TRUMP_VALUE or PLAIN_VALUE)[rankOf(face)]
 end
+E.cardValue = cardValue -- the points of a card under contract b (the hand history counts its tricks)
 
 -- Whether playing `face` may declare a belote. `hand` (faces, the played card included) may
 -- be nil on a view: then the other card is only known not to be held when the view shows it

@@ -144,6 +144,9 @@ ui/TablePanels.lua
 ui/StakePanels.lua
 ui/HistoryKit.lua
 ui/HandHistory.lua
+ui/HandHistoryHoldem.lua
+ui/HandHistoryRows.lua
+ui/HandHistoryDraw.lua
 ui/HandHistoryPanel.lua
 ui/ChessHistory.lua
 ui/games/TicTacToeView.lua

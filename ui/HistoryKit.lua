@@ -66,6 +66,7 @@ end
 -- `face` ("KH"; nil: an empty slot) in `mode` (nil | "won" | "dim" | "mine").
 function CARD:set(face, mode)
   self.face, self.mode = face, mode
+  self.frame.miniFace = type(face) == "string" and face or nil
   local up = type(face) == "string" and Cards.COORD[face:sub(2, 2)] ~= nil
   self.body:SetShown(up); self.suit:SetShown(up); self.rank:SetShown(up)
   for i = 1, 4 do self.outline[i]:SetShown(not up) end
@@ -83,7 +84,7 @@ function CARD:set(face, mode)
   self.rank:SetTextColor(r, g, b)
 end
 
--- The inline suit icon of a text (its cell of `suits`, red or ink), as H.card draws it.
+-- The inline suit icon of a text (its cell of `suits`, red or ink; or the colour token given).
 local SUIT_CELL = { C = "0:32", D = "32:64", H = "64:96", S = "96:128" }
 local function byte(x) return math.floor(x * 255 + 0.5) end
 function Kit.suitTag(suit, token)
@@ -248,14 +249,28 @@ local function parts(d, size)
   return out
 end
 
--- Measures the text parts with a scratch font string of the pool.
-local function measure(pool, list)
+-- The pool's hidden font string for measuring.
+local function scratch(pool)
   local fs = pool.scratch
   if not fs then
     fs = W.Label(pool.content, "ui", "", 12)
     fs:Hide()
     pool.scratch = fs
   end
+  return fs
+end
+
+-- The width `text` needs on one line in font token `font` at `size`.
+function POOL:measure(text, font, size)
+  local fs = scratch(self)
+  Theme.setFont(fs, font, size)
+  fs:SetText(text)
+  return W.textWidth(fs)
+end
+
+-- Measures the text parts with the pool's scratch font string.
+local function measure(pool, list)
+  local fs = scratch(pool)
   local total = 0
   for k, p in ipairs(list) do
     if p.kind == "text" then

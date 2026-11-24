@@ -32,43 +32,69 @@ local HH = require("holdem")(EH)
 -- `text` without inline colour codes (|cAARRGGBB … |r).
 local function plain(text) return (tostring(text):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")) end
 
--- Every visible font string's text in the sandbox.
-local function allTexts(w)
+-- `text` without inline textures (|T…|t: a suit icon, a coin) either.
+local function bare(text) return (plain(text):gsub("|T.-|t ?", "")) end
+
+-- One row of the window's model (H.blocks) as plain lines, for the tests to read:
+--   a trick "1. Иван 8C · Мария 7C* +21 them" (* the card that took it; … under way),
+--   an event "Иван обяви 40 [KH QH]", a street "Търн: 9C~ TC~ JC~ KC" (~ an earlier street's),
+--   an action "Мария: малък блайнд 5", a hand turned up "Kiro 3C 6C: Флъш" (* the best),
+--   my cards "Твоите карти 4C 7C", a legend, a note or a result as its text.
+local function say(row)
+  local function faces(list, mark)
+    local out = {}
+    for k, f in ipairs(list) do out[k] = f .. (mark and mark(k) or "") end
+    return table.concat(out, " ")
+  end
+  if row.k == "trick" then
+    local parts = {}
+    for k, c in ipairs(row.cards) do parts[k] = c.name .. " " .. c.face .. (c.won and "*" or "") end
+    return { row.n .. ". " .. table.concat(parts, " · ") .. " " .. (row.pts and ("+" .. row.pts) or "…") .. (row.side and (" " .. row.side) or "") }
+  elseif row.k == "event" then return { bare(row.text) .. " [" .. faces(row.cards) .. "]" }
+  elseif row.k == "street" then
+    return { row.name .. (#row.cards > 0 and (": " .. faces(row.cards, function(k) return k <= row.dim and "~" or "" end)) or "") }
+  elseif row.k == "acts" then
+    local out = {}
+    for k, a in ipairs(row.list) do out[k] = a.name .. ": " .. bare(a.text) end
+    return out
+  elseif row.k == "show" then return { row.name .. " " .. faces(row.cards) .. ": " .. row.cat .. (row.best and "*" or "") }
+  elseif row.k == "mine" then return { row.text .. " " .. faces(row.cards) }
+  elseif row.k == "legend" then
+    local out = {}
+    for k, x in ipairs(row.items) do out[k] = bare(x.text) end
+    return { table.concat(out, " | ") }
+  end
+  return { bare(row.text) }
+end
+
+-- The lines of the window's hands for session s, the newest hand first: its title, what it was
+-- played for, then every row (open or not), then the closed hand's summary as "= …".
+local function lines(H, s)
   local out = {}
-  for _, f in ipairs(w.frames) do
-    for _, r in ipairs(f.regions) do
-      if r.objectType == "FontString" and r.text and r:IsVisible() then out[#out + 1] = r.text end
-    end
+  for _, b in ipairs(H.blocks(s)) do
+    out[#out + 1] = b.title
+    if b.what then out[#out + 1] = bare(b.what) .. (b.trump and (" " .. b.trump .. " " .. b.after) or "") end
+    for _, row in ipairs(b.rows) do for _, t in ipairs(say(row)) do out[#out + 1] = t end end
+    if b.sum then out[#out + 1] = "= " .. bare(b.sum) end
   end
   return out
 end
 
--- The panel's lines, top to bottom, colour codes stripped.
-local function lines(panel)
-  local out = {}
-  for i, fs in ipairs(panel.lines) do
-    if i > panel.used then break end
-    out[#out + 1] = plain(fs:GetText())
-  end
-  return out
-end
-
--- The first line of the panel containing every needle (plain), or nil.
-local function lineWith(panel, ...)
+-- The first line containing every needle (plain), or nil.
+local function lineWith(H, s, ...)
   local needles = { ... }
-  for _, text in ipairs(lines(panel)) do
+  for _, text in ipairs(lines(H, s)) do
     local all = true
-    for _, n in ipairs(needles) do all = all and text:find(plain(n), 1, true) ~= nil end
+    for _, n in ipairs(needles) do all = all and text:find(bare(n), 1, true) ~= nil end
     if all then return text end
   end
   return nil
 end
 
--- No visible font string anywhere shows the card `face` as the history prints it.
+-- No visible mini card anywhere shows the card `face`.
 local function neverShown(w, face, why)
-  local tag = plain(w.ns.HandHistory.card(face))
-  for _, text in ipairs(allTexts(w)) do
-    ok(not plain(text):find(tag, 1, true), (why or "hidden card") .. " " .. face .. " shown in: " .. plain(text))
+  for _, f in ipairs(w.frames) do
+    if f.miniFace == face and f:IsVisible() then ok(false, (why or "hidden card") .. " " .. face .. " shown") end
   end
 end
 
@@ -129,7 +155,7 @@ end
 local function bidx(st, face) for i = 1, 32 do if st.deck[i] == face then return i end end end
 
 describe("ui: hand history — Белот", function()
-  it("two tricks: each seat's card in turn order, the winner named, the contract; nothing unplayed", bothWays(function()
+  it("two tricks: each seat's card in turn order, the winner marked, the points, the contract; nothing unplayed", bothWays(function()
     local w, panel = setup()
     local H = w.ns.HandHistory
     local sent = #w.sent
@@ -150,23 +176,146 @@ describe("ui: hand history — Белот", function()
       played[face] = true
       see()
     end
-    H.draw(panel, bsess(st, 1))
-    local L, card = w.ns.L, H.card
-    eq(lines(panel)[1], plain(L("table.historyHand", 1)))
-    ok(lineWith(panel, L("belot.contract", L("belot.bid.H"))), "no contract line")
-    local t1 = lineWith(panel, "1.", "Иван " .. card("8C"), "Мария " .. card("7C"), "Kiro " .. card("TC"), "Пешо " .. card("AC"))
-    ok(t1, "trick 1: " .. table.concat(lines(panel), " / "))
-    ok(t1:find(plain(L("table.historyWon", "Пешо")), 1, true), "trick 1's winner: " .. t1)
-    local t2 = lineWith(panel, "2.", "Пешо " .. card("AS"), "Иван " .. card("JS"), "Мария " .. card("KS"), "Kiro " .. card("7S"))
-    ok(t2, "trick 2"); ok(t2:find(plain(L("table.historyWon", "Пешо")), 1, true), "trick 2's winner")
-    -- the order of the lines: the hand, the contract, trick 1, trick 2
-    local ls = lines(panel)
-    eq({ ls[3] == t1, ls[4] == t2 }, { true, true })
+    local L = w.ns.L
+    -- the hand, its contract (the suit's icon before it) and who called it, the teams, the tricks in
+    -- order with the winning card marked and their points (Пешо's team: theirs), the total so far
+    local soFar = L("table.historySoFar", L("table.historyScore", L("table.historyUs"), 0, L("table.historyThem"), 38))
+    eq(lines(H, bsess(st, 1)), {
+      L("table.historyHand", 1),
+      bare(L("belot.contract", L("belot.bid.H"))) .. " · " .. L("belot.by", "Иван"),
+      L("table.historyTeam", L("table.historyUs"), "Иван", "Kiro") .. " | " .. L("table.historyTeam", L("table.historyThem"), "Мария", "Пешо"),
+      "1. Иван 8C · Мария 7C · Kiro TC · Пешо AC* +21 them",
+      "2. Пешо AS* · Иван JS · Мария KS · Kiro 7S +17 them",
+      soFar,
+      "= " .. soFar,
+    })
+    ok(H.blocks(bsess(st, 1))[1].what:find("|T", 1, true), "the suit's icon")
+    -- a watcher: the teams by where they sit, no side on a trick
+    local watch = lines(H, bsess(st, nil))
+    eq(watch[3], L("table.historyTeam", L("belot.historyTeamA"), "Иван", "Kiro") .. " | " .. L("table.historyTeam", L("belot.historyTeamB"), "Мария", "Пешо"))
+    eq(watch[4], "1. Иван 8C · Мария 7C · Kiro TC · Пешо AC* +21")
     for _, face in ipairs(DECK_A) do
       if not played[face] then neverShown(w, face); notRecorded(w, face) end
     end
     eq(#w.sent, sent)
   end))
+
+  -- A book of one Белот hand under contract b with these tricks ({faces in play order, the lead, the winner}).
+  local function book(H, b, tricks, seats)
+    local hand = { key = ":1", no = 1, names = seats or { A, B, C, D }, tricks = {}, events = {}, acts = {}, board = {},
+      contract = { seat = 1, b = b, x = 1 } }
+    for n, t in pairs(tricks) do
+      local cards = {}
+      for k, face in ipairs(t[1]) do cards[k] = { seat = (t[2] + k - 2) % 4 + 1, face = face } end
+      hand.tricks[n] = { cards = cards, win = t[3] }
+    end
+    H.tables["t#1"] = { game = "belot", ver = 1, hands = { hand } }
+    return hand
+  end
+  local function pts(H, seat)
+    local out = {}
+    for _, row in ipairs(H.blocks(bsess(EB.new{ first = 1 }, seat))[1].rows) do if row.k == "trick" then out[row.n] = row.pts end end
+    return out
+  end
+
+  it("a trick's points by the contract: a suit, no trumps, all trumps; the last trick's 10", function()
+    local w = setup()
+    local H, L = w.ns.HandHistory, w.ns.L
+    local spades = { "JS", "7S", "AS", "8S" }   -- the mockup's trick: J 20 + A 11 in spades
+    local hearts = { "9H", "TH", "KH", "QD" }   -- the nine is 14 in trumps, else 0
+    book(H, "S", { { spades, 1, 1 }, { hearts, 1, 2 }, [8] = { hearts, 2, 2 } })
+    eq(pts(H, 1), { 31, 17, [8] = 27 })
+    book(H, "H", { { spades, 1, 1 }, { hearts, 1, 2 } })
+    eq(pts(H, 1), { 13, 31 })
+    book(H, "N", { { spades, 1, 1 }, { hearts, 1, 2 } })
+    eq(pts(H, 1), { 13, 17 })
+    book(H, "A", { { spades, 1, 1 }, { hearts, 1, 2 }, [8] = { spades, 3, 3 } })
+    eq(pts(H, 1), { 31, 31, [8] = 41 })
+    -- seat 2's view: its team's tricks are "us", the running total by team, mine first
+    local rows = H.blocks(bsess(EB.new{ first = 1 }, 2))[1].rows
+    eq({ rows[2].side, rows[3].side, rows[4].side }, { "them", "us", "them" })
+    eq(bare(rows[5].text), L("table.historySoFar", L("table.historyScore", L("table.historyUs"), 31, L("table.historyThem"), 72)))
+  end)
+
+  it("a hand played out: the deal's own totals (st.res.raw), its tricks; closed to that line once the next comes", function()
+    local w, panel = setup()
+    local H, L = w.ns.HandHistory, w.ns.L
+    local st = EB.new{ first = 1 }
+    ok(EB.apply(st, 0, { k = "deal", deck = DECK_A })); H.observe(bsess(st, 1))
+    for _, b in ipairs({ "S", "P", "P", "P" }) do ok(EB.apply(st, st.turn, { k = "bid", b = b })); H.observe(bsess(st, 1)) end
+    local rnd = function() return 0.5 end
+    while st.phase == "play" do
+      ok(EB.apply(st, st.turn, EB.auto(st, st.turn, rnd)), "auto")
+      H.observe(bsess(st, 1))
+    end
+    eq(st.phase, "score")
+    ok(EB.apply(st, 0, { k = "score" })); H.observe(bsess(st, 1))
+    local raw = st.res.raw
+    eq(H.tables["t#1"].hands[1].score, { raw[1], raw[2] })
+    local sum = L("table.historyTricks", 8) .. " · " .. L("table.historyScore", L("table.historyUs"), raw[1], L("table.historyThem"), raw[2])
+    local ls = lines(H, bsess(st, 1))
+    eq({ ls[#ls - 1], ls[#ls] }, { sum, "= " .. sum }) -- the result row of the open hand, the line it closes to
+    -- the eight tricks' points add up to the cards' 152 and the last trick's 10
+    local total = 0
+    for _, row in ipairs(H.blocks(bsess(st, 1))[1].rows) do if row.k == "trick" then total = total + row.pts end end
+    eq(total, 162)
+    -- the next deal: hand 2 on top and open, hand 1 closed to its line
+    ok(EB.apply(st, 0, { k = "deal", deck = DECK_A })); H.observe(bsess(st, 1))
+    H.draw(panel, bsess(st, 1))
+    local blocks = H.blocks(bsess(st, 1))
+    eq({ blocks[1].title, blocks[1].open, blocks[2].title, blocks[2].open, blocks[2].sum }, { L("table.historyHand", 2), true, L("table.historyHand", 1), false, sum })
+  end)
+
+  it("a click on a hand's header opens or closes it; the state stays for the session", function()
+    local w, panel = setup()
+    local H, L = w.ns.HandHistory, w.ns.L
+    local old = book(H, "S", { { { "JS", "7S", "AS", "8S" }, 1, 1 } })
+    old.closed = true
+    local new = { key = ":2", no = 2, names = { A, B, C, D }, tricks = {}, events = {}, contract = { seat = 2, b = "N", x = 2 },
+      cur = { n = 1, cards = { { seat = 1, face = "AH" } } } }
+    table.insert(H.tables["t#1"].hands, new)
+    local s = bsess(EB.new{ first = 1 }, 1)
+    H.draw(panel, s)
+    local function headers()
+      local out = {}
+      for _, b in ipairs(panel.pool.kinds.button) do if b:IsShown() then out[#out + 1] = b end end
+      return out
+    end
+    local function cards()
+      local n = 0
+      for _, c in ipairs(panel.pool.kinds["card:normal"] or {}) do if c.frame:IsShown() then n = n + 1 end end
+      return n
+    end
+    eq(#headers(), 2)
+    eq(cards(), 4) -- hand 2's trick under way (one card, three empty slots); hand 1 closed
+    w:click(headers()[2]) -- hand 1 opens
+    eq({ H.isOpen(new, true), H.isOpen(old, false), cards() }, { true, true, 8 })
+    w:click(headers()[1]) -- hand 2 closes
+    eq({ H.isOpen(new, true), H.isOpen(old, false), cards() }, { false, true, 4 })
+    -- drawn again (a new event): the clicks are kept
+    H.tables["t#1"].ver = 2
+    H.draw(panel, s)
+    eq(cards(), 4)
+    eq(lines(H, s)[1], L("table.historyHand", 2))
+  end)
+
+  it("names: the first word, a bot's own name, an initial for two alike; long names wrap, never past the edge", function()
+    local w, panel = setup()
+    local H = w.ns.HandHistory
+    local Fit = require("fit")
+    local long = { "Ivan Petrov-Forever", "Bot Barleybrewster", "Ivan Kolev", "Bot Number12" }
+    book(H, "A", { { { "JS", "7S", "AS", "8S" }, 1, 2 }, { { "TH", "TD", "TC", "TS" }, 2, 3 } }, long)
+    local s = bsess(EB.new{ first = 1 }, 1)
+    eq(lines(H, s)[4], "1. Ivan P. JS · Barleybrewster 7S* · Ivan K. AS · Number12 8S +31 them")
+    H.draw(panel, s)
+    ok(Fit.check(panel.pool, panel.textW, "Белот, long names") > 20, "widgets checked")
+    -- the bot's long name under its card: smaller, then on two lines, all of it
+    local found
+    for _, p in ipairs(panel.pool.placed) do
+      if p.r.objectType == "FontString" and plain(p.r.text):gsub("\n", "") == "Barleybrewster" then found = p.r end
+    end
+    ok(found and found.text:find("\n", 1, true), "the name wraps: " .. tostring(found and found.text))
+  end)
 
   it("a passed-out deal says so; a deal voided in the auction does not", function()
     local w, panel = setup()
@@ -176,14 +325,14 @@ describe("ui: hand history — Белот", function()
     ok(EB.apply(st, st.turn, { k = "bid", b = "P" })); H.observe(bsess(st, 1))
     ok(EB.apply(st, 0, { k = "void" })); H.observe(bsess(st, 1))
     H.draw(panel, bsess(st, 1))
-    eq(lineWith(panel, L("belot.passed")), nil)
+    eq(lineWith(H, bsess(st, 1), L("belot.passed")), nil)
     ok(EB.apply(st, 0, { k = "deal", deck = DECK_A })); H.observe(bsess(st, 1))
     for _ = 1, 4 do ok(EB.apply(st, st.turn, { k = "bid", b = "P" })); H.observe(bsess(st, 1)) end
     eq(st.phase, "deal")
     H.draw(panel, bsess(st, 1))
-    local ls = lines(panel)
     -- newest first: the passed-out deal (#1 again: a void keeps the round), then the voided one
-    eq({ ls[1], ls[2], ls[3], ls[4] }, { plain(L("table.historyHand", 1)), plain(L("belot.passed")), " ", plain(L("table.historyHand", 1)) })
+    local blocks = H.blocks(bsess(st, 1))
+    eq({ blocks[1].title, blocks[1].sum, blocks[2].title, blocks[2].sum }, { L("table.historyHand", 1), L("belot.passed"), L("table.historyHand", 1), nil })
     eq(#H.tables["t#1"].hands, 2)
   end)
 
@@ -196,13 +345,10 @@ describe("ui: hand history — Белот", function()
       st.round = round
       H.observe(bsess(st, 1))
       H.draw(panel, bsess(st, 1))
-      eq(lines(panel)[1], plain(L("table.historyHand", round)))
+      eq(H.blocks(bsess(st, 1))[1].title, L("table.historyHand", round))
     end
     local heads = {}
-    for _, text in ipairs(lines(panel)) do
-      local n = text:match("^" .. plain(L("table.historyHand", 0)):gsub("0", "(%%d+)") .. "$")
-      if n then heads[#heads + 1] = tonumber(n) end
-    end
+    for _, b in ipairs(H.blocks(bsess(EB.new{ first = 1 }, 1))) do heads[#heads + 1] = b.hand.no end
     eq(heads, { 12, 11, 10, 9, 8, 7, 6, 5, 4, 3 })
     eq(#H.tables["t#1"].hands, 10)
   end)
@@ -235,16 +381,16 @@ local function santaseWithBot()
 end
 
 describe("ui: hand history — Сантасе", function()
-  it("tricks with their winners, 40 declared, the close, the result; never the stock nor a hand", bothWays(function()
+  it("tricks with their winners and points, 40 declared with its pair, the close, the result; never the stock nor a hand", bothWays(function()
     local w, v = santaseWithBot()
-    local H, L, card, client = w.ns.HandHistory, w.ns.L, w.ns.HandHistory.card, w.ns.client
+    local H, L, client = w.ns.HandHistory, w.ns.L, w.ns.client
     local s = client.session
     eq({ s.game, s.seats[1], s.seats[2], v.historyButton:IsVisible() }, { "santase", A, BOT, true })
     H.tables = {}
     local sent = #w.sent
     local st = ES.new{ first = 1 }
     ok(ES.apply(st, 0, { k = "deal", deck = DM }))
-    local played = {}
+    local played = { JH = true } -- the trump card lies face up under the stock
     w:click(v.historyButton)
     -- after every event: no card that is not on the table yet, on screen or in memory
     local function see()
@@ -260,32 +406,64 @@ describe("ui: hand history — Сантасе", function()
     end
     see()
     play(1, "AD"); play(2, "JC")                                           -- trick 1: Иван
-    ok(ES.apply(st, 1, { k = "marry", i = 1, c = "KH", j = 2, d = "QH" })); played.KH = true; see() -- 40 in trumps
+    ok(ES.apply(st, 1, { k = "marry", i = 1, c = "KH", j = 2, d = "QH" }))  -- 40 in trumps: the queen is shown
+    played.KH, played.QH = true, true; see()
     play(2, "QC")                                                          -- trick 2: Иван
     ok(ES.apply(st, 1, { k = "close" })); see()
     play(1, "QH"); play(2, "AS")                                           -- trick 3: Иван, 74 points
     eq(st.phase, "hand")
     eq(H.lastError, nil)
     eq(v.history:IsShown(), true)
-    local panel = v.history
-    eq(lines(panel)[1], plain(L("table.historyHand", 1)))
-    ok(lineWith(panel, L("santase.trump", w.ns.Cards.suitName("H"))), "no trump line")
-    local t1 = lineWith(panel, "1.", "Иван " .. card("AD"), "Bot " .. card("JC"), L("table.historyWon", "Иван"))
-    local marry = lineWith(panel, L("santase.historyMarry", "Иван", 40))
-    local t2 = lineWith(panel, "2.", "Иван " .. card("KH"), "Bot " .. card("QC"), L("table.historyWon", "Иван"))
-    local closed = lineWith(panel, L("santase.historyClose", "Иван"))
-    local t3 = lineWith(panel, "3.", "Иван " .. card("QH"), "Bot " .. card("AS"), L("table.historyWon", "Иван"))
-    local res = lineWith(panel, L("santase.hand.won", "Иван", 3))
-    ok(t1 and marry and t2 and closed and t3 and res, table.concat(lines(panel), " / "))
-    local ls, at = lines(panel), {}
-    for i, text in ipairs(ls) do at[text] = at[text] or i end
-    ok(at[t1] < at[marry] and at[marry] < at[t2] and at[t2] < at[closed] and at[closed] < at[t3] and at[t3] < at[res], "order")
+    local won = L("santase.historyWon", "Иван", 3, 74)
+    -- the trump card in the header; the bot by its own name; each event where it happened
+    eq(lines(H, s), {
+      L("table.historyHand", 1),
+      L("santase.historyTrump") .. " JH " .. w.ns.Cards.suitName("H"),
+      "1. Иван AD* · Ivanov JC +13 us",
+      L("santase.historyMarry", "Иван", 40) .. " [KH QH]",
+      "2. Иван KH* · Ivanov QC +7 us",
+      L("santase.historyClose", "Иван") .. " []",
+      "3. Иван QH* · Ivanov AS +14 us",
+      won,
+      "= " .. won,
+    })
+    -- the window shows them: the trump and the pair as small cards, the tricks' cards, all inside
+    local faces = {}
+    for _, p in ipairs(v.history.pool.placed) do if p.card and p.card.face then faces[#faces + 1] = p.card.face end end
+    eq(faces, { "JH", "AD", "JC", "KH", "QH", "KH", "QC", "QH", "AS" })
+    require("fit").check(v.history.pool, v.history.textW, "Сантасе")
     -- the match ends (the bot leaves): every face is in the view now, still none in the history
     ES.leave(st, 2); see()
     eq(st.phase, "match")
     for _, face in ipairs(DM) do if not played[face] then neverShown(w, face, "after the match"); notRecorded(w, face) end end
     eq(#w.sent, sent)
   end))
+
+  it("the events between the tricks where they came: the nine's swap with its card; a stock played out's last 10", function()
+    local w, panel = setup()
+    local H, L = w.ns.HandHistory, w.ns.L
+    local function t(lead, a, b, win) return { cards = { { seat = lead, face = a }, { seat = 3 - lead, face = b } }, win = win } end
+    local tricks = {}
+    for n = 1, 12 do tricks[n] = t(1, "9C", "JC", 2) end
+    tricks[1], tricks[2] = t(1, "TC", "AC", 2), t(2, "KD", "JD", 2)
+    H.tables["t#1"] = { game = "santase", ver = 1, hands = { { key = ":2", no = 2, names = { A, BOT }, tricks = tricks, tsuit = "D",
+      events = { { at = 2, k = "swap", seat = 2 }, { at = 2, k = "marry", seat = 2, pts = 40, suit = "D" } }, res = { winner = 2, gp = 1, pts = { 40, 80 } } } } }
+    local s = { game = "santase", tid = "t#1", mySeat = 1 }
+    local ls = lines(H, s)
+    eq({ ls[2], ls[3], ls[4], ls[5], ls[6] }, {
+      bare(L("santase.trump", w.ns.Cards.suitName("D"))),
+      "1. Иван TC · Ivanov AC* +21 them",
+      L("santase.historySwap", "Ivanov") .. " [9D]",
+      L("santase.historyMarry", "Ivanov", 40) .. " [KD QD]",
+      "2. Ivanov KD* · Иван JD +6 them",
+    })
+    eq(ls[16], "12. Иван 9C · Ivanov JC* +12 them") -- the stock played out: the last trick's 10
+    eq(ls[17], L("santase.historyWon", "Ivanov", 1, 80))
+    H.tables["t#1"].hands[1].shut = true -- closed: no 10
+    eq(lines(H, s)[16], "12. Иван 9C · Ivanov JC* +2 them")
+    H.draw(panel, s)
+    require("fit").check(panel.pool, panel.textW, "Сантасе events")
+  end)
 
   it("the button only at Белот, Сантасе and Холдем tables; standing up drops the table's history", function()
     local w, v = santaseWithBot()
@@ -514,38 +692,44 @@ end
 describe("ui: hand history — Холдем", function()
   it("blinds, actions per street with amounts, the board, the shown hands, the winner and pot", bothWays(function()
     local w, panel = setup(240, 400)
-    local H, L, card = w.ns.HandHistory, w.ns.L, w.ns.HandHistory.card
+    local H, L = w.ns.HandHistory, w.ns.L
     local sent = #w.sent
     local st = playHand(H, 1, nil, onlyPublic(w, panel, 1))
     H.draw(panel, hsess(st, 1))
-    local ls = lines(panel)
-    eq(ls[1], plain(L("table.historyHand", 1)) .. " · " .. plain(L("holdem.historyBlinds", "5", "10")))
-    local want = {
-      plain(L("holdem.historyMine", card("4C") .. " " .. card("7C"))),
-      plain(L("holdem.historyPreflop")),
-      "Мария: " .. plain(L("holdem.hist.sb", "5")),
-      "Kiro: " .. plain(L("holdem.hist.bb", "10")),
-      "Иван: " .. plain(L("holdem.hist.raise", "30")),
-      "Мария: " .. plain(L("holdem.hist.fold")),
-      "Kiro: " .. plain(L("holdem.hist.call", "20")),
-      plain(L("holdem.historyFlop", card("9C") .. " " .. card("TC") .. " " .. card("JC"))),
-      "Kiro: " .. plain(L("holdem.hist.check")),
-      "Иван: " .. plain(L("holdem.hist.bet", "40")),
-      "Kiro: " .. plain(L("holdem.hist.call", "40")),
-      plain(L("holdem.historyTurn", card("KC"))),
-      "Kiro: " .. plain(L("holdem.hist.check")),
-      "Иван: " .. plain(L("holdem.hist.check")),
-      plain(L("holdem.historyRiver", card("2D"))),
-      "Kiro: " .. plain(L("holdem.hist.check")),
-      "Иван: " .. plain(L("holdem.hist.check")),
-      plain(L("holdem.historyShow", "Kiro", card("3C") .. " " .. card("6C"), L("holdem.cat.6"))),
-      plain(L("holdem.historyShow", "Иван", card("4C") .. " " .. card("7C"), L("holdem.cat.6"))),
-      plain(L("holdem.historyWon", "Иван", "145")),
-    }
-    local got = {}
-    for i = 2, #ls do got[#got + 1] = ls[i] end
-    -- the shown hands in showdown order: the river was checked, so the first live seat left of the button (Kiro)
-    eq(got, want)
+    local won = bare(L("holdem.historyWon", "Иван", "145"))
+    -- my cards; each street its name and the board so far (the earlier streets' cards dimmed), its
+    -- actions; the shown hands in showdown order (the river was checked: the first live seat left of the
+    -- button, Kiro), the best marked; who won what
+    eq(lines(H, hsess(st, 1)), {
+      L("table.historyHand", 1),
+      L("holdem.historyBlinds", "5", "10"),
+      L("holdem.historyMineLabel") .. " 4C 7C",
+      L("holdem.historyPreflop"),
+      "Мария: " .. L("holdem.hist.sb", "5"),
+      "Kiro: " .. L("holdem.hist.bb", "10"),
+      "Иван: " .. L("holdem.hist.raise", "30"),
+      "Мария: " .. L("holdem.hist.fold"),
+      "Kiro: " .. L("holdem.hist.call", "20"),
+      L("holdem.historyStreet1") .. ": 9C TC JC",
+      "Kiro: " .. L("holdem.hist.check"),
+      "Иван: " .. L("holdem.hist.bet", "40"),
+      "Kiro: " .. L("holdem.hist.call", "40"),
+      L("holdem.historyStreet2") .. ": 9C~ TC~ JC~ KC",
+      "Kiro: " .. L("holdem.hist.check"),
+      "Иван: " .. L("holdem.hist.check"),
+      L("holdem.historyStreet3") .. ": 9C~ TC~ JC~ KC~ 2D",
+      "Kiro: " .. L("holdem.hist.check"),
+      "Иван: " .. L("holdem.hist.check"),
+      "Kiro 3C 6C: " .. L("holdem.cat.6"),
+      "Иван 4C 7C: " .. L("holdem.cat.6") .. "*",
+      won,
+      "= " .. won,
+    })
+    -- the window: my cards ringed as mine, the board's earlier cards dim, all inside the list
+    local modes = {}
+    for _, p in ipairs(panel.pool.placed) do if p.card then modes[#modes + 1] = p.card.face .. ":" .. tostring(p.card.mode) end end
+    eq({ modes[1], modes[2], modes[6], modes[7] }, { "4C:mine", "7C:mine", "9C:dim", "TC:dim" })
+    require("fit").check(panel.pool, panel.textW, "Холдем")
     -- the folded seat's cards are nowhere, neither on screen nor in memory
     neverShown(w, "2C", "folded"); neverShown(w, "5C", "folded"); notRecorded(w, "2C"); notRecorded(w, "5C")
     eq(#w.sent, sent)
@@ -553,18 +737,18 @@ describe("ui: hand history — Холдем", function()
 
   it("a watcher and the folder: only shown cards, mine only to me; a fold-win shows no card", bothWays(function()
     local w, panel = setup(240, 400)
-    local H, L, card = w.ns.HandHistory, w.ns.L, w.ns.HandHistory.card
+    local H, L = w.ns.HandHistory, w.ns.L
     local st = playHand(H, nil, nil, onlyPublic(w, panel, nil))
     H.draw(panel, hsess(st, nil))
-    ok(not lineWith(panel, plain(L("holdem.historyMine", ""))), "a watcher has no cards of his own")
+    ok(not lineWith(H, hsess(st, nil), L("holdem.historyMineLabel")), "a watcher has no cards of his own")
     neverShown(w, "2C"); neverShown(w, "5C"); notRecorded(w, "2C"); notRecorded(w, "5C")
-    ok(lineWith(panel, card("4C") .. " " .. card("7C")) and lineWith(panel, card("3C") .. " " .. card("6C")), "the shown hands")
+    ok(lineWith(H, hsess(st, nil), "Иван 4C 7C") and lineWith(H, hsess(st, nil), "Kiro 3C 6C"), "the shown hands")
     -- seat 2 folded: its own cards are its own, marked as mine
     local w2, panel2 = setup(240, 400)
     local H2 = w2.ns.HandHistory
     local st2 = playHand(H2, 2, nil, onlyPublic(w2, panel2, 2))
     H2.draw(panel2, hsess(st2, 2))
-    ok(lineWith(panel2, plain(L("holdem.historyMine", card("2C") .. " " .. card("5C")))), "my folded cards, mine")
+    ok(lineWith(H2, hsess(st2, 2), L("holdem.historyMineLabel") .. " 2C 5C"), "my folded cards, mine")
     -- everybody folds to the big blind: nobody shows; it wins the called 10 (its uncalled 5 goes back)
     local w3, panel3 = setup(240, 400)
     local H3 = w3.ns.HandHistory
@@ -575,9 +759,9 @@ describe("ui: hand history — Холдем", function()
     HH.apply(s3, s3.turn, { k = "fold" }); H3.observe(hsess(s3, 3))
     eq(s3.phase, "done")
     H3.draw(panel3, hsess(s3, 3))
-    ok(lineWith(panel3, plain(L("holdem.historyWonFold", "Kiro", "10"))), table.concat(lines(panel3), " / "))
+    ok(lineWith(H3, hsess(s3, 3), L("holdem.historyWonFold", "Kiro", "10")), table.concat(lines(H3, hsess(s3, 3)), " / "))
     for _, face in ipairs({ "2C", "5C", "4C", "7C" }) do neverShown(w3, face); notRecorded(w3, face) end
-    ok(lineWith(panel3, plain(L("holdem.historyMine", card("3C") .. " " .. card("6C")))), "my own cards")
+    ok(lineWith(H3, hsess(s3, 3), L("holdem.historyMineLabel") .. " 3C 6C"), "my own cards")
   end))
 
   -- hand3 to an all-in on the turn: seat 1 calls, seat 2 folds, seat 3 checks; flop checked; turn: seat 3
@@ -601,7 +785,7 @@ describe("ui: hand history — Холдем", function()
 
   it("an all-in turns the hands up under its street, before the river; the folded hand never", bothWays(function()
     local w, panel = setup(240, 400)
-    local H, L, card = w.ns.HandHistory, w.ns.L, w.ns.HandHistory.card
+    local H, L = w.ns.HandHistory, w.ns.L
     local open
     local st = allinHand(H, nil, function(s, up)
       onlyPublic(w, panel, nil)(s)
@@ -609,20 +793,22 @@ describe("ui: hand history — Холдем", function()
     end)
     eq(open, { { seat = 3, cards = { "3C", "6C" }, at = 2 }, { seat = 1, cards = { "4C", "7C" }, at = 2 } }) -- before the river came
     H.draw(panel, hsess(st, nil))
-    local ls, from = lines(panel), nil
-    for i, t in ipairs(ls) do if t == plain(L("holdem.historyTurn", card("KC"))) then from = i end end
+    local ls, from = lines(H, hsess(st, nil)), nil
+    for i, t in ipairs(ls) do if t == L("holdem.historyStreet2") .. ": 9C~ TC~ JC~ KC" then from = i end end
     local got = {}
     for i = from, #ls do got[#got + 1] = ls[i] end
+    local won = bare(L("holdem.historyWon", "Иван", "2005"))
     eq(got, {
-      plain(L("holdem.historyTurn", card("KC"))),
-      "Kiro: " .. plain(L("holdem.hist.allin", "990")),
-      "Иван: " .. plain(L("holdem.hist.allin", "990")),               -- a call of all he has
-      plain(L("holdem.historyOpen", "Kiro", card("3C") .. " " .. card("6C"))),
-      plain(L("holdem.historyOpen", "Иван", card("4C") .. " " .. card("7C"))),
-      plain(L("holdem.historyRiver", card("2D"))),
-      plain(L("holdem.historyShow", "Kiro", card("3C") .. " " .. card("6C"), L("holdem.cat.6"))),
-      plain(L("holdem.historyShow", "Иван", card("4C") .. " " .. card("7C"), L("holdem.cat.6"))),
-      plain(L("holdem.historyWon", "Иван", "2005")),
+      L("holdem.historyStreet2") .. ": 9C~ TC~ JC~ KC",
+      "Kiro: " .. L("holdem.hist.allin", "990"),
+      "Иван: " .. L("holdem.hist.allin", "990"),               -- a call of all he has
+      "Kiro 3C 6C: " .. L("holdem.historyTurned"),
+      "Иван 4C 7C: " .. L("holdem.historyTurned"),
+      L("holdem.historyStreet3") .. ": 9C~ TC~ JC~ KC~ 2D",
+      "Kiro 3C 6C: " .. L("holdem.cat.6"),
+      "Иван 4C 7C: " .. L("holdem.cat.6") .. "*",
+      won,
+      "= " .. won,
     })
     neverShown(w, "2C", "folded"); neverShown(w, "5C", "folded"); notRecorded(w, "2C"); notRecorded(w, "5C")
   end))
@@ -630,13 +816,12 @@ describe("ui: hand history — Холдем", function()
   it("hands up on the state but not yet on my view (no show came: a host of the version before): none turned up", function()
     local w, panel = setup(240, 400)
     local H, L = w.ns.HandHistory, w.ns.L
-    local function bare(st, seat) local s = hsess(st, seat); s.state = EH.view(st, seat, EH.inHand(st)); return s end
-    local st = allinHand(H, 1, nil, bare)
+    local function bareView(st, seat) local s = hsess(st, seat); s.state = EH.view(st, seat, EH.inHand(st)); return s end
+    local st = allinHand(H, 1, nil, bareView)
     H.draw(panel, hsess(st, 1))
     eq(H.tables["t#1"].hands[1].open, {})
-    ok(not lineWith(panel, plain(L("holdem.historyOpen", "Kiro", ""))), table.concat(lines(panel), " / "))
-    local card = w.ns.HandHistory.card
-    ok(lineWith(panel, plain(L("holdem.historyShow", "Kiro", card("3C") .. " " .. card("6C"), L("holdem.cat.6")))), "shown at the showdown")
+    ok(not lineWith(H, hsess(st, 1), L("holdem.historyTurned")), table.concat(lines(H, hsess(st, 1)), " / "))
+    ok(lineWith(H, hsess(st, 1), "Kiro 3C 6C: " .. L("holdem.cat.6")), "shown at the showdown")
   end)
 
   it("coins at a cash table, chips at a fun one (the table's own amounts)", function()
@@ -645,14 +830,28 @@ describe("ui: hand history — Холдем", function()
     local coins = w.ns.HoldemCashView.coins
     local st = playHand(H, 1, 1000)
     H.draw(panel, hsess(st, 1, 1000))
-    ok(lineWith(panel, "Иван: " .. L("holdem.hist.raise", coins(30))), table.concat(lines(panel), " / "))
-    ok(lineWith(panel, L("holdem.historyWon", "Иван", coins(145))), "the pot in coins")
+    -- the texts as drawn (the coins are inline textures)
+    local function texts(HH_, s)
+      local out = {}
+      for _, b in ipairs(HH_.blocks(s)) do
+        for _, row in ipairs(b.rows) do
+          if row.text then out[#out + 1] = plain(row.text) end
+          for _, a in ipairs(row.list or {}) do out[#out + 1] = a.name .. ": " .. a.text end
+        end
+      end
+      return table.concat(out, "\n")
+    end
+    local got = texts(H, hsess(st, 1, 1000))
+    ok(got:find("Иван: " .. L("holdem.hist.raise", coins(30)), 1, true), got)
+    ok(got:find(L("holdem.historyWon", "Иван", coins(145)), 1, true), "the pot in coins")
     ok(coins(30) ~= "30", "a coin amount")
+    require("fit").check(panel.pool, panel.textW, "Холдем in coins")
     local w2, panel2 = setup(240, 400)
     local st2 = playHand(w2.ns.HandHistory, 1)
     w2.ns.HandHistory.draw(panel2, hsess(st2, 1))
-    ok(lineWith(panel2, "Иван: " .. L("holdem.hist.raise", "30")), "chips")
-    ok(not table.concat(lines(panel2), " "):find(plain(coins(30)), 1, true), "no coins at a fun table")
+    local chips = texts(w2.ns.HandHistory, hsess(st2, 1))
+    ok(chips:find("Иван: " .. L("holdem.hist.raise", "30"), 1, true), "chips")
+    ok(not chips:find(coins(30), 1, true), "no coins at a fun table")
   end)
 
   it("a snapshot mid-hand (my events jumped, gameNo moved on): one record, later actions where they belong", function()
@@ -675,7 +874,7 @@ describe("ui: hand history — Холдем", function()
     local got = {}
     for _, a in ipairs(H.tables["t#1"].hands[1].acts) do got[#got + 1] = table.concat({ a.street, a.seat, a.k, tostring(a.amt) }, " ") end
     eq(got, { "0 2 sb 5", "0 3 bb 10", "0 1 raise 30", "1 3 call 40", "2 3 check nil" })
-    ok(lineWith(panel, "Kiro: " .. L("holdem.hist.call", "40")), "the call after the snapshot")
+    ok(lineWith(H, hsess(st, 1), "Kiro: " .. L("holdem.hist.call", "40")), "the call after the snapshot")
   end)
 
   it("a game that ends after its first hand: the next game's hand 1 is a record of its own", function()
@@ -703,7 +902,7 @@ describe("ui: hand history — Холдем", function()
     H2.observe(hsess(st3, 1))
     eq(#H2.tables["t#1"].hands, 2)
     H.draw(panel, hsess(st2, 1))
-    eq(lines(panel)[1], plain(L("table.historyHand", 1)) .. " · " .. plain(L("holdem.historyBlinds", "5", "10")))
+    eq({ lines(H, hsess(st2, 1))[1], lines(H, hsess(st2, 1))[2] }, { L("table.historyHand", 1), L("holdem.historyBlinds", "5", "10") })
   end)
 
   it("a record begun mid-hand: a short blind posts what it had", function()
@@ -715,8 +914,8 @@ describe("ui: hand history — Холдем", function()
     HH.apply(st, st.turn, { k = "raise", to = 30 })
     H.observe(hsess(st, 1)) -- the first state this client sees
     H.draw(panel, hsess(st, 1))
-    ok(lineWith(panel, "Мария: " .. L("holdem.hist.sb", "3")), table.concat(lines(panel), " / "))
-    ok(lineWith(panel, "Kiro: " .. L("holdem.hist.bb", "10")), "the big blind")
+    ok(lineWith(H, hsess(st, 1), "Мария: " .. L("holdem.hist.sb", "3")), table.concat(lines(H, hsess(st, 1)), " / "))
+    ok(lineWith(H, hsess(st, 1), "Kiro: " .. L("holdem.hist.bb", "10")), "the big blind")
   end)
 
   it("leaving the table drops its history; another table starts empty", function()
@@ -731,7 +930,7 @@ describe("ui: hand history — Холдем", function()
     H.observe(s)
     eq({ H.tables["t#1"], H.tables["t#2"] ~= nil }, { nil, true })
     H.draw(panel, s)
-    ok(lineWith(panel, w.ns.L("table.historyHand", 1)), "the new table's hand")
+    ok(lineWith(H, s, w.ns.L("table.historyHand", 1)), "the new table's hand")
     eq(#H.tables["t#2"].hands, 1)
   end)
 end)
