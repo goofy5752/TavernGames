@@ -355,6 +355,7 @@ describe("chess at a staked table", function()
     eq(#s.state.moves, 6)
     ok(s.stakeFoul == nil or s.stakeFoul == "unseen", "foul " .. tostring(s.stakeFoul))
     eq(s.chessLog.list, { "e2e4", "g1f3", "f1c4" })
+    eq(s.chessLog.ply, { 1, 3, 5 })
     plays(sim, host, again, "d2d3 d7d6 c2c3")
     s:requestSync(); sim:run(0) -- a later snapshot of my game: my log still holds it
     ok(s.stakeFoul == nil or s.stakeFoul == "unseen", "foul " .. tostring(s.stakeFoul))
@@ -521,8 +522,37 @@ describe("chess at a staked table", function()
     local sim, host, guest = open(10, SK)
     plays(sim, host, guest, "e2e4")
     ok(sim.envs[G].db.stakeChess, "no saved log")
-    eq(sim.envs[G].db.stakeChess.list, { "e2e4" })
+    eq(sim.envs[G].db.stakeChess.log, "1:e2e4")
     ns.Stake.clear(guest)
     eq(sim.envs[G].db.stakeChess, nil)
+  end)
+
+  it("my saved log of a 40-move game is one string well under 1 KB", function()
+    local db = { stakeSat = { tid = "t#1" } }
+    local s = { tid = "t#1", stakeNo = 1, mySeat = 2, state = { white = 2, moves = {} },
+      client = { env = { now = function() return 0 end, db = db } } }
+    for ply = 1, 79, 2 do -- 40 moves of mine (white), a draw offer with each
+      for i = #s.state.moves + 1, ply - 1 do s.state.moves[i] = {} end
+      SC.sent(s, move("e7e8q"))
+      s.state.moves[ply] = {}
+      SC.sent(s, { k = "offer" })
+    end
+    eq(#s.chessLog.list, 80)
+    local saved = db.stakeChess
+    eq(saved.list, nil); eq(saved.ply, nil)
+    eq(saved.log:sub(1, 24), "1:e7e8q 1:offer 3:e7e8q ")
+    ok(#saved.log < 1024, "bytes " .. #saved.log)
+  end)
+
+  it("one snapshot replays its game at most once", function()
+    local sim, host, guest = open(10, SK)
+    plays(sim, host, guest, "e2e4 e7e5 g1f3 b8c6")
+    local new, n = E.new, 0
+    E.new = function(...) n = n + 1; return new(...) end
+    guest.session:requestSync(); sim:run(0)
+    E.new = new
+    eq(#guest.session.state.moves, 4)
+    eq(guest.session.stakeFoul, nil)
+    eq(n, 1)
   end)
 end)
