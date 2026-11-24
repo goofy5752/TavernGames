@@ -749,7 +749,20 @@ local function funLog(game, n, seed)
 end
 
 -- The log in chunks of 100 lines -> the line count, the first 16 hex of SHA-256 of each chunk (its lines joined by "\n").
+-- The reference was recorded at version 0.1.0: the addon's own version in a log line (its HI's
+-- ver=) reads as that one again, so a version bump alone never breaks the byte-identical check.
+local REF_VERSION = "0.1.0"
+local function asRecorded(line)
+  local own = 'ver="' .. tostring(ns.Const.VERSION) .. '"'
+  local i, j = line:find(own, 1, true)
+  if not i then return line end
+  return line:sub(1, i - 1) .. 'ver="' .. REF_VERSION .. '"' .. line:sub(j + 1)
+end
+
 local function chunks(log)
+  local norm = {}
+  for i, line in ipairs(log) do norm[i] = asRecorded(line) end
+  log = norm
   local out = {}
   for from = 1, #log, 100 do
     out[#out + 1] = ns.Sha256.hex(table.concat(log, "\n", from, math.min(from + 99, #log))):sub(1, 16)

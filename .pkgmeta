@@ -1,5 +1,10 @@
 package-as: TavernGames
 
+# The release notes the packager hands to CurseForge and GitHub.
+manual-changelog:
+  filename: CHANGELOG.md
+  markup-type: markdown
+
 # Every tag is the exact version vendored under Libs/ (LICENSE-THIRD-PARTY.md).
 externals:
   Libs/LibStub:
