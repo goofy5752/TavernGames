@@ -76,6 +76,65 @@ describe("the clock", function()
     eq({ s.clockAt, s.clockKey, s.clockSeen }, { nil, nil, nil })
   end)
 
+  it("my own move is credited with my round trip, and only one sent on this turn counts", function()
+    local Clock = ns.Clock
+    local mv = { k = "move", f = 13, t = 29 }
+    -- I am white (seat 2) on turn since 100 s; my ACT went at 103 s, its EV is back at 104 s.
+    local function mine(sent, dt)
+      local s, clock = session(30)
+      local forged = false
+      s.hook = function(_, name) if name == "forged" then forged = true end end
+      s.stake, s.mySeat, s.sent = 50000, 2, sent
+      clock.t = 100; Clock.mark(s)
+      clock.t = 104
+      Clock.before(s, { seat = 2, a = mv, dt = dt })
+      return s, forged
+    end
+    local s = mine({ { a = mv, at = 50 }, { a = mv, at = 103 } }, 40) -- the one at 50 s was an earlier turn's
+    eq(s.clockOwn.n, 1)
+    ok(math.abs(s.clockOwn.sum) < 1e-9, "thought 3 s, a round trip of 1 s: " .. s.clockOwn.sum)
+    local earlier = mine({ { a = mv, at = 50 } }, 40)
+    eq(earlier.clockOwn, nil) -- nothing of this turn to measure against
+    local s2, forged = mine({ { a = mv, at = 103 } }, 30 + 10 + Clock.tolerance(1) + 1)
+    eq(forged, true)
+    eq(s2.clockOwn.n, 1)
+    -- The credit is at most RTT_MAX: a move that came back 5 s after it went.
+    local t = session(30)
+    t.client.env.now = function() return 108 end
+    eq(Clock.countOwn(t, 80, 103, 100), false)
+    eq(t.clockOwn.sum, 80 - 30 - Clock.RTT_MAX)
+    eq(Clock.countOwn(t, 70, 103, 100, 103.2), false) -- arrivedAt given: a round trip of 2 tenths
+    ok(math.abs(t.clockOwn.sum - (40 + 70 - 30 - 2)) < 1e-9)
+    eq(t.clockOwn.n, 2)
+  end)
+
+  it("a flag on a turn a snapshot brought is unseen when my clock cannot confirm it", function()
+    local Clock = ns.Clock
+    -- I (seat 2) am on turn, measured from a snapshot at 50 s (clockSeen false); 3000 tenths left.
+    local function due(t, seen)
+      local s, clock = session(5)
+      s.stake, s.mySeat = 50000, 2
+      clock.t = 50; Clock.mark(s, not seen)
+      clock.t = t
+      return Clock.flagDue(s, { seat = 2, a = { k = "flag" }, auto = true }), s.stakePend
+    end
+    eq({ due(350, false) }, { true })            -- gone by my clock even from the snapshot: honest
+    eq({ due(200, false) }, { true, "unseen" })  -- not gone: a question, never forged
+    eq({ due(200, true) }, { false })            -- a turn I saw begin: forged (Member.onEvent)
+    eq({ due(350, true) }, { true })
+  end)
+
+  it("a claim still waiting when I become host is dropped", function()
+    local Clock = ns.Clock
+    local s = session(5)
+    s.mySeat, s.client.after = 1, function() return { cancel = function() end } end
+    local stopped = false
+    s.claimTimer = { cancel = function() stopped = true end }
+    Clock.arm(s, E, s.state.turn)
+    eq(s.claimTimer, nil); ok(stopped)
+    ok(s.turnTimer ~= nil)
+  end)
+
   it("only a move of the claimed seat fails my claim", function()
     local Clock = ns.Clock
     -- I (seat 2, white) moved; seat 1 is on turn and I claimed its flag.
@@ -113,15 +172,20 @@ describe("the clock", function()
     local s, clock = session(5)
     s.mySeat = 2
     local c = { at = 0, seen = true, seat = 2, left = 3000 }
+    local unseen = { at = 0, seen = false, seat = 2, left = 3000 } -- measured from a snapshot
+    local function verdict(seat, t) return { Clock.flagHonest(s, seat, t) } end
     clock.t = 298
-    eq(Clock.flagHonest(s, 2, c), false)
+    eq(verdict(2, c), { false, "forged" })
+    eq(verdict(2, unseen), { false, "unseen" }) -- never forged on a turn I did not see begin
     clock.t = 299
-    eq(Clock.flagHonest(s, 2, c), true) -- FLAG_TOL left
-    eq(Clock.flagHonest(s, 1, c), false)
-    eq(Clock.flagHonest(s, 2, { at = 0, seen = false, seat = 2, left = 3000 }), false)
+    eq(verdict(2, c), { true }) -- FLAG_TOL left
+    eq(verdict(2, unseen), { true }) -- gone by my clock even from the snapshot on
+    eq(verdict(1, c), { false, "forged" })
+    eq(verdict(2, nil), { false, "unseen" }) -- my clock measured nothing
     s.sent = { { a = { k = "move", f = 13, t = 29 }, at = 295 } } -- the last seconds: my own lag
-    eq(Clock.flagHonest(s, 2, c), true)
+    eq(verdict(2, c), { true })
     s.sent[1].at = 285 -- in time, and the host has not shown it: dropped
-    eq(Clock.flagHonest(s, 2, c), false)
+    eq(verdict(2, c), { false, "forged" })
+    eq(verdict(2, unseen), { false, "unseen" })
   end)
 end)
