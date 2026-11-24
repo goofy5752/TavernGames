@@ -453,6 +453,25 @@ describe("host silence and convergence", function()
 
   -- Two players cut from each other: neither can tell who was cut off; nobody follows either.
   -- As before, the claimant keeps the table; what matters is that they end at one state.
+  -- e2e soak (seed 500126): the same, before the host played anything past the cut: the
+  -- claimant holds no less than the host, and still the host others follow keeps the table.
+  it("a seat cut off claims alone with nothing missed; back, the host others follow keeps the table", function()
+    local sim = Sim.new()
+    local a = sim:add(A, { cls = "MAGE" }); local b = sim:add(B, { cls = "PRIEST" }); local c = sim:add(C, { cls = "ROGUE" })
+    sim:run(1)
+    local tid = a:openTable{ game = "fake", access = "guild", turn = 90 }; sim:run(3)
+    b:sit(tid, 2); c:sit(tid, 3); sim:run(3)
+    incs(sim, a)
+    local q = a.session.seq
+    sim:offline(B); sim:run(80)
+    eq({ b.session.role, b.session.seq, a.session.seq }, { "host", q, q }) -- nothing played meanwhile
+    sim:online(B); b.session:sendTBL(); sim:run(1) -- its claim is heard before the host plays on
+    eq({ a.session.role, a.session.epoch }, { "host", 1 })
+    sim:run(40)
+    eq({ a.session.role, a.session.epoch, c.session.host, b.session.host, b.session.role }, { "host", 1, A, A, "player" })
+    eq(b.session.state, a.session.state); eq(c.session.state, a.session.state)
+  end)
+
   it("two players: the guest cut off claims alone; back, both end at the claimant's table", function()
     local sim, a, b = ttt()
     ok(a:act{k="mark", c=1}); sim:run(1); ok(b:act{k="mark", c=5}); sim:run(1)

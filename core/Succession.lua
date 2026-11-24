@@ -62,12 +62,12 @@ end
 -- took up its stale state: the events since it was cut off (moves, settled
 -- hands, their ledger entries) undone. So a host tells whether a seated member
 -- spoke to it lately, f (Succession.followed), and a host that took the table
--- over also where its epoch began, b = {e, q} (the epoch my seq counted in and
--- that seq, s.base). A seat that holds a later event of that line than b
+-- by silence also where its epoch began, b = {e, q} (the epoch my seq counted in and
+-- that seq, s.base). A seat that holds as much of that line as b or more
 -- (Succession.behind) follows no such host while nobody follows it, when it
 -- still hears its own table (a member: its host is not silent; a host: a member
 -- spoke to it lately); and such a host, hearing the host it took over from,
--- followed by others, play past b (TCK) or announce the table at b's epoch
+-- followed by others, still run it (TCK) or announce the table at b's epoch
 -- without my seat (TBL: it stood me up), gives the table back
 -- (Succession.yields). Two hosts nobody follows (two players cut from each
 -- other) end as before: the claimant keeps the table. A host that is really
@@ -78,13 +78,14 @@ end
 -- snapshot yet (stale) still holds the old epoch's events.
 local function heldEpoch(s) return s.stale and s.staleE or s.epoch end
 
--- Does a host whose epoch began at b miss events I hold -> bool. A host that
--- took the table over itself holds, of that line, what it held then (s.base).
-function Succession.behind(s, b)
+-- Does a host whose epoch began at b miss events I hold (`even`: or hold no
+-- more than I do) -> bool. A host that took the table over itself holds, of that
+-- line, what it held then (s.base).
+function Succession.behind(s, b, even)
   if type(b) ~= "table" or type(b.e) ~= "number" or type(b.q) ~= "number" then return false end
   local mine = s.role == "host" and s.base
   local e, q = mine and mine.e or heldEpoch(s), mine and mine.q or s.seq
-  return b.e < e or (b.e == e and b.q < q)
+  return b.e < e or (b.e == e and (b.q < q or (even == true and b.q == q)))
 end
 
 -- Host: has a seated member spoken to me (PNG, SYN, ACT: s.memberHeard, since
@@ -112,10 +113,11 @@ function Succession.rival(s, kind)
 end
 
 -- Was the host of message m cut off from a table I still hear (see above) -> bool.
+-- A host others follow keeps its table against one nobody follows that holds no more than it.
 local function cutOff(s, m)
-  if not s.mySeat or type(m) ~= "table" or m.f ~= false or not Succession.behind(s, m.b) then return false end
-  if s.role == "host" then return Succession.followed(s) end
-  return s.client.env.now() - (s.hostHeard or 0) <= C.PING_EVERY + C.SYN_MIN_GAP -- my host spoke lately
+  if not s.mySeat or type(m) ~= "table" or m.f ~= false then return false end
+  if s.role == "host" then return Succession.followed(s) and Succession.behind(s, m.b, true) end
+  return Succession.behind(s, m.b, true) and s.client.env.now() - (s.hostHeard or 0) <= C.PING_EVERY + C.SYN_MIN_GAP -- my host spoke lately
 end
 
 -- What `sender`, speaking as a host at `epoch` (TBL, SNP or TCK `m`), is to session s:
@@ -134,9 +136,8 @@ function Succession.authority(s, sender, epoch, m)
 end
 
 -- Host that took the table over and that nobody follows: `sender`, the host of
--- the epoch my claim came from, still plays it past my base (its TCK m at that
--- epoch, followed by others, m.f, m.q past it; or its TBL m at that epoch, its
--- seats without me: it stood me up)
+-- the epoch my claim came from, still runs it (its TCK m at that epoch, followed
+-- by others, m.f; or its TBL m at that epoch, its seats without me: it stood me up)
 -- -> true: I was the one cut off; I follow it again.
 function Succession.yields(s, sender, m)
   local b = s.base
@@ -144,7 +145,7 @@ function Succession.yields(s, sender, m)
   local seats = m.t == "TBL" and type(m.s) == "table" and m.s or nil
   if seats then
     if seatOf(seats, s.client.env.me) then return false end
-  elseif m.f ~= true or type(m.q) ~= "number" or m.q <= b.q then
+  elseif m.f ~= true then
     return false
   end
   Succession.follow(s, sender, m.e, seats)
@@ -377,11 +378,10 @@ function Succession.onHandoff(client, sender, m)
   if s.stakeAsk then return ns.Stake.standUp(client, s) end -- nor an asked seat (Succession.claim)
   local seat = seatOf(s.seats, sender)
   if seat then s:applyUnsent(0, { k = "stand", seat = seat, why = "left" }) end -- its stand never reached me
-  local base = { e = heldEpoch(s), q = s.seq }
   s.epoch = m.e
   s.invited = s.invited or {}
   s:addInvited(m.inv) -- invitations sent after my snapshot
-  becomeHost(s, sender, nil, base)
+  becomeHost(s, sender) -- given the table, not claimed: no b (its members follow the HND)
 end
 
 -- TBL about my table from somebody claiming to host it.
