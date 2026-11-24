@@ -209,6 +209,17 @@ function POOL:button(x, y, w, h, onClick)
   return self:put(b, x, y, w, h)
 end
 
+-- An invisible hover area at x, y, w x h: its tooltip gives `name`'s whole name (a short one is drawn there).
+function POOL:hover(x, y, w, h, name)
+  local f = self:take("hover", function()
+    local area = CreateFrame("Frame", nil, self.content)
+    W.nameTip(area, function() return area.name end)
+    return area
+  end)
+  f.name = name
+  return self:put(f, x, y, w, h)
+end
+
 -- A chess piece's icon (signed piece) `size` px at x, y; `disc`: on a small light disc, so a dark
 -- piece reads on the dark window.
 function POOL:piece(x, y, size, piece, disc)

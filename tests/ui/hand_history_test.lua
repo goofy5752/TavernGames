@@ -34,6 +34,8 @@ local function plain(text) return (tostring(text):gsub("|c%x%x%x%x%x%x%x%x", "")
 
 -- `text` without inline textures (|T…|t: a suit icon, a coin) either.
 local function bare(text) return (plain(text):gsub("|T.-|t ?", "")) end
+-- A seat's name as drawn, the bot's cog after a bot's short name read as "[bot]".
+local function nm(text) return (text:gsub(" |T[^|]*botmark[^|]*|t", "[bot]")) end
 
 -- One row of the window's model (H.blocks) as plain lines, for the tests to read:
 --   a trick "1. Иван 8C · Мария 7C* +21 them" (* the card that took it; … under way),
@@ -48,16 +50,16 @@ local function say(row)
   end
   if row.k == "trick" then
     local parts = {}
-    for k, c in ipairs(row.cards) do parts[k] = c.name .. " " .. c.face .. (c.won and "*" or "") end
+    for k, c in ipairs(row.cards) do parts[k] = nm(c.name) .. " " .. c.face .. (c.won and "*" or "") end
     return { row.n .. ". " .. table.concat(parts, " · ") .. " " .. (row.pts and ("+" .. row.pts) or "…") .. (row.side and (" " .. row.side) or "") }
   elseif row.k == "event" then return { bare(row.text) .. " [" .. faces(row.cards) .. "]" }
   elseif row.k == "street" then
     return { row.name .. (#row.cards > 0 and (": " .. faces(row.cards, function(k) return k <= row.dim and "~" or "" end)) or "") }
   elseif row.k == "acts" then
     local out = {}
-    for k, a in ipairs(row.list) do out[k] = a.name .. ": " .. bare(a.text) end
+    for k, a in ipairs(row.list) do out[k] = nm(a.name) .. ": " .. bare(a.text) end
     return out
-  elseif row.k == "show" then return { row.name .. " " .. faces(row.cards) .. ": " .. row.cat .. (row.best and "*" or "") }
+  elseif row.k == "show" then return { nm(row.name) .. " " .. faces(row.cards) .. ": " .. row.cat .. (row.best and "*" or "") }
   elseif row.k == "mine" then return { row.text .. " " .. faces(row.cards) }
   elseif row.k == "legend" then
     local out = {}
@@ -350,15 +352,22 @@ describe("ui: hand history — Белот", function()
     local long = { "Ivan Petrov-Forever", "Bot Barleybrewster", "Ivan Kolev", "Bot Number12" }
     book(H, "A", { { { "JS", "7S", "AS", "8S" }, 1, 2 }, { { "TH", "TD", "TC", "TS" }, 2, 3 } }, long)
     local s = bsess(EB.new{ first = 1 }, 1)
-    eq(lines(H, s)[4], "1. Ivan P. JS · Barleybrewster 7S* · Ivan K. AS · Number12 8S +31 them")
+    eq(lines(H, s)[4], "1. Ivan P. JS · Barleybrewster[bot] 7S* · Ivan K. AS · Number12[bot] 8S +31 them")
     H.draw(panel, s)
     ok(Fit.check(panel.pool, panel.textW, "Белот, long names") > 20, "widgets checked")
     -- the bot's long name under its card: smaller, then on two lines, all of it
     local found
     for _, p in ipairs(panel.pool.placed) do
-      if p.r.objectType == "FontString" and plain(p.r.text):gsub("\n", "") == "Barleybrewster" then found = p.r end
+      if p.r.objectType == "FontString" and nm(plain(p.r.text):gsub("\n", "")) == "Barleybrewster[bot]" then found = p.r end
     end
     ok(found and found.text:find("\n", 1, true), "the name wraps: " .. tostring(found and found.text))
+    -- a hover over a name under its card gives the whole name
+    local areas = {}
+    for _, p in ipairs(panel.pool.placed) do if p.r.objectType == "Frame" and p.r.name then areas[#areas + 1] = p.r end end
+    eq(#areas, 8) -- two tricks of four cards
+    w:hover(areas[1]); eq(w.G.GameTooltip.lines, { "Ivan Petrov" }) -- no realm
+    areas[1].scripts.OnLeave(areas[1])
+    w:hover(areas[2]); eq(w.G.GameTooltip.lines, { "Bot Barleybrewster" })
   end)
 
   it("a passed-out deal says so; a deal voided in the auction does not", function()
@@ -463,11 +472,11 @@ describe("ui: hand history — Сантасе", function()
     eq(lines(H, s), {
       L("table.historyHand", 1),
       L("santase.historyTrump") .. " JH " .. w.ns.Cards.suitName("H"),
-      "1. Иван AD* · Ivanov JC +13 us",
+      "1. Иван AD* · Ivanov[bot] JC +13 us",
       L("santase.historyMarry", "Иван", 40) .. " [KH QH]",
-      "2. Иван KH* · Ivanov QC +7 us",
+      "2. Иван KH* · Ivanov[bot] QC +7 us",
       L("santase.historyClose", "Иван") .. " []",
-      "3. Иван QH* · Ivanov AS +14 us",
+      "3. Иван QH* · Ivanov[bot] AS +14 us",
       won,
       "= " .. won,
     })
@@ -496,15 +505,15 @@ describe("ui: hand history — Сантасе", function()
     local ls = lines(H, s)
     eq({ ls[2], ls[3], ls[4], ls[5], ls[6] }, {
       bare(L("santase.trump", w.ns.Cards.suitName("D"))),
-      "1. Иван TC · Ivanov AC* +21 them",
+      "1. Иван TC · Ivanov[bot] AC* +21 them",
       L("santase.historySwap", "Ivanov") .. " [9D]",
       L("santase.historyMarry", "Ivanov", 40) .. " [KD QD]",
-      "2. Ivanov KD* · Иван JD +6 them",
+      "2. Ivanov[bot] KD* · Иван JD +6 them",
     })
-    eq(ls[16], "12. Иван 9C · Ivanov JC* +12 them") -- the stock played out: the last trick's 10
+    eq(ls[16], "12. Иван 9C · Ivanov[bot] JC* +12 them") -- the stock played out: the last trick's 10
     eq(ls[17], L("santase.historyWon", "Ivanov", 1, 80))
     H.tables["t#1"].hands[1].shut = true -- closed: no 10
-    eq(lines(H, s)[16], "12. Иван 9C · Ivanov JC* +2 them")
+    eq(lines(H, s)[16], "12. Иван 9C · Ivanov[bot] JC* +2 them")
     H.draw(panel, s)
     require("fit").check(panel.pool, panel.textW, "Сантасе events")
   end)

@@ -35,6 +35,7 @@ function R.trick(P, row, y, wd, first)
     P:card(sx + (SLOT - 2 - NORMAL_W) / 2, y, "normal", c and c.face, c and c.won and "won" or nil)
     if c then
       local _, h = P:text(sx, y + NORMAL_H + 2, SLOT - 2, c.name, "ui", 10, c.color, "CENTER")
+      if c.full then P:hover(sx, y + NORMAL_H + 2, SLOT - 2, h, c.full) end
       tall = math.max(tall, h)
     end
   end
@@ -115,6 +116,7 @@ function R.acts(P, row, y, wd)
   local top = y
   for _, a in ipairs(row.list) do
     local _, h1 = P:text(x, y, whoW, a.name, "ui", 11, a.color)
+    if a.full then P:hover(x, y, whoW, h1, a.full) end
     local bold = a.style == "raise" or a.style == "allin"
     local color = a.style == "fold" and FOLD or a.style == "raise" and "goldHi" or a.style == "allin" and "oMark" or "ink"
     local _, h2 = P:text(x + whoW + 8, y, aw - whoW - 8, a.text, bold and "uiBold" or "ui", 11, color)
@@ -128,6 +130,7 @@ function R.show(P, row, y, wd)
   line(P, X0, y, wd)
   local nameW = math.min(P:measure(row.name, "ui", 11), 90)
   local _, nh = P:text(X0, y + 4 + (SMALL_H - 14) / 2, nameW, row.name, "ui", 11, row.color)
+  if row.full then P:hover(X0, y + 4 + (SMALL_H - 14) / 2, nameW, nh, row.full) end
   local cx = smalls(P, X0 + nameW + 6, y + 4, row.cards) + 6
   local font, color = row.best and "uiBold" or "ui", row.best and "goldHi" or "inkDim"
   local room = X0 + wd - cx
@@ -149,7 +152,8 @@ function R.side(P, row, y, wd)
     local need = 20 + P:measure(s.name, "ui", 11) + (k < #row.list and 14 or 0)
     if x > left and x + need > right then x, y = left, y + lh + 2 end
     P:piece(x, y, 16, s.piece, true)
-    local fs = P:text(x + 20, y + 2, right - x - 20, s.name, "ui", 11, s.color)
+    local fs, sh = P:text(x + 20, y + 2, right - x - 20, s.name, "ui", 11, s.color)
+    if s.full then P:hover(x + 20, y + 2, math.min(W.textWidth(fs), right - x - 20), sh, s.full) end
     x = x + 20 + math.min(W.textWidth(fs), right - x - 20) + 4
     if k < #row.list then P:text(x, y + 2, 10, "·", "ui", 11, "inkDim"); x = x + 10 end
   end

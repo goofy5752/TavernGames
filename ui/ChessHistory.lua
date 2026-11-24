@@ -59,8 +59,8 @@ end
 local function block(hand)
   local side = {}
   for k, seat in ipairs({ hand.white, 3 - hand.white }) do
-    local name, color = H.who(hand, seat)
-    side[k] = { piece = k == 1 and 6 or -6, name = name, color = color }
+    local name, color, full = H.who(hand, seat)
+    side[k] = { piece = k == 1 and 6 or -6, name = name, color = color, full = full }
   end
   local rows, n = {}, #hand.moves
   for i = 1, n, 2 do

@@ -197,6 +197,11 @@ describe("ui: the chess table history", function()
     buttons[2]:GetScript("OnClick")(buttons[2])
     local Fit = require("fit")
     ok(Fit.check(panel.pool, panel.textW, "the chess history") > 40, "widgets checked")
+    -- a hover over a side's name gives the whole name
+    local hovers = {}
+    for _, p in ipairs(panel.pool.placed) do if p.r.objectType == "Frame" and p.r.name then hovers[#hovers + 1] = p.r.name end end
+    eq(#hovers, 4) -- the two sides of each game
+    for _, name in ipairs(hovers) do ok(name == game.names[1] or name == game.names[2], "a side's whole name: " .. tostring(name)) end
     -- the icons on their light discs: every piece icon follows a disc at its place
     local discs, icons = 0, 0
     for _, p in ipairs(panel.pool.placed) do

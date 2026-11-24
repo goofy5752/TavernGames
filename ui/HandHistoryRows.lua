@@ -29,17 +29,19 @@ function H.isOpen(hand, newest)
 end
 function H.toggle(hand, newest) H.opened[hand] = not H.isOpen(hand, newest) end
 
--- The seat's short name (Names.short among the hand's seats) and its class colour {r, g, b}.
+-- The seat's short name (W.short among the hand's seats: a bot's with its cog), its class colour
+-- {r, g, b} and the whole name (nil: none), which a hover over the name shows.
 function H.who(hand, seat)
   local name = seat and hand.names[seat]
   if type(name) ~= "string" then return "?", { Theme.rgb("ink") } end
-  return ns.Names.short(name, hand.names), { W.nameColor(ns.client, name) }
+  return W.short(name, hand.names), { W.nameColor(ns.client, name) }, name
 end
 
--- The same, painted in its colour for a sentence.
+-- The same, painted in its colour for a sentence (the cog after the colour).
 function H.whoText(hand, seat)
-  local name, c = H.who(hand, seat)
-  return W.paint(name, c[1], c[2], c[3])
+  local name = seat and hand.names[seat]
+  if type(name) == "string" then return W.shortColored(ns.client, name, hand.names) end
+  return W.paint("?", Theme.rgb("ink"))
 end
 
 local GREEN, RED = { 0x8f / 255, 0xd1 / 255, 0x8a / 255 }, { Theme.rgb("oMark") }
@@ -69,8 +71,8 @@ end
 local function trickRow(hand, n, t, cur, slots, pts, side)
   local cards = {}
   for k, c in ipairs(t.cards) do
-    local name, color = H.who(hand, c.seat)
-    cards[k] = { face = c.face, name = name, color = color, won = not cur and c.seat == t.win }
+    local name, color, full = H.who(hand, c.seat)
+    cards[k] = { face = c.face, name = name, color = color, full = full, won = not cur and c.seat == t.win }
   end
   return { k = "trick", n = n, slots = slots, cards = cards, pts = not cur and pts or nil, side = not cur and side or nil, cur = cur }
 end
@@ -213,16 +215,16 @@ local function holdem(hand, s)
     local list = {}
     for _, a in ipairs(hand.acts) do
       if a.street == street then
-        local name, color = H.who(hand, a.seat)
+        local name, color, full = H.who(hand, a.seat)
         local text = a.amt and L("holdem.hist." .. a.k, amount(s, a.amt)) or L("holdem.hist." .. a.k)
-        list[#list + 1] = { name = name, color = color, text = text, style = STYLE[a.k] }
+        list[#list + 1] = { name = name, color = color, full = full, text = text, style = STYLE[a.k] }
       end
     end
     if #list > 0 then rows[#rows + 1] = { k = "acts", list = list } end
     for _, x in ipairs(hand.open or {}) do
       if x.at == street then
-        local name, color = H.who(hand, x.seat)
-        rows[#rows + 1] = { k = "show", name = name, color = color, cards = x.cards, cat = L("holdem.historyTurned") }
+        local name, color, full = H.who(hand, x.seat)
+        rows[#rows + 1] = { k = "show", name = name, color = color, full = full, cards = x.cards, cat = L("holdem.historyTurned") }
       end
     end
   end
@@ -234,8 +236,8 @@ local function holdem(hand, s)
   local won = {}
   for _, x in ipairs(hand.won or {}) do won[x.seat] = true end
   for _, x in ipairs(hand.shown or {}) do
-    local name, color = H.who(hand, x.seat)
-    rows[#rows + 1] = { k = "show", name = name, color = color, cards = x.cards, cat = L("holdem.cat." .. tostring(x.cat)), best = won[x.seat] }
+    local name, color, full = H.who(hand, x.seat)
+    rows[#rows + 1] = { k = "show", name = name, color = color, full = full, cards = x.cards, cat = L("holdem.cat." .. tostring(x.cat)), best = won[x.seat] }
   end
   local fold, lines = hand.shown and #hand.shown == 0, {}
   for _, x in ipairs(hand.won or {}) do
