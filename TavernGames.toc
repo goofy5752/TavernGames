@@ -143,6 +143,7 @@ ui/TablePanels.lua
 ui/StakePanels.lua
 ui/HandHistory.lua
 ui/HandHistoryPanel.lua
+ui/ChessHistory.lua
 ui/games/TicTacToeView.lua
 ui/games/DeathRollView.lua
 ui/games/TrickHold.lua

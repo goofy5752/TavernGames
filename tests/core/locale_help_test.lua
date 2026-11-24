@@ -22,11 +22,11 @@ describe("locale and help", function()
     end
   end)
 
-  it("every help block and intro key exists in both languages; topics are hall, ttt, deathroll, santase, belot, tabla, holdem, fair, stakes, ledger, soon", function()
+  it("every help block and intro key exists in both languages; topics are hall, ttt, deathroll, santase, belot, tabla, holdem, chess, fair, stakes, ledger, soon", function()
     local H = ns.Help
     local ids = {}
     for i, t in ipairs(H.topics) do ids[i] = t.id end
-    eq(ids, { "hall", "ttt", "deathroll", "santase", "belot", "tabla", "holdem", "fair", "stakes", "ledger", "board", "history", "soon" })
+    eq(ids, { "hall", "ttt", "deathroll", "santase", "belot", "tabla", "holdem", "chess", "fair", "stakes", "ledger", "board", "history", "soon" })
     eq(#H.intro, 4)
     for _, t in ipairs(H.topics) do
       both(t.title, "topic title")
@@ -102,7 +102,7 @@ describe("locale and help", function()
     eq(H.get("nope"), nil)
   end)
 
-  it("every quoted label in the hall, ttt, deathroll, santase, belot, tabla, holdem, fair, stakes, ledger and soon help is a UI label, and no help title copies one", function()
+  it("every quoted label in the hall, ttt, deathroll, santase, belot, tabla, holdem, chess, fair, stakes, ledger and soon help is a UI label, and no help title copies one", function()
     local QUOTES = { bg = { "„", "“" }, en = { "“", "”" } }
     for lang, q in pairs(QUOTES) do
       local ui, shapes = {}, {}

@@ -30,7 +30,7 @@ local _, ns = ...
 --     me, open, shown = {{seat, cards, cat}}, won = {{seat, amt}}, void, done.
 local E = ns.Engines
 
-local H = { MAX = 10, GAMES = { belot = true, santase = true, holdem = true }, tables = {} }
+local H = { MAX = 10, GAMES = { belot = true, santase = true, holdem = true }, DRAW = {}, tables = {} }
 ns.HandHistory = H
 
 local function suit(face) return type(face) == "string" and face:sub(2, 2) or nil end
@@ -259,7 +259,7 @@ local function holdem(s, st, b)
   end
 end
 
-local RECORD = { belot = belot, santase = santase, holdem = holdem }
+H.RECORD = { belot = belot, santase = santase, holdem = holdem }
 
 -- The client's session changed (s, nil once I left): another table's history goes,
 -- the table's state is read into its own.
@@ -273,7 +273,7 @@ function H.observe(s)
   -- the next change is read from it, not from the state before it.
   b.jump = b.seq ~= nil and (s.epoch ~= b.epoch or (s.seq ~= b.seq and s.seq ~= b.seq + 1))
   b.seq, b.epoch = s.seq, s.epoch
-  RECORD[s.game](s, s.state, b)
+  H.RECORD[s.game](s, s.state, b)
   b.ver = b.ver + 1
 end
 

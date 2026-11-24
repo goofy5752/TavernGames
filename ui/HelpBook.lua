@@ -1,6 +1,6 @@
 local _, ns = ...
 
--- The rules book (spec 5.3а): a 640 x 520 sheet of cream paper in the brass
+-- The rules book (spec 5.3а): a 640 x 540 sheet of cream paper in the brass
 -- frame, titled „Книжка с правила“. The topics of core/Help.lua are listed on
 -- the left; the right side shows the chosen topic's blocks: "p" as text,
 -- "example" as an indented italic block with a brass rule on its left, "board"
@@ -14,7 +14,7 @@ local _, ns = ...
 local Theme, W, L = ns.Theme, ns.W, ns.L
 
 local HelpBook = {
-  WIDTH = 640, HEIGHT = 520, -- thirteen topics (F4 added „Класация“ and „История“)
+  WIDTH = 640, HEIGHT = 540, -- fourteen topics (F4 added „Класация“ and „История“, chess „Шах“)
   frame = nil,   -- built on the first open
   current = nil, -- the topic id shown
   topics = {},   -- { id, button } per topic, in Help order

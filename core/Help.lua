@@ -93,6 +93,15 @@ Help.topics = {
     { kind = "p", key = "help.holdem.fair" },
     { kind = "p", key = "help.holdem.stake" },
   } },
+  { id = "chess", title = "game.chess", blocks = {
+    { kind = "p", key = "help.chess.p1" },
+    { kind = "example", key = "help.chess.example" },
+    { kind = "p", key = "help.chess.special" },
+    { kind = "p", key = "help.chess.ends" },
+    { kind = "p", key = "help.chess.draw" },
+    { kind = "p", key = "help.chess.clock" },
+    { kind = "p", key = "help.chess.stake" },
+  } },
   -- Why the card deal (and the Табла dice) is fair; the table's fairness line opens it.
   { id = "fair", title = "help.fair.title", blocks = {
     { kind = "p", key = "help.fair.p1" },

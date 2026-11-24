@@ -32,19 +32,19 @@ local function framed(w, border)
 end
 
 describe("ui: rules book", function()
-  it("opens 640x520 on „Залата“ for nil or an unknown topic, framed at 12/12, with thirteen topics", function()
+  it("opens 640x540 on „Залата“ for nil or an unknown topic, framed at 12/12, with fourteen topics", function()
     local w = guildWow()
     local B, L = w.ns.HelpBook, w.ns.L
     B.open()
     ok(shown(B.frame), "not shown")
-    eq({ B.frame:GetWidth(), B.frame:GetHeight() }, { 640, 520 })
+    eq({ B.frame:GetWidth(), B.frame:GetHeight() }, { 640, 540 })
     eq(B.current, "hall")
     eq(B.title:GetText(), "Книжка с правила")
     framed(w, B.border)
     eq(B.paper:GetTexture(), w.ns.Theme.tex.parchment)
     local names = {}
     for i, t in ipairs(B.topics) do names[i] = t.id .. "=" .. t.button.text:GetText() end
-    eq(names, { "hall=Залата", "ttt=Морски шах", "deathroll=Death Roll", "santase=Сантасе", "belot=Белот", "tabla=Табла", "holdem=Тексас Холдем", "fair=Защо раздаването е честно", "stakes=Залози", "ledger=Тефтер", "board=Класация", "history=История", "soon=Скоро" })
+    eq(names, { "hall=Залата", "ttt=Морски шах", "deathroll=Death Roll", "santase=Сантасе", "belot=Белот", "tabla=Табла", "holdem=Тексас Холдем", "chess=Шах", "fair=Защо раздаването е честно", "stakes=Залози", "ledger=Тефтер", "board=Класация", "history=История", "soon=Скоро" })
     -- a long title wraps inside the list and its row grows to hold it
     for _, t in ipairs(B.topics) do
       local fs = t.button.text
@@ -92,10 +92,10 @@ describe("ui: rules book", function()
     local B, L = w.ns.HelpBook, w.ns.L
     B.open("hall")
     local hallPage = B.page
-    w:click(B.topics[13].button)
+    w:click(B.topics[14].button)
     eq(B.current, "soon"); eq(hallPage:IsShown(), false); ok(B.page:IsVisible(), "soon page hidden")
     eq(B.page.blocks[1].text:GetText(), L("help.soon.p"))
-    eq({ B.topics[13].button.text:GetTextColor() }, rgba(w, "red"))
+    eq({ B.topics[14].button.text:GetTextColor() }, rgba(w, "red"))
     w:click(B.topics[1].button); ok(hallPage:IsVisible(), "hall page not back")
     w:click(B.close); eq(B.frame:IsShown(), false)
   end)
@@ -111,7 +111,7 @@ describe("ui: rules book", function()
     eq(w.ns.HelpBook.current, "ttt")
   end)
 
-  it("the stakes and ledger topics draw their blocks; the ⓘ of „Тефтер“ opens the ledger topic; the thirteen rows fit above the intro link", function()
+  it("the stakes and ledger topics draw their blocks; the ⓘ of „Тефтер“ opens the ledger topic; the fourteen rows fit above the intro link", function()
     local w = guildWow()
     local B, L, Help = w.ns.HelpBook, w.ns.L, w.ns.Help
     for _, id in ipairs({ "stakes", "ledger" }) do
@@ -243,7 +243,7 @@ describe("ui: rules book", function()
     B.open()
     local names = {}
     for i, t in ipairs(B.topics) do names[i] = t.id .. "=" .. t.button.text:GetText() end
-    eq(names[4], "santase=Сантасе"); eq(names[5], "belot=Белот"); eq(names[8], "fair=Защо раздаването е честно")
+    eq(names[4], "santase=Сантасе"); eq(names[5], "belot=Белот"); eq(names[9], "fair=Защо раздаването е честно")
     B.open("belot")
     eq(B.current, "belot")
     local topic = w.ns.Help.get("belot")
@@ -272,7 +272,7 @@ describe("ui: rules book", function()
     B.open()
     local names = {}
     for i, t in ipairs(B.topics) do names[i] = t.id .. "=" .. t.button.text:GetText() end
-    eq(names, { "hall=Залата", "ttt=Морски шах", "deathroll=Death Roll", "santase=Сантасе", "belot=Белот", "tabla=Табла", "holdem=Тексас Холдем", "fair=Защо раздаването е честно", "stakes=Залози", "ledger=Тефтер", "board=Класация", "history=История", "soon=Скоро" })
+    eq(names, { "hall=Залата", "ttt=Морски шах", "deathroll=Death Roll", "santase=Сантасе", "belot=Белот", "tabla=Табла", "holdem=Тексас Холдем", "chess=Шах", "fair=Защо раздаването е честно", "stakes=Залози", "ledger=Тефтер", "board=Класация", "history=История", "soon=Скоро" })
     B.open("tabla")
     eq(B.current, "tabla")
     local topic = w.ns.Help.get("tabla")
@@ -308,7 +308,7 @@ describe("ui: rules book", function()
     B.open()
     local names = {}
     for i, t in ipairs(B.topics) do names[i] = t.id .. "=" .. t.button.text:GetText() end
-    eq(names[6], "tabla=Табла"); eq(names[7], "holdem=Тексас Холдем"); eq(names[8], "fair=Защо раздаването е честно")
+    eq(names[6], "tabla=Табла"); eq(names[7], "holdem=Тексас Холдем"); eq(names[9], "fair=Защо раздаването е честно")
     B.open("holdem")
     eq(B.current, "holdem"); eq(w.ns.HelpBook.current, "holdem")
     local topic = w.ns.Help.get("holdem")
