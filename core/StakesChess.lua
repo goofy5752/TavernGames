@@ -8,7 +8,8 @@ local _, ns = ...
 -- - My log: every action of my seat that was not forged, once per (ply, kind),
 --   so my ACT and the event that shows it are one entry (both call
 --   Stakes.sent). A move is "<from><to><promotion>" ("e2e4", "e7e8q") at its
---   index in state.moves, any other action its kind at #state.moves.
+--   index in state.moves, any other action its kind at #state.moves. A word
+--   never holds a space (word() refuses one): the saved log packs them so.
 -- - A snapshot (SC.adopted): a move of my seat my log lacks at a ply up to
 --   its last move is forged; beyond it forged too, but "unseen" after a login
 --   (WoW's copy may be the one before a crash), and so for a resign of mine,
@@ -21,7 +22,8 @@ local _, ns = ...
 -- of its game; list[i] what my seat did, ply[i] where; at[i] = {sent, turn}: my
 -- env.now() at my ACT of a move and at the start of its turn on my clock (nil:
 -- not seen), until its dt is counted. Saved as db.stakeChess = {tid, no, log =
--- "1:e2e4 3:g1f3 3:offer"} (ply:word, one string: well under 1 KB a game) beside my
+-- "1:e2e4 3:g1f3 3:offer"} (ply:word split by spaces, so no word holds one; one
+-- string: well under 1 KB a game) beside my
 -- stake note for this table, while it stands (ns.Stake.clear).
 local SC = {}
 ns.StakesChess = SC
@@ -35,7 +37,7 @@ local function square(n) local f = (n - 1) % 8 + 1; return FILES:sub(f, f) .. (m
 
 -- What a log entry says of action (or move entry) a -> string | nil.
 local function word(a)
-  if a.k ~= nil and a.k ~= "move" then return type(a.k) == "string" and a.k or nil end
+  if a.k ~= nil and a.k ~= "move" then return type(a.k) == "string" and not a.k:find("%s") and a.k or nil end
   if not (whole(a.f, 1, 64) and whole(a.t, 1, 64)) then return nil end
   return square(a.f) .. square(a.t) .. (PROMO[a.p] and a.p or "")
 end

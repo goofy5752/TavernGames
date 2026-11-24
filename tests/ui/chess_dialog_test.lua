@@ -83,6 +83,26 @@ describe("ui: Шах in the hall and the new-table dialog", function()
     ok(row.sub:GetText():find("Време за партия 10 мин", 1, true), row.sub:GetText())
   end)
 
+  it("a chess table without its options shows the default game time", function()
+    local w = guildWow()
+    local W = w.ns.W
+    eq(W.timeText("chess", 45, nil), "Време за партия 10 мин")
+    eq(W.timeText("chess", 45, {}), "Време за партия 10 мин")
+    eq(W.timeText("chess", 45, { clock = 0 }), "Време за партия Без лимит")
+    -- an advert without `o` in the hall
+    local B, viewer = "Мария Стоянова", guildWow()
+    viewer.ns.MainWindow.show()
+    viewer:member(B)
+    viewer:deliver("GUILD", B, { v = 1, t = "TBL", tid = B .. "#1", g = "chess", h = B, e = 1, ac = "guild", tn = 45,
+      st = "open", s = { B, false }, w = 0 })
+    viewer:advance(0)
+    local t = viewer.ns.Hall.view.tables[1]
+    eq(t.tid, B .. "#1")
+    viewer:hover(t.top)
+    local tip = table.concat(viewer.G.GameTooltip.lines, " | ")
+    ok(tip:find("Време за партия 10 мин", 1, true), tip)
+  end)
+
   it("the title names the game time once", function()
     local w = guildWow(); local T = w.ns.TableFrame
     T.registerView("chess", { update = function() end,

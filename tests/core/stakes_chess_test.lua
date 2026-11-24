@@ -128,6 +128,35 @@ describe("chess at a staked table", function()
     eq(SC.valid(kept), false)
   end)
 
+  it("the kept answer never covers the same table changed in place", function()
+    local st = game("e2e4 e7e5 g1f3")
+    eq(SC.valid(st), true)
+    st.moves[3].t = sq("h3") -- Nh3 with the san of Nf3: no play gives it
+    eq(SC.valid(st), false)
+    st.moves[3].t = sq("f3")
+    eq(SC.valid(st), true)
+    st.extra = true
+    eq(SC.valid(st), false)
+    st.extra = nil
+    eq(SC.valid(st), true)
+  end)
+
+  it("a forged snapshot one field away from an honest one is forged", function()
+    local sim, host, guest = open(10, SK)
+    plays(sim, host, guest, "e2e4 e7e5")
+    local n = 0
+    local valid = SC.valid
+    SC.valid = function(b) n = n + 1; return valid(b) end
+    host.session:snapshotTo(G); sim:run(0) -- the honest snapshot: judged and kept
+    SC.valid = valid
+    ok(n > 0, "the honest snapshot was not judged")
+    eq(guest.session.stakeFoul, nil)
+    local before = Util.copy(guest.session.state)
+    answers(sim, host, guest, function(st) st.half = 7; return st end)
+    eq(guest.session.state, before)
+    eq(guest.session.stakeFoul, "forged")
+  end)
+
   it("a state that crossed the wire is still a chess state", function()
     Loader.lib("Libs/LibStub/LibStub.lua")
     Loader.lib("Libs/AceSerializer-3.0/AceSerializer-3.0.lua")
