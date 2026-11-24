@@ -361,7 +361,7 @@ local function onTick(client, sender, m)
   if not s or s.tid ~= m.tid or type(m.q) ~= "number" then return end
   local kind = Succession.authority(s, sender, m.e, m)
   if kind == nil and Succession.yields(s, sender, m) then return end
-  Succession.rival(s, kind)
+  Succession.rival(s, kind, m)
   if kind == "new" then
     Succession.follow(s, sender, m.e)
     s:requestSync()

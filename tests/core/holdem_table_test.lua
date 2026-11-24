@@ -812,6 +812,17 @@ describe("holdem: the book", function()
     eq(finalKeys(mark), { k = "book", op = "keys", m = { KEY(1), KEY(2) }, g = st().g, f = true })
     eq({ bw[1].ok, bw[1].bad, bw[1].open, b2[#b2].ok, b2[#b2].bad }, { 1, 0, 0, 1, 1 })          -- the watcher's book is clean; mine keeps the forged mark
   end)
+  -- e2e soak seed 1300886: the held book's question turned into a forged mark once the table
+  -- stopped being live (the host stood up, I took the table alone: aborted). Only the same game
+  -- running on proves the end I was told false.
+  it("I2: my key held at the game's end, then the table stops: still a question, not forged", function()
+    tableN(2); ok(cl[1]:startGame()); sim:run(3); local s2 = cl[2].session
+    forgedSnapshot(N[2], function(x) x.phase, x.turn = "closed", nil end)
+    eq({ s2:gameOver(), s2.book.forged, s2.book.held }, { true, true, true })
+    cl[1]:stand(); sim:run(2)
+    eq({ s2.role, s2.status }, { "host", "aborted" })
+    eq({ s2.book.forged, s2.book.held }, { true, true })
+  end)
   it("I2: a snapshot that ends my hand, then the close by an event: the hand's end came by no event, my key stays", function()
     tableN(2); ok(cl[1]:startGame()); sim:run(3); local s2 = cl[2].session
     forgedSnapshot(N[2], function(x) x.phase, x.turn = "done", nil end); eq({ s2:gameOver(), s2.book.forged, cl[2].bookHot.n }, { false, nil, 1 })

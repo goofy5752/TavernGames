@@ -66,10 +66,9 @@ end
 -- that seq, s.base). A seat that holds as much of that line as b or more
 -- (Succession.behind) follows no such host while nobody follows it, when it
 -- still hears its own table (a member: its host is not silent; a host: a member
--- spoke to it lately); and such a host, hearing the host it took over from,
--- followed by others, still run it, or another claimant others follow (TBL, TCK),
--- or the host it lost announce the table at b's epoch without my seat (TBL: it
--- stood me up), gives the table back (Succession.yields). Two hosts nobody follows (two players cut from each
+-- spoke to it lately); and such a host, hearing a host of the table that others
+-- follow (TBL, TCK: the host it lost, still running it, or another claimant), gives
+-- the table back (Succession.yields). Two hosts nobody follows (two players cut from each
 -- other) end as before: the claimant keeps the table. A host that is really
 -- gone leaves its members silent: they follow the claimant as before, behind
 -- or not. Without b and f (an older client) the epochs decide as before.
@@ -107,9 +106,13 @@ function Succession.mark(s, m)
   return m
 end
 
--- Host: another host of my table spoke (a TBL or TCK I do not follow): mine say f from now on.
-function Succession.rival(s, kind)
-  if s.role == "host" and kind == nil then s.rival = true end
+-- Host: another host of my table spoke at my epoch or above (a TBL or TCK I do not follow; not
+-- an old host's heartbeat still on its way after a handoff): mine say f from now on.
+function Succession.rival(s, kind, m)
+  if s.role == "host" and kind == nil and type(m.e) == "number" and m.e >= s.epoch and not s.rival then
+    s.rival = true
+    s:announce() -- my TBL with f now: a claimant nobody follows gives the table back on it
+  end
 end
 
 -- Was the host of message m cut off from a table I still hear (see above) -> bool.
@@ -136,18 +139,22 @@ function Succession.authority(s, sender, epoch, m)
 end
 
 -- Host that took the table over and that nobody follows, hearing another host of
--- my table that I would not follow: one that others follow (m.f: the host my
--- claim came from, still running its epoch, or a seat that claimed it too), or
--- the host my claim came from announcing the table at that epoch without my seat
--- (TBL: it stood me up) -> true: I was the one cut off; I follow it.
+-- my table that I would not follow and that others follow (m.f: the host my claim
+-- came from, still running its epoch, even with my seat stood up there; or a seat
+-- that claimed it too) -> true: I was the one cut off; I follow it.
 function Succession.yields(s, sender, m)
   local b, me = s.base, s.client.env.me
-  if s.role ~= "host" or not b or Succession.followed(s) or sender == me or not seatOf(s.seats, sender) then return false end
+  if s.role ~= "host" or not b or Succession.followed(s) or sender == me then return false end
+  if not seatOf(s.seats, sender) and sender ~= s.claimedFrom then return false end -- the host I lost: maybe stood up on my branch
   local seats = m.t == "TBL" and type(m.s) == "table" and m.s or nil
-  local stood = seats ~= nil and sender == s.claimedFrom and m.e == b.e and not seatOf(seats, me)
-  if m.f ~= true and not stood then return false end
+  -- only a host that others follow (m.f): of two hosts nobody follows (two players cut from each
+  -- other, each standing the other up) neither can tell who was cut off; both stay as before
+  if m.f ~= true then return false end
   Succession.follow(s, sender, m.e, seats)
-  s.yielded = true -- its snapshot may show my seat stood up offline: no foul of that host's (core/StakesWatch.lua)
+  -- Its snapshot may show my seat stood up offline: no foul of that host's (core/StakesWatch.lua),
+  -- but only when my client really was cut off: it had heard no guild traffic (s.claimQuiet) when
+  -- it claimed. A host that goes silent to one seat alone cannot buy its stand an "unseen".
+  s.yielded = s.claimQuiet == true
   s:requestSync()
   return true
 end
@@ -156,23 +163,16 @@ end
 -- Host side: silent members
 ---------------------------------------------------------------------------
 
--- A host that claimed the table by silence and that no member (seat or watcher)
--- has spoken to since: it may well be the one cut off (e2e soak: such a host stood
--- every other seat up "offline" and wrote their settlements as debts to it, for
--- a game the table never had). It stands no seat up until somebody speaks to it,
--- and plays no other seat's timeout (Session:armTimers).
-local function alone(s) return s.claimedFrom ~= nil and next(s.memberHeard or {}) == nil end
-Succession.alone = alone
-
--- One timer for the member whose limit runs out first (alone: a seat's, looked at again every PING_EVERY).
+-- One timer for the member whose limit runs out first. A host that claimed the
+-- table and that nobody follows stands seats up as any host does: it cannot tell
+-- its own cut from a host that is gone for good (two seats: the one left must win
+-- the forfeit). What a cut-off claimant played meanwhile is given up when it yields.
 function Succession.armSweep(s)
   cancel(s, "sweepTimer")
-  local now, wait, lone = s.client.env.now(), nil, alone(s)
+  local now, wait = s.client.env.now(), nil
   for name, at in pairs(s.lastHeard) do
-    local seated = seatOf(s.seats, name)
-    local limit = seated and C.OFFLINE_STAND_SECONDS or C.SILENT_AFTER
+    local limit = seatOf(s.seats, name) and C.OFFLINE_STAND_SECONDS or C.SILENT_AFTER
     local w = at + limit - now
-    if seated and lone then w = math.max(w, C.PING_EVERY) end
     if not wait or w < wait then wait = w end
   end
   if not wait then return end
@@ -183,11 +183,11 @@ function Succession.armSweep(s)
 end
 
 function Succession.sweep(s)
-  local now, changed, stood, lone = s.client.env.now(), false, false, alone(s)
+  local now, changed, stood = s.client.env.now(), false, false
   for i = 1, #s.seats do
     local name = s.seats[i]
     local at = name and s.lastHeard[name]
-    if at and not lone and now - at >= C.OFFLINE_STAND_SECONDS then
+    if at and now - at >= C.OFFLINE_STAND_SECONDS then
       s.lastHeard[name] = nil
       s:event(0, { k = "stand", seat = i, why = "offline" })
       changed, stood = true, true
@@ -282,7 +282,7 @@ end
 local function becomeHost(s, oldHost, oldHeard, base)
   local client = s.client
   local me, now = client.env.me, client.env.now()
-  s.base, s.memberHeard = base, {}
+  s.base, s.memberHeard, s.yielded, s.claimQuiet = base, {}, nil, nil
   cancel(s, "pingTimer")
   cancel(s, "silenceTimer")
   s.role, s.host = "host", me
@@ -318,9 +318,11 @@ function Succession.claim(s)
   if s.stakeAsk then return ns.Stake.standUp(s.client, s) end
   local oldHost, oldHeard = s.host, s.hostHeard
   local base = { e = heldEpoch(s), q = s.seq }
+  local heard = s.client.heardAt -- my client's last guild message from anybody (Client:receive)
   s.epoch = s.epoch + 1
   becomeHost(s, oldHost, oldHeard, base)
   s.claimedFrom = oldHost
+  s.claimQuiet = heard == nil or s.client.env.now() - heard >= C.SILENT_AFTER
 end
 
 -- Host -> member of somebody else's epoch.
@@ -340,6 +342,7 @@ end
 function Succession.follow(s, host, epoch, seats)
   if seats and s.mySeat and seats[s.mySeat] ~= s.client.env.me then s.mySeat = nil end
   if not s.stale then s.staleE = s.epoch end -- the epoch my seq counts in until the snapshot
+  s.yielded = nil -- set again by Succession.yields when that is why I follow
   if s.role == "host" then Succession.demote(s) end
   s.role = s.mySeat and "player" or "watcher"
   s.host, s.epoch, s.stale, s.lastSyn = host, epoch, true, nil
@@ -388,7 +391,7 @@ function Succession.onTable(client, channel, sender, m)
   if not s or s.tid ~= m.tid or not ns.Lobby.valid(m) or m.h ~= sender then return end
   local kind = Succession.authority(s, sender, m.e, m)
   if kind == nil and Succession.yields(s, sender, m) then return client.lobby:receive(channel, sender, m) end
-  Succession.rival(s, kind)
+  Succession.rival(s, kind, m)
   if kind == "new" then
     local wasHost = s.role == "host"
     Succession.follow(s, sender, m.e, m.s)

@@ -137,8 +137,11 @@ end
 function Book.due(s)
   if not over(s) then
     local old = s.book
-    if old and old.done and s.status == "live" and s.state and s.state.g == old.g then forge(old); old.sent, old.out = nil, nil end
-    if old then old.done, old.held = nil, nil end
+    local runsOn = old ~= nil and s.status == "live" and s.state ~= nil and s.state.g == old.g -- the end I was told was false
+    if old and old.done and runsOn then forge(old); old.sent, old.out = nil, nil end
+    -- A held book stays a question (book.held: "unseen", not "forged") when the table merely
+    -- stops being live (aborted, open: e2e soak seed 1300886); only the same game running on clears it.
+    if old and (runsOn or not old.forged) then old.done, old.held = nil, nil end
     return
   end
   local book, now = Book.of(s), s.client.env.now()
