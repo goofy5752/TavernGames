@@ -754,6 +754,50 @@ describe("ui: hand history — the panel beside the table", function()
     eq(f:GetScale(), 1)
   end)
 
+  -- Review: with „История“ closed, a drag (or the first build) shoved a big table left.
+  for _, game in ipairs({ "holdem", "tabla", "chess" }) do
+    it(game .. ": with the window closed a drag leaves the frame where it is", function()
+      local w = guildWow()
+      w.G.UIParent:SetSize(1365, 768)
+      w.ns.client:openTable{ game = game, access = "guild", turn = 45 }
+      w:advance(0)
+      local TF = w.ns.TableFrame
+      local v, f = TF.view, TF.frame
+      w.ns.Resize.set("table", 1.3)
+      ok(not (v.history and v.history:IsShown()), "open")
+      f.left, f.top = 200, 500
+      local p0 = f.points[#f.points]
+      f:GetScript("OnDragStop")(f)
+      ok(f.points[#f.points] == p0, game .. ": the frame moved to x=" .. tostring(f.points[#f.points][4]))
+      if v.historyButton:IsShown() then -- opened, the frame moves over for the window then
+        f.left = 100 -- fits on neither side
+        w:click(v.historyButton)
+        ok(v.history:IsShown(), "not open")
+        ok(f.points[#f.points] ~= p0, game .. ": not moved over for the window")
+      end
+    end)
+  end
+
+  -- Review: a game event mid-drag re-placed the frame under the mouse.
+  it("while the frame is dragged, a redraw does not place it again", function()
+    local w = guildWow()
+    w.G.UIParent:SetSize(1024, 768); w.G.GetPhysicalScreenSize = function() return 1440, 1080 end
+    w.ns.client:openTable{ game = "chess", access = "guild", turn = 45 }
+    w:advance(0)
+    local TF = w.ns.TableFrame
+    local v, f = TF.view, TF.frame
+    f.left, f.top = 120, 700
+    w:click(v.historyButton)
+    ok(v.history:IsShown(), "not open")
+    f.left = 150 -- fits on neither side: placing it moves the frame
+    local p0 = f.points[#f.points]
+    f:GetScript("OnDragStart")(f) -- the user holds it
+    TF.render()
+    ok(f.points[#f.points] == p0, "moved under the mouse")
+    f:GetScript("OnDragStop")(f) -- let go: placed again
+    ok(f.points[#f.points] ~= p0, "not placed again after the drag")
+  end)
+
   it("with no hand yet, its line reads on the list's dark ground, not under it", function()
     local w = guildWow()
     w.ns.client:openTable{ game = "belot", access = "guild", turn = 45 }

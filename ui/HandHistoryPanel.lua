@@ -100,7 +100,8 @@ local function build(v)
   panel:SetScript("OnHide", function() ns.Resize.refit("table") end)
   v.history = panel
   for _, handle in ipairs({ f, v.title:GetParent(), panel }) do -- the frame, its title bar: moved, placed again
-    handle:HookScript("OnDragStop", function() H.place(v) end)
+    handle:HookScript("OnDragStart", function() v.dragging = true end) -- held: a redraw leaves it be
+    handle:HookScript("OnDragStop", function() v.dragging = nil; H.place(v) end)
   end
   H.place(v)
   local button = W.GhostButton(f, L("table.history"), "brassLight", function()
@@ -114,8 +115,9 @@ end
 
 -- The side window right of the table frame, or left of it when it would pass the
 -- screen's right edge there (the frame is clamped to the screen, the window is not).
--- When it fits on neither side, the frame moves left just enough for it on the right:
--- the scale keeps the two within the screen's width (Resize.extra), so it never passes an edge.
+-- When it fits on neither side and the window is open, the frame moves left just enough for
+-- it on the right: the scale keeps the two within the screen's width (Resize.extra), so it
+-- never passes an edge. Closed, the frame stays where it is (no room is taken then).
 function H.place(v)
   local f, panel = ns.TableFrame.frame, v.history
   local left, scale = f:GetLeft(), f:GetEffectiveScale()
@@ -126,7 +128,7 @@ function H.place(v)
     if (left * scale) + width + need > screen then
       side = "left"
       local top = f:GetTop()
-      if left * scale - need < -0.5 and top then -- neither side: the frame moves over
+      if left * scale - need < -0.5 and top and panel:IsShown() then -- neither side: the frame moves over
         side = "right"
         f:ClearAllPoints()
         f:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", math.max(0, screen - width - need) / scale, top)
@@ -172,7 +174,7 @@ function H.render(v, s)
   v.watchers:ClearAllPoints()
   v.watchers:SetPoint("RIGHT", kept and v.historyButton or v.info, "LEFT", -12, 0)
   fitMeta(v, kept)
-  if v.history:IsShown() then H.place(v) end
+  if v.history:IsShown() and not v.dragging then H.place(v) end
   local h = ns.TableFrame.frame:GetHeight()
   if v.history.h ~= h then -- the wood tiles, never stretches, as the frame's (TableFrame fit)
     v.history.h = h
