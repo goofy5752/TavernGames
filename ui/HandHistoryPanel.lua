@@ -75,7 +75,7 @@ function H.buildPanel(parent, framed)
   scroll.content:SetWidth(panel.textW)
   panel.scroll = scroll
   panel.pool, panel.used = ns.HistoryKit.pool(scroll.content), 0
-  panel.empty = W.Label(panel, "dim", L("table.historyEmpty"), 11)
+  panel.empty = W.Label(panel.list or panel, "dim", L("table.historyEmpty"), 11) -- on the list's dark ground, not under it
   panel.empty:SetPoint("TOPLEFT", panel, "TOPLEFT", e + 10, -(e + TOP + 2))
   panel:Hide()
   return panel
@@ -90,7 +90,14 @@ local function build(v)
   local panel = H.buildPanel(f, true)
   panel:SetWidth(SIDE_W)
   W.dragBy(panel, f) -- dragging the side window moves the table with it
-  panel:SetScript("OnShow", function() H.place(v); H.draw(panel, ns.client and ns.client.session) end)
+  -- open, the window takes room beside the frame: the frame's scale fits both on the screen (ui/Resize.lua)
+  ns.Resize.extra.table = function() return panel:IsShown() and SIDE_W or 0 end
+  panel:SetScript("OnShow", function()
+    ns.Resize.refit("table")
+    H.place(v)
+    H.draw(panel, ns.client and ns.client.session)
+  end)
+  panel:SetScript("OnHide", function() ns.Resize.refit("table") end)
   v.history = panel
   for _, handle in ipairs({ f, v.title:GetParent(), panel }) do -- the frame, its title bar: moved, placed again
     handle:HookScript("OnDragStop", function() H.place(v) end)
@@ -107,11 +114,25 @@ end
 
 -- The side window right of the table frame, or left of it when it would pass the
 -- screen's right edge there (the frame is clamped to the screen, the window is not).
+-- When it fits on neither side, the frame moves left just enough for it on the right:
+-- the scale keeps the two within the screen's width (Resize.extra), so it never passes an edge.
 function H.place(v)
   local f, panel = ns.TableFrame.frame, v.history
   local left, scale = f:GetLeft(), f:GetEffectiveScale()
   local screen = UIParent:GetWidth() * UIParent:GetEffectiveScale()
-  local side = left and (left + f:GetWidth() + SIDE_W) * scale > screen and "left" or "right"
+  local side = "right"
+  if left then
+    local width, need = f:GetWidth() * scale, SIDE_W * scale
+    if (left * scale) + width + need > screen then
+      side = "left"
+      local top = f:GetTop()
+      if left * scale - need < -0.5 and top then -- neither side: the frame moves over
+        side = "right"
+        f:ClearAllPoints()
+        f:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", math.max(0, screen - width - need) / scale, top)
+      end
+    end
+  end
   if panel.side == side then return end
   panel.side = side
   panel:ClearAllPoints()
@@ -124,9 +145,9 @@ function H.place(v)
   end
 end
 
--- The title bar's options line (v.meta) on one line, never wider than the room
--- between the crest and what stands right of it (the stake after it, then the
--- watcher count, „История“ and ⓘ).
+-- The title bar's options line (v.meta), never wider than the room between the crest
+-- and what stands right of it (the stake after it, then the watcher count, „История“
+-- and ⓘ): on one line when it fits, else shrunk, then wrapped (the bar holds two lines).
 local function fitMeta(v, kept)
   local bar = ns.TableFrame.frame:GetWidth() - 2 * EDGE
   local left = 8 + W.textWidth(v.title) + 6 + 20 + 6
@@ -134,8 +155,9 @@ local function fitMeta(v, kept)
   if kept then right = right + 8 + v.historyButton:GetWidth() end
   if v.watchers:IsShown() then right = right + 12 + W.textWidth(v.watchers) end
   if v.stake:IsShown() then right = right + 10 + W.textWidth(v.stake) end
-  v.meta:SetWordWrap(false)
-  v.meta:SetWidth(math.max(1, math.min(W.textWidth(v.meta), bar - left - right)))
+  local text = v.meta:GetText() or ""
+  W.fit(v.meta, text, math.huge) -- its own size, to measure
+  W.fitWrap(v.meta, text, math.max(1, math.min(W.textWidth(v.meta), bar - left - right))) -- shrunk, then two lines: never cut
 end
 
 -- From TableFrame.render: the button at a table whose game keeps a history (the

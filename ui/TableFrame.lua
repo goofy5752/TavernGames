@@ -82,10 +82,19 @@ end
 
 -- One line at the bottom of the table frame for SAY_SECONDS -> true, or false
 -- when the frame is not on screen.
+-- The news line between its two anchors: shrunk to fit their width, then wrapped (never cut);
+-- a width the client does not know yet leaves it at its size, wrapping.
+local function fitLine(v)
+  local text, w = v.lineText or "", v.line:GetWidth()
+  if w and w > 1 then W.fit(v.line, text, w, W.WRAP_MIN) else v.line:SetText(text) end
+end
+TableFrame.fitLine = fitLine
+
 function TableFrame.say(text)
   local v = TableFrame.view
   if not v or not TableFrame.frame:IsShown() then return false end
-  v.line:SetText(text)
+  v.lineText = text
+  fitLine(v)
   v.line:Show()
   if TableFrame.sayTimer then TableFrame.sayTimer:Cancel() end
   TableFrame.sayTimer = C_Timer.NewTimer(SAY_SECONDS, function()
@@ -249,6 +258,7 @@ local function renderStart(v, s, engine, client)
   v.line:ClearAllPoints()
   v.line:SetPoint("LEFT", slot or shown and b or v.inviteButton, "RIGHT", 8, 0)
   v.line:SetPoint("RIGHT", TableFrame.frame, "BOTTOMRIGHT", -(EDGE + 24), EDGE + 20) -- clear of the resize grip
+  if v.line:IsShown() then fitLine(v) end -- its width moved with the buttons
 end
 
 -- A countdown on the felt (the held start, a guest's bill line), `left` s to go: redrawn as its whole second changes.
@@ -290,6 +300,7 @@ local function fit(v, w, h)
   v.watermark:SetPoint("CENTER", v.area, "CENTER", 0, 0.04 * mark) -- 4 % of its height above the middle
   v.banner:SetWidth(v.areaW)
   v.fairLine:SetWidth(v.areaW - 40)
+  ns.Resize.refit("table") -- another game's size: the scale fits the screen again
 end
 
 -- Redraws the table frame now; shows it while I am at a table, hides it otherwise.

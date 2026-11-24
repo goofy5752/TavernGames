@@ -678,9 +678,60 @@ describe("ui: hand history — the panel beside the table", function()
     v.watchers:SetText("Гледат: 3"); v.watchers:Show()
     H.render(v, w.ns.client.session)
     local meta, stake, button, watchers = rectOf(w, v.meta), rectOf(w, v.stake), rectOf(w, v.historyButton), rectOf(w, v.watchers)
-    eq(v.meta.wordWrap, false)
+    eq(v.meta.wordWrap, true) -- shrunk, then wrapped: never cut with „…“
     ok(meta[3] <= watchers[1] and stake[3] <= watchers[1] and watchers[3] <= button[1], "the title bar crowds: " ..
       table.concat({ meta[3], stake[3], watchers[1], watchers[3], button[1] }, " "))
+  end)
+
+  -- QA: the options of a cash Холдем in Bulgarian were cut with „…“ in the client.
+  it("a long options line shrinks, then takes two lines of the title bar: never cut", function()
+    local w = guildWow()
+    w.ns.client:openTable{ game = "belot", access = "guild", turn = 45 }
+    w:advance(0)
+    local TF, H = w.ns.TableFrame, w.ns.HandHistory
+    local v = TF.view
+    local text = "Всеки от гилдията · 45 с на ход · Залагане Без лимит · Докупуване Винаги"
+    v.meta:SetText(text)
+    v.stake:SetText("Блайндове: 1g/2g"); v.stake:Show()
+    v.watchers:SetText("Гледат: 3"); v.watchers:Show()
+    H.render(v, w.ns.client.session)
+    eq((v.meta:GetText():gsub("\n", " ")), text) -- every word, none cut
+    ok(select(2, v.meta:GetFont()) >= 9, "unreadable")
+    ok(v.meta:GetStringHeight() <= 28, "past the title bar: " .. v.meta:GetStringHeight())
+    local meta, watchers = rectOf(w, v.meta), rectOf(w, v.watchers)
+    ok(meta[3] <= watchers[1], "over the watchers")
+  end)
+
+  -- QA: on a 1024 x 768 screen a Шах table (780 wide) and the window (304) fit on neither side.
+  it("on a small screen the frame's scale makes room for the window, and the frame moves over for it", function()
+    local w = guildWow()
+    w.G.UIParent:SetSize(1024, 768); w.G.GetPhysicalScreenSize = function() return 1440, 1080 end
+    w.ns.client:openTable{ game = "chess", access = "guild", turn = 45 }
+    w:advance(0)
+    local TF = w.ns.TableFrame
+    local v, f = TF.view, TF.frame
+    f.left, f.top = 120, 700 -- where the client has it (the fake has no layout)
+    w:click(v.historyButton)
+    ok(v.history:IsShown(), "not open")
+    local s = f:GetScale()
+    ok(math.abs(s - 1024 / (780 + 304)) < 1e-9, "the two pass the screen: " .. s)
+    local p = f.points[#f.points]
+    eq({ p[1], p[2], p[3], p[4], p[5] }, { "TOPLEFT", w.G.UIParent, "BOTTOMLEFT", 0, 700 })
+    eq(v.history.points[1], { "TOPLEFT", f, "TOPRIGHT", 0, 0 })
+    ok((0 + 780 + 304) * s <= 1024 + 1e-9, "past the right edge")
+    -- closed, the frame takes its own scale back (it fits alone)
+    v.history:Hide()
+    eq(f:GetScale(), 1)
+  end)
+
+  it("with no hand yet, its line reads on the list's dark ground, not under it", function()
+    local w = guildWow()
+    w.ns.client:openTable{ game = "belot", access = "guild", turn = 45 }
+    w:advance(0)
+    local v = w.ns.TableFrame.view
+    w:click(v.historyButton)
+    ok(v.history.empty:IsVisible(), "no line")
+    eq(v.history.empty:GetParent(), v.history.list)
   end)
 end)
 
