@@ -82,39 +82,86 @@ describe("chess and an old client", function()
     eq(a.session.seats[2], false)
   end)
 
-  it("an invitation, a snapshot and events do not break it", function()
-    local sim, old, a, b, o, env = world()
-    local tid = a:openTable{ game = "chess", access = "guild", turn = 45, opt = { clock = 10 } }; sim:run(3)
-    a:invite(O); sim:run(2)
-    b:sit(tid, 2); sim:run(8)
+  -- Hosts a chess table (staked at `sk`, else for fun), seats B, plays three moves; returns
+  -- tid, the host's SNP of it and the three EVs it sent after the snapshot.
+  local function played(sim, a, b, sk)
+    local tid = a:openTable{ game = "chess", access = "guild", turn = 45, stake = sk, opt = { clock = 10 } }
+    ok(tid, "no table"); sim:run(3)
+    b:sit(tid, 2, sk); sim:run(8)
     ok(b.session, "the guest is not seated"); eq(a.session.status, "live")
     local mark = #sim.sent
     local players = { a, b }
     for _, mv in ipairs{ { 13, 29 }, { 53, 37 }, { 7, 22 } } do -- e2e4 e7e5 g1f3, for whoever is on the move
-      local white = a.session.state.white
-      local who = players[a.session.state.turn]
-      ok(who:act{ k = "move", f = mv[1], t = mv[2] }, "move " .. mv[1] .. mv[2] .. " white " .. white); sim:run(1)
+      ok(players[a.session.state.turn]:act{ k = "move", f = mv[1], t = mv[2] }, "move " .. mv[1] .. mv[2]); sim:run(1)
     end
     local snp, evs = nil, {}
-    for i, s in ipairs(sim.sent) do
-      if s.msg.tid == tid and s.from == A then
-        if s.msg.t == "SNP" and not snp then snp = s.msg end
-        if i > mark and s.msg.t == "EV" and #evs < 3 then evs[#evs + 1] = s.msg end
+    for i, m in ipairs(sim.sent) do
+      if m.msg.tid == tid and m.from == A then
+        if m.msg.t == "SNP" and not snp then snp = m.msg end
+        if i > mark and m.msg.t == "EV" and #evs < 3 then evs[#evs + 1] = m.msg end
       end
     end
     ok(snp, "no SNP"); eq(#evs, 3)
-    local sentBefore, ledger = #sim.sent, old.Util.copy(env.db.ledger)
+    return tid, snp, evs
+  end
+
+  -- What the host sent, by hand to the old client: copies, `dt` on the events, and a snapshot
+  -- that seats it (the seat 2 of the table) when `seated`.
+  local function deliver(sim, old, o, snp, evs, seated)
+    local snap = old.Util.copy(snp)
+    if seated then snap.tbl.s[2] = O end
     ok(pcall(function()
-      o:receive("WHISPER", A, snp)
+      o:receive("WHISPER", A, snap)
       for _, ev in ipairs(evs) do
-        ev.dt = 12
-        o:receive("WHISPER", A, ev)
+        local e = old.Util.copy(ev)
+        e.dt = 12
+        o:receive("WHISPER", A, e)
       end
       sim:run(2)
     end), "the old client raised an error")
-    eq(o.session, nil); eq(env.db.ledger, ledger) -- no ledger entry came of it
-    -- a snapshot that seated it would end in its STD: the host's seats are as they were
+  end
+
+  local function stdFrom(sim, from, to, tid)
+    for _, m in ipairs(sim.sent) do
+      if m.from == from and m.msg.t == "STD" and m.msg.tid == tid and m.target == to then return true end
+    end
+    return false
+  end
+
+  it("an invitation, a snapshot and events do not break it", function()
+    local sim, old, a, b, o, env = world()
+    local invited = {}
+    o:on("invite", function(inv) invited[#invited + 1] = inv end)
+    local tid0 = a:openTable{ game = "chess", access = "guild", turn = 45, opt = { clock = 10 } }; sim:run(3)
+    ok(a:invite(O)); sim:run(2)
+    eq(#invited, 1); eq(invited[1].tid, tid0)
+    a:stand(); sim:run(2)
+    local tid, snp, evs = played(sim, a, b)
+    local ledger = old.Util.copy(env.db.ledger)
+    deliver(sim, old, o, snp, evs, false)
+    eq(o.session, nil); eq(env.db.ledger, ledger)
     eq(a.session.seats, { A, B })
+    ok(not stdFrom(sim, O, A, tid), "a snapshot that did not seat it got an STD")
+  end)
+
+  it("a snapshot that seats the old client gets its STD", function()
+    local sim, old, a, b, o, env = world()
+    local tid, snp, evs = played(sim, a, b)
+    deliver(sim, old, o, snp, evs, true)
+    eq(o.session, nil)
+    ok(stdFrom(sim, O, A, tid), "no STD from the old client")
+  end)
+
+  it("a staked table's snapshot and events leave the old client's ledger alone", function()
+    local sim, old, a, b, o, env = world()
+    local tid, snp, evs = played(sim, a, b, 50000)
+    ok(snp.tbl.sk, "the snapshot carries no stake")
+    local ledger = old.Util.copy(env.db.ledger)
+    deliver(sim, old, o, snp, evs, false)
+    eq(o.session, nil); eq(env.db.ledger, ledger)
+    deliver(sim, old, o, snp, evs, true)
+    eq(o.session, nil); eq(env.db.ledger, ledger)
+    ok(stdFrom(sim, O, A, tid), "no STD from the old client")
   end)
 
   it("a new client at an old table sees no change", function()
