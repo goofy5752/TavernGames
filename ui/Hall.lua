@@ -176,7 +176,7 @@ function Hall.tableTooltip(tip, rec)
     local name = rec.seats[i]
     if name then tip:AddLine(name, nameColor(client, name)) end
   end
-  tip:AddLine(L("access." .. tostring(rec.access)) .. " · " .. L("hall.turn", rec.turn), Theme.rgb("inkDim"))
+  tip:AddLine(L("access." .. tostring(rec.access)) .. " · " .. W.timeText(rec.game, rec.turn, rec.opt), Theme.rgb("inkDim"))
   if stakeText(rec) then tip:AddLine(stakeText(rec), Theme.rgb("gold")) end
   if closable(rec) then tip:AddLine(L("hall.tip.closeBots"), Theme.rgb("inkDim")) end
   if here(client, rec) then return tip:AddLine(L("hall.tip.mine"), Theme.rgb("good")) end
@@ -370,7 +370,7 @@ end
 local function fillRow(r, rec, client)
   r.rec, r.tid = rec, rec.tid
   r.title:SetText(L("hall.host", gameName(rec.game), colored(client, rec.host)))
-  r.sub:SetText(L("access." .. tostring(rec.access)) .. " · " .. L("hall.turn", rec.turn) .. " · " .. (stakeText(rec) or L("table.stake.none")))
+  r.sub:SetText(L("access." .. tostring(rec.access)) .. " · " .. W.timeText(rec.game, rec.turn, rec.opt) .. " · " .. (stakeText(rec) or L("table.stake.none")))
   r.seats:SetText(seatedCount(rec.seats) .. "/" .. #rec.seats)
   r.state:SetText(L(rec.state == "live" and "hall.live" or "hall.waiting"))
   local mine = here(client, rec)

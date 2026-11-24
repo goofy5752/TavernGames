@@ -28,9 +28,9 @@ local function refusals(client)
 end
 
 describe("game registry", function()
-  it("lists the six games in order with their player counts", function()
-    local l = G.list(); eq(#l, 6); eq(l[1].id, "ttt"); eq(l[1].players, "2"); ok(l[1].engine == ns.Engines.ttt)
-    eq(l[2].id, "deathroll"); eq(l[2].players, "2–5"); eq(l[6].id, "holdem"); ok(l[6].engine == ns.Engines.holdem); eq(G.engine(42), nil)
+  it("lists the seven games in order with their player counts", function()
+    local l = G.list(); eq(#l, 7); eq(l[1].id, "ttt"); eq(l[1].players, "2"); ok(l[1].engine == ns.Engines.ttt)
+    eq(l[2].id, "deathroll"); eq(l[2].players, "2–5"); eq(l[6].id, "holdem"); ok(l[6].engine == ns.Engines.holdem); eq(l[7].id, "chess"); eq(l[7].players, "2"); ok(l[7].engine == ns.Engines.chess); eq(G.engine(42), nil)
     -- every game of ORDER is integrated (santase: B, belot: C, tabla: D, holdem: E); the gate is tested by gating one by hand
     ok(ns.Engines.belot ~= nil); ok(ns.Engines.holdem ~= nil)
     ok(G.engine("belot") == ns.Engines.belot); ok(G.engine("tabla") == ns.Engines.tabla); ok(G.engine("holdem") == ns.Engines.holdem)

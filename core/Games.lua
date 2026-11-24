@@ -7,15 +7,15 @@ local _, ns = ...
 local Games = {}
 ns.Games = Games
 
-Games.ORDER = { "ttt", "deathroll", "santase", "belot", "tabla", "holdem" }
-Games.PLAYERS = { ttt = "2", deathroll = "2–5", santase = "2", belot = "4", tabla = "2", holdem = "2–6" }
+Games.ORDER = { "ttt", "deathroll", "santase", "belot", "tabla", "holdem", "chess" }
+Games.PLAYERS = { ttt = "2", deathroll = "2–5", santase = "2", belot = "4", tabla = "2", holdem = "2–6", chess = "2" }
 
 -- A game in ORDER is playable only once its integration stage lands. Every
 -- game of ORDER is integrated now (santase: stage B, belot: C, tabla: D,
--- holdem: E); the gate stays for a game added later, whose engine may exist
+-- holdem: E, chess: the chess plan); the gate stays for a game added later, whose engine may exist
 -- before it can be offered (it would broadcast hidden cards and wait for a deck).
 -- Ids not in ORDER (test engines) are always looked up.
-Games.PLAYABLE = { ttt = true, deathroll = true, santase = true, belot = true, tabla = true, holdem = true }
+Games.PLAYABLE = { ttt = true, deathroll = true, santase = true, belot = true, tabla = true, holdem = true, chess = true }
 
 local inOrder = {}
 for _, id in ipairs(Games.ORDER) do inOrder[id] = true end

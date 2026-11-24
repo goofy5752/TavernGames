@@ -260,11 +260,13 @@ end
 
 -- After the access and the turn time: " · <option> <value>" for every option.
 local function metaText(s, engine)
-  local text = L("access." .. tostring(s.access)) .. " · " .. L("hall.turn", s.turn or 0)
+  local text = L("access." .. tostring(s.access)) .. " · " .. W.timeText(s.game, s.turn or 0, s.opt)
   local options, opt = engine.options or {}, s.opt or {}
   for i = 1, #options do
     local id = options[i].id
-    if opt[id] ~= nil and not (id == "blinds" and s.stake and engine.cashGame) then -- a cash table's blinds are its stake line
+    local skip = (engine.clock and id == "clock") -- W.timeText printed the game time
+      or not (options[i].at == nil or (options[i].at == "stake") == (s.stake ~= nil))
+    if not skip and opt[id] ~= nil and not (id == "blinds" and s.stake and engine.cashGame) then -- a cash table's blinds are its stake line
       text = text .. " · " .. L("opt." .. s.game .. "." .. id) .. " " .. W.optionText(s.game, id, opt[id])
     end
   end

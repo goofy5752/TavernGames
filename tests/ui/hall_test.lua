@@ -145,14 +145,14 @@ describe("ui: main window", function()
 end)
 
 describe("ui: hall", function()
-  it("lists six games: Морски шах, Death Roll, Сантасе, Белот, Табла and Холдем, all active", function()
+  it("lists seven games, Шах last: Морски шах, Death Roll, Сантасе, Белот, Табла and Холдем, all active", function()
     local w = guildWow()
     w.ns.MainWindow.show()
     local games = w.ns.Hall.view.games
-    eq(#games, 6)
-    eq({ games[1].id, games[2].id, games[3].id, games[5].id, games[6].id }, { "ttt", "deathroll", "santase", "tabla", "holdem" })
+    eq(#games, 7)
+    eq({ games[1].id, games[2].id, games[3].id, games[5].id, games[6].id, games[7].id }, { "ttt", "deathroll", "santase", "tabla", "holdem", "chess" })
     eq(games[1].name:GetText(), "Морски шах")
-    for i = 1, 6 do eq(games[i].frame:GetAlpha(), 1); eq(games[i].soon:IsVisible(), false) end
+    for i = 1, 7 do eq(games[i].frame:GetAlpha(), 1); eq(games[i].soon:IsVisible(), false) end
     eq(#w:texts("2–5 играчи"), 1)
     w:click(games[2].frame)
     ok(w.ns.NewTableDialog.frame:IsVisible(), "dialog not open")
