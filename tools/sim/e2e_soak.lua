@@ -577,6 +577,7 @@ local function checkMoney(sim)
   end)
   local cash = T.game == "holdem" and T.staked
   if os.getenv("SOAK_DUMP") and not cash then
+    for _, nm in ipairs(T.names) do for gid, n in pairs(sim.clients[nm].env.db.stakeSeen or {}) do print("note of " .. nm .. " " .. gid .. ": " .. canonList(n)) end end
     ref.ledger:each(function(e) print("ledger " .. canonList(Ledger.wire(e))) end)
     for _, x in ipairs(T.results) do print("result seen by " .. x.who .. " @" .. x.at .. ": " .. canonList({ q = x.r.q, w = x.r.winners, l = x.r.losers, left = x.r.left, n = x.r.names })) end
     for _, x in ipairs(T.forfeits) do print("forfeit seen by " .. x.who .. ": " .. canonList(x.v)) end
