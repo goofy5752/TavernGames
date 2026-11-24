@@ -7,7 +7,7 @@
 [![WoW Forever](https://img.shields.io/badge/WoW-Forever%201.60.1-b0813f)](#installation)
 [![Interface](https://img.shields.io/badge/Interface-16001-7a1f24)](TavernGames.toc)
 [![Lua](https://img.shields.io/badge/Lua-5.1-2c2d72?logo=lua)](#development)
-[![Tests](https://img.shields.io/badge/tests-2407%20passing-2e7d32)](#development)
+[![Tests](https://img.shields.io/badge/tests-2413%20passing-2e7d32)](#development)
 [![Languages](https://img.shields.io/badge/UI-English%20%7C%20Български-e9c98a)](#languages)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
@@ -21,7 +21,7 @@
 
 Every table is either **just for fun** or **staked in gold and silver**. The addon never moves gold by itself. It keeps a **guild-wide debt ledger**, fills in the amount for a **trade** or a **mail**, and you press the button. The addon runs on GUILD and WHISPER addon messages only, so it needs no server, website or external service.
 
-> **Status: alpha.** All seven games, stakes, the ledger, the leaderboard and the history are built and covered by 2407 automated tests. In-game testing on WoW Forever is in progress. Please [open an issue](../../issues) if something misbehaves.
+> **Status: alpha.** All seven games, stakes, the ledger, the leaderboard and the history are built and covered by 2413 automated tests. In-game testing on WoW Forever is in progress. Please [open an issue](../../issues) if something misbehaves.
 
 ## Table of contents
 
@@ -195,7 +195,7 @@ There are no AI opponents. A tester bot mode exists for development and testing;
 
 ## Development
 
-The addon is written in **Lua 5.1** and has a headless test suite of **2407 tests** that runs outside the game with stubbed WoW APIs.
+The addon is written in **Lua 5.1** and has a headless test suite of **2413 tests** that runs outside the game with stubbed WoW APIs.
 
 ```bash
 # needs Lua 5.1 or LuaJIT on PATH (or tools/lua/lua5.1.exe)
