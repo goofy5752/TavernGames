@@ -117,6 +117,10 @@ local function belot(hand, s)
     if not cur and hand.contract then
       pts = n == 8 and 10 or 0
       for _, c in ipairs(t.cards) do pts = pts + (ns.Engines.belot.cardValue(hand.contract.b, c.face) or 0) end
+      -- Без коз: the engine doubles the hand's points (with the last 10; no announces in N), so a
+      -- trick counts double and the tricks add up to the final line. Контра / реконтра multiply
+      -- only the result, never a trick.
+      if hand.contract.b == "N" then pts = pts * 2 end
       sum[team(t.win)] = sum[team(t.win)] + pts
       tricks = tricks + 1
     end

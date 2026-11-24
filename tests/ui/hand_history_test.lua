@@ -227,14 +227,58 @@ describe("ui: hand history — Белот", function()
     eq(pts(H, 1), { 31, 17, [8] = 27 })
     book(H, "H", { { spades, 1, 1 }, { hearts, 1, 2 } })
     eq(pts(H, 1), { 13, 31 })
-    book(H, "N", { { spades, 1, 1 }, { hearts, 1, 2 } })
-    eq(pts(H, 1), { 13, 17 })
+    book(H, "N", { { spades, 1, 1 }, { hearts, 1, 2 }, [8] = { hearts, 2, 2 } })
+    eq(pts(H, 1), { 26, 34, [8] = 54 }) -- без коз: doubled, as the engine doubles the hand (the last 10 too)
     book(H, "A", { { spades, 1, 1 }, { hearts, 1, 2 }, [8] = { spades, 3, 3 } })
     eq(pts(H, 1), { 31, 31, [8] = 41 })
     -- seat 2's view: its team's tricks are "us", the running total by team, mine first
     local rows = H.blocks(bsess(EB.new{ first = 1 }, 2))[1].rows
     eq({ rows[2].side, rows[3].side, rows[4].side }, { "them", "us", "them" })
     eq(bare(rows[5].text), L("table.historySoFar", L("table.historyScore", L("table.historyUs"), 31, L("table.historyThem"), 72)))
+  end)
+
+  it("контра and реконтра multiply only the result: a trick keeps its plain points", function()
+    local w = setup()
+    local H = w.ns.HandHistory
+    local spades, hearts = { "JS", "7S", "AS", "8S" }, { "9H", "TH", "KH", "QD" }
+    for _, x in ipairs({ 2, 4 }) do
+      book(H, "S", { { spades, 1, 1 }, { hearts, 1, 2 }, [8] = { hearts, 2, 2 } }).contract.x = x
+      eq(pts(H, 1), { 31, 17, [8] = 27 })
+      book(H, "N", { { spades, 1, 1 }, { hearts, 1, 2 } }).contract.x = x
+      eq(pts(H, 1), { 26, 34 }) -- без коз doubled, контра not
+    end
+  end)
+
+  it("без коз played out: each trick doubled, so the tricks and the total so far add up to the deal's own totals", function()
+    local w = setup()
+    local H, L = w.ns.HandHistory, w.ns.L
+    local st = EB.new{ first = 1 }
+    ok(EB.apply(st, 0, { k = "deal", deck = DECK_A })); H.observe(bsess(st, 1))
+    for _, b in ipairs({ "N", "P", "P", "P" }) do ok(EB.apply(st, st.turn, { k = "bid", b = b })); H.observe(bsess(st, 1)) end
+    local rnd = function() return 0.5 end
+    local sum, last = { 0, 0 }, nil
+    while st.phase == "play" do
+      ok(EB.apply(st, st.turn, EB.auto(st, st.turn, rnd)), "auto")
+      H.observe(bsess(st, 1))
+      -- the running total under the last trick is the doubled sum so far, mine first
+      sum = { 0, 0 }
+      for _, row in ipairs(H.blocks(bsess(st, 1))[1].rows) do
+        if row.k == "trick" and row.pts then local t = row.side == "us" and 1 or 2; sum[t] = sum[t] + row.pts end
+        if row.k == "result" then last = row.text end
+      end
+      if st.phase == "play" and st.trickNo > 1 then
+        eq(last, L("table.historySoFar", L("table.historyScore", L("table.historyUs"), sum[1], L("table.historyThem"), sum[2])))
+      end
+    end
+    ok(EB.apply(st, 0, { k = "score" })); H.observe(bsess(st, 1))
+    sum = { 0, 0 }
+    for _, row in ipairs(H.blocks(bsess(st, 1))[1].rows) do
+      if row.k == "trick" then local t = row.side == "us" and 1 or 2; sum[t] = sum[t] + row.pts end
+    end
+    local raw = st.res.raw
+    -- без коз: 120 card points and the last 10, doubled: 260, each team's own (a valat adds its 90 only to the total)
+    eq(sum[1] + sum[2], 260)
+    for t = 1, 2 do eq(sum[t] + ((st.res.valat and st.took[t] > 0 and st.took[3 - t] == 0) and 90 or 0), raw[t]) end
   end)
 
   it("a hand played out: the deal's own totals (st.res.raw), its tricks; closed to that line once the next comes", function()
