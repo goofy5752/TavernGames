@@ -2,7 +2,7 @@ local _, ns = ...
 
 -- The lower part of the hall's right column (below „Сметки“, ui/Accounts.lua),
 -- „В кръчмата сега“: every guild member with the addon by the short name
--- (ui/NameTag.lua: among the list's names; a hover gives the whole name), in class
+-- (ui/NameTag.lua: among everyone the hall shows, Hall.names; a hover gives the whole name), in class
 -- color, and where they are (in the hall, at a table, watching).
 -- A click on a name offers „Покани“ while I host a table with a free seat
 -- (Hall.clickPeer, Hall.invite). Hall is looked up at call time: this file
@@ -58,12 +58,12 @@ local function peerWidget(v, i)
   return r
 end
 
-local function whereIs(client, p, byTid)
+local function whereIs(client, p, byTid, names)
   if p.incompatible then return L("peers.incompatible") end
   local rec = p.at and byTid[p.at]
   if not rec then return L("peers.hall") end
   if Util.contains(rec.seats, p.name) then
-    return L("peers.at", W.shortColored(client, rec.host, rec.seats))
+    return L("peers.at", W.shortColored(client, rec.host, names)) -- as the list names him
   end
   return L("peers.watching")
 end
@@ -77,17 +77,16 @@ function HallPeers.render(v, client)
     local recs = client.lobby:tables()
     for i = 1, #recs do byTid[recs[i].tid] = recs[i] end
   end
-  local selectedListed, names = false, {}
-  for i, p in ipairs(peers) do names[i] = p.name end
+  local selectedListed, names = false, Hall.shown or Hall.names(client) -- everyone the hall shows (ui/Hall.lua)
   for i, p in ipairs(peers) do
     local r = peerWidget(v, i)
     r.peerName = p.name
-    W.fitWrap(r.name, W.short(p.name, names), HallPeers.NAME_W(v)) -- the short name among the list's
+    W.fitWrap(r.name, W.short(p.name, names), HallPeers.NAME_W(v)) -- the short name among the hall's
     r.portrait:set(ns.Portrait.who(client, p.name))
     r.name:SetTextColor(ns.classColor(p.cls))
     -- where they are, right of the name: shrunk, then wrapped in what the name leaves, never over it
     local nameW = math.min(HallPeers.NAME_W(v), W.textWidth(r.name))
-    W.fitWrap(r.status, whereIs(client, p, byTid), math.max(40, v.peerW - 2 - 28 - nameW - 8))
+    W.fitWrap(r.status, whereIs(client, p, byTid, names), math.max(40, v.peerW - 2 - 28 - nameW - 8))
     local offer = Hall.selected == p.name and HallPeers.canInviteName(client, p.name)
     if offer then selectedListed = true end
     r.invite:SetShown(offer)

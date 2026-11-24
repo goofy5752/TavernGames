@@ -264,8 +264,9 @@ describe("ui: hall", function()
     eq(w.ns.Hall.mode, "list"); eq(view.floor:IsVisible(), false); ok(view.list:IsVisible(), "list hidden")
     eq(visible(view.rows), 9)
     local first, last = view.rows[1], view.rows[9]
-    eq(first.title:GetText(), "Морски шах при |cffc79c6eГост|r") -- the short name
-    eq(view.rows[2].title:GetText(), "Морски шах при |cfff2e6c8Гост|r") -- no class known: ink
+    -- the short name among everyone the hall shows: nine hosts read „Гост“, so each takes its next word
+    eq(first.title:GetText(), "Морски шах при |cffc79c6eГост 1.|r")
+    eq(view.rows[2].title:GetText(), "Морски шах при |cfff2e6c8Гост 2.|r") -- no class known: ink
     eq(first.seats:GetText(), "1/2"); eq(first.state:GetText(), "чака"); eq(first.action.text:GetText(), "Седни")
     eq(last.seats:GetText(), "2/2"); eq(last.state:GetText(), "тече"); eq(last.action.text:GetText(), "Гледай")
     w:click(first.action)
@@ -609,7 +610,7 @@ describe("ui: short names in the hall, the whole name on hover", function()
     ok(w.G.GameTooltip.lines[1]:find(P, 1, true), "the host's whole name in the title")
     -- a chair at the side has its name beside it, outward (centred on it, the portrait hid its ends)
     eq(t.chairs[2].label.points, { { "LEFT", t.chairs[2].button, "RIGHT", 2, 0 } }); eq(t.chairs[2].label.justifyH, "LEFT")
-    eq(t.chairs[2].label:GetWidth(), 60)
+    eq(t.chairs[2].label:GetWidth(), 70)
     -- each label in its column: shrunk, then wrapped, never cut
     for i = 1, 3 do
       local fs = t.chairs[i].label
@@ -649,19 +650,20 @@ end)
 
 -- QA (layout): with seven tables (four columns) a side chair's name beside it ran under the next table's top.
 describe("ui: a side chair's name stays in its table's cell", function()
-  local LONG = { "Thorgrimsson Deepforge", "Barleybrewster Ironfoot", "Mirabelle Stormwhisper", "Ivan Kolevski" }
+  -- the widest 12-letter Latin first words a WoW name has on the side chairs, the two Ivans top and bottom
+  local LONG = { "Ivan Petrovski", "Mormogwathum Ironfoot", "Ivan Kolevski", "Wolfgarmmund Deepforge" }
 
   -- The x range (from the table's centre) of chair i's label, from its anchor and width.
   local function span(t, i)
     local c, x = t.chairs[i], 60 * (i == 2 and 1 or -1)
     local p, wd = c.label.points[1], c.label:GetWidth()
-    if p[1] == "TOP" then return x - wd / 2, x + wd / 2 end
+    if p[1] == "TOP" then return p[4] - wd / 2, p[4] + wd / 2 end
     if p[1] == "LEFT" then return x + 13 + p[4], x + 13 + p[4] + wd end
     return x - 13 + p[4] - wd, x - 13 + p[4]
   end
 
-  it("beside the chair while the cell has room, under it in four columns; never past the cell", function()
-    for _, count in ipairs({ 1, 7 }) do
+  it("beside the chair while the cell has room, under it in three and four columns; whole on one line, never past the cell", function()
+    for _, count in ipairs({ 1, 2, 5, 7 }) do
       local w = guildWow()
       w.ns.MainWindow.show()
       hi(w, LONG[1], "MAGE")
@@ -674,11 +676,18 @@ describe("ui: a side chair's name stays in its table's cell", function()
       for _, i in ipairs({ 2, 4 }) do
         local fs = t.chairs[i].label
         ok(fs:IsShown(), "no label")
-        eq(fs.points[1][1], count == 1 and (i == 2 and "LEFT" or "RIGHT") or "TOP")
         local l, r = span(t, i)
         ok(l >= -half - 0.5 and r <= half + 0.5, count .. " tables: chair " .. i .. "'s name past its cell: " .. l .. ".." .. r .. " / " .. half)
-        if fs.points[1][1] == "TOP" then ok(math.min(math.abs(l), math.abs(r)) >= 94 / 2 - 2 - 0.5, "over the table's top") end
+        if fs.points[1][1] == "TOP" then ok(fs.points[1][5] <= -28, "into the top's lines of text") end
+        if count <= 2 then eq(fs.points[1][1], i == 2 and "LEFT" or "RIGHT") else eq(fs.points[1][1], "TOP") end
+        ok(fs:GetWidth() >= 64, "narrower than a 12-letter name at 9 (64 px in PT Sans)")
         ok(select(2, fs:GetFont()) >= 9, "unreadable")
+        eq(fs:GetText(), i == 2 and "Mormogwathum" or "Wolfgarmmund") -- whole, one line
+      end
+      for _, i in ipairs({ 1, 3 }) do eq(t.chairs[i].label:GetText(), i == 1 and "Ivan P." or "Ivan K.") end
+      if count == 7 then -- under the chairs, the two names of one table apart and clear of the top's lines
+        local l2 = span(t, 2); local _, r4 = span(t, 4)
+        ok(r4 < l2, "the two side names meet")
       end
     end
   end)
@@ -699,5 +708,29 @@ describe("ui: „В кръчмата сега“ rows", function()
     ok(nameRight <= statusLeft, "the status over the name: " .. nameRight .. " > " .. statusLeft)
     ok(select(2, row.status:GetFont()) >= 9, "unreadable")
     ok(row.status:GetStringHeight() <= 26 and row.name:GetStringHeight() <= 26, "past the row")
+  end)
+end)
+
+-- QA follow-up: two who would both read „Ivan“ take their initials everywhere in the hall, not only at one table.
+describe("ui: one short name per person in the whole hall", function()
+  local P, K, M = "Ivan Petrovski", "Ivan Kolevski", "Mormogwathum Ironfoot"
+
+  it("two Ivans at different tables read „Ivan P.“ and „Ivan K.“ in the list, the statuses, the chairs and the tops", function()
+    local w = guildWow()
+    w.ns.MainWindow.show()
+    local t1 = tbl(w, P, { P, M }, "live")
+    local t2 = tbl(w, K, { K, false }, "open")
+    hi(w, P, "MAGE", t1); hi(w, K, "WARRIOR", t2); hi(w, M, "PRIEST", t1)
+    local v, plain = w.ns.Hall.view, function(s) return (s:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")) end
+    local byName = {}
+    for _, r in ipairs(v.peers) do if r.frame:IsVisible() then byName[r.peerName] = r end end
+    eq({ byName[P].name:GetText(), byName[K].name:GetText(), byName[M].name:GetText() }, { "Ivan P.", "Ivan K.", "Mormogwathum" })
+    eq({ plain(byName[M].status:GetText()), plain(byName[K].status:GetText()) }, { "на маса при Ivan P.", "на маса при Ivan K." })
+    local tops, chairs = {}, {}
+    for _, t in ipairs(v.tables) do
+      if t.frame:IsShown() then tops[t.rec.host] = t.host:GetText(); chairs[t.rec.host] = t.chairs[1].label:GetText() end
+    end
+    eq({ tops[P], tops[K] }, { "Ivan P.", "Ivan K." })
+    eq({ chairs[P], chairs[K] }, { "Ivan P.", "Ivan K." })
   end)
 end)

@@ -39,12 +39,14 @@ local GAME_H, ROW_H = 40, 40
 -- Chair name labels fit around a table of at most this many seats; at a larger
 -- one only the tooltips name the players. A label is the short name (ui/NameTag.lua)
 -- in CHAIR_LABEL_W (SIDE_LABEL_W beside a chair at the side), the host's on the top in HOST_W:
--- shrunk, then wrapped, never cut. A side chair's name stays in its table's cell of the floor:
--- beside the chair when the cell leaves it SIDE_MIN at least, else under the chair, between
--- the table's top and the cell's edge (four columns leave no room beside it).
+-- shrunk, then wrapped, never cut. Every label holds SIDE_NEED: the widest first word a WoW name
+-- has (12 letters, „Mormogwathum“ is 63 px at 9) on one line at 9 at the least. A side chair's
+-- name sits beside the chair when its cell leaves that room there (one or two columns), else
+-- under it, below the top's lines of text and over its rim (UNDER_Y below the chair's centre),
+-- moved in just enough to stay in its cell (three and four columns).
 local LABELLED_SEATS = 4
-local CHAIR_LABEL_W, SIDE_LABEL_W, HOST_W, SIDE_MIN = 76, 60, TOP_SIZE - 8, 40
-local CHAIR_HALF = 13 -- half a chair
+local CHAIR_LABEL_W, SIDE_LABEL_W, HOST_W, SIDE_NEED = 76, 70, TOP_SIZE - 8, 66
+local CHAIR_HALF, UNDER_Y = 13, 28 -- half a chair; an under label's top below the chair's centre
 
 local MESSAGES = { noguild = "hall.noguild", wait = "hall.wait", empty = "hall.empty" }
 
@@ -165,13 +167,30 @@ function Hall.clickPeer(r)
   Hall.render()
 end
 
+-- Everyone the hall shows (the guild members with the addon, every table's host and seats):
+-- the `others` of every short name in the hall, so that one person reads the same in the
+-- list, the statuses, the chairs and the tops, and two who would read alike („Ivan“) take
+-- their initials everywhere ("Ivan P." / "Ivan K."), not only at one table.
+function Hall.names(client)
+  local out, seen = {}, {}
+  local function add(name) if type(name) == "string" and not seen[name] then seen[name] = true; out[#out + 1] = name end end
+  if not client then return out end
+  for _, p in ipairs(client.presence:list()) do add(p.name) end
+  for _, rec in ipairs(client.lobby:tables()) do
+    add(rec.host)
+    for i = 1, #(rec.seats or {}) do add(rec.seats[i]) end
+  end
+  add(client.env and client.env.me)
+  return out
+end
+
 function Hall.invite(name)
   local client = ns.client
   Hall.selected = nil
   if client and client:invite(name) then
-    Hall.say(L("invite.sent", W.shortColored(client, name))) -- the short name, as at the table
+    Hall.say(L("invite.sent", W.shortColored(client, name, Hall.names(client)))) -- the short name, as in the hall
   else
-    Hall.say(L("invite.fail", W.shortColored(client, name)))
+    Hall.say(L("invite.fail", W.shortColored(client, name, Hall.names(client))))
   end
   Hall.render()
 end
@@ -262,7 +281,12 @@ local function tableWidget(v, i)
   close:SetPoint("TOP", f, "BOTTOM", 0, -28)
   close:Hide()
 
-  t = { frame = f, closeButton = close, glow = glow, top = top, icon = icon, game = game, host = host, state = state, label = label, chairs = {} }
+  -- the chairs' names over the top and the chairs (a side chair's name under it lies over the top's rim)
+  local names = CreateFrame("Frame", nil, f)
+  names:SetAllPoints(f)
+  names:SetFrameLevel(top:GetFrameLevel() + 3)
+  t = { frame = f, closeButton = close, glow = glow, top = top, icon = icon, game = game, host = host, state = state, label = label,
+        chairs = {}, names = names }
   top:SetScript("OnClick", function() Hall.clickTable(t) end)
   W.tooltip(top, function(tip) Hall.tableTooltip(tip, t.rec) end)
   v.tables[i] = t
@@ -278,7 +302,7 @@ local function chairWidget(t, i)
   b:RegisterForClicks("LeftButtonUp")
   local portrait = ns.Portrait.new(b, 26)
   portrait.frame:SetPoint("CENTER", b, "CENTER")
-  local label = W.Label(t.frame, "ui", "", 11)
+  local label = W.Label(t.names, "ui", "", 11)
   label:SetJustifyH("CENTER")
   c = { button = b, portrait = portrait, label = label }
   b:SetScript("OnClick", function() Hall.clickChair(t, i) end)
@@ -302,7 +326,7 @@ local function fillTable(t, rec, client, compact, half)
   -- the picture on the top names it, the label keeps only the stake.
   local stake = stakeText(rec) or L("table.stake.none")
   t.label:SetText((compact and pic) and stake or gameName(rec.game) .. " · " .. stake)
-  W.fitWrap(t.host, W.short(rec.host, rec.seats), HOST_W)
+  W.fitWrap(t.host, W.short(rec.host, Hall.shown), HOST_W)
   t.host:SetTextColor(nameColor(client, rec.host))
   t.state:SetText(L("hall.live"))
   t.state:SetShown(rec.state == "live")
@@ -322,13 +346,14 @@ local function fillTable(t, rec, client, compact, half)
     c.label:ClearAllPoints()
     if side then
       local beside = math.min(SIDE_LABEL_W, (half or math.huge) - math.abs(x) - CHAIR_HALF - 2)
-      if beside >= SIDE_MIN then
+      if beside >= SIDE_NEED then
         width = beside
         c.label:SetPoint(x > 0 and "LEFT" or "RIGHT", c.button, x > 0 and "RIGHT" or "LEFT", x > 0 and 2 or -2, 0)
         c.label:SetJustifyH(x > 0 and "LEFT" or "RIGHT")
-      else -- under the chair: clear of the top (its rim) and inside the cell
-        width = 2 * math.max(12, math.min(half - math.abs(x), math.abs(x) - (TOP_SIZE / 2 - 2)))
-        c.label:SetPoint("TOP", c.button, "BOTTOM", 0, -2)
+      else -- under the chair, in its cell: the centre moves in when the cell's edge is nearer
+        width = SIDE_NEED
+        local reach = math.max(0, half - SIDE_NEED / 2)
+        c.label:SetPoint("TOP", t.frame, "CENTER", math.max(-reach, math.min(reach, x)), y - UNDER_Y)
         c.label:SetJustifyH("CENTER")
       end
     else
@@ -337,7 +362,7 @@ local function fillTable(t, rec, client, compact, half)
     end
     c.empty = not name
     if name then
-      W.fitWrap(c.label, W.short(name, rec.seats), width)
+      W.fitWrap(c.label, W.short(name, Hall.shown), width)
       c.label:SetTextColor(nameColor(client, name))
       c.label:SetShown(labelled)
       c.button:SetEnabled(false)
@@ -400,7 +425,7 @@ end
 
 local function fillRow(r, rec, client)
   r.rec, r.tid = rec, rec.tid
-  r.title:SetText(L("hall.host", gameName(rec.game), W.shortColored(client, rec.host, rec.seats)))
+  r.title:SetText(L("hall.host", gameName(rec.game), W.shortColored(client, rec.host, Hall.shown)))
   r.sub:SetText(L("access." .. tostring(rec.access)) .. " · " .. W.timeText(rec.game, rec.turn, rec.opt) .. " · " .. (stakeText(rec) or L("table.stake.none")))
   r.seats:SetText(seatedCount(rec.seats) .. "/" .. #rec.seats)
   r.state:SetText(L(rec.state == "live" and "hall.live" or "hall.waiting"))
@@ -461,6 +486,7 @@ function Hall.render()
     mode = #recs == 0 and "empty" or HallLayout.mode(#recs)
   end
   Hall.mode = mode
+  Hall.shown = Hall.names(client) -- the names the hall shows: every short name's `others`
   local key = MESSAGES[mode]
   if key then v.message:SetText(L(key)) end
   v.message:SetShown(key ~= nil)
