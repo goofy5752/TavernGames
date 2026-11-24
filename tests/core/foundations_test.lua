@@ -26,6 +26,22 @@ describe("foundations", function()
     eq({ N.short(nil), N.short(""), N.short(42) }, { "?", "?", "?" })
   end)
 
+  -- Review: "Ivan Petrov" and "Ivan Pavlov" both read "Ivan P.".
+  it("short names: the same initial too, the whole second word; that too, the whole name", function()
+    local seats = { "Ivan Petrov", "Ivan Pavlov-Forever", "Ivan Kolev" }
+    local got = {}
+    for i, name in ipairs(seats) do got[i] = N.short(name, seats) end
+    eq(got, { "Ivan Petrov", "Ivan Pavlov", "Ivan K." })
+    eq({ N.short("Иван Петров", { "Иван Петров", "Иван Павлов" }), N.short("Иван Павлов", { "Иван Петров", "Иван Павлов" }) },
+      { "Иван Петров", "Иван Павлов" })
+    seats = { "Ivan Petrov Kolev", "Ivan Petrov Dimov", "Ivan Pavlov" }
+    got = {}
+    for i, name in ipairs(seats) do got[i] = N.short(name, seats) end
+    eq(got, { "Ivan Petrov Kolev", "Ivan Petrov Dimov", "Ivan Pavlov" })
+    -- the bot's own name is never lengthened
+    eq(N.short("Bot Ivan", { "Bot Ivan", "Ivan Petrov" }), "Ivan")
+  end)
+
   it("a bot is a name that starts with \"Bot \": the rule the screen marks it by", function()
     eq({ N.isBot("Bot Petrova"), N.isBot("Bot Number12-Forever"), N.isBot("  Bot Ivanov ") }, { true, true, true })
     eq({ N.isBot("Bot"), N.isBot("Botan Ivanov"), N.isBot("Ivan Bot"), N.isBot(nil), N.isBot(7) }, { false, false, false, false, false })

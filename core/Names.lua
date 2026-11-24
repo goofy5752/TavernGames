@@ -39,19 +39,29 @@ end
 
 -- The short name of a seat for a list that names several (seats, plates, lists, the hand history):
 -- bare(name), and when another name of `others` (any table of names; other
--- values are skipped) reads the same, the initial of its next word ("Ivan P.").
--- "?" for no name.
+-- values are skipped) reads the same, the initial of its next word ("Ivan P."); when one
+-- of those has that initial too, the whole next word ("Ivan Petrov" by "Ivan Pavlov"); when
+-- that is the same too, the whole name. A bot keeps its own name. "?" for no name.
+local function second(full) return full:match("^%S+%s+(%S+)") end
+local function initialOf(full) return full:match("^%S+%s+([%z\1-\127\194-\244][\128-\191]*)") end
+
 function Names.short(name, others)
   local short, full = bare(name)
   if not short then return "?" end
+  local initial = initialOf(full)
+  local level = 0 -- 0 the bare name, 1 the initial, 2 the next word, 3 the whole name
   for _, o in pairs(others or {}) do
     local os, ofull = bare(o)
     if os == short and ofull ~= full then
-      local initial = full:match("^%S+%s+([%z\1-\127\194-\244][\128-\191]*)")
-      if initial and not Names.isBot(full) then return short .. " " .. initial .. "." end
-      return short
+      if not initial or Names.isBot(full) then return short end
+      local need = 1
+      if initialOf(ofull) == initial then need = second(ofull) == second(full) and 3 or 2 end
+      if need > level then level = need end
     end
   end
+  if level == 1 then return short .. " " .. initial .. "." end
+  if level == 2 then return short .. " " .. second(full) end
+  if level == 3 then return full end
   return short
 end
 
