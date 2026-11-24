@@ -63,6 +63,48 @@ describe("ui: resize", function()
     ok(math.abs(f:GetScale() - 1080 / 620) < 1e-9, "max " .. f:GetScale()) -- 1920 / 1100 is larger
   end)
 
+  -- Review: with „История“ open the scale is held by its room; a click on the grip saved that.
+  it("a side window's room is never saved: a click keeps my scale, a drag saves what I dragged to", function()
+    local w = boot()
+    w.ns.db.scale = { main = 1.5 }
+    w.ns.MainWindow.show()
+    local f, R = w.ns.MainWindow.frame, w.ns.Resize
+    f.left, f.top = 100, 900
+    R.extra.main = function() return 500 end -- 1100 + 500 on 1920: 1.2 at most
+    R.refit("main")
+    ok(math.abs(f:GetScale() - 1.2) < 1e-9, "not held: " .. f:GetScale())
+    local grip = gripOf(f)
+    local x0, y0 -- the corner where the grip was pressed (the fake keeps f.left in its own units)
+    local function at(s) return { x0 + s * 1100, y0 - s * 620 } end
+    local function down() -- pressed on the grip's corner, at the scale in use
+      local k = f:GetEffectiveScale() / w.G.UIParent:GetEffectiveScale()
+      x0, y0 = f:GetLeft() * k, f:GetTop() * k
+      w.cursor = at(f:GetScale())
+      grip.scripts.OnMouseDown(grip, "LeftButton")
+    end
+    -- a plain click on the grip
+    down()
+    grip.scripts.OnUpdate(grip, 0)
+    grip.scripts.OnMouseUp(grip, "LeftButton")
+    eq(w.ns.db.scale.main, 1.5)
+    -- a drag past the side window's room: the window stays on the screen, the drag is saved
+    down()
+    w.cursor = at(1.6)
+    grip.scripts.OnUpdate(grip, 0)
+    ok(math.abs(f:GetScale() - 1.2) < 1e-9, "past the screen: " .. f:GetScale())
+    grip.scripts.OnMouseUp(grip, "LeftButton")
+    ok(math.abs(w.ns.db.scale.main - 1.6) < 1e-9, "saved " .. w.ns.db.scale.main)
+    R.extra.main = nil
+    R.refit("main") -- the side window closed: my own scale
+    ok(math.abs(f:GetScale() - 1.6) < 1e-9, "not mine: " .. f:GetScale())
+    -- a drag smaller is saved as such
+    down()
+    w.cursor = at(1.1)
+    grip.scripts.OnUpdate(grip, 0)
+    grip.scripts.OnMouseUp(grip, "LeftButton")
+    ok(math.abs(w.ns.db.scale.main - 1.1) < 1e-9, "saved " .. w.ns.db.scale.main)
+  end)
+
   it("a right click gives the normal size back; a saved scale is applied on the next build", function()
     local w = boot()
     w.ns.db.scale = { main = 1.4 }

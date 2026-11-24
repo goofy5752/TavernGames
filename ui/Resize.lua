@@ -55,10 +55,11 @@ function Resize.least()
   return math.max(Resize.MIN, Resize.READ_PX / (Resize.FONT_MIN * Resize.pixels()))
 end
 
--- The largest scale at which window `key` (frame `f`) and what opens beside it still fit on the screen (at most MAX).
-local function maxScale(f, key)
+-- The largest scale at which window `key` (frame `f`) and what opens beside it still fit on the screen
+-- (at most MAX); `alone`: the window alone, without what opens beside it (Resize.extra).
+local function maxScale(f, key, alone)
   local w, h = f:GetWidth(), f:GetHeight()
-  local extra = Resize.extra[key]
+  local extra = not alone and Resize.extra[key]
   if w and extra then w = w + (extra() or 0) end
   local sw, sh = UIParent:GetWidth(), UIParent:GetHeight()
   local hi = Resize.MAX
@@ -67,10 +68,11 @@ local function maxScale(f, key)
   return hi
 end
 
--- The bounds of window `key`'s scale -> lo, hi (on a screen too small for both, the window fits).
-function Resize.bounds(key)
+-- The bounds of window `key`'s scale -> lo, hi (on a screen too small for both, the window fits);
+-- `alone`: the window's own, without the room of what opens beside it.
+function Resize.bounds(key, alone)
   local f = frames[key]
-  local hi = f and maxScale(f, key) or Resize.MAX
+  local hi = f and maxScale(f, key, alone) or Resize.MAX
   return math.min(Resize.least(), hi), hi
 end
 
@@ -135,12 +137,15 @@ local function cursor()
   return x / k, y / k
 end
 
+-- The drag ends: the scale it was dragged to is kept, held by the window's own bounds, not by
+-- the room of a side window open now (that would lower my scale for good); a plain click on
+-- the grip (no drag) keeps the saved scale as it is.
 local function stopDrag(grip)
-  if not grip.drag then return end
+  local d = grip.drag
+  if not d then return end
   grip:SetScript("OnUpdate", nil)
-  local key = grip.drag.key
   grip.drag = nil
-  store(key, frames[key]:GetScale())
+  if d.want then store(d.key, d.want) end
 end
 
 local function onDown(grip, button)
@@ -150,13 +155,17 @@ local function onDown(grip, button)
   local left, top = corner(f)
   if not left then return end
   local lo, hi = Resize.bounds(grip.key)
-  grip.drag = { key = grip.key, left = left, top = top, lo = lo, hi = hi }
+  local alo, ahi = Resize.bounds(grip.key, true)
+  local x0, y0 = cursor()
+  grip.drag = { key = grip.key, left = left, top = top, lo = lo, hi = hi, alo = alo, ahi = ahi, x = x0, y = y0 }
   grip:SetScript("OnUpdate", function()
     local d = grip.drag
     if not d then return end
     local x, y = cursor()
+    if not d.want and math.abs(x - d.x) < 0.5 and math.abs(y - d.y) < 0.5 then return end -- not dragged yet
     local s = Resize.dragScale(x, y, d.left, d.top, f:GetWidth(), f:GetHeight())
-    s = clampTo(s, d.lo, d.hi)
+    d.want = clampTo(s, d.alo, d.ahi) -- kept: the window's own bounds
+    s = clampTo(s, d.lo, d.hi) -- shown: on the screen with what is open beside it
     place(f, s, d.left, d.top)
     for _, dlg in ipairs(followers[d.key] or {}) do dlg:SetScale(s) end
   end)
