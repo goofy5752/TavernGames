@@ -40,9 +40,13 @@ function Model.promotes(s, f, t)
   return false
 end
 
+-- The seat's short name among the table's (ui/NameTag.lua, a bot's with its cog), else its colour.
 local function seatName(s, seat)
-  return s.seats and s.seats[seat] or L(seat == s.state.white and "chess.white" or "chess.black")
+  local name = s.seats and s.seats[seat]
+  if name then return ns.W.short(name, s.seats) end
+  return L(seat == s.state.white and "chess.white" or "chess.black")
 end
+Model.seatName = seatName
 
 -- Pieces taken, sorted Q R B N P (the sign tells the colour).
 local function sorted(list)

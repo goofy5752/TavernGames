@@ -143,9 +143,21 @@ function View.build(parent)
   f.claim:SetPoint("LEFT", f.resign, "RIGHT", 8, 0)
   f.status = W.Label(f, "dim", "", 13)
   f.status:SetJustifyH("RIGHT")
-  f.status:SetPoint("TOPRIGHT", f, "TOPRIGHT", -12, BUTTONS_Y - 5)
-  f.status:SetWidth(300)
   return f
+end
+
+-- The line of status right of the last button shown, ending at the board's right edge (the plates'
+-- column is right of it): shrunk, then wrapped, never under a plate.
+local STATUS_GAP = 12
+local function drawStatus(f, text)
+  local x, right = BOARD_X, BOARD_X
+  for _, b in ipairs({ f.offer, f.resign, f.claim }) do -- each anchored right of the one before
+    right = right + (b == f.offer and 0 or 8) + b:GetWidth()
+    if b:IsShown() then x = right + STATUS_GAP end
+  end
+  f.status:ClearAllPoints()
+  f.status:SetPoint("LEFT", f, "TOPLEFT", x, BUTTONS_Y - 12)
+  W.fitWrap(f.status, text, math.max(1, BOARD_X + BOARD - x))
 end
 
 -- The plates: the opponent's at the top of the side column, mine (a watcher: white's) at the bottom.
@@ -248,13 +260,13 @@ function View.update(f, s)
   local me = s.mySeat
   local offered = m.offerFor ~= nil and m.offerFor == me
   f.strip:SetShown(m.banner ~= nil or offered)
-  f.strip.text:SetText(m.banner or (offered and L("chess.offered", s.seats[st.offer] or "") or ""))
+  f.strip.text:SetText(m.banner or (offered and L("chess.offered", M.seatName(s, st.offer)) or ""))
   f.accept:SetShown(m.banner == nil and offered)
   f.decline:SetShown(m.banner == nil and offered)
   f.offer:SetShown(m.canOffer)
   f.resign:SetShown(m.canResign)
   f.claim:SetShown(m.canClaim)
-  f.status:SetText(m.status)
+  drawStatus(f, m.status)
   if not m.canResign and f.side.confirm then f.side.confirm.close() end
 end
 

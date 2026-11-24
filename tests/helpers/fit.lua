@@ -33,7 +33,7 @@ function Fit.check(pool, width, why)
           ok(scratch:GetUnboundedStringWidth() <= box + 0.5, why .. ": a word cut: " .. word .. " in " .. box)
         end
         local _, size = r:GetFont()
-        ok(size >= 9 * 0.91 - 0.01, why .. ": smaller than readable: " .. tostring(r.text) .. " at " .. size)
+        ok(size >= 9 - 0.01, why .. ": smaller than readable: " .. tostring(r.text) .. " at " .. size) -- 9 at the least (QA: 8 px on screen at the least scale)
       end
     end
   end

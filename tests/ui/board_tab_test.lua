@@ -54,7 +54,7 @@ end
 -- Never cut: font string fs shrinks to 9 at the least, a word is never wider than its box, and it
 -- stays inside a row of `rowH`.
 local function fits(fs, rowH)
-  ok(select(2, fs:GetFont()) >= 9 * 0.91 - 0.01, "smaller than readable: " .. tostring(fs:GetText()))
+  ok(select(2, fs:GetFont()) >= 9 - 0.01, "smaller than readable: " .. tostring(fs:GetText()))
   ok(fs:GetUnboundedStringWidth() <= fs:GetWidth() + 0.01 or fs.wordWrap, "cut on one line: " .. tostring(fs:GetText()))
   ok(fs:GetStringHeight() <= rowH, "taller than its row: " .. tostring(fs:GetText()))
   for word in plain(fs:GetText()):gmatch("%S+") do

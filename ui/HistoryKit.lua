@@ -239,6 +239,9 @@ end
 ---------------------------------------------------------------------------
 
 local ICON, TAKEN, GAP, PAD, ROW = 18, 14, 2, 3, 20
+-- A move's texts shrink no further than SIZE_MIN (W.WRAP_MIN once the font's scale is applied: 9.1);
+-- a tag („шах“, „мат“, „рокада“) is TAG_SIZE (9.3): never under 9, readable at the windows' least scale.
+local SIZE_MIN, TAG_SIZE = math.ceil(W.WRAP_MIN / Theme.fontScale.ui), 10
 local TAG = { chk = { "8a1d12", "ffd9c8" }, mate = { "e0b24e", "2b1d12" }, cs = { "goldHi", "goldHi" } }
 
 -- The parts of move d: { kind = "icon" | "text" | "tag", w, … }, the text ones measured at `size`.
@@ -287,7 +290,7 @@ local function measure(pool, list)
     if p.kind == "text" then
       Theme.setFont(fs, p.font, p.size); fs:SetText(p.s); p.w = W.textWidth(fs)
     elseif p.kind == "tag" then
-      Theme.setFont(fs, "uiBold", 9); fs:SetText(p.s); p.w = W.textWidth(fs) + 6
+      Theme.setFont(fs, "uiBold", TAG_SIZE); fs:SetText(p.s); p.w = W.textWidth(fs) + 6
     end
     total = total + p.w + (k > 1 and GAP or 0)
   end
@@ -308,7 +311,7 @@ function Kit.move(pool, x, y, width, d, opts)
   repeat
     list = parts(d, size)
     local total = measure(pool, list)
-    if total <= avail or size <= W.WRAP_MIN then break end
+    if total <= avail or size <= SIZE_MIN then break end
     size = size - 1
   until false
   -- the parts in lines: a part that would pass the cell's edge starts the next line
@@ -359,11 +362,11 @@ function Kit.move(pool, x, y, width, d, opts)
         if p.tag == "cs" and opts.paper then br, bg, bb = hex("785014") end
         pool:fill(px, ly + 4, p.w, ROW - 8, br, bg, bb, alpha, "BORDER")
         local color = p.tag == "cs" and (opts.paper and { hex("6a420a") } or "goldHi") or { hex(tc[2]) }
-        local fs = pool:label("uiBold", 9, color)
+        local fs = pool:label("uiBold", TAG_SIZE, color)
         fs:SetText(p.s)
-        pool:put(fs, px + 3, ly + 5)
+        pool:put(fs, px + 3, ly + 4)
         local placed = pool.placed[#pool.placed]
-        placed.w, placed.h = W.textWidth(fs), 9
+        placed.w, placed.h = W.textWidth(fs), TAG_SIZE
       end
     end
   end
