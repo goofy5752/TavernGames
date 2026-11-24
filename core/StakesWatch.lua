@@ -53,6 +53,7 @@ Stakes.sentIn = sentIn
 -- I sent `a` (a member's ACT, a host's own move, my sit, my stand), or my
 -- client took it for mine (Stakes' applied); logged once, and of this run.
 function Stakes.sent(s, a)
+  if s:engine().clock then ns.StakesChess.sent(s, a) end -- chess: its own log as well (core/StakesChess.lua)
   local log, r = s.stakeLog or {}, s.state and s.state.round
   local c = not s:engine().view and a.c or nil -- a card game: no face is kept (the log is saved)
   s.stakeLog = log
@@ -177,6 +178,7 @@ function Stakes.leadsTo(a, b)
     end
     return true
   end
+  if a.moves and b.moves then return ns.StakesChess.leads(a, b) end
   if not (a.board and b.board) then return false end
   local read, leads = pcall(marksLead, a, b)
   return read and leads
@@ -189,6 +191,7 @@ local leadsTo = Stakes.leadsTo
 local function turnKey(st)
   if type(st) ~= "table" then return nil end
   if st.rolls and st.start then return #st.rolls end
+  if st.moves then return ns.StakesChess.turnKey(st) end
   if not (st.board and st.round) then return nil end
   local n = 0
   for c = 1, 9 do
@@ -221,7 +224,8 @@ ns.Ext.stakes.adopted = function(s, prev, m, how)
     pend(s, (pushed or (how.changed and not how.asked and not cont)) and "forged" or "unseen")
   end
   local held = s.stakeSeat -- my seat before this snapshot
-  if held and not identical and doneForMe(s, prev, st, held, forward, prefix) then pend(s, "forged") end
+  if st and st.moves then local f = ns.StakesChess.adopted(s, prev, st, how, forward, prefix); if f then pend(s, f) end
+  elseif held and not identical and doneForMe(s, prev, st, held, forward, prefix) then pend(s, "forged") end
   if held and s.seats[held] ~= me then Stakes.stood(s, held, nil, true, prev and prev.max) end
   local sat = how.sat or (how.sit and not held) -- a seat I did not hold (one the host had stood: by my own SIT)
   if sat then s.stakeRefill = "filled" end -- my own sit filled the seat

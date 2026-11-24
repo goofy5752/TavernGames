@@ -4,10 +4,13 @@ local _, ns = ...
 -- or S is its author's claim and counts per player. Fun R (no sk): for its names when an
 -- author is one of them. Staked R: a loss on the loser's word (f of a confirmed debt of
 -- the gid, or it wrote the R), a win on a debtor's (t of one), a draw only when an author
--- is a party there. S (Холдем): for its f when f is f or t of a confirmed debt there and
--- an author is a party; won or lost by the sign of f's confirmed copper there. A party of
--- a gid is f or t of a confirmed debt of it that t has claimed too (its own D): both sides
--- spoke, as every honest staked game does, so a self-confirmed debt alone makes none.
+-- is a party there; a staked R that names no winner and no loser, at a gid without any debt,
+-- is a draw for each of its names on a seated author's word (rec.drawn: a staked draw owes
+-- nothing, as chess's; a debt there makes it a claim again). S (Холдем): for its f when f
+-- is f or t of a confirmed debt there and an author is a party; won or lost by the sign of
+-- f's confirmed copper there. A party of a gid is f or t of a confirmed debt of it that t
+-- has claimed too (its own D): both sides spoke, as every honest staked game does, so a
+-- self-confirmed debt alone makes none.
 -- A name counts once per gid: bodies of a gid with one content (a hash key) are one record
 -- (`by`: authors); across its records a debt-backed win or loss (staked R or S) beats a fun
 -- one, which beats a draw; on a tie a record with a seated or party author beats one
@@ -19,8 +22,9 @@ local _, ns = ...
 -- Record {gid, g, at, by, e, sk, why, cash, state, counts[name] = "win"|"loss"|"draw"},
 -- lean (J3: Stats.dress names on demand); state "fun", "claim" (no author named and
 -- nothing counts, or nothing counts at all), "contested", "pending" (a debt is, or none
--- yet), "confirmed". Stats.games is cached per L.rev; the board and versus
--- (core/LedgerBoard.lua) are one pass over it, asked at most once per 2 s while shown (J3).
+-- yet), "confirmed", "drawn" (a staked draw, above). Stats.games is cached per L.rev; the
+-- board and versus (core/LedgerBoard.lua) are one pass over it, asked at most once per 2 s
+-- while shown (J3).
 local Ledger, View = ns.Ledger, ns.LedgerView
 local byteLess, concat = ns.Util.byteLess, table.concat
 
@@ -100,12 +104,13 @@ local function judge(rec, x)
     counts[e.f] = c > 0 and "win" or c < 0 and "loss" or "draw"
   end
   local w, l = list(e.w), list(e.l)
+  rec.drawn = not free and not rec.cash and x == nil and seated and #w == 0 and #l == 0 or nil
   for i, name in ipairs(rec.cash and NONE or n) do
     if str(name) and not counts[name] then
       local r = role[name] or 0
       if has(w, i) then counts[name] = (free or r >= 2) and "win" or nil
       elseif has(l, i) then counts[name] = (free or r % 2 == 1 or has(rec.by, name)) and "loss" or nil
-      elseif free or sides then counts[name] = "draw" end
+      elseif free or sides or rec.drawn then counts[name] = "draw" end
     end
   end
   return seated
@@ -115,6 +120,7 @@ end
 local function label(rec, x, seated)
   if fun(rec) then return seated and "fun" or "claim" end
   local any = next(rec.counts) ~= nil
+  if rec.drawn and any then return "drawn" end
   if not seated and not any then return "claim" end
   return x and x.contested and "contested" or ((x and x.pending) or (not x and any)) and "pending"
     or any and "confirmed" or "claim"

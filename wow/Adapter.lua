@@ -17,13 +17,13 @@ ns.Adapter = Adapter
 -- Which AceDB section holds each db key.
 -- fairKeep: core/DealKeep.lua; lastAt: the table I am at (core/Presence.lua);
 -- bookKeep, bookSpent: the Hold'em table key and spend (core/Book.lua);
--- stakeSeen, stakeLeft, stakeSat, stakeLog: my own outcome notes, the stake I
--- sat down for and what I sent at that table (core/StakesWatch.lua), never
+-- stakeSeen, stakeLeft, stakeSat, stakeLog, stakeChess: my own outcome notes, the stake I
+-- sat down for and what I sent at that table (core/StakesWatch.lua, core/StakesChess.lua), never
 -- sent; ledger: the guild's gold ledger, account-wide; sound: false mutes ns.Art.play;
 -- theme, deck: the character's skin key and deck (ui/Theme.lua), unset until chosen;
 -- probeArt: the last /tavern probe art report, kept to be read from SavedVariables.
 local CHAR_KEYS = { snoozeUntil = true, busy = true, debug = true, fairKeep = true, lastAt = true,
-  bookKeep = true, bookSpent = true, stakeSeen = true, stakeLeft = true, stakeSat = true, stakeLog = true, paySent = true,
+  bookKeep = true, bookSpent = true, stakeSeen = true, stakeLeft = true, stakeSat = true, stakeLog = true, stakeChess = true, paySent = true,
   theme = true, deck = true }
 local GLOBAL_KEYS = { lang = true, introDone = true, minimap = true, ledger = true, scale = true, sound = true, probeArt = true }
 Adapter.CHAR_KEYS, Adapter.GLOBAL_KEYS = CHAR_KEYS, GLOBAL_KEYS

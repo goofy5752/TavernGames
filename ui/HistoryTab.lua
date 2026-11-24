@@ -29,7 +29,7 @@ local TEXT_W, MARK_W, AMOUNT_W, AGE_W = 400, 110, 110, 56 -- the amount fits the
 local RULE, AGE = { 0xd9 / 255, 0xc4 / 255, 0x9a / 255 }, { 0x7a / 255, 0x5a / 255, 0x3a / 255 }
 local STATE = {
   fun = "history.mark.fun", claim = "history.mark.claim", confirmed = "history.mark.confirmed",
-  pending = "ledger.pending", contested = "ledger.contested",
+  pending = "ledger.pending", contested = "ledger.contested", drawn = "history.mark.drawn",
 }
 local HOW = { trade = "pay.trade", mail = "pay.mail", hand = "accounts.settle" }
 

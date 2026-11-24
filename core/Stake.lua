@@ -79,7 +79,7 @@ function Stake.options(id, o)
 end
 
 function Stake.clear(client)
-  client.env.db.stakeSat, client.env.db.stakeLog = nil, nil -- and what I sent there (core/StakesWatch.lua)
+  client.env.db.stakeSat, client.env.db.stakeLog, client.env.db.stakeChess = nil, nil, nil -- and what I sent there (core/StakesWatch.lua, core/StakesChess.lua)
   client.stakeNoted = true
 end
 
