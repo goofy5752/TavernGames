@@ -11,7 +11,9 @@
 [![Languages](https://img.shields.io/badge/UI-English%20%7C%20Български-e9c98a)](#languages)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-[Features](#features) · [Games](#games) · [How it works](#how-it-works) · [Installation](#installation) · [Commands](#slash-commands) · [FAQ](#faq) · [На български](#на-български)
+[Features](#features) · [Games](#games) · [Screenshots](#screenshots) · [How it works](#how-it-works) · [Installation](#installation) · [Commands](#slash-commands) · [FAQ](#faq) · [На български](#на-български)
+
+<img src="docs/screenshots/hall.png" alt="The tavern hall: seven tables of different games, some with bots playing, the guild sign, the debts owed to you and who is in the tavern now" width="900">
 
 </div>
 
@@ -27,6 +29,7 @@ Every table is either **just for fun** or **staked in gold and silver**. The add
 
 - [Features](#features)
 - [Games](#games)
+- [Screenshots](#screenshots)
 - [How it works](#how-it-works)
   - [Fair dealing and anti-cheat](#fair-dealing-and-anti-cheat)
   - [Gold stakes, the ledger and payments](#gold-stakes-the-ledger-and-payments)
@@ -73,6 +76,39 @@ Every table is either **just for fun** or **staked in gold and silver**. The add
 | **Chess** (Шах) | 2 | Board game | FIDE move rules with automatic draws (castling, en passant, promotion, mate, stalemate, threefold repetition, 50 moves), a clock of 5 to 30 minutes with +5 s a move, offering a draw and resigning, a practice bot in the tester bot mode, and staked games where a draw owes nothing |
 | **Tic-tac-toe** (Морски шах) | 2 | Board game | First to 3 wins, quick games between raids |
 | **Death Roll** | 2–5, in a group | Dice | The classic `/roll` duel: each roll sets the new maximum, and whoever rolls 1 loses |
+
+## Screenshots
+
+In these shots practice bots fill the seats, and the leaderboard and the ledger show made-up guild members.
+
+<table>
+<tr>
+<td width="50%" align="center"><img src="docs/screenshots/belot.png" alt="Belot mid-hand: four players, a trick on the table, the face cards with the race leaders"><br><sub>Belot</sub></td>
+<td width="50%" align="center"><img src="docs/screenshots/santase.png" alt="Santase: the trump card under the stock, the last trick and the player's hand"><br><sub>Santase</sub></td>
+</tr>
+<tr>
+<td width="50%" align="center"><img src="docs/screenshots/tabla.png" alt="Backgammon mid-game with the dice thrown by both players"><br><sub>Backgammon</sub></td>
+<td width="50%" align="center"><img src="docs/screenshots/holdem.png" alt="Texas Hold'em with the board out, the live hand label and the hand history beside the table"><br><sub>Texas Hold'em and the hand history</sub></td>
+</tr>
+<tr>
+<td width="50%" align="center"><img src="docs/screenshots/chess.png" alt="Chess mid-game with the move list and both clocks"><br><sub>Chess</sub></td>
+<td width="50%" align="center"><img src="docs/screenshots/deathroll.png" alt="Death Roll: the ladder of rolls, each one setting the new maximum"><br><sub>Death Roll</sub></td>
+</tr>
+<tr>
+<td width="50%" align="center"><img src="docs/screenshots/ttt.png" alt="Tic-tac-toe: a finished winning line"><br><sub>Tic-tac-toe</sub></td>
+<td width="50%" align="center"><img src="docs/screenshots/leaderboard.png" alt="The leaderboard: games, wins, gold net, favourite game and streaks"><br><sub>Leaderboard</sub></td>
+</tr>
+<tr>
+<td width="50%" align="center"><img src="docs/screenshots/ledger.png" alt="The guild ledger: open and settled debts"><br><sub>Ledger</sub></td>
+<td width="50%" align="center"><img src="docs/screenshots/settings.png" alt="Settings: language, Alliance or Horde look, and the decks of the races with their leaders"><br><sub>Settings and decks</sub></td>
+</tr>
+<tr>
+<td width="50%" align="center"><img src="docs/screenshots/book.png" alt="The rules book open on Belot"><br><sub>Rules book</sub></td>
+<td width="50%" align="center"><img src="docs/screenshots/belot_horde.png" alt="Belot in the Horde look"><br><sub>Horde look</sub></td>
+</tr>
+</table>
+
+<sub>These pictures are drawn from the addon's own UI code by [`tools/shots`](tools/shots/README.md), with the client's art read from a local WoW install. The world behind the windows is a loading screen; in the game it is the world around you.</sub>
 
 ## How it works
 
@@ -262,6 +298,8 @@ Bug reports, rule corrections (especially for regional Belot and Santase variant
 - **История на ръцете:** всяка взятка в Белот и Сантасе и всяка ръка в Холдема. В Холдема виждаш какво имаш в момента, а при all-in картите се обръщат преди борда.
 - **Разтегаеми прозорци:** хващаш ъгъла на прозореца или на масата и го правиш колкото искаш голям. Всичко вътре се уголемява заедно с него.
 - **Интерфейс на български и английски**, книга с правилата и въведение при първо пускане.
+
+Как изглежда: виж [снимките](#screenshots) по-горе.
 
 **Инсталиране:** копирай папките `Libs`, `core`, `engines`, `locale`, `wow`, `ui`, `media` и файловете `TavernGames.toc` и `LICENSE-THIRD-PARTY.md` в `World of Warcraft\_forever_\Interface\AddOns\TavernGames\`. После напиши `/tavern` в играта.
 
