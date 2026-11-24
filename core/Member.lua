@@ -169,6 +169,12 @@ local function unusable(m, sender)
     or (t.st == "live" and type(m.st) ~= "table")
 end
 
+-- A chess state no play of its own moves reaches (ns.StakesChess.valid) is
+-- never adopted (it could make the engine raise): from my staked table's own host, forged.
+local function unreachable(m)
+  return ns.Games.engine(m.tbl.g).clock == true and type(m.st) == "table" and not ns.StakesChess.valid(m.st)
+end
+
 local function onSnapshot(client, sender, m)
   local t, s, p = m.tbl, client.session, client.pending
   if unusable(m, sender) then
@@ -177,6 +183,10 @@ local function onSnapshot(client, sender, m)
         and not (s and s.tid == m.tid) then
       client:send("WHISPER", sender, Session.message("STD", { tid = m.tid }))
     end
+    return
+  end
+  if unreachable(m) then
+    if s and s.tid == m.tid and s.host == sender and s.stake ~= nil then ns.Stakes.foul(s, "forged"); Session.emit(client) end
     return
   end
   if s and s.tid == m.tid then

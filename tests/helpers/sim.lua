@@ -7,7 +7,7 @@ Sim.ns = Loader.ns()
 
 local EPOCH0 = 1700000000
 -- The saved variables a crash loses: their copy at the last client:stop() comes back (sim:crash).
-local CRASH_KEYS = { "ledger", "stakeSeen", "stakeLeft", "stakeSat", "stakeLog", "paySent" }
+local CRASH_KEYS = { "ledger", "stakeSeen", "stakeLeft", "stakeSat", "stakeLog", "stakeChess", "paySent" }
 
 -- Seeds. A sim client makes its seeds the plain way, SEED_BYTES values of its
 -- env.random as hex, so that a test can say what a seed will be (sim.nextRandom,
