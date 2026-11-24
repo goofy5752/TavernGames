@@ -348,6 +348,8 @@ describe("ui: „Сметка“ and the buy-in on the felt", function()
     eq(rows()[1], { "", "взел от теб", "взел си", "нето" })
     eq(rows()[2], { "Мария", w:coins("0c"), w:coins("10s"), w:coins("10s") })
     eq(rows()[3], { "Kiro", w:coins("0c"), w:coins("10s"), w:coins("10s") })
+    w:hover(f.cash.rows[2].frame); eq(w.G.GameTooltip.lines, { B }) -- the short name, the whole one on hover
+    f.cash.rows[2].frame.scripts.OnLeave(f.cash.rows[2].frame)
     w:click(f.cash.tabs[2])
     eq(rows()[1], { "", "вход", "чипове", "нето" })
     eq(rows()[2], { "Иван", w:coins("10g"), w:coins("10g 20s"), w:coins("20s") })
@@ -520,6 +522,19 @@ describe("ui: the bill of a cash table", function()
     eq(plain(b.lines[2].text:GetText()), "Ръцете се проверяват с ключовете. Остани на масата, за да се потвърди сметката ти сама.")
     eq(plain(b.lines[3].text:GetText()), w:coins("Иван дължи на Мария 15s"))
     eq(b:GetHeight(), 32 + 18 * 4) -- the keys' line is long: it takes two rows
+  end)
+
+  it("the bill's names: short among the bill's, an initial for two alike, the cog of a bot; the whole names on hover", function()
+    local P1, P2, BOT = "Мария Стоянова", "Мария Колева-Forever", "Bot Barleybrewstersonwoodhill"
+    local w, b = bill({ pairs = { { f = P2, t = P1, c = 1500 }, { f = BOT, t = P1, c = 999999 } } }, "left")
+    eq(plain(b.lines[1].text:GetText()), "Мария С. стана от масата. Сметката по двойки:")
+    eq(plain(b.lines[2].text:GetText()), w:coins("Мария К. дължи на Мария С. 15s"))
+    local row = b.lines[3].text -- a long row: shrunk to fit beside its mark, nothing cut
+    eq(plain(row:GetText()), w:coins("Barleybrewstersonwoodhill " .. w.ns.W.BOT_MARK .. " дължи на Мария С. 99g 99s 99c"))
+    ok(select(2, row:GetFont()) >= 9 * w.ns.Theme.fontScale.ui - 0.01, "smaller than readable")
+    ok(row:GetUnboundedStringWidth() <= row:GetWidth() + 0.01 or row:GetStringHeight() > 15, "cut")
+    w:hover(b)
+    eq(w.G.GameTooltip.lines, { A, P1, C, "Мария Колева", BOT }) -- no realm
   end)
 
   it("a close says the game is over; a note that no longer waits has no keys line", function()
