@@ -203,12 +203,4 @@ function E.restore(t)
   return s
 end
 
--- Provisional (Task 9 replaces it): a uniformly random legal move, so that a
--- bot never falls back to playAuto, which would flag itself.
-function E.bot(s, seat, random)
-  local list = E.legal(s, seat)
-  if #list == 0 then return nil end
-  return list[random(1, #list)]
-end
-
 return E
