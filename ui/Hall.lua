@@ -38,9 +38,10 @@ local LIFT = 24
 local GAME_H, ROW_H = 40, 40
 -- Chair name labels fit around a table of at most this many seats; at a larger
 -- one only the tooltips name the players. A label is the short name (ui/NameTag.lua)
--- in CHAIR_LABEL_W, the host's on the top in HOST_W: shrunk, then wrapped, never cut.
+-- in CHAIR_LABEL_W (SIDE_LABEL_W beside a chair at the side), the host's on the top in HOST_W:
+-- shrunk, then wrapped, never cut.
 local LABELLED_SEATS = 4
-local CHAIR_LABEL_W, HOST_W = 76, TOP_SIZE - 8
+local CHAIR_LABEL_W, SIDE_LABEL_W, HOST_W = 76, 60, TOP_SIZE - 8
 
 local MESSAGES = { noguild = "hall.noguild", wait = "hall.wait", empty = "hall.empty" }
 
@@ -165,9 +166,9 @@ function Hall.invite(name)
   local client = ns.client
   Hall.selected = nil
   if client and client:invite(name) then
-    Hall.say(L("invite.sent", name))
+    Hall.say(L("invite.sent", W.shortColored(client, name))) -- the short name, as at the table
   else
-    Hall.say(L("invite.fail", name))
+    Hall.say(L("invite.fail", W.shortColored(client, name)))
   end
   Hall.render()
 end
@@ -310,11 +311,20 @@ local function fillTable(t, rec, client, compact)
     local x, y = spots[i][1], spots[i][2]
     c.button:ClearAllPoints()
     c.button:SetPoint("CENTER", t.frame, "CENTER", x, y)
+    -- A chair at the side has its name beside it, outward, clear of the portrait (centred
+    -- on it, the chair hid its ends); a chair above or below, its name over or under it.
+    local side = math.abs(x) > math.abs(y) + 1
     c.label:ClearAllPoints()
-    c.label:SetPoint("CENTER", t.frame, "CENTER", x * k, y * k)
+    if side then
+      c.label:SetPoint(x > 0 and "LEFT" or "RIGHT", c.button, x > 0 and "RIGHT" or "LEFT", x > 0 and 2 or -2, 0)
+      c.label:SetJustifyH(x > 0 and "LEFT" or "RIGHT")
+    else
+      c.label:SetPoint("CENTER", t.frame, "CENTER", x * k, y * k)
+      c.label:SetJustifyH("CENTER")
+    end
     c.empty = not name
     if name then
-      W.fitWrap(c.label, W.short(name, rec.seats), CHAIR_LABEL_W)
+      W.fitWrap(c.label, W.short(name, rec.seats), side and SIDE_LABEL_W or CHAIR_LABEL_W)
       c.label:SetTextColor(nameColor(client, name))
       c.label:SetShown(labelled)
       c.button:SetEnabled(false)

@@ -11,6 +11,9 @@ Run it from the repo root. You can also name scenes, for example `luajit tools/s
 `python tools/shots/render.py hall belot`. It needs LuaJIT, and Python with Pillow and numpy.
 The scenes `history_belot`, `history_long` (the longest names), `history_santase` and `history_chess` show the „История“
 window open beside a table, to check it against mockup 10; they are made only when named and are not README pictures.
+The scenes `names_hall`, `names_belot`, `names_deathroll` and `names_ledger` (which also writes `names_board`) show
+long two-word names, two players with one first word and bots, to check the short names, the bot mark and that no text
+is cut; they too are made only when named.
 
 ## How it works
 

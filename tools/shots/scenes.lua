@@ -470,7 +470,7 @@ ledgerHistory = function(w)
     local a = everyone[math.random(#everyone)]
     local b
     repeat b = everyone[math.random(#everyone)] until b ~= a
-    local pa = skill[a] / (skill[a] + skill[b])
+    local pa = (skill[a] or 0.5) / ((skill[a] or 0.5) + (skill[b] or 0.5))
     local win = math.random() < pa and 1 or 2
     local host = (a ~= ME) and a or b
     games = games + 1
@@ -507,6 +507,89 @@ scene("ledger", function()
   run(w, 3)
   write("ledger", w, { w.ns.MainWindow.frame })
 end)
+
+---------------------------------------------------------------------------
+-- Short names (ui/NameTag.lua), for checking them: made only when named
+-- (luajit tools/shots/scenes.lua names_hall names_belot names_deathroll names_ledger).
+-- Two-word names, two Ivans and the bots' long names at one table.
+
+local LONG = { { "Ivan Petrovski", "MAGE" }, { "Ivan Kolevski", "WARRIOR" }, { "Konstantin Velikopreslavski", "PRIEST" },
+  { "Aleksandrina Dimitrova", "DRUID" }, { "Elowen Silverleaf", "HUNTER" } }
+
+scene("names_hall", function()
+  local w = boot{ seed = 9 }
+  w:advance(w.ns.Const.LEDGER_ADOPT_WAIT + 1)
+  members(w, LONG)
+  local bots = botsOn(w)
+  local tid = "Ivan Petrovski#1"
+  w:deliver("GUILD", "Ivan Petrovski", { v = 1, t = "TBL", tid = tid, g = "belot", h = "Ivan Petrovski", e = 1, ac = "guild", tn = 45,
+    st = "live", s = { "Ivan Petrovski", "Ivan Kolevski", "Konstantin Velikopreslavski", "Aleksandrina Dimitrova" }, w = 0 })
+  local t2 = "Elowen Silverleaf#1"
+  w:deliver("GUILD", "Elowen Silverleaf", { v = 1, t = "TBL", tid = t2, g = "santase", h = "Elowen Silverleaf", e = 1, ac = "guild",
+    tn = 45, st = "open", s = { "Elowen Silverleaf", false }, w = 0 })
+  for _, m in ipairs(LONG) do
+    local at = m[1] == "Elowen Silverleaf" and t2 or tid
+    w:deliver("GUILD", m[1], { v = 1, t = "HI", ver = "0.1.0", cls = m[2], id = "Player-1-" .. m[1], at = at })
+  end
+  local b1 = bots:hostTable("deathroll"); w:advance(0); w:advance(0)
+  local b = bots:idle(); w:advance(0); b:sit(b1, 2); w:advance(0); w:advance(0)
+  run(w, 4)
+  w.ns.MainWindow.show("hall")
+  run(w, 1)
+  write("names_hall", w, { w.ns.MainWindow.frame })
+end, true)
+
+-- My Белот table with long names on its seats (drawn as they are, the bots playing on).
+scene("names_belot", function()
+  local w = boot{ seed = 11 }
+  myTable(w, "belot")
+  local okStop, v = withHistory(w, function(st) return st.phase == "play" and (st.round or 1) >= 2 and (st.trickNo or 1) >= 3 and #(st.trick or {}) == 3 end, 1200)
+  assert(okStop, "names_belot: no second deal")
+  local s, H = w.ns.client.session, w.ns.HandHistory
+  local names = { ME, "Bot Barleybrewster", "Ivan Petrovski", "Ivan Kolevski" }
+  for i = 2, 4 do s.seats[i] = names[i] end
+  for _, hand in ipairs(H.tables[s.tid].hands) do hand.names = names end
+  w.ns.TableFrame.render()
+  H.draw(v.history, s)
+  write("names_belot", w, { w.ns.TableFrame.frame, v.history })
+end, true)
+
+-- A Death Roll of four: two Ivans and a long name beside me; seven cells on the ladder.
+scene("names_deathroll", function()
+  local w = boot{ seed = 4 }
+  myTable(w, "deathroll", { start = 1000 }, 3)
+  local okStop = play(w, function(st) return #(st.rolls or {}) >= 6 or st.phase == "over" end, 400, 1.5, function()
+    local V = w.ns.TableFrame.built.deathroll
+    if V.rollButton:IsVisible() and V.rollButton:IsEnabled() then w:click(V.rollButton) end
+    return true
+  end)
+  assert(okStop, "names_deathroll: no ladder")
+  local s = w.ns.client.session
+  s.seats[2], s.seats[3] = "Ivan Petrovski", "Ivan Kolevski"
+  s.seats[4] = "Konstantinopolskiovich Velikov"
+  w.ns.TableFrame.render()
+  run(w, 0.25)
+  write("names_deathroll", w, { w.ns.TableFrame.frame })
+end, true)
+
+-- The ledger with long two-word names: whole, shrunk, then wrapped.
+scene("names_ledger", function()
+  local w = boot{ seed = 21 }
+  w:advance(w.ns.Const.LEDGER_ADOPT_WAIT + 1)
+  local keep = {}
+  for i, m in ipairs(MEMBERS) do keep[i] = m[1] end
+  local long = { "Elowen Silverleaf-Moonwhisper", "Thorgar Ironbeard", "Mirabel Starfall", "Kazrik Shadowmantle",
+    "Odric Lightbringer", "Sefa Windrunner", "Varek Doomhollow", "Lysa Brightwater" }
+  for i, m in ipairs(MEMBERS) do m[1] = long[i]; MEMBER_NAMES[i] = long[i] end
+  ledgerHistory(w)
+  for i, m in ipairs(MEMBERS) do m[1] = keep[i]; MEMBER_NAMES[i] = keep[i] end
+  w.ns.MainWindow.show("ledger")
+  run(w, 3)
+  write("names_ledger", w, { w.ns.MainWindow.frame })
+  w.ns.MainWindow.show("board")
+  run(w, 3)
+  write("names_board", w, { w.ns.MainWindow.frame })
+end, true)
 
 scene("settings", function()
   local w = boot()

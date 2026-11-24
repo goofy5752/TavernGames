@@ -607,6 +607,9 @@ describe("ui: short names in the hall, the whole name on hover", function()
     w:hover(t.top)
     eq({ w.G.GameTooltip.lines[2], w.G.GameTooltip.lines[3], w.G.GameTooltip.lines[4] }, { P, K, BOT })
     ok(w.G.GameTooltip.lines[1]:find(P, 1, true), "the host's whole name in the title")
+    -- a chair at the side has its name beside it, outward (centred on it, the portrait hid its ends)
+    eq(t.chairs[2].label.points, { { "LEFT", t.chairs[2].button, "RIGHT", 2, 0 } }); eq(t.chairs[2].label.justifyH, "LEFT")
+    eq(t.chairs[2].label:GetWidth(), 60)
     -- each label in its column: shrunk, then wrapped, never cut
     for i = 1, 3 do
       local fs = t.chairs[i].label

@@ -262,9 +262,6 @@ function W.fitWrap(fs, text, width, floor)
   return fs:GetStringHeight()
 end
 
--- The first word of a player's name ("Иван Петров" -> "Иван").
-function W.firstWord(name) return ns.Names.first(name) end
-
 -- A `px` wide line along each side of `frame`, tinted by setColor(r, g, b, a).
 -- Returns {top, bottom, left, right, setColor}.
 function W.edges(frame, px, layer)
