@@ -57,8 +57,10 @@ Every table is either **just for fun** or **staked in gold and silver**. The add
 - 📜 **History**: a timeline of games and payments, and a head-to-head view of any two players.
 - 🔄 **Survives disconnects**: reconnect snapshots, automatic stand-up when a player goes offline, and a new host is chosen when the host leaves.
 - 🌍 **English and Bulgarian** interface, an in-game rules book and a first-run intro.
-- 🎨 **A hand-made tavern look**: a walnut frame, burgundy felt, brass, cream-coloured cards with Alegreya SC headings and clear PT Sans text. It does not look like the default WoW UI templates.
-- ↘️ **Resizable windows**: drag the corner of the main window or a game table to make it as large or as small as you like. Everything inside, from text to cards to boards, scales with it, and the size is remembered. Right-click the corner for the normal size.
+- 🎨 **Your faction's tavern**: an *Alliance* look (lapis and gold) or a *Horde* look (blood and iron), with its own frames, felt, crests and sounds. The cards come in faction and race decks, with the faction's leaders as kings.
+- 🤖 **Practice bots**: add bots to a table *for fun* with one click to learn a game or try it alone. Bots never join a table with a stake.
+- 🗂️ **Hand history**: look back at every trick of Belot and Santase and every Hold'em hand while you play. Hold'em shows your current hand as it changes (*Pair of Kings*, *Full House*), and all-in hands are turned face up before the board runs out.
+- ↘️ **Resizable windows**: drag the corner or the frame of the main window or a game table. Everything inside, from text to cards to boards, scales with it, and the size is remembered. Right-click the corner for the normal size.
 
 ## Games
 
@@ -111,13 +113,13 @@ Games with no hidden information (Backgammon, Tic-tac-toe, Death Roll, Chess) ar
 
 Tavern Games is built for **WoW Forever** (the `_forever_` client, game version 1.60.1, `## Interface: 16001`).
 
-1. Download the latest release zip, or clone this repository.
+1. Download the repository (**Code → Download ZIP**) and unpack it, or clone it.
 2. Copy these folders and files into
    `World of Warcraft\_forever_\Interface\AddOns\TavernGames\`:
    `Libs`, `core`, `engines`, `locale`, `wow`, `ui`, `media`, `TavernGames.toc`, `LICENSE-THIRD-PARTY.md`
 3. Restart the game, or type `/reload`, and make sure **Tavern Games** is enabled in the AddOns list.
 
-> The folder must be named exactly `TavernGames`. The `docs`, `tests` and `tools` folders are for development and are not needed in game.
+> The folder must be named exactly `TavernGames` (GitHub's zip unpacks as `TavernGames-master`, so rename it). The `docs`, `tests` and `tools` folders are for development and are not needed in game.
 
 ## Getting started
 
@@ -140,6 +142,11 @@ All players need the addon, and they need to be in the same guild. Play in the o
 | `/tavern probe roll` | Checks that server `/roll` messages are read correctly |
 | `/tavern probe trade` | Checks trade detection; open a trade window first |
 | `/tavern probe mail` | Checks mail detection; open the mailbox first |
+| `/tavern probe art` | Lists which game icons and portraits your client has |
+| `/tavern bots fill` | Fills the empty seats of your fun table with bots (the same as **Add bots**) |
+| `/tavern bots clear` | Stands your bots up from your table |
+| `/tavern bots close` | Closes the tables where only bots sit |
+| `/tavern bots host <game>` | A bot opens a fun table of that game for you to join |
 | `/tavern debug` | Turns debug logging on or off |
 | `/tavern reset` | Resets the language choice and the intro |
 
@@ -182,7 +189,7 @@ It currently targets WoW Forever (Interface 16001). Other clients may need a dif
 <details>
 <summary><b>Can I play against bots?</b></summary>
 
-There are no AI opponents. A tester bot mode exists for development and testing; in Chess it gives you a practice opponent.
+Yes, for practice. At a table *for fun*, click **Add bots** and bots fill the empty seats; **Remove bots** stands them up again. Bots never join a table with a stake, and only you see them: they live in your own client, so they are not real opponents for gold. They play simply, which is enough to learn a game.
 </details>
 
 ## Known limitations
@@ -204,6 +211,10 @@ bash t.sh tests/engines      # one folder
 bash t.sh tests/core/ledger_final_test.lua
 ```
 
+Every pull request runs the suite in [GitHub Actions](https://github.com/goofy5752/TavernGames/actions/workflows/tests.yml).
+
+[`tools/sim`](tools/sim) holds large simulations that play thousands of games of each game through the real engines and check every result against a reference written from the official rules, plus whole multi-client tables with disconnects. For example, `luajit tools/sim/belot_soak.lua 2000 1` or `luajit tools/sim/e2e_soak.lua 300 21`. The latest audit is in [`docs/audit`](docs/audit).
+
 The design spec, the per-stage implementation plans, the rulings log and the in-game check lists are in [`docs/superpowers`](docs/superpowers). The visual mockups are in [`docs/mockups`](docs/mockups).
 
 ## Project structure
@@ -219,6 +230,7 @@ TavernGames/
 ├── media/            # textures and fonts
 ├── Libs/             # vendored Ace3, LibDeflate, LibDataBroker, LibDBIcon
 ├── tests/            # the headless Lua test suite
+├── tools/            # texture generators and the game simulations (tools/sim)
 └── docs/             # design spec, plans, notes, mockups
 ```
 
@@ -245,9 +257,12 @@ Bug reports, rule corrections (especially for regional Belot and Santase variant
 - **Шах:** FIDE правила за ходовете с автоматично реми (рокада, мимоходно вземане, превръщане на пешка), часовник от 5 до 30 минути, реми по съгласие, предаване, тренировъчен бот в тестовия режим с ботове и игра със залог, при която реми не дължи нищо.
 - **Холдем със злато:** вход от 40 до 100 големи блайнда, докупуване и сметка между всеки двама играчи.
 - **Класация и история:** седмица, месец и всичко, титлата „Кралят/Кралицата на механата“, хронология на игрите и сравнение между двама играчи.
+- **Механата на твоята фракция:** облик на Алианса (лапис и злато) или на Ордата (кръв и желязо), с тестета на градовете и расите.
+- **Ботове за тренировка:** бутон „Добави ботове“ на маса за удоволствие. На маса със залог ботове не сядат.
+- **История на ръцете:** всяка взятка в Белот и Сантасе и всяка ръка в Холдема. В Холдема виждаш какво имаш в момента, а при all-in картите се обръщат преди борда.
 - **Разтегаеми прозорци:** хващаш ъгъла на прозореца или на масата и го правиш колкото искаш голям. Всичко вътре се уголемява заедно с него.
 - **Интерфейс на български и английски**, книга с правилата и въведение при първо пускане.
 
-**Инсталиране:** копирай папките `Libs`, `core`, `engines`, `locale`, `wow`, `ui`, `media` и файла `TavernGames.toc` в `World of Warcraft\_forever_\Interface\AddOns\TavernGames\`. После напиши `/tavern` в играта.
+**Инсталиране:** копирай папките `Libs`, `core`, `engines`, `locale`, `wow`, `ui`, `media` и файловете `TavernGames.toc` и `LICENSE-THIRD-PARTY.md` в `World of Warcraft\_forever_\Interface\AddOns\TavernGames\`. После напиши `/tavern` в играта.
 
 <sub>Keywords: WoW addon, World of Warcraft addon, guild games, Belot addon, Santase addon, Backgammon addon, Tabla, Texas Hold'em poker addon, WoW poker, Chess addon, WoW chess, Death Roll addon, gold betting, guild bank, debt ledger, Lua addon, WoW Forever, аддон за WoW, Белот, Сантасе, Табла, покер, Шах.</sub>
