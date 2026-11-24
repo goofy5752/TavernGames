@@ -19,7 +19,8 @@
 --     (each client's own audit, verdict "ok"), and no seed reached the dealer
 --     before every commit of its round was public;
 --   * the timers drain: an idle guild does not grow its timer list.
--- Usage (from the repo root): luajit tools/sim/e2e_soak.lua [tables] [seed] [game|all] [wire]
+-- Usage (from the repo root): luajit tools/sim/e2e_soak.lua [tables] [seed] [game|all] [wire] [dead] [one staked|fun]
+--   dead: at every table the host's client also dies for good at a random step (hostdead: in the mix too).
 --   game: ttt deathroll santase belot tabla holdem cash bots (default all, mixed)
 --   wire: every message goes through the real wire format (AceSerializer + LibDeflate).
 -- Deterministic per seed. Prints a summary and every failure with its seed.
@@ -123,20 +124,29 @@ function Sim:addFakes(env, opts)
   end
 end
 
+-- Seen on a branch of the table that is given up later: my client cut off, or a host that
+-- took the table over and that nobody follows (it may be the one cut off).
+local function onFork(name, client)
+  local s = client.session
+  -- (a claimant whose old host is dead for good is the table: the soak knows, the client cannot)
+  return (T.sim.offlineSet[name] or (s and s.role == "host" and s.claimedFrom ~= nil and not T.dead[s.claimedFrom]
+    and not T.gone[s.claimedFrom] and not ns.Succession.followed(s))) and true or false
+end
+
 local function listen(name, client)
   client:on("result", function(r)
-    T.results[#T.results + 1] = { who = name, r = Util.copy(r), at = T.sim.clock }
+    T.results[#T.results + 1] = { who = name, r = Util.copy(r), at = T.sim.clock, fork = onFork(name, client) }
     T.saw[name .. "|" .. tostring(r.tid) .. "/" .. tostring(r.q)] = true
   end)
   client:on("fair", function(v) T.fairs[#T.fairs + 1] = { who = name, v = Util.copy(v), at = T.sim.clock } end)
   client:on("forfeit", function(v)
-    T.forfeits[#T.forfeits + 1] = { who = name, v = Util.copy(v), host = client.session ~= nil and client.session.role == "host" }
+    T.forfeits[#T.forfeits + 1] = { who = name, v = Util.copy(v), host = client.session ~= nil and client.session.role == "host", fork = onFork(name, client) }
     T.saw[name .. "|" .. tostring(v.tid) .. "/" .. tostring(v.q)] = true
   end)
   client:on("cashout", function(v)
     local s = client.session
     -- seen on a fork: my client cut off, or a host that took the table over and nobody follows
-    local fork = T.sim.offlineSet[name] or (s and s.role == "host" and s.claimedFrom ~= nil and not ns.Succession.followed(s))
+    local fork = onFork(name, client)
     T.cashouts[#T.cashouts + 1] = { who = name, v = Util.copy(v), fork = fork and true or false }
     T.saw[name .. "|" .. tostring(v.gid)] = true
   end)
@@ -289,7 +299,7 @@ local function step(sim, tid)
 end
 
 -- ---------------------------------------------------------------- disruptions
-local KINDS = { "reload", "crash", "offline", "loading", "hostleave", "leave", "silence", "hostgone", "newcomer" }
+local KINDS = { "reload", "crash", "offline", "loading", "hostleave", "leave", "silence", "hostgone", "newcomer", "hostdead" }
 
 local function disrupt(sim, tid, kind)
   local rng = sim.rng
@@ -334,6 +344,11 @@ local function disrupt(sim, tid, kind)
     T.back[#T.back + 1] = { at = sim.clock + rng(200, 900), fn = function()
       T.gone[who] = nil; sim:online(who); sim:crash(who); sim:settle()
     end }
+  elseif kind == "hostdead" then
+    -- the host's client dies and never comes back (it is left out of the checks of what clients hold)
+    if not h then return end
+    who = h.env.me; line = kind .. " " .. who .. " @" .. sim.clock
+    h.env.dead = true; sim:offline(who); T.dead[who] = true
   elseif kind == "newcomer" then
     local s = h and h.session
     if not (s and s.game == "holdem") then return end
@@ -421,7 +436,7 @@ local SHORT = { santase = "GOAL", belot = "TARGET", tabla = "TARGET" }
 local function runTable(idx, seed, game, staked)
   local rng = lcg(seed)
   T = { idx = idx, seed = seed, game = game, staked = staked, fail = {}, results = {}, fairs = {}, forfeits = {},
-    cashouts = {}, hands = {}, claims = {}, saw = {}, desyncs = {}, fouls = {}, events = {}, back = {}, muted = {}, left = {}, gone = {},
+    cashouts = {}, hands = {}, claims = {}, saw = {}, dead = {}, desyncs = {}, fouls = {}, events = {}, back = {}, muted = {}, left = {}, gone = {},
     joinLater = {}, notMade = {}, checks = 0 }
   local lo, hi = SEATS[game][1], SEATS[game][2]
   local n = rng(lo, hi)
@@ -442,6 +457,8 @@ local function runTable(idx, seed, game, staked)
     if os.getenv("SOAK_CALM") then disruptions = 0 end -- honest play, nothing goes wrong: every debt should end confirmed
     local plan = {}
     for _ = 1, disruptions do plan[#plan + 1] = { at = rng(2, game == "ttt" and 8 or 60), kind = KINDS[rng(1, #KINDS)] } end
+    -- flag dead: the host also dies for good (never comes back) at some step
+    if FLAGS.dead then plan[#plan + 1] = { at = rng(2, game == "ttt" and 8 or 60), kind = "hostdead" } end
     local steps = 0
     for _ = 1, 9000 do
       backs(sim)
@@ -524,7 +541,7 @@ local function converge(sim, limit)
   local t0 = sim.clock
   while true do
     local first, ok = nil, true
-    for _, name in ipairs(T.names) do
+    for _, name in ipairs(T.alive or T.names) do
       local c = sim.clients[name]
       local set = ledgerOf(c)
       if not first then first = set elseif not same(first, set) then ok = false; break end
@@ -635,6 +652,15 @@ local function checkMoney(sim)
         T.noR = (T.noR or 0) + 1
         outcome[gid] = { l = { x.v.name }, w = x.v.to, why = x.v.why }
       end
+    end
+    -- An outcome only a branch saw (a cut-off claimant's): no debt is due for it, and a claim
+    -- of it may stand but is never confirmed (its debtors never saw it).
+    local seenReal = {}
+    for _, x in ipairs(T.results) do if not x.fork then seenReal[x.r.tid .. "/" .. x.r.q] = true end end
+    for _, x in ipairs(T.forfeits) do if not x.fork then seenReal[x.v.tid .. "/" .. x.v.q] = true end end
+    T.branch = {}
+    for gid in pairs(outcome) do
+      if not seenReal[gid] then outcome[gid] = nil; T.branch[gid] = true; T.forks = (T.forks or 0) + 1 end
     end
     -- Who owes whom, from the rules the players were promised (not the code's
     -- own pairing): every loser owes every winner the stake; in a team game a
@@ -748,11 +774,15 @@ local function checkMoney(sim)
   end
   for key in pairs(have) do
     T.checks = T.checks + 1
-    if not want[key] then note("money", "a D no result explains: " .. key) end
+    local g = key:match("^(.-)|")
+    if not want[key] and (T.branch or {})[g] then
+      local d = Play.debt(ref, g, key:match("^.-|(.-)|"), key:match("|([^|]*)$"))
+      if d and d.status == "confirmed" then T.branchConfirmed = (T.branchConfirmed or 0) + 1 end -- its debtor's own client agreed
+    elseif not want[key] then note("money", "a D no result explains: " .. key) end
   end
   -- balances: zero-sum, and the same on every client
   local nets = {}
-  for _, name in ipairs(T.names) do
+  for _, name in ipairs(T.alive or T.names) do
     local vv = View.of(sim.clients[name].ledger)
     local sum, parts = 0, {}
     for _, a in ipairs(T.names) do
@@ -763,7 +793,7 @@ local function checkMoney(sim)
     if sum ~= 0 then note("money", name .. ": the balances sum to " .. sum) end
     nets[name] = table.concat(parts, ",")
   end
-  for _, name in ipairs(T.names) do
+  for _, name in ipairs(T.alive or T.names) do
     T.checks = T.checks + 1
     -- own entries the guild gave back after a crash count for nothing until the player says they are his (LedgerNet: `un`)
     local held = false
@@ -825,7 +855,7 @@ local function checkFouls()
 end
 
 local function checkStuck(sim)
-  for _, name in ipairs(T.names) do
+  for _, name in ipairs(T.alive or T.names) do
     local c = sim.clients[name]
     T.checks = T.checks + 1
     if c.session and c.session.tid == T.tid then
@@ -834,7 +864,7 @@ local function checkStuck(sim)
     if c.pending then note("stuck", name .. " has a pending request") end
   end
   sim:run(C.TBL_EXPIRE + 5)
-  for _, name in ipairs(T.names) do
+  for _, name in ipairs(T.alive or T.names) do
     T.checks = T.checks + 1
     if sim.clients[name].lobby:get(T.tid) then note("ghost", name .. " still lists the table") end
   end
@@ -857,6 +887,8 @@ local function checkTimers(sim)
 end
 
 local function checkAll(sim)
+  T.alive = {}
+  for _, name in ipairs(T.names) do if not T.dead[name] then T.alive[#T.alive + 1] = name end end
   local ok, err = xpcall(function()
     -- everyone online (a host gone for good came back above)
     local conv, secs = converge(sim, 1800)
@@ -864,11 +896,11 @@ local function checkAll(sim)
     T.conv = secs
     if not conv then
       local counts = {}
-      for _, name in ipairs(T.names) do local _, nn = ledgerOf(sim.clients[name]); counts[#counts + 1] = name .. "=" .. nn end
+      for _, name in ipairs(T.alive or T.names) do local _, nn = ledgerOf(sim.clients[name]); counts[#counts + 1] = name .. "=" .. nn end
       note("ledger", "did not converge in 1800 s: " .. table.concat(counts, " "))
     else
       local d0
-      for _, name in ipairs(T.names) do
+      for _, name in ipairs(T.alive or T.names) do
         local d = sim.clients[name].ledger:digest()
         d0 = d0 or d
         if d ~= d0 then note("ledger", "digest of " .. name .. " differs") end
@@ -892,7 +924,7 @@ local function runBots(idx, seed)
   local games = { "ttt", "deathroll", "santase", "belot", "tabla", "holdem" }
   local game = games[rng(1, #games)]
   T = { idx = idx, seed = seed, game = "bots:" .. game, staked = false, fail = {}, results = {}, fairs = {}, forfeits = {},
-    cashouts = {}, hands = {}, claims = {}, saw = {}, desyncs = {}, fouls = {}, events = {}, back = {}, muted = {}, left = {}, gone = {}, joinLater = {}, notMade = {}, checks = 0 }
+    cashouts = {}, hands = {}, claims = {}, saw = {}, dead = {}, desyncs = {}, fouls = {}, events = {}, back = {}, muted = {}, left = {}, gone = {}, joinLater = {}, notMade = {}, checks = 0 }
   local sim = Sim.new()
   sim.rng = rng
   T.sim = sim
