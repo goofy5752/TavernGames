@@ -152,6 +152,8 @@ function Member.adopt(client, sender, m)
   s:hook("adopted", prevState, m, how)
   s:armAuto()
   if not s.pingTimer then s:schedulePing() end
+  -- Seated under a new host: a PNG at once, so it knows it is followed (Succession.followed).
+  if seat and prevHost and prevHost ~= sender then client:send("WHISPER", sender, Session.message("PNG", { tid = s.tid })) end
   Succession.watchHost(s)
   -- A table I hosted until now, or one adopted before any TBL: list it as the host's.
   if not client.lobby:get(s.tid) then
@@ -192,7 +194,7 @@ local function onSnapshot(client, sender, m)
   if s and s.tid == m.tid then
     -- My table: a new host's snapshot always; my own host's unless it is older
     -- than what I have (a stale member has nothing worth keeping).
-    local kind = Succession.authority(s, sender, m.e)
+    local kind = Succession.authority(s, sender, m.e, m)
     if kind == "new" or (kind == "current" and (s.stale or m.q >= s.seq)) then
       Member.adopt(client, sender, m)
     end
@@ -371,7 +373,9 @@ end
 local function onTick(client, sender, m)
   local s = client.session
   if not s or s.tid ~= m.tid or type(m.q) ~= "number" then return end
-  local kind = Succession.authority(s, sender, m.e)
+  local kind = Succession.authority(s, sender, m.e, m)
+  if kind == nil and Succession.yields(s, sender, m) then return end
+  Succession.rival(s, kind, m)
   if kind == "new" then
     Succession.follow(s, sender, m.e)
     s:requestSync()

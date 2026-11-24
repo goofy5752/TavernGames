@@ -96,7 +96,10 @@ function View.model(s, declare, names)
         plays[a.i] = true
       elseif a.k == "marry" then
         marries[a.i] = true
-        buttons.marry = (buttons.marry == 40 or suit(a.c) == st.tsuit) and 40 or 20
+        local v = suit(a.c) == st.tsuit and 40 or 20
+        -- a 40 and a 20 both in hand: the button names both, the card picked says which
+        if buttons.marry and buttons.marry ~= v then buttons.marryBoth = true end
+        buttons.marry = (buttons.marry == 40 or v == 40) and 40 or 20
       elseif a.k == "swap9" then
         buttons.swap = buttons.swap or a
       elseif a.k == "close" then
@@ -301,7 +304,7 @@ end
 -- The visible buttons stacked at the right edge from the top of the middle band.
 local function drawButtons(f, m)
   local b = m.buttons
-  f.marryButton.text:SetText(L(b.marry == 40 and "santase.marry40" or "santase.marry20"))
+  f.marryButton.text:SetText(L(b.marryBoth and "santase.marryBoth" or b.marry == 40 and "santase.marry40" or "santase.marry20"))
   f.marryButton.lit = f.armed
   f.marryButton.edges.setColor(Theme.rgb(f.armed and "gold" or "brass"))
   f.marryButton:SetShown(b.marry ~= nil)

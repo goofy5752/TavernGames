@@ -152,6 +152,9 @@ function Client:answerInvite(tid, answer) self.invites:answer(tid, answer) end
 
 function Client:receive(channel, sender, msg)
   if not self.running then return end
+  -- Guild traffic reached me (Succession.claim: was I cut off?). Not a whisper: a host that stops
+  -- hearing me while I hear others whisper (one-way loss) must not make my stand there "forged".
+  if channel == "GUILD" then self.heardAt = self.env.now() end
   if self.env.log then self.env.log("in", channel, sender, msg) end
   if type(msg) ~= "table" or msg.v == nil or msg.t == nil then return end
   if type(sender) ~= "string" or sender == self.env.me then return end

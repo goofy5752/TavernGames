@@ -77,6 +77,15 @@ describe("ui: Сантасе view", function()
   end
   local boot = santaseWithBot
 
+  it("a 40 and a 20 in hand: the button says „Обяви 20 / 40“, not just 40", function()
+    local w, V, View = boot(); local s = w.ns.client.session; s.state = E.view(full(), 1)
+    s.state.deck[3], s.state.deck[9] = "KS", "QS" -- TS 9S become a plain marriage beside KH QH (trump)
+    local m = View.model(s, false)
+    eq({ m.buttons.marry, m.buttons.marryBoth }, { 40, true })
+    show(w, s.state); eq(V.marryButton.text:GetText(), "Обяви 20 / 40")
+    s.state = E.view(full(), 1); m = View.model(s, false); eq({ m.buttons.marry, m.buttons.marryBoth }, { 40, nil })
+  end)
+
   it("my lead: the hand sorted by suit, a 40 to declare, „Затвори“ offered, no swap", function()
     local w, V, View = boot(); local s = w.ns.client.session; s.state = E.view(full(), 1)
     local m = View.model(s, false); local ids, modes = {}, {}

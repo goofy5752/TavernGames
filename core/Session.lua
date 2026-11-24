@@ -159,7 +159,7 @@ function Session:sendTBL()
   if self.announceTimer then self.announceTimer.cancel(); self.announceTimer = nil end
   if self.heartbeatTimer then self.heartbeatTimer.cancel() end
   self.lastAnnounce = client.env.now()
-  client:send("GUILD", nil, message("TBL", self:record()))
+  client:send("GUILD", nil, message("TBL", Succession.mark(self, self:record())))
   self.heartbeatTimer = client:after(C.TBL_HEARTBEAT, function()
     self.heartbeatTimer = nil
     self:sendTBL()
@@ -266,7 +266,7 @@ end
 function Session:scheduleTick()
   self.tickTimer = self.client:after(C.PING_EVERY, function()
     self.tickTimer = nil
-    local m = message("TCK", { tid = self.tid, e = self.epoch, q = self.seq })
+    local m = message("TCK", Succession.mark(self, { tid = self.tid, e = self.epoch, q = self.seq }))
     local members = self:members()
     for i = 1, #members do self.client:send("WHISPER", members[i], m) end
     self:scheduleTick()
@@ -274,11 +274,11 @@ function Session:scheduleTick()
 end
 
 function Session:snapshotTo(name)
-  self.client:send("WHISPER", name, message("SNP", {
+  self.client:send("WHISPER", name, message("SNP", Succession.mark(self, {
     tid = self.tid, e = self.epoch, q = self.seq, tbl = self:record(),
     st = self:snapshotFor(name), left = self:left(),
     inv = self:invitedList(), fr = self:hook("snap"),
-  }))
+  })))
 end
 
 function Session:allows(peer)
@@ -443,7 +443,7 @@ function Session.stand(client)
   client.pending = nil
   if not s then return end
   if s.role == "host" then
-    local successor = Succession.candidates(s.seats, client.env.me)[1]
+    local successor = Succession.heir(s, client.env.me)
     if successor then return Succession.handoff(s, successor) end
     return s:finish()
   end
@@ -495,7 +495,7 @@ function Session.receive(client, channel, sender, m)
   if s then Succession.heard(s, sender, m) end
   if t == "HI" then
     if s and s.role == "host" then
-      if m.re == true then client:send("WHISPER", sender, message("TBL", s:record())) end
+      if m.re == true then client:send("WHISPER", sender, message("TBL", Succession.mark(s, s:record()))) end
       -- Seated here but not aware of it (a relog): the snapshot brings it back.
       if m.at ~= s.tid and seatOf(s.seats, sender) then s:snapshotTo(sender) end
     end

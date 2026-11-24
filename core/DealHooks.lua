@@ -276,6 +276,8 @@ ns.Ext.fair = {
       -- The dealer's seat stands mid-hand, taking the deck with it.
       if a.seat == fair.d and fair.stage == "dealt" and not Deal.handOver(s) and not s:gameOver()
           and s:seatedCount() >= s:engine().minSeats then
+        -- My own stand as host (a handoff): the void is mine, not one in my name (the void hook).
+        if a.seat == s.mySeat then fair.voidAsked = true end
         return s:play(0, { k = "void" })
       end
     end

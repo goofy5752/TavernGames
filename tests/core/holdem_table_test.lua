@@ -812,6 +812,17 @@ describe("holdem: the book", function()
     eq(finalKeys(mark), { k = "book", op = "keys", m = { KEY(1), KEY(2) }, g = st().g, f = true })
     eq({ bw[1].ok, bw[1].bad, bw[1].open, b2[#b2].ok, b2[#b2].bad }, { 1, 0, 0, 1, 1 })          -- the watcher's book is clean; mine keeps the forged mark
   end)
+  -- e2e soak seed 1300886: the held book's question turned into a forged mark once the table
+  -- stopped being live (the host stood up, I took the table alone: aborted). Only the same game
+  -- running on proves the end I was told false.
+  it("I2: my key held at the game's end, then the table stops: still a question, not forged", function()
+    tableN(2); ok(cl[1]:startGame()); sim:run(3); local s2 = cl[2].session
+    forgedSnapshot(N[2], function(x) x.phase, x.turn = "closed", nil end)
+    eq({ s2:gameOver(), s2.book.forged, s2.book.held }, { true, true, true })
+    cl[1]:stand(); sim:run(2)
+    eq({ s2.role, s2.status }, { "host", "aborted" })
+    eq({ s2.book.forged, s2.book.held }, { true, true })
+  end)
   it("I2: a snapshot that ends my hand, then the close by an event: the hand's end came by no event, my key stays", function()
     tableN(2); ok(cl[1]:startGame()); sim:run(3); local s2 = cl[2].session
     forgedSnapshot(N[2], function(x) x.phase, x.turn = "done", nil end); eq({ s2:gameOver(), s2.book.forged, cl[2].bookHot.n }, { false, nil, 1 })
@@ -947,5 +958,22 @@ describe("holdem: what a full table costs", function()
     eq(st().phase, "done"); local n, bytes, _, _, byType = cost(mark)
     local tck = byType.TCK or 0; byType.TCK = nil
     eq(byType, { EV = 138, PRV = 5 }); ok(tck <= 6, "TCK " .. tck); eq(n, 143 + tck); ok(bytes <= 23500, "bytes " .. bytes)       -- 23 events to 6 members and the dealer's 5 private whispers; measured 22 000-22 500
+  end)
+end)
+
+describe("holdem: the host deals and stands mid-hand (e2e soak)", function()
+  -- The host's own stand (a handoff) voids the hand it deals: its own void, not
+  -- one "in my name that I did not make" (soak seed 300183: "bad: forged" on the leaver).
+  it("the hand is void on every client and on the leaver, and nowhere forged", function()
+    tableN(3); ok(cl[1]:startGame()); sim:run(3)
+    local f = cl[1].session.fair
+    eq({ st().hand, f.d, f.stage }, { 1, 1, "dealt" })
+    local verdicts = {}
+    for i = 1, 3 do cl[i]:on("fair", function(v) verdicts[#verdicts + 1] = { i, v.verdict, v.why } end) end
+    cl[1]:stand(); sim:run(3)
+    eq(cl[1].session, nil)
+    for _, v in ipairs(verdicts) do ok(v[2] ~= "bad", "client " .. v[1] .. ": " .. tostring(v[2]) .. " " .. tostring(v[3])) end
+    eq(host(), cl[2]); eq(st().last.void, true)
+    for _, c in ipairs{ cl[2], cl[3], w } do eq(c.session.fairLast.verdict, "void") end
   end)
 end)
