@@ -43,8 +43,8 @@ describe("theme", function()
     local keys = {}
     for k in pairs(Theme.SKINS.alliance.color) do keys[#keys + 1] = k end
     table.sort(keys)
-    eq(keys, { "accent", "banner", "bannerHi", "brass", "brassDim", "brassLight", "deep", "felt", "feltDark", "feltHi",
-      "lantern", "paperHead" })
+    eq(keys, { "accent", "banner", "bannerHi", "brass", "brassDim", "brassLight", "coord", "deep", "felt", "feltDark", "feltHi",
+      "lantern", "paperHead", "sqDot", "sqLast", "sqSel" })
     for _, k in ipairs(keys) do ok(Theme.SKINS.horde.color[k], k) end
     for _, s in pairs({ "alliance", "horde" }) do
       Theme.apply(s)

@@ -154,6 +154,9 @@ ui/games/TablaView.lua
 ui/games/HoldemModel.lua
 ui/games/HoldemView.lua
 ui/games/HoldemCashView.lua
+ui/games/ChessModel.lua
+ui/games/ChessPanels.lua
+ui/games/ChessView.lua
 ui/InviteToast.lua
 ui/SettleToast.lua
 ui/HelpBook.lua

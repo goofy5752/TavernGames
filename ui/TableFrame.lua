@@ -44,7 +44,9 @@ local _, ns = ...
 --
 -- A view is { build(parent) -> frame, update(frame, session) } and may add
 -- seatNote(session, seat) -> text and seatTricks(session, seat) -> number | nil
--- for the plates, `ring = true` and `size`. Client
+-- for the plates, `ring = true` and `size`, plateSpots(session, areaW, areaH) -> spots, rows
+-- (its own places for the plates, in place of the grid or the ring) and seatClock(session, seat)
+-- -> tenths | "none" | nil (a clock on every plate, ui/TablePlates.lua; chess). Client
 -- events only schedule a redraw for the next frame (TableFrame.refresh), as in
 -- the hall.
 local Theme, W, L = ns.Theme, ns.W, ns.L
