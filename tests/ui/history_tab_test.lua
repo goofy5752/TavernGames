@@ -222,6 +222,29 @@ describe("ui: the tab „История“", function()
     eq(#shown(w), 1)
   end)
 
+  it("the book sits W.HEAD_GAP under the head's lowest line, as in „Тефтер“ and „Класация“: the title, or the last head-to-head line", function()
+    local w = readyWow()
+    fun(w); staked(w, 50000)
+    local W = w.ns.W
+    local function under(book)
+      local p = book.points[#book.points - 1] -- ClearAllPoints, then TOPLEFT, then BOTTOMRIGHT
+      return p[1], p[2], p[3], p[4], p[5]
+    end
+    local v = open(w)
+    local a, rel, b, x, y = under(v.book)
+    eq({ a, b, x, y }, { "TOPLEFT", "BOTTOMLEFT", -4, -W.HEAD_GAP }); ok(rel == v.title, "not under the title")
+    v = open(w, B)
+    local last
+    for _, fs in ipairs(v.versus) do if fs:IsShown() then last = fs end end
+    ok(last, "no head-to-head line")
+    a, rel, b, x, y = under(v.book)
+    eq({ a, b, x, y }, { "TOPLEFT", "BOTTOMLEFT", -4, -W.HEAD_GAP }); ok(rel == last, "not under the last head line")
+    w.ns.MainWindow.show("ledger"); w:advance(0)
+    local L = w.ns.LedgerTab.view
+    a, rel, b, x, y = under(L.book)
+    eq({ a, b, x, y }, { "TOPLEFT", "BOTTOMLEFT", -4, -W.HEAD_GAP }); ok(rel == L.head, "ledger: not under its head")
+  end)
+
   it("a click on a row of „Класация“ opens the history of that player", function()
     local w = readyWow()
     fun(w)

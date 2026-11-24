@@ -23,7 +23,7 @@ local HistoryTab = {
 }
 ns.HistoryTab = HistoryTab
 
-local BOOK_W, PAD, HEAD_H, ROW_H, ROWS, LINE_H = 760, 14, 108, 26, 16, 14
+local BOOK_W, PAD, ROW_H, ROWS, LINE_H = 760, 14, 26, 16, 14
 local ROW_W = BOOK_W - 20 - 2 * PAD - 6
 local TEXT_W, MARK_W, AMOUNT_W, AGE_W = 400, 110, 110, 56 -- the amount fits the gold cap in coins
 local RULE, AGE = { 0xd9 / 255, 0xc4 / 255, 0x9a / 255 }, { 0x7a / 255, 0x5a / 255, 0x3a / 255 }
@@ -220,10 +220,13 @@ function HistoryTab.render()
   v.title:SetText(who and L("history.of", who) or L("tab.history"))
   v.all:SetShown(who ~= nil)
   local head = HistoryTab.head(client, who)
+  local last = v.title -- the book sits under the head's lowest line: the title, or the last head-to-head line
   for i, fs in ipairs(v.versus) do
     fs:SetShown(head[i] ~= nil)
     fs:SetText(head[i] and head[i].text or "")
+    if head[i] then last = fs end
   end
+  if v.bookUnder ~= last then v.bookUnder = last; W.bookUnder(v.book, v.panel, last, 8) end
 end
 
 -- Shows the lines of `who` (nil: everyone), now: drawn once (by the page's show, else here).
@@ -273,8 +276,8 @@ function HistoryTab.build(page)
     v.versus[i] = fs
   end
   local book = CreateFrame("Frame", nil, panel)
-  book:SetPoint("TOPLEFT", panel, "TOPLEFT", 10, -HEAD_H)
-  book:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -10, 8)
+  W.bookUnder(book, panel, v.title, 8)
+  v.book, v.bookUnder = book, v.title
   W.paper(book); v.seal = W.seal(book, 56)
   v.list = ns.BookList.new(book, { width = ROW_W, rowH = ROW_H, rows = ROWS, make = makeRow, fill = fillRow })
   v.list.scroll:SetPoint("TOPLEFT", book, "TOPLEFT", PAD, -8)
