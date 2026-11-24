@@ -20,9 +20,11 @@ local M = w.ns.ChessModel
 local sq = Chess.sq
 
 -- A session over `st` at seat `seat` (nil: a watcher); seat 2 plays white in a new game.
+-- A session as the model reads it, with the engine methods core/Clock.lua calls.
 local function sess(st, seat)
   return { game = "chess", status = "live", mySeat = seat, seats = { A, B }, state = st, tid = "t#1",
-    role = seat and "player" or "watcher" }
+    role = seat and "player" or "watcher",
+    engine = function() return Chess.E end, gameOver = function(self) return Chess.E.over(self.state) end }
 end
 local function new(words) return Chess.play(Chess.at("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"), words or "") end
 
@@ -119,6 +121,10 @@ describe("ui: the chess model", function()
     eq(M.build(sess(st, 2)).canOffer, false)
     local watcher = M.build(sess(new(), nil))
     eq({ watcher.canOffer, watcher.canResign, watcher.canClaim, watcher.myTurn }, { false, false, false, false })
+    -- black's time gone by my clock: I (white) may claim
+    local late = sess(new("e2e4"), 2)
+    late.clockAt, late.client = 0, { env = { now = function() return 6000 end } }
+    eq(M.build(late).canClaim, true)
   end)
 
   it("the status and the end text", function()

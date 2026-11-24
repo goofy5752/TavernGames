@@ -17,6 +17,7 @@ E.options = {
 
 local MINUTES = 10  -- the clock when the table names none
 local WAIT = 3      -- own moves after a declined offer before that seat may offer again
+E.WAIT = WAIT       -- core/StakesChess.lua checks a snapshot's waits against it
 local PROMO = { q = true, r = true, b = true, n = true }
 
 local function copy(v)
@@ -35,6 +36,8 @@ local function colour(s, seat) return seat == s.white and 1 or -1 end
 
 -- opts.first: the seat that plays white (E.firstSeat when missing);
 -- opts.opt.clock: minutes a player, 0 for no limit (missing: MINUTES).
+-- A new state field must also be rebuilt by core/StakesChess.lua's replay:
+-- SC.valid refuses a staked snapshot with any field the replay does not make.
 function E.new(opts)
   opts = opts or {}
   local white = (opts.first == 1 or opts.first == 2) and opts.first or E.firstSeat

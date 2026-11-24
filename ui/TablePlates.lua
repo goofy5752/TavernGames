@@ -102,9 +102,13 @@ local function seatClock(p, s, view, seat)
   local bar = number and base and s.state.phase == "play" and s.state.turn == seat
   p.bar:SetShown(bar or false)
   if t == nil then return end
-  -- every frame: only what changed is set again
-  local text, low = ns.ChessModel.clockText(number and t or nil), number and t < CLOCK_LOW
-  if p.clockText ~= text then p.clockText = text; p.clock:SetText(text) end
+  -- every frame: only what changed is set again; a running clock's text once a whole second
+  local secs, low = number and math.ceil(t / 10) or nil, number and t < CLOCK_LOW
+  if not number or p.clockSecs ~= secs then
+    p.clockSecs = secs
+    local text = ns.ChessModel.clockText(number and t or nil)
+    if p.clockText ~= text then p.clockText = text; p.clock:SetText(text) end
+  end
   if p.clockLow ~= low then p.clockLow = low; p.clock:SetTextColor(Theme.rgb(low and "clockLow" or "gold")) end
   if bar then
     local w = math.max(1, p.frame:GetWidth() * math.min(t, base) / base)
@@ -173,7 +177,7 @@ local function render(v, s, client)
     if view and view.seatClock then
       seatClock(p, s, view, i)
     else
-      p.clockText, p.clockLow, p.barWidth = nil, nil, nil -- a seatClock view sets them again
+      p.clockText, p.clockSecs, p.clockLow, p.barWidth = nil, nil, nil, nil -- a seatClock view sets them again
       local timed = onTurn and s.deadline ~= nil
       p.clock:SetShown(timed)
       p.bar:SetShown(timed)

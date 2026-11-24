@@ -75,8 +75,10 @@ describe("ui: the chess table history", function()
     eq(hands[10].no, 13)
     eq(hands[1].no, 4)
     eq(hands[10].moves, { "e4" })
-    local again = new(1) -- the same white again: the move list is shorter, so it is another game
+    local again = new(1) -- another game: an entry once it has its first move
     feed(again)
+    eq(H.tables["t#1"].hands[10].no, 13)
+    Chess.play(again, "d2d4"); feed(again)
     eq(#H.tables["t#1"].hands, 10)
     eq(H.tables["t#1"].hands[10].no, 14)
   end)
@@ -89,11 +91,35 @@ describe("ui: the chess table history", function()
     feed(st)
     eq(#H.tables["t#1"].hands, 1)
     eq(H.tables["t#1"].hands[1].res, { winner = 1, reason = "resign" })
-    feed(new()) -- the same white, no move yet
+    local nextGame = new()
+    feed(nextGame) -- the same white, no move yet: no entry yet
+    eq(#H.tables["t#1"].hands, 1)
+    Chess.play(nextGame, "e2e4"); feed(nextGame)
     local hands = H.tables["t#1"].hands
     eq(#hands, 2)
     eq(hands[1].res, { winner = 1, reason = "resign" })
     eq(hands[2].res, nil)
+    eq(hands[2].moves, { "e4" })
+  end)
+
+  it("a running state between two games adds no empty entry", function()
+    H.observe(nil)
+    local st = new()
+    feed(st); Chess.play(st, "f2f3 e7e5 g2g4 d8h4"); feed(st)
+    -- the finished game seen again as running, then the rematch before its first move
+    local echo = Chess.E.restore(st)
+    echo.phase, echo.result, echo.turn = "play", nil, 2
+    feed(echo)
+    feed({ phase = "play" })
+    local rematch = new(1)
+    feed(rematch)
+    local hands = H.tables["t#1"].hands
+    eq(#hands, 1)
+    eq(hands[1].res, { winner = 1, reason = "mate" })
+    eq(hands[1].moves, { "f3", "e5", "g4", "Qh4#" })
+    Chess.play(rematch, "e2e4"); feed(rematch)
+    eq(#hands, 2)
+    eq({ hands[2].no, hands[2].white, hands[2].moves }, { 2, 1, { "e4" } })
   end)
 
   it("the panel prints it in my language", function()

@@ -8,7 +8,8 @@ local _, ns = ...
 -- - My log: every action of my seat that was not forged, once per (ply, kind),
 --   so my ACT and the event that shows it are one entry (both call
 --   Stakes.sent). A move is "<from><to><promotion>" ("e2e4", "e7e8q") at its
---   index in state.moves, any other action its kind at #state.moves.
+--   index in state.moves, any other action its kind at #state.moves. A word
+--   never holds a space (word() refuses one): the saved log packs them so.
 -- - A snapshot (SC.adopted): a move of my seat my log lacks at a ply up to
 --   its last move is forged; beyond it forged too, but "unseen" after a login
 --   (WoW's copy may be the one before a crash), and so for a resign of mine,
@@ -20,22 +21,23 @@ local _, ns = ...
 -- Session field chessLog {no, list, ply, at} (local, never sent): no the s.stakeNo
 -- of its game; list[i] what my seat did, ply[i] where; at[i] = {sent, turn}: my
 -- env.now() at my ACT of a move and at the start of its turn on my clock (nil:
--- not seen), until its dt is counted. Saved as db.stakeChess = {tid, no, list,
--- ply} beside my stake note for this table, while it stands (ns.Stake.clear).
+-- not seen), until its dt is counted. Saved as db.stakeChess = {tid, no, log =
+-- "1:e2e4 3:g1f3 3:offer"} (ply:word split by spaces, so no word holds one; one
+-- string: well under 1 KB a game) beside my
+-- stake note for this table, while it stands (ns.Stake.clear).
 local SC = {}
 ns.StakesChess = SC
 
 local same = ns.Util.same
 local FILES = "abcdefgh"
 local PROMO = { q = true, r = true, b = true, n = true }
-local WAIT = 3 -- engines/chess.lua's WAIT: own moves after a declined offer before the next
 
 local function whole(v, lo, hi) return type(v) == "number" and v >= lo and v <= hi and v % 1 == 0 end
 local function square(n) local f = (n - 1) % 8 + 1; return FILES:sub(f, f) .. (math.floor((n - 1) / 8) + 1) end
 
 -- What a log entry says of action (or move entry) a -> string | nil.
 local function word(a)
-  if a.k ~= nil and a.k ~= "move" then return type(a.k) == "string" and a.k or nil end
+  if a.k ~= nil and a.k ~= "move" then return type(a.k) == "string" and not a.k:find("%s") and a.k or nil end
   if not (whole(a.f, 1, 64) and whole(a.t, 1, 64)) then return nil end
   return square(a.f) .. square(a.t) .. (PROMO[a.p] and a.p or "")
 end
@@ -65,7 +67,7 @@ local function replay(b)
   end
   if x.phase == "play" and b.phase == "over" and not (type(b.result) == "table" and close(E, x, b.result)) then return nil end
   local w, offer, claimed = b.wait, b.offer, b.claimed
-  if not (type(w) == "table" and whole(w[1], 0, WAIT) and whole(w[2], 0, WAIT)) then return nil end
+  if not (type(w) == "table" and whole(w[1], 0, E.WAIT) and whole(w[2], 0, E.WAIT)) then return nil end
   if offer ~= nil and not (x.phase == "play" and (offer == 1 or offer == 2)) then return nil end
   if claimed ~= nil and not (x.base and whole(claimed, 0, #x.moves)) then return nil end
   x.wait, x.offer, x.claimed = { w[1], w[2] }, offer, claimed
@@ -73,11 +75,16 @@ local function replay(b)
 end
 
 -- Is b a chess state at all: the replay of its own moves -> bool (anything
--- unreadable: false).
+-- unreadable: false). The last answer is kept with a copy of its state: one
+-- snapshot passes here several times (Member, Stakes.leadsTo, SC.adopted) but replays once.
+local last -- { st = copy of the state judged, ok = its answer }
 function SC.valid(b)
   if type(b) ~= "table" then return false end
+  if last and same(last.st, b) then return last.ok end
   local read, x = pcall(replay, b)
-  return read and x ~= nil and same(x, b)
+  local ok = read and x ~= nil and same(x, b)
+  last = { st = ns.Util.copy(b), ok = ok }
+  return ok
 end
 
 -- Does chess state a lead to b in one game (b is a, or a later point of it)
@@ -102,7 +109,9 @@ function SC.turnKey(st) return type(st.moves) == "table" and #st.moves or nil en
 local function save(s)
   local db, log = s.client.env.db, s.chessLog
   if type(db.stakeSat) ~= "table" or db.stakeSat.tid ~= s.tid or not log then return end
-  db.stakeChess = { tid = s.tid, no = log.no, list = log.list, ply = log.ply }
+  local packed = {}
+  for i = 1, #log.list do packed[i] = log.ply[i] .. ":" .. log.list[i] end
+  db.stakeChess = { tid = s.tid, no = log.no, log = table.concat(packed, " ") }
 end
 
 -- The entry of log saying w at a ply from lo to hi -> its index | nil.
@@ -155,11 +164,9 @@ local function takeUp(s, st)
   local saved, gen = db.stakeChess, db.stakeLog
   local no = (s.stakeNo or 0) + (ns.Stakes.running(s) and 1 or 0)
   local log = { no = no, list = {}, ply = {}, at = {} }
-  if type(saved) == "table" and saved.tid == s.tid and type(saved.list) == "table" and type(saved.ply) == "table"
+  if type(saved) == "table" and saved.tid == s.tid and type(saved.log) == "string"
       and type(gen) == "table" and gen.tid == s.tid and gen.no == saved.no and ns.Stakes.leadsTo(gen.st, st) then
-    for i = 1, #saved.list do
-      if type(saved.list[i]) == "string" and whole(saved.ply[i], 0, math.huge) then add(log, saved.list[i], saved.ply[i]) end
-    end
+    for ply, w in saved.log:gmatch("(%d+):(%S+)") do add(log, w, tonumber(ply)) end
   end
   return log
 end

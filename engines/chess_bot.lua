@@ -115,12 +115,14 @@ local function root(pos)
   end
   if #tied == 0 then
     -- The cap came inside the first root move: no move has a searched score.
-    -- Last resort, the static value of the position after each move.
+    -- Last resort, the static value of the position after each move; a mate
+    -- first, a stalemate as a draw (taken only when behind).
     best = -INF
     for i = 1, #list do
       local child = R.copy(pos)
       R.make(child, list[i])
       local v = -evaluate(child.board) * child.side
+      if #R.moves(child) == 0 then v = R.inCheck(child, child.side) and MATE or 0 end
       if v > best then best, tied = v, { list[i] }
       elseif v == best then tied[#tied + 1] = list[i] end
     end

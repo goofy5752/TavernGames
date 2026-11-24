@@ -177,11 +177,16 @@ function W.optionText(game, id, value)
 end
 
 -- The time line of a table: „Време за партия 10 мин“ for an engine with a
--- game clock (Шах), else „45 с на ход“. `opt` is the table's options.
+-- game clock (Шах), else „45 с на ход“. `opt` is the table's options; a
+-- missing clock (an advert without them) is the default of the engine's clock option.
 function W.timeText(game, turn, opt)
   local engine = ns.Games.engine(game)
   if engine and engine.clock then
-    return L("opt." .. game .. ".clock") .. " " .. W.optionText(game, "clock", opt and opt.clock)
+    local clock = opt and opt.clock
+    for _, o in ipairs(clock == nil and engine.options or {}) do
+      if o.id == "clock" then clock = o.default; break end
+    end
+    return L("opt." .. game .. ".clock") .. " " .. W.optionText(game, "clock", clock)
   end
   return L("hall.turn", turn)
 end

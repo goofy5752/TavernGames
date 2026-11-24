@@ -31,7 +31,7 @@ ICONS = {
     "holdem": "lorc/poker-hand.svg",
     "ttt": "delapouite/tic-tac-toe.svg",
     "deathroll": "lorc/skull-crossed-bones.svg",
-    "chess": "own/chess-knight.svg",
+    "chess": "skoll/chess-knight.svg",
 }
 
 TOKEN = re.compile(r"[MmLlHhVvCcSsQqTtAaZz]|[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?")

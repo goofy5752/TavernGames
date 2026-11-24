@@ -165,8 +165,13 @@ describe("ui: the chess view", function()
     local pick = f.side.promo
     ok(pick and pick.frame:IsVisible(), "the picker is open")
     eq(acts, {})
-    -- the queen nearest the top
-    eq(pick.buttons.q:GetParent(), pick.frame)
+    -- the queen nearest the top: every button hangs from the picker's top, the queen highest
+    local function top(b)
+      local p = b.points[#b.points]
+      eq({ p[1], p[2], p[3] }, { "TOPLEFT", pick.frame, "TOPLEFT" })
+      return p[5]
+    end
+    for _, letter in ipairs({ "r", "b", "n" }) do ok(top(pick.buttons.q) > top(pick.buttons[letter]), "the queen is below " .. letter) end
     w:click(pick.buttons.n)
     eq(acts, { { k = "move", f = 49, t = 57, p = "n" } })
     ok(not pick.frame:IsVisible(), "the picker is closed")
@@ -210,6 +215,19 @@ describe("ui: the chess view", function()
     -- the plates stand in the side column: mine at the bottom
     ok(p[1].frame.points[1][5] < p[2].frame.points[1][5], "my plate is lower")
     eq(p[1].frame:GetWidth(), 220)
+  end)
+
+  it("a clock's text is made once a whole second, not every frame", function()
+    local w, T = setup()
+    local p, M = T.view.plates, w.ns.ChessModel
+    local made, clockText = 0, M.clockText
+    M.clockText = function(...) made = made + 1; return clockText(...) end
+    for _ = 1, 3 do w:advance(0.2); T.tick() end -- 0.6 s: both clocks still show the same second
+    local still = made
+    w:advance(1); T.tick() -- the clock on turn shows the next second
+    M.clockText = clockText
+    eq({ still, made }, { 0, 1 })
+    eq({ p[1].clock:GetText(), p[2].clock:GetText() }, { "9:59", "10:00" })
   end)
 
   it("without a limit both plates show the sign and no bar", function()
@@ -351,12 +369,17 @@ describe("ui: the chess view", function()
   it("the table's own sounds are not touched and the theme names the chess textures", function()
     local w = guildWow()
     local Theme = w.ns.Theme
-    local n = 0
-    for name, size in pairs(Theme.chessTexSize) do
-      n = n + 1
-      eq(type(Theme.chessTex(name)), "string"); eq(#size, 2)
+    -- the 31 names of the textures (tools/gen_chess_textures.py) with their sizes
+    local want = { dot = { 64, 64 }, ring = { 64, 64 }, check = { 64, 64 },
+      sq_alliance_l = { 64, 64 }, sq_alliance_d = { 64, 64 }, sq_horde_l = { 64, 64 }, sq_horde_d = { 64, 64 } }
+    for _, name in ipairs({ "alliance_wp", "alliance_wn", "alliance_wb", "alliance_wr", "alliance_wq", "alliance_wk",
+        "alliance_bp", "alliance_bn", "alliance_bb", "alliance_br", "alliance_bq", "alliance_bk",
+        "horde_wp", "horde_wn", "horde_wb", "horde_wr", "horde_wq", "horde_wk",
+        "horde_bp", "horde_bn", "horde_bb", "horde_br", "horde_bq", "horde_bk" }) do
+      want[name] = { 128, 128 }
     end
-    eq(n, 31)
+    eq(Theme.chessTexSize, want)
+    for name in pairs(want) do eq(Theme.chessTex(name), Theme.chessTex("dot"):sub(1, -4) .. name) end
     eq(Theme.chessTex("dot"), "Interface\\AddOns\\TavernGames\\media\\chess\\dot")
     for _, skin in ipairs({ "alliance", "horde" }) do
       local c = Theme.SKINS[skin].color

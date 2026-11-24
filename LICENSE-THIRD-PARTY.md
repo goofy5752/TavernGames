@@ -84,8 +84,7 @@ From [game-icons.net](https://game-icons.net), repository https://github.com/gam
 | Texas Hold'em | `media/games/holdem.tga` | `lorc/poker-hand.svg` | Lorc, https://lorcblog.blogspot.com |
 | Tic-tac-toe | `media/games/ttt.tga` | `delapouite/tic-tac-toe.svg` | Delapouite, https://delapouite.com |
 | Death Roll | `media/games/deathroll.tga` | `lorc/skull-crossed-bones.svg` | Lorc, https://lorcblog.blogspot.com |
-
-`tools/game-icons/own/chess-knight.svg` (Chess, `media/games/chess.tga`) is the project's own drawing under the project's licence. It is temporary and stands in until a game-icons.net icon is approved.
+| Chess | `media/games/chess.tga` | `skoll/chess-knight.svg` | Skoll, https://game-icons.net/1x1/skoll/chess-knight.html |
 
 ## Chess textures
 

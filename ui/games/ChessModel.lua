@@ -129,7 +129,7 @@ function Model.build(s, sel)
   m.offerFor = st.phase == "play" and st.offer and 3 - st.offer or nil
   m.canOffer = myTurn and st.wait[me] == 0 and not st.offer or false
   m.canResign = playing and seated or false
-  m.canClaim = playing and seated and s.engine ~= nil and ns.Clock.canClaim(s) or false
+  m.canClaim = playing and seated and ns.Clock.canClaim(s) or false
   m.banner = bannerOf(s, st)
   m.status = statusOf(s, st, me, myTurn, inCheck)
   return m

@@ -49,6 +49,60 @@ describe("ui: Шах in the hall and the new-table dialog", function()
     eq(client.session.opt.clock, 15); eq(client.session.turn, w.ns.Const.TURN_DEFAULT)
   end)
 
+  it("the hall row and tooltip show the game time of a table opened with the default options", function()
+    local w, D = opened("chess")
+    w:click(D.openButton) -- nothing chosen: the default time
+    w:advance(0)
+    local sent = w:sentOf("TBL")
+    local advert = assert(sent[#sent], "no TBL").msg
+    -- another member sees that advert (its host renamed: I am the viewer here)
+    local B, viewer = "Мария Стоянова", guildWow()
+    viewer.ns.MainWindow.show()
+    local m = viewer.ns.Util.copy(advert)
+    eq(m.o, { clock = 10 })
+    m.h, m.tid, m.s = B, B .. "#1", { B, false }
+    viewer:member(B); viewer:deliver("GUILD", B, m); viewer:advance(0)
+    local t = viewer.ns.Hall.view.tables[1]
+    eq(t.tid, B .. "#1")
+    viewer:hover(t.top)
+    local tip = table.concat(viewer.G.GameTooltip.lines, " | ")
+    ok(tip:find("Време за партия 10 мин", 1, true), tip)
+    -- eight more tables turn the floor into the list: the row says the same
+    for i = 1, 8 do
+      local host = "Гост " .. i
+      viewer:member(host)
+      viewer:deliver("GUILD", host, { v = 1, t = "TBL", tid = host .. "#1", g = "ttt", h = host, e = 1, ac = "guild", tn = 45,
+        st = "open", s = { host, false }, w = 0 })
+    end
+    viewer:advance(0)
+    local row
+    for _, r in ipairs(viewer.ns.Hall.view.rows) do
+      if r.frame:IsVisible() and r.title:GetText():find("Шах", 1, true) then row = r end
+    end
+    ok(row, "no chess row")
+    ok(row.sub:GetText():find("Време за партия 10 мин", 1, true), row.sub:GetText())
+  end)
+
+  it("a chess table without its options shows the default game time", function()
+    local w = guildWow()
+    local W = w.ns.W
+    eq(W.timeText("chess", 45, nil), "Време за партия 10 мин")
+    eq(W.timeText("chess", 45, {}), "Време за партия 10 мин")
+    eq(W.timeText("chess", 45, { clock = 0 }), "Време за партия Без лимит")
+    -- an advert without `o` in the hall
+    local B, viewer = "Мария Стоянова", guildWow()
+    viewer.ns.MainWindow.show()
+    viewer:member(B)
+    viewer:deliver("GUILD", B, { v = 1, t = "TBL", tid = B .. "#1", g = "chess", h = B, e = 1, ac = "guild", tn = 45,
+      st = "open", s = { B, false }, w = 0 })
+    viewer:advance(0)
+    local t = viewer.ns.Hall.view.tables[1]
+    eq(t.tid, B .. "#1")
+    viewer:hover(t.top)
+    local tip = table.concat(viewer.G.GameTooltip.lines, " | ")
+    ok(tip:find("Време за партия 10 мин", 1, true), tip)
+  end)
+
   it("the title names the game time once", function()
     local w = guildWow(); local T = w.ns.TableFrame
     T.registerView("chess", { update = function() end,
