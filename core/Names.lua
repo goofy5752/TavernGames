@@ -22,6 +22,13 @@ function Names.first(name)
   return (name:match("^%S*"))
 end
 
+-- Is `name` one of the addon's bots ("Bot Petrova", core/Bots.lua)? The
+-- screen marks a bot by this rule, the one Names.short drops "Bot " by.
+function Names.isBot(name)
+  local full = Names.normalize(name)
+  return full ~= nil and full:match("^Bot%s+%S") ~= nil
+end
+
 -- The bare name a list shows: no realm; a bot ("Bot Petrova") its own name
 -- ("Petrova"), a person the first word. -> short, the full name (nil: none).
 local function bare(name)
@@ -30,7 +37,7 @@ local function bare(name)
   return full:match("^Bot%s+(.+)$") or Names.first(full), full
 end
 
--- The short name of a seat for a list that names several (the hand history):
+-- The short name of a seat for a list that names several (seats, plates, lists, the hand history):
 -- bare(name), and when another name of `others` (any table of names; other
 -- values are skipped) reads the same, the initial of its next word ("Ivan P.").
 -- "?" for no name.
@@ -41,7 +48,7 @@ function Names.short(name, others)
     local os, ofull = bare(o)
     if os == short and ofull ~= full then
       local initial = full:match("^%S+%s+([%z\1-\127\194-\244][\128-\191]*)")
-      if initial and not full:match("^Bot%s") then return short .. " " .. initial .. "." end
+      if initial and not Names.isBot(full) then return short .. " " .. initial .. "." end
       return short
     end
   end

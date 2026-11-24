@@ -120,6 +120,7 @@ wow/Slash.lua
 # UI
 ui/Theme.lua
 ui/Widgets.lua
+ui/NameTag.lua
 ui/Resize.lua
 ui/Decks.lua
 ui/Silhouette.lua

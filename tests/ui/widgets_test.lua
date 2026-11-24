@@ -189,3 +189,45 @@ describe("ui: W.fitWrap shrinks, then wraps: never clips", function()
     eq(fs:GetText(), "|cffff0000Barleybrewster|r")
   end)
 end)
+
+describe("ui: a name on screen (ui/NameTag.lua)", function()
+  it("short: a person's first word, a bot's own name with the brass cog after it, an initial for two alike", function()
+    local w = boot(); local W, T = w.ns.W, w.ns.Theme
+    eq(W.BOT_MARK, "|T" .. T.tex.botmark .. ":0|t")
+    eq(T.tex.botmark, "Interface\\AddOns\\TavernGames\\media\\botmark")
+    eq(W.short("Ivan Petrovski-Forever"), "Ivan")
+    eq(W.short("Bot Barleybrew"), "Barleybrew " .. W.BOT_MARK)
+    eq(W.short("Bot Number12"), "Number12 " .. W.BOT_MARK)
+    local seats = { "Ivan Petrovski", "Ivan Kolev", "Bot Ivanov", false }
+    eq({ W.short(seats[1], seats), W.short(seats[2], seats), W.short(seats[3], seats) },
+      { "Ivan P.", "Ivan K.", "Ivanov " .. W.BOT_MARK })
+    -- in a sentence: the name in its class colour, the mark after the colour (it keeps its brass)
+    eq(W.shortColored(nil, "Bot Petrova"), W.paint("Petrova", w.ns.classColor(nil)) .. " " .. W.BOT_MARK)
+    eq(W.shortColored(nil, "Ivan Petrovski"), W.paint("Ivan", w.ns.classColor(nil)))
+    eq(W.shortColored(nil, nil), "?")
+    eq({ W.fullName("Ivan Petrovski-Forever"), W.fullName(nil) }, { "Ivan Petrovski", "?" })
+  end)
+
+  it("a hover shows the whole name without the realm; the frame's own hover still works", function()
+    local w = boot(); local W = w.ns.W
+    local f = w.G.CreateFrame("Frame", nil, w.G.UIParent)
+    local lit, who = 0, "Ivan Petrovski-Forever"
+    f:SetScript("OnEnter", function() lit = lit + 1 end)
+    f:SetScript("OnLeave", function() lit = lit - 1 end)
+    W.nameTip(f, function() return who end)
+    eq(f.mouse, true)
+    w:hover(f)
+    eq(lit, 1); eq(w.G.GameTooltip.lines, { "Ivan Petrovski" }); eq(w.G.GameTooltip:IsShown(), true)
+    f.scripts.OnLeave(f)
+    eq(lit, 0); eq(w.G.GameTooltip:IsShown(), false)
+    -- several names (a list with an empty seat and one name twice): each once, in order
+    who = { "Bot Petrova", false, "Maria Stoyanova", "Bot Petrova" }
+    w:hover(f)
+    eq(w.G.GameTooltip.lines, { "Bot Petrova", "Maria Stoyanova" })
+    f.scripts.OnLeave(f)
+    -- nothing to name: no tooltip
+    who = nil
+    w:hover(f)
+    eq(w.G.GameTooltip:IsShown(), false)
+  end)
+end)

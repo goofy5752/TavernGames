@@ -26,6 +26,20 @@ describe("foundations", function()
     eq({ N.short(nil), N.short(""), N.short(42) }, { "?", "?", "?" })
   end)
 
+  it("a bot is a name that starts with \"Bot \": the rule the screen marks it by", function()
+    eq({ N.isBot("Bot Petrova"), N.isBot("Bot Number12-Forever"), N.isBot("  Bot Ivanov ") }, { true, true, true })
+    eq({ N.isBot("Bot"), N.isBot("Botan Ivanov"), N.isBot("Ivan Bot"), N.isBot(nil), N.isBot(7) }, { false, false, false, false, false })
+  end)
+
+  it("short names at a table: two people with one first word each take an initial, the others do not", function()
+    local seats = { "Ivan Petrovski-Forever", "Maria Stoyanova", "Ivan Kolev", "Bot Ivanov" }
+    local got = {}
+    for i, name in ipairs(seats) do got[i] = N.short(name, seats) end
+    eq(got, { "Ivan P.", "Maria", "Ivan K.", "Ivanov" })
+    -- the same two apart (another table): each its first word
+    eq({ N.short(seats[1], { seats[1], seats[2] }), N.short(seats[3], { seats[3], seats[2] }) }, { "Ivan", "Ivan" })
+  end)
+
   it("bus copies, orders, filters", function()
     local bus = Bus.new()
     local got = { x = {}, y = {} }
