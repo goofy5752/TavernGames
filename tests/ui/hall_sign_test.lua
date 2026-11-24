@@ -60,6 +60,11 @@ describe("ui: the tavern sign in the hall header", function()
     ok(left >= titleEnd, "overlaps the title: " .. left .. " < " .. titleEnd)
     ok(right <= hintStart, "overlaps the hint: " .. right .. " > " .. hintStart)
     ok(sign.name:GetFont() ~= nil)
+    -- never cut: at 9 at the least, wrapped, the sign as tall as its lines
+    ok(select(2, sign.name:GetFont()) >= 9 - 0.01, "smaller than readable")
+    eq(sign.name.wordWrap, true)
+    ok(sign.name:GetStringHeight() <= sign:GetHeight(), "taller than the sign")
+    eq(sign.name:GetText(), string.rep("Дълго име ", 12))
   end)
 
   it("a short name leaves the sign compact and centred", function()

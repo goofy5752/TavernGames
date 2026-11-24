@@ -217,21 +217,60 @@ end
 -- `text` on the one-line font string fs, its font one point smaller at a
 -- time (down to `floor`, default FIT_MIN) until it fits `width`: an amount in
 -- a fixed column is made smaller, never clipped. The font fs had at its first
--- fit is its size.
+-- fit is its size. The last step stops at `floor` itself (a font of 10.92 can
+-- reach 9, not only 9.92).
 local FIT_MIN = 8
 function W.fit(fs, text, width, floor)
   fs.fitFont = fs.fitFont or { fs:GetFont() }
   local path, size, flags = fs.fitFont[1], fs.fitFont[2], fs.fitFont[3]
+  floor = floor or FIT_MIN
   fs:SetFont(path, size, flags)
   fs:SetText(text)
-  while size - 1 >= (floor or FIT_MIN) and W.textWidth(fs) > width do
-    size = size - 1
+  while size > floor and W.textWidth(fs) > width do
+    size = math.max(floor, size - 1)
     fs:SetFont(path, size, flags)
   end
 end
 
--- The first word of a player's name ("Иван Петров" -> "Иван").
-function W.firstWord(name) return ns.Names.first(name) end
+-- `text` on font string fs within `width`, never clipped: first W.fit makes it
+-- smaller (down to `floor`, default WRAP_MIN); when it still does not fit it
+-- wraps at the spaces, and a word wider than `width` on its own (a long name,
+-- no colour codes in it) is broken by its letters onto the next line; one with colour
+-- codes, which those letters must not split, the client breaks itself (SetNonSpaceWrap,
+-- where the client has it). The row grows taller, never wider -> the text's height.
+-- A width under 1 is 1 (SetWidth(0) would leave the text unbounded).
+W.WRAP_MIN = 9
+local function letters(s) return s:gmatch("[%z\1-\127\194-\244][\128-\191]*") end
+function W.fitWrap(fs, text, width, floor)
+  width = math.max(1, width)
+  W.fit(fs, text, width, floor or W.WRAP_MIN)
+  fs:SetWordWrap(true)
+  local coded = false -- a colour-coded word wider than the room
+  if W.textWidth(fs) > width then
+    local out = {}
+    for space, word in text:gmatch("(%s*)(%S*)") do
+      out[#out + 1] = space
+      fs:SetText(word)
+      if word ~= "" and W.textWidth(fs) > width and word:find("|", 1, true) then
+        coded = true
+        out[#out + 1] = word
+      elseif word ~= "" and W.textWidth(fs) > width then
+        local line = ""
+        for ch in letters(word) do
+          fs:SetText(line .. ch)
+          if line ~= "" and W.textWidth(fs) > width then out[#out + 1] = line .. "\n"; line = ch else line = line .. ch end
+        end
+        out[#out + 1] = line
+      else
+        out[#out + 1] = word
+      end
+    end
+    fs:SetText(table.concat(out))
+  end
+  if fs.SetNonSpaceWrap then fs:SetNonSpaceWrap(coded) end
+  fs:SetWidth(width)
+  return fs:GetStringHeight()
+end
 
 -- A `px` wide line along each side of `frame`, tinted by setColor(r, g, b, a).
 -- Returns {top, bottom, left, right, setColor}.
@@ -291,12 +330,14 @@ function W.dragBy(handle, target)
   handle:SetScript("OnMouseDown", function() target:Raise() end)
 end
 
--- A dark translucent panel with a thin brass edge (mockup `.panel`).
-function W.Panel(parent)
+-- A dark translucent panel with a thin brass edge (mockup `.panel`); `ground` {r, g, b, a}
+-- in place of the translucent black (W.SOLID: a panel over the felt that hides what is under it).
+W.SOLID = { 20 / 255, 10 / 255, 5 / 255, 0.95 }
+function W.Panel(parent, ground)
   local f = CreateFrame("Frame", nil, parent)
   local fill = f:CreateTexture(nil, "BACKGROUND")
   fill:SetAllPoints(f)
-  fill:SetColorTexture(0, 0, 0, 0.38)
+  fill:SetColorTexture(unpack(ground or { 0, 0, 0, 0.38 }))
   f.fill = fill
   local r, g, b = Theme.rgb("brassDim")
   local function line(p1, p2, horizontal)

@@ -181,7 +181,7 @@ describe("ui: Табла view", function()
     w:click(v.inviteButton)
     local row
     for _, r in ipairs(v.picker.rows) do
-      if r.frame:IsVisible() and r.name:GetText() == BOT then row = r end
+      if r.frame:IsVisible() and r.peerName == BOT then row = r end
     end
     assert(row, "no row for the bot in the picker")
     w:click(row.frame); w:advance(3)
@@ -215,5 +215,24 @@ describe("ui: Табла view", function()
     local seq = s.seq
     playMine(); w:advance(3)
     ok(s.seq >= seq + 4, "the game did not move on: " .. tostring(s.seq) .. " after " .. tostring(seq))
+  end)
+end)
+
+-- QA (layout): in Bulgarian the title „Обикновена · игра 1“ at 14 ran past the view's right edge.
+describe("ui: Табла's right column", function()
+  it("the title, the score and the steps left stay in the column: shrunk, then wrapped", function()
+    local w, _, f = setup()
+    local st = pos("gul", 1, { [24] = 15 }, { [24] = 15 })
+    st.game = 12
+    draw(f, st, 1)
+    for _, fs in ipairs({ f.title, f.score, f.stepsLeft }) do
+      eq(fs:GetWidth(), 512 - 412)
+      for word in (fs:GetText() or ""):gmatch("%S+") do
+        local probe = fs.parent:CreateFontString(nil, "OVERLAY"); probe:SetFont(fs:GetFont()); probe:SetText(word)
+        ok(probe:GetUnboundedStringWidth() <= 100, "a word past the column: " .. word)
+      end
+      ok(select(2, fs:GetFont()) >= 9, "unreadable")
+    end
+    ok(f.score.points[1][5] <= -(4 + f.title:GetStringHeight()), "the score under a wrapped title")
   end)
 end)

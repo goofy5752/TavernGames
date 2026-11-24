@@ -40,9 +40,9 @@ function SettleToast.text(client, p)
   if net == 0 then net = owed(v, me, other) - owed(v, other, me) end
   local title
   if p.to == me then
-    title = L("settle.got", W.colored(client, p.from), W.money(p.c))
+    title = L("settle.got", W.shortColored(client, p.from), W.money(p.c))
   else
-    title = L("settle.paid", W.money(p.c), W.colored(client, p.to))
+    title = L("settle.paid", W.money(p.c), W.shortColored(client, p.to))
   end
   -- The payer still owes the receiver: „остават“; the rest is in the payer's favour: „надплатени“.
   local payerOwes = (p.from == me) == (net > 0)
@@ -80,20 +80,35 @@ local function build()
   local sub = W.Label(f, "dim", "")
   sub:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -6)
   t.sub = sub
+  -- a hover gives the other party's whole name (the title has the short one, ui/NameTag.lua)
+  W.nameTip(f, function()
+    local p, me = t.shown, ns.client and ns.client.ledger and ns.client.ledger.me
+    return p and (p.to == me and p.from or p.to)
+  end)
   f:Hide()
 end
 
 local TEXT_W = SettleToast.WIDTH - 3 * PAD - COIN
+
+-- 160 px under the screen's top, or under the invitation toast while that shows (both stand there).
+function SettleToast.place()
+  local f = SettleToast.frame
+  if not f then return end
+  local inv = ns.InviteToast and ns.InviteToast.frame
+  f:ClearAllPoints()
+  if inv and inv:IsShown() then f:SetPoint("TOP", inv, "BOTTOM", 0, -8) else f:SetPoint("TOP", UIParent, "TOP", 0, -160) end
+end
 
 -- Shows record p for SECONDS, with the coin sound.
 function SettleToast.show(client, p)
   local t = SettleToast
   if not t.frame then build() end
   local title, sub = SettleToast.text(client, p)
-  W.fit(t.title, title, TEXT_W)
-  W.fit(t.sub, sub, TEXT_W)
+  W.fitWrap(t.title, title, TEXT_W) -- shrunk, then wrapped: never cut
+  W.fitWrap(t.sub, sub, TEXT_W)
   t.shown = p
   t.timer = C_Timer.NewTimer(t.SECONDS, function() t.timer = nil; SettleToast.close() end)
+  SettleToast.place()
   t.frame:Show()
   t.frame:Raise()
   ns.Art.play("settled")

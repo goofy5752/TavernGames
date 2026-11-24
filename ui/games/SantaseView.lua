@@ -20,7 +20,7 @@ local WIDTH, HEIGHT = 512, 260
 local OPP_SCALE, OPP_STEP, LAST_SCALE = 0.8, 20, 0.7
 local MID_Y = -70                    -- top of the stock, the trick and the buttons
 local TRICK_GAP = 16                 -- between the two cards of the trick
-local STOCK_X, TRUMP_DX = 30, 22     -- the stock's left edge; the trump card that far right of it
+local STOCK_X, TRUMP_DX = 30, -20    -- the stock's left edge; the trump card that far left of it, its corner (rank, suit) in sight
 local LAST_X = 72                    -- left edge of the last trick, right of the centre
 local BUTTON_W, BUTTON_H, BUTTON_GAP = 124, 24, 6
 local MY_FAN_Y, TEXT_Y = 14, 88      -- from the bottom of the frame
@@ -330,7 +330,7 @@ local function drawText(f, s, m)
   end
   local args = {}
   for k = 2, #t do args[k - 1] = t[k] end
-  if type(args[1]) == "string" then args[1] = W.colored(ns.client, args[1]) end
+  if type(args[1]) == "string" then args[1] = W.shortColored(ns.client, args[1], s.seats) end
   f.text:SetText(L(t[1], unpack(args)))
   local phase = s.state.phase
   f.text:SetTextColor(Theme.rgb((phase == "hand" or s:gameOver()) and "gold" or "ink"))

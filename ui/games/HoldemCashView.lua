@@ -10,7 +10,7 @@ local _, ns = ...
 --   the range's ends (both always reachable) and „Потвърди“, which is client:buy(n).
 -- `line(client, ev)` is the words of one finished hand (the client event "hand"), one row per winner.
 local W, L, Theme = ns.W, ns.L, ns.Theme
-local money, Names = ns.W.money, ns.Names
+local money = ns.W.money -- names: W.short among the hand's or the table's (ui/NameTag.lua)
 
 local V = {}
 ns.HoldemCashView = V
@@ -41,7 +41,7 @@ local function words(client, ev)
   local function who(seat)
     local name = names[seat]
     if type(name) ~= "string" then return "?" end
-    return name == client.env.me and L("cash.hand.you") or Names.first(name)
+    return name == client.env.me and L("cash.hand.you") or W.short(name, names)
   end
   local winners, out = {}, {}
   for w, row in pairs(type(last.took) == "table" and last.took or {}) do
@@ -56,7 +56,7 @@ local function words(client, ev)
       sum = sum + last.took[w][j]
       froms[#froms + 1] = L("cash.hand.from", cash(last.took[w][j]), who(j))
     end
-    local name = type(names[w]) == "string" and Names.first(names[w]) or "?"
+    local name = W.short(names[w], names)
     local cat = type(last.cat) == "table" and last.cat[w]
     local shown = type(last.shown) == "table" and #last.shown > 0 and cat
     local parts = table.concat(froms, ", ")
@@ -99,6 +99,7 @@ local function rowOf(c, i)
   local f = CreateFrame("Frame", nil, c.scroll.content)
   f:SetSize(PANEL_W - 22, ROW_H)
   r = { frame = f, cells = {} }
+  W.nameTip(f, function() return r.name end) -- a row's whole name
   for j = 1, 4 do
     local cell = W.Label(f, j == 1 and "ui" or "dim", "", 12)
     cell:SetWordWrap(false)
@@ -114,8 +115,8 @@ local function setRow(c, i, y, cells, head)
   local r = rowOf(c, i)
   r.frame:ClearAllPoints()
   r.frame:SetPoint("TOPLEFT", c.scroll.content, "TOPLEFT", 0, -y)
-  local one = #cells == 1
-  local h = ROW_H
+  local one, h = #cells == 1, ROW_H
+  r.name = cells.name
   for j = 1, 4 do
     local cell = r.cells[j]
     cell:ClearAllPoints()
@@ -128,10 +129,10 @@ local function setRow(c, i, y, cells, head)
       cell:SetWidth(j == 1 and NAME_W or COL_W)
       cell:SetWordWrap(false)
     end
-    W.fit(cell, cells[j] or "", one and math.huge or cell:GetWidth()) -- an amount shrinks to its column, never clips
+    if one then W.fit(cell, cells[j] or "", math.huge) else W.fitWrap(cell, cells[j] or "", cell:GetWidth()) end -- shrinks, then wraps
     cell:SetTextColor(Theme.rgb(head and "inkDim" or (j == 1 or one) and "ink" or "inkDim"))
     cell:SetShown(cells[j] ~= nil)
-    if one then h = math.max(ROW_H, cell:GetStringHeight() + 4) end
+    if cells[j] then h = math.max(h, cell:GetStringHeight() + 4) end
   end
   r.frame:SetHeight(h)
   r.frame:Show()
@@ -150,8 +151,8 @@ local function fillPanel(f, s, m)
     local head = HEAD[c.tab]
     rows[1] = { "", L(head[1]), L(head[2]), L(head[3]), head = true }
     for _, e in ipairs(mine and cash_.mine or cash_.all) do
-      rows[#rows + 1] = mine and { Names.first(e.name), cash(e.gave), cash(e.took), signed(e.net) }
-        or { Names.first(e.name), cash(e.bought), cash(e.chips), signed(e.net) }
+      rows[#rows + 1] = mine and { W.short(e.name, s.seats), cash(e.gave), cash(e.took), signed(e.net), name = e.name }
+        or { W.short(e.name, s.seats), cash(e.bought), cash(e.chips), signed(e.net), name = e.name }
     end
   end
   for _, cells in ipairs(rows) do
@@ -206,7 +207,7 @@ function V.build(f)
   c.buy:SetPoint("TOPRIGHT", f, "TOPRIGHT", -98, -8)
   for _, b in ipairs({ c.button, c.buy }) do b:Hide() end
 
-  local panel = W.Panel(f)
+  local panel = W.Panel(f, W.SOLID) -- solid: the plates under it do not show through
   c.panel = panel
   panel:SetSize(PANEL_W, PANEL_H)
   panel:SetPoint("TOPRIGHT", f, "TOPRIGHT", -8, -34)
@@ -229,7 +230,7 @@ function V.build(f)
   c.scroll.content:SetWidth(PANEL_W - 22)
   panel:Hide()
 
-  local box = W.Panel(f) -- the stepper of a buy-in
+  local box = W.Panel(f, W.SOLID) -- the stepper of a buy-in
   c.buyBox = box
   box:SetSize(PANEL_W, 34)
   box:SetPoint("TOPRIGHT", f, "TOPRIGHT", -8, -34)

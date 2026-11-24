@@ -171,8 +171,11 @@ local function carry(list, prev)
   return c
 end
 
--- `text` cut to fit `width` with "..." (as the client truncates a line).
+-- `text` cut to fit `width` with "..." (as the client truncates a line). Shim.cut
+-- turns true (the layout checker, lint.lua, reads and resets it).
+Shim.cut = false
 local function ellipsize(list, m, size, width)
+  Shim.cut = true
   local dots = textWidth(m, "...", size)
   local out, w = {}, 0
   for _, a in ipairs(list) do
@@ -259,6 +262,30 @@ function FontString:GetStringWidth()
   local w = self:GetUnboundedStringWidth()
   if self.fixedWidth and self.fixedWidth > 0 then return math.min(w, self.fixedWidth) end
   return w
+end
+
+-- Where the addon made each texture and font string: "File.lua:line" of the first two
+-- ui/ callers (the layout checker names a region by it).
+local function site()
+  local out = {}
+  for level = 3, 12 do
+    local info = debug.getinfo(level, "Sl")
+    if not info then break end
+    local file = info.short_src and info.short_src:match("ui[/\\](.+%.lua)$")
+    if file then
+      out[#out + 1] = file:gsub("^games[/\\]", "") .. ":" .. tostring(info.currentline)
+      if #out == 2 then break end
+    end
+  end
+  return table.concat(out, "<")
+end
+for _, method in ipairs({ "CreateTexture", "CreateFontString" }) do
+  local make0 = Frame[method]
+  Frame[method] = function(self, ...)
+    local r = make0(self, ...)
+    r.site = site()
+    return r
+  end
 end
 
 ---------------------------------------------------------------------------
@@ -387,6 +414,15 @@ function Shim.rect(r, memo)
         out = { l, b, rt, t }
       end
     end
+  end
+  -- A frame clamped to the screen (SetClampedToScreen) is moved back onto it, as the client
+  -- does; one larger than the screen keeps its top-left corner on it.
+  if out and r.clamped and G and parent == rawget(G, "UIParent") then
+    local sw, sh = parent.width or 0, parent.height or 0
+    local w, h = out[3] - out[1], out[4] - out[2]
+    local dx = (out[1] < 0 or w > sw) and -out[1] or (out[3] > sw and sw - out[3] or 0)
+    local dy = (out[4] > sh or h > sh) and sh - out[4] or (out[2] < 0 and -out[2] or 0)
+    out = { out[1] + dx, out[2] + dy, out[3] + dx, out[4] + dy }
   end
   resolving[r] = nil
   memo[r] = out or false
@@ -540,7 +576,7 @@ local function frameIndex(frames)
 end
 
 -- Every visible texture and font string of the sandbox `w`, in draw order:
--- {items = {...}, missing = {...}}. `skip(frame)` -> true leaves a frame (and its children) out.
+-- {items = {...}, missing = {...}}, and the regions they draw (in the same order). `skip(frame)` -> true leaves a frame (and its children) out.
 function Shim.snapshot(w, skip)
   local memo, levels, idx = {}, {}, frameIndex(w.frames)
   local entries, missing, seenMissing = {}, {}, {}
@@ -625,7 +661,7 @@ function Shim.snapshot(w, skip)
               item.r, item.a, item.clip = rc, a, clipOf(r, memo)
               if e.edit then item.clip = clip end
               entries[#entries + 1] = {
-                item = item,
+                item = item, region = r,
                 key = { strata, level, idx[f] or 0, LAYER[layer] or 3, (not e.edit and r.sublayer) or 0, e.i },
               }
             end
@@ -640,9 +676,9 @@ function Shim.snapshot(w, skip)
     end
     return false
   end)
-  local items = {}
-  for i, e in ipairs(entries) do items[i] = e.item end
-  return { items = items, missing = missing }
+  local items, regions = {}, {}
+  for i, e in ipairs(entries) do items[i], regions[i] = e.item, e.region end
+  return { items = items, missing = missing }, regions -- regions[i]: the region item i draws (the layout checker's)
 end
 
 -- The union rect of the given regions' rects, plus margin m.

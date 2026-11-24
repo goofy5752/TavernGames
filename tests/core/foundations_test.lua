@@ -8,6 +8,61 @@ describe("foundations", function()
     eq(N.normalize("  Мария Стоянова "), "Мария Стоянова"); eq(N.normalize(""), nil); eq(N.normalize(nil), nil)
   end)
 
+  it("short names: the first word, a bot's own name, an initial when two would read the same", function()
+    eq(N.short("Ivan Petrov-Forever"), "Ivan")
+    eq(N.short("Brannoc-Forever"), "Brannoc")
+    eq(N.short("Bot Petrova"), "Petrova"); eq(N.short("Bot Number12"), "Number12")
+    eq(N.short("Bot Barleybrewster"), "Barleybrewster")
+    -- the same first word at the table: the next word's initial (a Cyrillic letter too)
+    local seats = { "Ivan Petrov", "Ivan Kolev-Forever", "Bot Ivanov", false }
+    eq({ N.short(seats[1], seats), N.short(seats[2], seats), N.short(seats[3], seats) }, { "Ivan P.", "Ivan K.", "Ivanov" })
+    eq(N.short("Иван Петров", { "Иван Петров", "Иван Стоянов" }), "Иван П.")
+    -- the same name twice is one person; a one-word name has no initial to add
+    eq(N.short("Ivan Petrov", { "Ivan Petrov", "Ivan Petrov-Forever" }), "Ivan")
+    eq(N.short("Ivan", { "Ivan", "Ivan Kolev" }), "Ivan")
+    eq(N.short("Ivan Kolev", { "Ivan", "Ivan Kolev" }), "Ivan K.")
+    -- a bot that reads as a person's first word: the person takes the initial
+    eq(N.short("Ivan Petrov", { "Ivan Petrov", "Bot Ivan" }), "Ivan P.")
+    eq({ N.short(nil), N.short(""), N.short(42) }, { "?", "?", "?" })
+  end)
+
+  -- Review: "Ivan Petrov" and "Ivan Pavlov" both read "Ivan P.".
+  it("short names: the same initial too, the whole second word; that too, the whole name", function()
+    local seats = { "Ivan Petrov", "Ivan Pavlov-Forever", "Ivan Kolev" }
+    local got = {}
+    for i, name in ipairs(seats) do got[i] = N.short(name, seats) end
+    eq(got, { "Ivan Petrov", "Ivan Pavlov", "Ivan K." })
+    eq({ N.short("Иван Петров", { "Иван Петров", "Иван Павлов" }), N.short("Иван Павлов", { "Иван Петров", "Иван Павлов" }) },
+      { "Иван Петров", "Иван Павлов" })
+    seats = { "Ivan Petrov Kolev", "Ivan Petrov Dimov", "Ivan Pavlov" }
+    got = {}
+    for i, name in ipairs(seats) do got[i] = N.short(name, seats) end
+    eq(got, { "Ivan Petrov Kolev", "Ivan Petrov Dimov", "Ivan Pavlov" })
+    -- the bot's own name is never lengthened
+    eq(N.short("Bot Ivan", { "Bot Ivan", "Ivan Petrov" }), "Ivan")
+  end)
+
+  it("Names.shorts: the short names of a list worked out once, the same as each one's Names.short", function()
+    local seats = { "Ivan Petrov", "Ivan Pavlov-Forever", "Ivan Kolev", "Bot Ivanov", "Maria Stoyanova", false, 7 }
+    local map = N.shorts(seats)
+    for i = 1, 5 do eq(N.short(seats[i], map), N.short(seats[i], seats)) end
+    eq({ N.short("Ivan Petrov-Forever", map), N.short("Ivan Dimov", map), N.short(nil, map) }, { "Ivan Petrov", "Ivan D.", "?" })
+  end)
+
+  it("a bot is a name that starts with \"Bot \": the rule the screen marks it by", function()
+    eq({ N.isBot("Bot Petrova"), N.isBot("Bot Number12-Forever"), N.isBot("  Bot Ivanov ") }, { true, true, true })
+    eq({ N.isBot("Bot"), N.isBot("Botan Ivanov"), N.isBot("Ivan Bot"), N.isBot(nil), N.isBot(7) }, { false, false, false, false, false })
+  end)
+
+  it("short names at a table: two people with one first word each take an initial, the others do not", function()
+    local seats = { "Ivan Petrovski-Forever", "Maria Stoyanova", "Ivan Kolev", "Bot Ivanov" }
+    local got = {}
+    for i, name in ipairs(seats) do got[i] = N.short(name, seats) end
+    eq(got, { "Ivan P.", "Maria", "Ivan K.", "Ivanov" })
+    -- the same two apart (another table): each its first word
+    eq({ N.short(seats[1], { seats[1], seats[2] }), N.short(seats[3], { seats[3], seats[2] }) }, { "Ivan", "Ivan" })
+  end)
+
   it("bus copies, orders, filters", function()
     local bus = Bus.new()
     local got = { x = {}, y = {} }

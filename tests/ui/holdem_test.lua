@@ -177,7 +177,7 @@ describe("ui: the Холдем view", function()
     eq({ f.seat[1].bet:GetText(), { f.seat[1].bet:GetTextColor() }, f.seat[2].bet:IsVisible(), f.seat[1].chip:IsVisible() },
        { "+70", { w.ns.Theme.color.good[1], w.ns.Theme.color.good[2], w.ns.Theme.color.good[3], 1 }, false, true })
     eq({ plain(f.text:GetText()), { f.text:GetTextColor() }, f.log:GetText(), f.pot:IsVisible() },
-       { "Иван Петров взе 70 с флош", { w.ns.Theme.color.gold[1], w.ns.Theme.color.gold[2], w.ns.Theme.color.gold[3], 1 }, "#1 Иван Петров взе 70 с флош", false })
+       { "Иван взе 70 с флош", { w.ns.Theme.color.gold[1], w.ns.Theme.color.gold[2], w.ns.Theme.color.gold[3], 1 }, "#1 Иван взе 70 с флош", false })
     ok(f.text:GetText() ~= plain(f.text:GetText()), "the name is not coloured")
     draw(f, st, nil); eq(faces(f.seat[3]), { "-", "-" })
   end)

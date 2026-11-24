@@ -12,14 +12,18 @@ local _, ns = ...
 -- game's mark for the seat (seatNote); on the plate on turn a gold edge, the
 -- turn clock and a 3 px gold line along the bar's bottom (under the pips) as
 -- wide as the share of the turn time left. A portrait is set only when the
--- seat's hero changes. TableFrame.plates is what the frame calls.
+-- seat's hero changes. The name is the short one among the table's seats
+-- (ui/NameTag.lua, a bot's with its cog), shrunk and then wrapped in its column,
+-- never cut; a hover over the plate gives the whole name. TableFrame.plates is
+-- what the frame calls.
 local TableFrame = ns.TableFrame
 local Theme, W, L, Portrait = ns.Theme, ns.W, ns.L, ns.Portrait
 
 local PLATE_W, PLATE_H = 190, 26          -- plate size before ns.HallLayout.plates sets the width
 local PORTRAIT, NAME_X = 30, 40           -- the hero centred on the bar's left end; the name after it
-local PLATE_NAME_INSET = NAME_X + 64      -- the plate width the portrait and the clock/note keep from the name
 local NOTE_RIGHT, NOTE_GAP, NAME_MIN = 42, 4, 32 -- the note ends 42 px in (the clock's room); a gap to the name; the least name a wide note leaves
+local NOTE_EDGE = 6                       -- where the note ends on a plate that shows no clock
+local NAME_LEAST = 16                     -- a name's column is never narrower (W.fitWrap breaks it by letters there)
 local PIPS, PIP_W, PIP_H, PIP_GAP = 8, 5, 8, 3 -- eight reach NAME_X + 61: inside the name's column on every plate
 local PIP_Y = 1                           -- the pips' middle over the bar's bottom edge, clear of the line of text
 local TURN_H = 3                          -- the turn bar along the bottom
@@ -39,8 +43,6 @@ local function plateWidget(v, i)
   portrait.frame:SetPoint("CENTER", f, "LEFT", 0, 0)
   local name = W.Label(f, "ui", "", 12)
   Theme.setFont(name, "uiBold", 12)
-  name:SetWordWrap(false)
-  name:SetWidth(PLATE_W - PLATE_NAME_INSET)
   name:SetPoint("LEFT", f, "LEFT", NAME_X, 0)
   local clock = W.Label(f, "ui", "", 12)
   clock:SetTextColor(Theme.rgb("gold"))
@@ -68,6 +70,7 @@ local function plateWidget(v, i)
     tricks[k] = t
   end
   p = { frame = f, edges = edges, portrait = portrait, name = name, note = note, clock = clock, bar = bar, tricks = tricks }
+  W.nameTip(f, function() return p.seatName end)
   v.plates[i] = p
   return p
 end
@@ -136,13 +139,72 @@ local function tick(v, s)
   end
 end
 
--- The note, and the name's width in what the note leaves: the name ends NOTE_GAP before the
--- note, never past its old column; the note shrinks (W.fit) so that the name keeps NAME_MIN
--- if it can (a stack in coins at Холдем). The two never meet, whatever the note.
-local function noteAndName(p, w, text)
-  local room = w - NOTE_RIGHT - NAME_X
-  W.fit(p.note, text, room - NAME_MIN - NOTE_GAP)
-  p.name:SetWidth(math.max(0, math.min(w - PLATE_NAME_INSET, room - W.textWidth(p.note) - NOTE_GAP)))
+-- The note, and the name in what the note leaves: the name ends NOTE_GAP before the note,
+-- and the two never meet. The name comes first: it keeps its own width on one line if it
+-- can, and NAME_MIN at least (a stack in coins at Холдем). The note shrinks (W.fit, never
+-- under W.WRAP_MIN) into what is left; still too wide, it wraps (W.fitWrap: „199g 95s“ on
+-- two lines at 9 fit the bar). The name shrinks, then wraps: never cut. The clock keeps its
+-- room right of the note (NOTE_RIGHT) while it shows; a plate without a clock gives the note
+-- that room too (NOTE_EDGE), so a long name keeps its size off turn. A name that holds the room
+-- on one line at 9 but not beside the note gets the bar's upper line and the note its lower one:
+-- a name's word (12 letters at most in WoW) is never broken by its letters.
+local function widthOf(fs, text, floor)
+  W.fit(fs, text, floor and 0 or math.huge, floor)
+  return W.textWidth(fs)
+end
+local function widestWord(fs, text) -- at the font fs has now
+  local most = 0
+  for word in text:gmatch("%S+") do
+    fs:SetText(word)
+    most = math.max(most, W.textWidth(fs))
+  end
+  fs:SetText(text)
+  return most
+end
+-- Two lines in the bar (STACK): the name in the upper, the note in the lower, each at most STACK_SIZE.
+local STACK_UP, STACK_DOWN, STACK_SIZE = 6.5, -4, 10
+local function capped(fs)
+  local path, size, flags = fs:GetFont()
+  if size > STACK_SIZE then fs:SetFont(path, STACK_SIZE, flags) end
+end
+-- The room the sign of no limit („∞“, seatClock "none") takes right of the note: its own, not NOTE_RIGHT.
+local function signRoom(p)
+  local old = p.clock:GetText(); p.clock:SetText(ns.ChessModel.clockText(nil))
+  local room = NOTE_EDGE + W.textWidth(p.clock) + NOTE_GAP; p.clock:SetText(old)
+  return math.min(NOTE_RIGHT, room)
+end
+
+-- `clocked`: true (a running clock's room), a number (that room: the sign of no limit) or nil.
+local function noteAndName(p, w, text, name, clocked)
+  local right = type(clocked) == "number" and clocked or clocked and NOTE_RIGHT or NOTE_EDGE
+  p.note:ClearAllPoints()
+  p.name:ClearAllPoints()
+  local room = w - right - NAME_X
+  local least = widthOf(p.note, text, W.WRAP_MIN)
+  local nameLeast = widthOf(p.name, name, W.WRAP_MIN)
+  -- a name that fits the room on one line at 9, but not beside the note: the note goes under it
+  if text ~= "" and nameLeast <= room and nameLeast + NOTE_GAP + least > room then
+    p.name:SetPoint("LEFT", p.frame, "LEFT", NAME_X, STACK_UP)
+    p.note:SetPoint("RIGHT", p.frame, "RIGHT", -right, STACK_DOWN)
+    p.note:SetWidth(0)
+    W.fitWrap(p.name, name, room)
+    capped(p.name)
+    if least <= room then W.fit(p.note, text, room, W.WRAP_MIN) else W.fitWrap(p.note, text, room) end
+    capped(p.note)
+    return
+  end
+  p.name:SetPoint("LEFT", p.frame, "LEFT", NAME_X, 0)
+  p.note:SetPoint("RIGHT", p.frame, "RIGHT", -right, 0)
+  local want = math.max(NAME_MIN, math.min(widthOf(p.name, name), room - NOTE_GAP - least))
+  local noteW = math.max(room - want - NOTE_GAP, widestWord(p.note, text))
+  p.note:SetWidth(0)
+  if least <= noteW then
+    W.fit(p.note, text, noteW, W.WRAP_MIN)
+    noteW = W.textWidth(p.note)
+  else
+    W.fitWrap(p.note, text, noteW)
+  end
+  W.fitWrap(p.name, name, math.max(NAME_LEAST, room - noteW - NOTE_GAP))
 end
 
 -- Places the plates on the grid of ns.HallLayout.plates, or around the felt
@@ -163,16 +225,18 @@ local function render(v, s, client)
     p.frame:ClearAllPoints()
     p.frame:SetPoint("TOPLEFT", v.area, "TOPLEFT", spot[1], spot[2])
     p.frame:SetWidth(spot[3])
+    p.seatName = name or nil
     if name then
-      p.name:SetText(name)
       p.name:SetTextColor(W.nameColor(client, name))
     else
-      p.name:SetText(L("table.free"))
       p.name:SetTextColor(Theme.rgb("inkDim"))
     end
     hero(p, client, name or nil)
-    noteAndName(p, spot[3], view and view.seatNote and view.seatNote(s, i) or "")
     local onTurn = turn == i
+    local clocked -- the clock shows on this plate: every seat's in a game of seat clocks, else the one on turn in a timed game
+    local c = view and view.seatClock and view.seatClock(s, i) -- "none": only the sign of no limit, in its own room
+    if view and view.seatClock then clocked = c == "none" and signRoom(p) or c ~= nil else clocked = onTurn and s.deadline ~= nil end
+    noteAndName(p, spot[3], view and view.seatNote and view.seatNote(s, i) or "", name and W.short(name, s.seats) or L("table.free"), clocked)
     p.portrait:turn(onTurn and name ~= false and name ~= nil) -- an empty chair never glows
     if view and view.seatClock then
       seatClock(p, s, view, i)

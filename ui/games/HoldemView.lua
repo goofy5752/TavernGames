@@ -213,7 +213,6 @@ function View.build(parent)
 
   f.log = W.Label(f, "dim", "", 11)
   f.log:SetWidth(LEFT_W)
-  f.log:SetWordWrap(false)
   f.log:SetPoint("TOPLEFT", f, "TOPLEFT", LEFT_X, LOG_Y)
   f.log:Hide()
 
@@ -262,7 +261,8 @@ function View.seatNote(s, seat)
 end
 
 -- The model's words {key, args…} in the locale: the category by its name,
--- the amount by View.amount, each name in its class colour when `colour`.
+-- the amount by View.amount, each name short among the seats (ui/NameTag.lua), in its class
+-- colour when `colour`.
 local function words(s, t, colour)
   local key, at = t[1], CAT_AT[t[1]]
   local args = {}
@@ -272,8 +272,8 @@ local function words(s, t, colour)
       x = L("holdem.cat." .. tostring(x))
     elseif k == AMOUNT_AT[key] then
       x = View.amount(s, x)
-    elseif type(x) == "string" and colour then
-      x = W.colored(ns.client, x)
+    elseif type(x) == "string" then
+      x = colour and W.shortColored(ns.client, x, s.seats) or W.short(x, s.seats)
     end
     args[k - 1] = x
   end
@@ -380,7 +380,7 @@ local function drawWords(f, s, m)
   f.text:SetShown(t ~= nil)
   if m.note then f.note:SetText(words(s, m.note)) end
   f.note:SetShown(m.note ~= nil)
-  if m.log then f.log:SetText(words(s, m.log)) end
+  if m.log then W.fitWrap(f.log, words(s, m.log), LEFT_W) end -- shrunk, then wrapped: never cut
   f.log:SetShown(m.log ~= nil)
 end
 

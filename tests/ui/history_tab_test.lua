@@ -60,6 +60,19 @@ local function debt(w, id)
   end
 end
 
+
+-- Never cut: font string fs shrinks to 9 at the least, a word is never wider than its box, and it
+-- stays inside a row of `rowH`.
+local function fits(fs, rowH)
+  ok(select(2, fs:GetFont()) >= 9 - 0.01, "smaller than readable: " .. tostring(fs:GetText()))
+  ok(fs:GetUnboundedStringWidth() <= fs:GetWidth() + 0.01 or fs.wordWrap, "cut on one line: " .. tostring(fs:GetText()))
+  ok(fs:GetStringHeight() <= rowH, "taller than its row: " .. tostring(fs:GetText()))
+  for word in plain(fs:GetText()):gmatch("%S+") do
+    local probe = fs.parent:CreateFontString(nil, "OVERLAY"); probe:SetFont(fs:GetFont()); probe:SetText(word)
+    ok(probe:GetUnboundedStringWidth() <= fs:GetWidth() + 0.01, "a word cut: " .. word)
+  end
+end
+
 local function Ht(w) return w.ns.HistoryTab end
 local function open(w, name) Ht(w).open(name); w:advance(0); return Ht(w).view end
 local function shown(w)
@@ -112,6 +125,18 @@ describe("ui: the tab „История“", function()
     end
     ok(select(2, rows[1].amount:GetFont()) < full, "the bigger amount did not shrink")
     eq(select(2, rows[2].amount:GetFont()), full)
+  end)
+
+  it("a line of long two-word names keeps them whole, shrunk then wrapped, never cut", function()
+    local w = readyWow()
+    local P1, P2 = "Константинопол Великопреславски", "Александрина Димитрова-Петкова"
+    fun(w, "belot", { ME, P1, P2, B }, { 1, 3 }, { 2, 4 })
+    open(w)
+    local rows = shown(w)
+    eq(#rows, 1)
+    local text = plain(rows[1].text:GetText())
+    for _, n in ipairs({ ME, P1, "Александрина Димитрова", B }) do ok(text:find(n, 1, true), "not whole: " .. n .. " in " .. text) end
+    for _, key in ipairs({ "text", "mark", "amount" }) do fits(rows[1][key], 26) end
   end)
 
   it("a draw, a forfeit and a Холдем sitting have their own words", function()

@@ -34,7 +34,7 @@ local function santaseWithBot()
   w:click(v.inviteButton)
   local row
   for _, r in ipairs(v.picker.rows) do
-    if r.frame:IsVisible() and r.name:GetText() == BOT then row = r end
+    if r.frame:IsVisible() and r.peerName == BOT then row = r end
   end
   assert(row, "no row for the bot in the picker")
   w:click(row.frame)
@@ -192,7 +192,7 @@ describe("ui: Сантасе view", function()
     eq(View.model(s, false).text, { "santase.yourTurn" })
     s.gameOver = function() return true end
     eq(View.model(s, false).text, { "santase.match", BOT })
-    w.ns.TableFrame.render(); eq(#plainTexts(w, "Bot Ivanov печели партията!"), 1)
+    w.ns.TableFrame.render(); eq(#plainTexts(w, "Ivanov " .. w.ns.W.BOT_MARK .. " печели партията!"), 1)
   end)
 
   it("„Смени деветката“ shows only when the swap is legal", function()
@@ -214,20 +214,20 @@ describe("ui: Сантасе view", function()
     local m = View.model(s, false)
     eq(#m.hand, 6); for _, c in ipairs(m.hand) do eq(c.face, nil); eq(c.mode, "plain") end
     eq({ m.buttons.marry, m.buttons.swap, m.buttons.close }, { nil, nil, false })
-    eq(m.text, { "santase.waitFor", ME }); eq(#plainTexts(w, "Изчакай Иван Петров…"), 1)
+    eq(m.text, { "santase.waitFor", ME }); eq(#plainTexts(w, "Изчакай Иван…"), 1)
     eq(V.marryButton:IsVisible(), false); eq(V.closeButton:IsVisible(), false)
     eq(View.seatNote(s, 1), "0 точки")
     st.phase, st.res = "hand", { winner = 1, gp = 2, reason = "66" }; show(w, st)
-    eq(#plainTexts(w, "Иван Петров взима ръката: +2"), 1); eq(View.seatNote(s, 1), "")
+    eq(#plainTexts(w, "Иван взима ръката: +2"), 1); eq(View.seatNote(s, 1), "")
     st.phase, st.winner = "match", 2; show(w, st)
-    eq(#plainTexts(w, "Bot Ivanov печели партията!"), 1)
+    eq(#plainTexts(w, "Ivanov " .. w.ns.W.BOT_MARK .. " печели партията!"), 1)
   end)
 
   it("a player who left is named although the seat is empty now", function()
     local w, V, View = boot(); local s = w.ns.client.session
     local st = E.view(full(), 1); show(w, st)
     s.seats[2] = false; E.leave(st, 2); show(w, st)
-    eq(#plainTexts(w, "Bot Ivanov стана от масата."), 1)
+    eq(#plainTexts(w, "Ivanov " .. w.ns.W.BOT_MARK .. " стана от масата."), 1)
     eq(View.model(s, false).text, { "santase.match", ME }) -- without the view's memory: the winner
   end)
 
@@ -239,11 +239,11 @@ describe("ui: Сантасе view", function()
     eq(V.text:IsVisible(), true); eq(plain(V.text:GetText()), "Твой ход") -- a running match keeps its line
     st.phase, st.winner = "match", 2
     P.shown = false; View.update(V, s)
-    eq(V.text:IsVisible(), true); eq(plain(V.text:GetText()), "Bot Ivanov печели партията!")
+    eq(V.text:IsVisible(), true); eq(plain(V.text:GetText()), "Ivanov " .. w.ns.W.BOT_MARK .. " печели партията!")
     P.shown = true; View.update(V, s)
     eq(V.text:IsVisible(), false)
     P.shown = false; View.update(V, s)
-    eq(V.text:IsVisible(), true); eq(plain(V.text:GetText()), "Bot Ivanov печели партията!")
+    eq(V.text:IsVisible(), true); eq(plain(V.text:GetText()), "Ivanov " .. w.ns.W.BOT_MARK .. " печели партията!")
   end)
 
   it("solo against a bot from a real deal: six faces for me, six backs for the bot, a click plays", function()
@@ -252,5 +252,16 @@ describe("ui: Сантасе view", function()
     ok(V.trumpCard.face); local i = V.myFan.cards[1].entry.i; w:click(V.myFan.cards[1].frame); w:advance(0)
     eq(s.state.trick[1], i); w:advance(2); eq(#s.state.trick, 0)       -- the bot answered after 1.5 s and the trick was taken
     -- (2 s, not 3: a bot that takes the trick leads the next one 1.5 s later, at 3 s)
+  end)
+end)
+
+-- QA (layout): the trump card lay under the stock with its corner (the rank) under the pile.
+describe("ui: Сантасе's trump card", function()
+  it("lies left of the stock, its corner in sight", function()
+    local w, V = santaseWithBot()
+    local trump, stock = V.trumpCard.frame.points[1], V.stockCard.frame.points[1]
+    ok(trump[4] < stock[4], "the trump card is not left of the stock")
+    ok(stock[4] - trump[4] >= 18, "its corner is under the stock: " .. (stock[4] - trump[4]))
+    ok(trump[4] >= 0, "past the view's left edge")
   end)
 end)

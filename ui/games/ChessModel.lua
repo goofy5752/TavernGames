@@ -6,7 +6,7 @@ local _, ns = ...
 --   cells    64 in screen order (row 1 on top, left to right): { sq, piece, last, sel, dot, ring, check }
 --   myTurn, targets (the legal targets of `sel`, ascending), taken { [seat] = pieces, Q R B N P },
 --   lead { [seat] = n } (material ahead, only the positive side), rows { { no, white, black, lastWhite,
---   lastBlack } } (SAN in the UI language), offerFor (the seat that may answer a standing offer),
+--   lastBlack } } (white, black: ns.ChessMoves.describe's moves), offerFor (the seat that may answer a standing offer),
 --   status (the line of text), banner (the end text or nil), canOffer, canResign, canClaim.
 local L = ns.L
 
@@ -40,9 +40,13 @@ function Model.promotes(s, f, t)
   return false
 end
 
+-- The seat's short name among the table's (ui/NameTag.lua, a bot's with its cog), else its colour.
 local function seatName(s, seat)
-  return s.seats and s.seats[seat] or L(seat == s.state.white and "chess.white" or "chess.black")
+  local name = s.seats and s.seats[seat]
+  if name then return ns.W.short(name, s.seats) end
+  return L(seat == s.state.white and "chess.white" or "chess.black")
 end
+Model.seatName = seatName
 
 -- Pieces taken, sorted Q R B N P (the sign tells the colour).
 local function sorted(list)
@@ -120,9 +124,10 @@ function Model.build(s, sel)
   if a > b then m.lead[1] = a - b elseif b > a then m.lead[2] = b - a end
 
   m.rows = {}
+  local moves = ns.ChessMoves.describe(st.moves)
   for i = 1, #st.moves, 2 do
-    local w, bl = st.moves[i], st.moves[i + 1]
-    m.rows[#m.rows + 1] = { no = (i + 1) / 2, white = Model.san(w.san), black = bl and Model.san(bl.san),
+    local bl = st.moves[i + 1]
+    m.rows[#m.rows + 1] = { no = (i + 1) / 2, white = moves[i], black = bl and moves[i + 1],
       lastWhite = i == #st.moves, lastBlack = bl ~= nil and i + 1 == #st.moves }
   end
 

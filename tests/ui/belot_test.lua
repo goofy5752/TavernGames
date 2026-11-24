@@ -209,15 +209,15 @@ describe("ui: Белот view", function()
     local w, View, f = boot(); local st = scored(); View.update(f, sess(st, 1))
     eq(#plainTexts(w, "Ние 32 · Вие 0"), 1); eq(#plainTexts(w, "до 151"), 1)
     ok(f.summary:IsVisible())
-    eq(plain(f.summary:GetText()), table.concat({ "Игра: Купа, контра  каза Мария Стоянова", "Ние +32 · Вие +0", "Вътре са!",
-      "Иван Петров: Терца, 20", "Мария Стоянова: Терца (не се брои)", "Пешо Тодоров: Белот, 20" }, "\n"))
+    eq(plain(f.summary:GetText()), table.concat({ "Игра: Купа, контра  каза Мария", "Ние +32 · Вие +0", "Вътре са!",
+      "Иван: Терца, 20", "Мария: Терца (не се брои)", "Пешо: Белот, 20" }, "\n"))
     for k = 0, 3 do eq(f.trick[k].frame:IsVisible(), false) end
     eq(f.summary:GetWidth(), 170); eq(select(2, f.summary:GetFont()), 11 * w.ns.Theme.fontScale.ui)
     eq(f.summary.points[1], { "TOP", f, "TOPLEFT", 266, -64 })
     st.hang = 9; View.update(f, sess(st, 1)); eq(#plainTexts(w, "до 151 · висят 9"), 1)
 
     local mid = started(DECK_A, "S P P P"); local ms = sess(E.view(mid, 1), 1); View.update(f, ms)
-    ok(f.contract:IsVisible()); eq(plain(f.contract:GetText()), "Игра: Пика\nказа Иван Петров")
+    ok(f.contract:IsVisible()); eq(plain(f.contract:GetText()), "Игра: Пика\nказа Иван")
     eq(f.summary:IsVisible(), false)
     eq(View.seatNote(ms, 4), "разд."); eq(View.seatNote(ms, 1), "")
     local over = sess(scored(), 1); over.state.phase = "match"
@@ -227,7 +227,7 @@ describe("ui: Белот view", function()
     local w2, View2, f2 = boot(); local st2 = scored(); View2.update(f2, sess(st2, 1))
     st2.phase, st2.winner, st2.left = "match", 2, 3
     local s2 = sess(st2, 1); s2.seats[3] = false; View2.update(f2, s2)
-    eq(plain(f2.text:GetText()), "Kiro Barley стана от масата. Отборът му губи.")
+    eq(plain(f2.text:GetText()), "Kiro стана от масата. Отборът му губи.") -- the short name
   end)
 
   it("the end line of the match hides under the bill of a staked match (StakePanels.shown); nothing else does", function()
@@ -279,7 +279,7 @@ describe("ui: Белот view", function()
       w:click(v.inviteButton)
       local row
       for _, r in ipairs(v.picker.rows) do
-        if r.frame:IsVisible() and r.name:GetText() == bot then row = r end
+        if r.frame:IsVisible() and r.peerName == bot then row = r end
       end
       assert(row, "no row for " .. bot .. " in the picker")
       w:click(row.frame); w:advance(2)
@@ -309,7 +309,7 @@ describe("ui: Белот view", function()
     for _, bot in ipairs(BOTS) do
       w:click(v.inviteButton)
       for _, r in ipairs(v.picker.rows) do
-        if r.frame:IsVisible() and r.name:GetText() == bot then w:click(r.frame) end
+        if r.frame:IsVisible() and r.peerName == bot then w:click(r.frame) end
       end
       w:advance(2)
     end
@@ -330,7 +330,7 @@ describe("ui: Белот view", function()
     for _, bot in ipairs(BOTS) do
       w:click(v.inviteButton)
       for _, r in ipairs(v.picker.rows) do
-        if r.frame:IsVisible() and r.name:GetText() == bot then w:click(r.frame) end
+        if r.frame:IsVisible() and r.peerName == bot then w:click(r.frame) end
       end
       w:advance(2)
     end

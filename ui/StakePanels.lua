@@ -24,9 +24,10 @@ local _, ns = ...
 --   outcome of that game my client noted (the "result" and the "forfeit"s of
 --   it, client.stakes' notes), why a forfeit was one (the note's why: „idle“,
 --   else a leave; a team game: the leaver pays both opponents), then who owes
---   whom, the names in class colour, each row marked „чака потвърждение“ or
---   „оспорен“ as the ledger has it; a reason line too long for one row wraps
---   onto two; in its header „Към залата“ and „Реванш на същата маса“ (Морски
+--   whom, the names short among the bill's (ui/NameTag.lua; a hover over the
+--   bill gives the whole names) in class colour, each row marked „чака
+--   потвърждение“ or „оспорен“ as the ledger has it; a line too long for its
+--   row shrinks, then wraps onto more rows (W.fitWrap), never cut; in its header „Към залата“ and „Реванш на същата маса“ (Морски
 --   шах: the engine's rematch; Death Roll, Сантасе, Белот, Табла: the host's
 --   next game). A seated guest of an engine with `again` reads instead when
 --   the host may begin the next match at the same stake (the rest of
@@ -51,7 +52,8 @@ local BUY_H, BUY_STEP = 34, 10 -- a cash table's buy-in stepper, in big blinds (
 local BILL_W, BILL_TOP, BILL_ROW, BILL_Y, BILL_LINES = 500, 32, 18, 6, 6
 local MARK_W = 112 -- the row's mark, right of its text
 
-local function first(client, name) return W.colored(client, name, W.firstWord(name)) end
+-- `name` short among `named` (the names of the bill and the table's seats), in class colour.
+local function first(client, name, named) return W.shortColored(client, name, named) end
 
 -- „5s/10s“ for a cash table of `game` (its stake is its big blind), nil for any other table.
 function P.blinds(game, sk)
@@ -278,8 +280,9 @@ local function lineWidget(b, i)
 end
 
 -- Line i of the bill, `row` rows under its header: `text`, and a row's mark
--- for `status` (nil: a reason line, which wraps onto a second row when one
--- is too narrow for it) -> the rows it takes.
+-- for `status` (nil: a reason line, a sentence: it wraps at its own size). A
+-- row too wide for its place first shrinks, then wraps onto more rows
+-- (W.fitWrap): never cut -> the rows it takes.
 local function setLine(b, i, row, text, status)
   local line, mark = lineWidget(b, i), MARK[status]
   local y, width = -(BILL_TOP - 4) - row * BILL_ROW, BILL_W - 28 - (status and MARK_W or 0)
@@ -287,11 +290,7 @@ local function setLine(b, i, row, text, status)
   line.text:SetPoint("TOPLEFT", b, "TOPLEFT", 14, y)
   line.mark:ClearAllPoints()
   line.mark:SetPoint("TOPRIGHT", b, "TOPRIGHT", -14, y - 1)
-  line.text:SetWidth(width)
-  line.text:SetWordWrap(false) -- measured on one row
-  line.text:SetText(text)
-  local rows = (not status and W.textWidth(line.text) > width) and 2 or 1
-  line.text:SetWordWrap(rows == 2)
+  local rows = math.max(1, math.ceil(W.fitWrap(line.text, text, width, not status and math.huge or nil) / BILL_ROW - 0.001))
   line.text:Show()
   line.mark:SetText(mark and L(mark[1]) or "")
   if mark then line.mark:SetTextColor(Theme.rgb(mark[2])) end
@@ -316,6 +315,7 @@ local function buildBill(v)
   b.toHall = W.Button(b, L("table.toHall"), function() ns.TableFrame.stand() end, true)
   b.toHall:SetSize(110, 20)
   b.toHall:SetPoint("RIGHT", b.rematch, "LEFT", -6, 0)
+  W.nameTip(b, function() return b.named end) -- the whole names of the bill
   b.waiting = W.Label(b, "dim", "", 12) -- in the place of „Реванш“ once I asked for it
   b.waiting:SetJustifyH("RIGHT")
   b.waiting:SetPoint("RIGHT", b, "TOPRIGHT", -12, -14)
@@ -369,7 +369,15 @@ function P.bill(v, s)
   end
   if not v.bill then buildBill(v) end
   local b, items, team = v.bill, {}, s:engine().teams
-  local waits = false
+  local waits, named = false, {}
+  local function name(n) if type(n) == "string" then named[#named + 1] = n end end
+  for _, n in ipairs(s.seats) do name(n) end
+  for i, note in ipairs(notes) do
+    name(hs[i] and hs[i].who)
+    for _, p in ipairs(note.pairs) do name(p.f); name(p.t) end
+  end
+  local function first(c, n) return W.shortColored(c, n, named) end
+  b.named = named
   for i, note in ipairs(notes) do
     if note.why == "cash" then -- one sitting: who stood up (or the close), then the pairs, then the keys' line
       local h = hs[i]
@@ -400,7 +408,7 @@ function P.bill(v, s)
   for i = n + 1, #b.lines do b.lines[i].text:Hide(); b.lines[i].mark:Hide() end
   b:SetHeight(BILL_TOP + BILL_ROW * rows)
   b.rematch:SetShown(what == "ask" or what == "start")
-  b.waiting:SetText(what == "asked" and L("ttt.waitingFor", W.colored(client, other)) or "")
+  b.waiting:SetText(what == "asked" and L("ttt.waitingFor", first(client, other)) or "")
   b.waiting:SetShown(what == "asked")
   b:Show()
   return left
@@ -412,7 +420,9 @@ function P.sayMine(client)
   P.mine = nil
   if type(note) ~= "table" or type(note.pairs) ~= "table" or #note.pairs == 0 then return end
   local out = {}
-  for _, r in ipairs(P.billRows(client, note)) do out[#out + 1] = L("bill.row", first(client, r.f), first(client, r.t), money(r.c)) end
+  local named = {}
+  for _, p in ipairs(note.pairs) do named[#named + 1] = p.f; named[#named + 1] = p.t end
+  for _, r in ipairs(P.billRows(client, note)) do out[#out + 1] = L("bill.row", first(client, r.f, named), first(client, r.t, named), money(r.c)) end
   if #out > 0 then ns.Hall.say(L("bill.cash.mine", table.concat(out, "; "))) end
 end
 

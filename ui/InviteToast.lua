@@ -1,7 +1,8 @@
 local _, ns = ...
 
 -- The invite toast (mockup 02), top centre of the screen: „Покана за <игра>“,
--- „<домакин> те кани на <игра>“ (the host in class color), „Приемам“ /
+-- „<домакин> те кани на <игра>“ (the host's short name in class color, ui/NameTag.lua; a
+-- hover over the toast gives the whole name), „Приемам“ /
 -- „Не сега“ / „Не ме безпокой 30 мин“ and a bar running down to the
 -- invitation's `expires`; for a staked table a line „Залог: 5g“ under the
 -- text (the toast STAKE_H taller). A soft sound on show; hidden on "inviteGone". Only
@@ -50,6 +51,8 @@ local function build()
   f:SetToplevel(true)
   f:EnableMouse(true)
   InviteToast.border = W.chrome(f, InviteToast.WIDTH, InviteToast.HEIGHT).frame
+  -- the „Уредено“ toast stands under this one while it shows (ui/SettleToast.lua), never over it
+  for _, script in ipairs({ "OnShow", "OnHide" }) do f:HookScript(script, function() if ns.SettleToast then ns.SettleToast.place() end end) end
 
   local title = W.Label(f, "heading", "", 15)
   title:SetTextColor(Theme.rgb("brassLight"))
@@ -88,6 +91,7 @@ local function build()
   InviteToast.track, InviteToast.bar = track, bar
 
   f:SetScript("OnUpdate", InviteToast.tick)
+  W.nameTip(f, function() return InviteToast.tid and InviteToast.inv and InviteToast.inv.host end) -- the host's whole name
   f:Hide()
 end
 
@@ -113,7 +117,7 @@ function InviteToast.show(inv)
   local t, game = InviteToast, W.gameName(inv.game)
   t.tid, t.expires, t.game, t.inv = inv.tid, inv.expires, game, inv
   t.title:SetText(L("invite.title", game))
-  t.text:SetText(L("invite.text", W.colored(ns.client, inv.host), game))
+  t.text:SetText(L("invite.text", W.shortColored(ns.client, inv.host, inv.seats), game))
   local blinds = inv.stake ~= nil and ns.StakePanels.blinds(inv.game, inv.stake) -- a cash table: its blinds
   t.stake:SetText(blinds and L("table.blinds", blinds) or inv.stake ~= nil and L("invite.stake", ns.W.money(inv.stake)) or "")
   t.stake:SetShown(inv.stake ~= nil)
@@ -186,7 +190,7 @@ end
 
 -- The host's line about an answer to its invitation.
 function InviteToast.answerText(name, a, why)
-  local who = W.colored(ns.client, name)
+  local who = W.shortColored(ns.client, name)
   if a == "yes" then return L("invite.accepted", who) end
   if a == "auto" and AUTO[why] then return L("invite.auto." .. why, who) end
   return L("invite.declined", who)

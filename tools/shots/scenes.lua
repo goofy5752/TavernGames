@@ -23,7 +23,9 @@ local CLASS_COLORS = {
 local RACES = { Alliance = { "Human", "Human", 1 }, Horde = { "Orc", "Orc", 2 } }
 
 -- A fresh client in a guild, English UI, the player's name known, logged in.
--- opts.faction: "Alliance" (default) | "Horde"; opts.members: more guild members (online).
+-- opts.faction: "Alliance" (default) | "Horde"; opts.members: more guild members (online);
+-- opts.lang: "en" (default) | "bg"; opts.guild: the guild's name; opts.money: copper in my bags;
+-- opts.screen: {w, h}, UIParent's size (default the tests' 1920 x 1080).
 -- The client art tools/shots/client_art.py took out of the WoW install (none: the addon's stand-ins show).
 local CLIENT_ART = Shim.loadClientArt()
 
@@ -52,7 +54,8 @@ local function boot(opts)
   w.faction = opts.faction or "Alliance"
   w.race = RACES[w.faction]
   w.sex = 2
-  w.inGuild, w.guildName = true, GUILD
+  w.inGuild, w.guildName = true, opts.guild or GUILD
+  if opts.screen then w.G.UIParent:SetSize(opts.screen[1], opts.screen[2]) end
   w.roster = { { name = ME .. "-Forever", online = true, guid = Wow.GUID } }
   for _, m in ipairs(opts.members or {}) do
     w.roster[#w.roster + 1] = { name = m .. "-Forever", online = true, guid = "Player-1-" .. m }
@@ -61,8 +64,8 @@ local function boot(opts)
   w.G.UnitClass = function() return "Mage", "MAGE", 8 end
   w.money = opts.money or 2473650
   w:boot()
-  w.ns.db.lang, w.ns.db.introDone = "en", true
-  w.ns.Locale.set("en")
+  w.ns.db.lang, w.ns.db.introDone = opts.lang or "en", true
+  w.ns.Locale.set(opts.lang or "en")
   w:fire("GUILD_ROSTER_UPDATE")
   w:fire("PLAYER_LOGIN")
   w:advance(0)
@@ -183,7 +186,8 @@ local function play(w, stop, limit, think, choose)
 end
 
 local Scenes, ORDER = {}, {}
-local function scene(name, fn) Scenes[name] = fn; ORDER[#ORDER + 1] = name end
+-- `extra`: a scene for checking the UI, made only when named (not a README picture).
+local function scene(name, fn, extra) Scenes[name] = fn; if not extra then ORDER[#ORDER + 1] = name end end
 
 ---------------------------------------------------------------------------
 
@@ -302,6 +306,76 @@ scene("holdem", function()
   write("holdem", found, { found.ns.TableFrame.frame, v.history })
 end)
 
+-- The „История“ window open beside a table (mockup 10), for checking it: these scenes are made only
+-- when named (luajit tools/shots/scenes.lua history_belot history_long history_santase history_chess).
+-- `game` played by me and bots until stop(st).
+local function withHistory(w, stop, limit, think, choose)
+  local okStop = play(w, function(st, _, mine) return mine and stop(st) end, limit or 900, think or 1, choose)
+  local v = w.ns.TableFrame.view
+  if v.historyButton:IsVisible() and not v.history:IsShown() then w:click(v.historyButton) end
+  run(w, 0.5)
+  return okStop, v
+end
+
+-- Белот: the third deal under way (two closed above it), the trick on the table half played.
+scene("history_belot", function()
+  local w = boot{ seed = 11 }
+  myTable(w, "belot")
+  local okStop, v = withHistory(w, function(st) return st.phase == "play" and (st.round or 1) >= 3 and (st.trickNo or 1) >= 4 and #(st.trick or {}) == 2 end, 1200)
+  assert(okStop, "history_belot: no third deal")
+  -- the hand under way, and the one before it opened by a click on its header
+  local H = w.ns.HandHistory
+  local blocks = H.blocks(w.ns.client.session)
+  if blocks[2] then H.toggle(blocks[2].hand, false); H.draw(v.history, w.ns.client.session) end
+  write("history_belot", w, { w.ns.TableFrame.frame, v.history })
+end, true)
+
+-- The same window with the longest names a table can have (two-word names, a bot's long one).
+scene("history_long", function()
+  local w = boot{ seed = 11 }
+  myTable(w, "belot")
+  local okStop, v = withHistory(w, function(st) return st.phase == "play" and (st.round or 1) >= 2 and (st.trickNo or 1) >= 3 and #(st.trick or {}) == 3 end, 1200)
+  assert(okStop, "history_long: no second deal")
+  local H, s = w.ns.HandHistory, w.ns.client.session
+  for _, hand in ipairs(H.tables[s.tid].hands) do
+    hand.names = { "Brannoc", "Bot Barleybrewster", "Ivan Petrov", "Ivan Kolevski" }
+  end
+  H.draw(v.history, s)
+  write("history_long", w, { w.ns.TableFrame.frame, v.history })
+end, true)
+
+-- Сантасе: the second hand under way, the first closed to its result.
+scene("history_santase", function()
+  local found
+  for seed = 1, 40 do
+    local w = boot{ seed = seed }
+    myTable(w, "santase")
+    -- a hand after the first with an event (a marriage, the nine, the close) and a few tricks
+    local function events()
+      local b = w.ns.HandHistory.tables[w.ns.client.session.tid]
+      local top = b and b.hands[#b.hands]
+      return top and #top.events or 0
+    end
+    local okStop, v = withHistory(w, function(st)
+      return st.phase == "play" and (st.hand or 1) >= 2 and (st.ntr[1] + st.ntr[2]) >= 4 and events() > 0
+    end, 900, 1, function(_, _, legal) -- I declare a marriage when I can
+      for _, a in ipairs(legal) do if a.k == "marry" or a.k == "swap9" then return a end end
+    end)
+    if okStop then found = { w, v }; break end
+  end
+  assert(found, "history_santase: no second hand with an event")
+  write("history_santase", found[1], { found[1].ns.TableFrame.frame, found[2].history })
+end, true)
+
+-- Шах: a game well under way, the history window open beside the board.
+scene("history_chess", function()
+  local w = boot{ seed = 5 }
+  myTable(w, "chess")
+  local okStop, v = withHistory(w, function(st) return #st.moves >= 24 end, 1200, 2)
+  assert(okStop, "history_chess: no long game")
+  write("history_chess", w, { w.ns.TableFrame.frame, v.history })
+end, true)
+
 scene("chess", function()
   local w = boot{ seed = 5 }
   myTable(w, "chess")
@@ -379,7 +453,8 @@ members = function(w, list)
   w:advance(0); w:advance(0)
 end
 
-ledgerHistory = function(w)
+-- `big`: the debts are large amounts (up to 9,999,999 gold).
+ledgerHistory = function(w, big)
   members(w)
   local seq, games = {}, 0
   local now = w.G.GetServerTime()
@@ -399,7 +474,7 @@ ledgerHistory = function(w)
     local a = everyone[math.random(#everyone)]
     local b
     repeat b = everyone[math.random(#everyone)] until b ~= a
-    local pa = skill[a] / (skill[a] + skill[b])
+    local pa = (skill[a] or 0.5) / ((skill[a] or 0.5) + (skill[b] or 0.5))
     local win = math.random() < pa and 1 or 2
     local host = (a ~= ME) and a or b
     games = games + 1
@@ -409,12 +484,16 @@ ledgerHistory = function(w)
     if k % 4 == 0 then
       local loser, winner = win == 1 and b or a, win == 1 and a or b
       local c = ({ 50000, 120000, 25000, 300000, 80000, 15000, 42000 })[(k / 4) % 7 + 1]
+      if big then c = ({ 99999999999, 1234567890, 98765432100, 300000, 45678912345, 15000, 999999900 })[(k / 4) % 7 + 1] end
       if loser ~= ME then
         send(loser, "D", { gid = host .. "#1/" .. games, g = g, f = loser, t = winner, c = c, why = "lost" }, ago - 60)
         -- Some debts are paid back by hand later.
         if k % 3 == 0 and winner ~= ME then send(winner, "P", { f = loser, c = c, how = "hand" }, ago - 7200) end
       end
     end
+  end
+  if big then -- the largest debt there can be, to me
+    send(MEMBER_NAMES[1], "D", { gid = MEMBER_NAMES[1] .. "#1/99", g = "belot", f = MEMBER_NAMES[1], t = ME, c = 99999999999, why = "lost" }, 30)
   end
   run(w, 3)
 end
@@ -436,6 +515,89 @@ scene("ledger", function()
   run(w, 3)
   write("ledger", w, { w.ns.MainWindow.frame })
 end)
+
+---------------------------------------------------------------------------
+-- Short names (ui/NameTag.lua), for checking them: made only when named
+-- (luajit tools/shots/scenes.lua names_hall names_belot names_deathroll names_ledger).
+-- Two-word names, two Ivans and the bots' long names at one table.
+
+local LONG = { { "Ivan Petrovski", "MAGE" }, { "Ivan Kolevski", "WARRIOR" }, { "Konstantin Velikopreslavski", "PRIEST" },
+  { "Aleksandrina Dimitrova", "DRUID" }, { "Elowen Silverleaf", "HUNTER" } }
+
+scene("names_hall", function()
+  local w = boot{ seed = 9 }
+  w:advance(w.ns.Const.LEDGER_ADOPT_WAIT + 1)
+  members(w, LONG)
+  local bots = botsOn(w)
+  local tid = "Ivan Petrovski#1"
+  w:deliver("GUILD", "Ivan Petrovski", { v = 1, t = "TBL", tid = tid, g = "belot", h = "Ivan Petrovski", e = 1, ac = "guild", tn = 45,
+    st = "live", s = { "Ivan Petrovski", "Ivan Kolevski", "Konstantin Velikopreslavski", "Aleksandrina Dimitrova" }, w = 0 })
+  local t2 = "Elowen Silverleaf#1"
+  w:deliver("GUILD", "Elowen Silverleaf", { v = 1, t = "TBL", tid = t2, g = "santase", h = "Elowen Silverleaf", e = 1, ac = "guild",
+    tn = 45, st = "open", s = { "Elowen Silverleaf", false }, w = 0 })
+  for _, m in ipairs(LONG) do
+    local at = m[1] == "Elowen Silverleaf" and t2 or tid
+    w:deliver("GUILD", m[1], { v = 1, t = "HI", ver = "0.1.0", cls = m[2], id = "Player-1-" .. m[1], at = at })
+  end
+  local b1 = bots:hostTable("deathroll"); w:advance(0); w:advance(0)
+  local b = bots:idle(); w:advance(0); b:sit(b1, 2); w:advance(0); w:advance(0)
+  run(w, 4)
+  w.ns.MainWindow.show("hall")
+  run(w, 1)
+  write("names_hall", w, { w.ns.MainWindow.frame })
+end, true)
+
+-- My Белот table with long names on its seats (drawn as they are, the bots playing on).
+scene("names_belot", function()
+  local w = boot{ seed = 11 }
+  myTable(w, "belot")
+  local okStop, v = withHistory(w, function(st) return st.phase == "play" and (st.round or 1) >= 2 and (st.trickNo or 1) >= 3 and #(st.trick or {}) == 3 end, 1200)
+  assert(okStop, "names_belot: no second deal")
+  local s, H = w.ns.client.session, w.ns.HandHistory
+  local names = { ME, "Bot Barleybrewster", "Ivan Petrovski", "Ivan Kolevski" }
+  for i = 2, 4 do s.seats[i] = names[i] end
+  for _, hand in ipairs(H.tables[s.tid].hands) do hand.names = names end
+  w.ns.TableFrame.render()
+  H.draw(v.history, s)
+  write("names_belot", w, { w.ns.TableFrame.frame, v.history })
+end, true)
+
+-- A Death Roll of four: two Ivans and a long name beside me; seven cells on the ladder.
+scene("names_deathroll", function()
+  local w = boot{ seed = 4 }
+  myTable(w, "deathroll", { start = 1000 }, 3)
+  local okStop = play(w, function(st) return #(st.rolls or {}) >= 6 or st.phase == "over" end, 400, 1.5, function()
+    local V = w.ns.TableFrame.built.deathroll
+    if V.rollButton:IsVisible() and V.rollButton:IsEnabled() then w:click(V.rollButton) end
+    return true
+  end)
+  assert(okStop, "names_deathroll: no ladder")
+  local s = w.ns.client.session
+  s.seats[2], s.seats[3] = "Ivan Petrovski", "Ivan Kolevski"
+  s.seats[4] = "Konstantinopolskiovich Velikov"
+  w.ns.TableFrame.render()
+  run(w, 0.25)
+  write("names_deathroll", w, { w.ns.TableFrame.frame })
+end, true)
+
+-- The ledger with long two-word names: whole, shrunk, then wrapped.
+scene("names_ledger", function()
+  local w = boot{ seed = 21 }
+  w:advance(w.ns.Const.LEDGER_ADOPT_WAIT + 1)
+  local keep = {}
+  for i, m in ipairs(MEMBERS) do keep[i] = m[1] end
+  local long = { "Elowen Silverleaf-Moonwhisper", "Thorgar Ironbeard", "Mirabel Starfall", "Kazrik Shadowmantle",
+    "Odric Lightbringer", "Sefa Windrunner", "Varek Doomhollow", "Lysa Brightwater" }
+  for i, m in ipairs(MEMBERS) do m[1] = long[i]; MEMBER_NAMES[i] = long[i] end
+  ledgerHistory(w)
+  for i, m in ipairs(MEMBERS) do m[1] = keep[i]; MEMBER_NAMES[i] = keep[i] end
+  w.ns.MainWindow.show("ledger")
+  run(w, 3)
+  write("names_ledger", w, { w.ns.MainWindow.frame })
+  w.ns.MainWindow.show("board")
+  run(w, 3)
+  write("names_board", w, { w.ns.MainWindow.frame })
+end, true)
 
 scene("settings", function()
   local w = boot()
@@ -469,6 +631,16 @@ scene("belot_horde", function()
 end)
 
 ---------------------------------------------------------------------------
+
+-- tools/shots/lint.lua takes the scenes and their helpers as a library.
+if SHOTS_LIB then
+  return {
+    Scenes = Scenes, boot = boot, run = run, runUntil = runUntil, play = play, myTable = myTable, botsOn = botsOn,
+    members = members, ledgerHistory = ledgerHistory, hall = hall, withHistory = withHistory, tttChoice = tttChoice,
+    write = write, MEMBERS = MEMBERS, MEMBER_NAMES = MEMBER_NAMES, CLASS_COLORS = CLASS_COLORS, OUT = OUT,
+    setMe = function(name) ME = name end, me = function() return ME end, clientArt = CLIENT_ART,
+  }
+end
 
 local wanted = { ... }
 -- --art: the client files the addon may ask for (wow/Art.lua's file candidates), one per line, for client_art.py.

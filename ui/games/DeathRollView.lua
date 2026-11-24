@@ -4,10 +4,13 @@ local _, ns = ...
 -- most seven cells left to right with „›“ in brass between them, the start
 -- number first (or „…“ once the older rolls no longer fit), every roll in the
 -- roller's class colour (Alegreya SC 30, 28, 26, 24, 22, 22, 22 by position; a
--- rolled 1 in the O-mark colour at 34) over the roller's first name or „Ти“,
--- and while the game runs a faint „?“ for the player on turn. A roll the table
--- made (a bot, a timeout) reads „· маса“, a roll I did not see in chat „?“, one
--- I saw with another number a red „!“, each with a tooltip. Under the trail the
+-- rolled 1 in the O-mark colour at 34) over the roller's short name among the
+-- seats (ui/NameTag.lua, a bot's with its cog) or „Ти“, and while the game runs a
+-- faint „?“ for the player on turn. A roll the table made (a bot, a timeout) reads
+-- „· маса“, a roll I did not see in chat „?“, one I saw with another number a red
+-- „!“. A hover over a cell gives the roller's whole name and what its mark means.
+-- A name shrinks, then wraps under its number (W.fitWrap): the seven cells and
+-- their arrows always fit the trail's width, nothing is cut. Under the trail the
 -- caption and at most one line about the group. At the bottom: on my turn
 -- „Хвърли“ with the range (the only place a server roll is started; disabled
 -- while it is under way, with the /roll hint above it when it never showed up
@@ -75,9 +78,14 @@ function View.seatNote(s, seat)
 end
 
 local function showTip(cell)
-  if not cell.tip then return end
+  if not cell.tip and not cell.name then return end
   GameTooltip:SetOwner(cell.frame, "ANCHOR_TOP")
-  GameTooltip:SetText(L(cell.tip), 1, 1, 1, 1, true)
+  if cell.name then W.nameLines(GameTooltip, cell.name, true) end
+  if cell.tip and cell.name then
+    GameTooltip:AddLine(L(cell.tip), 1, 1, 1, true)
+  elseif cell.tip then
+    GameTooltip:SetText(L(cell.tip), 1, 1, 1, 1, true)
+  end
   GameTooltip:Show()
   cell.tipShown = true
 end
@@ -97,8 +105,7 @@ local function cellWidget(f, i)
   cell.number:SetPoint("BOTTOM", fr, "BOTTOM", 0, LABEL_H)
   cell.label = W.Label(fr, "dim", "", 11)
   cell.label:SetJustifyH("CENTER")
-  cell.label:SetWordWrap(false)
-  cell.label:SetPoint("BOTTOM", fr, "BOTTOM", 0, 0)
+  cell.label:SetPoint("TOP", fr, "BOTTOM", 0, LABEL_H - 1) -- under the number; a wrapped name grows down
   fr:SetScript("OnEnter", function() showTip(cell) end)
   fr:SetScript("OnLeave", function() hideTip(cell) end)
   return cell
@@ -160,7 +167,7 @@ local function labelText(c, s)
   if c.kind == "start" then
     text = L("deathroll.startLabel")
   elseif c.kind ~= "more" then
-    text = c.name and (c.seat == s.mySeat and L("deathroll.you") or W.firstWord(c.name)) or ""
+    text = c.name and (c.seat == s.mySeat and L("deathroll.you") or W.short(c.name, s.seats)) or ""
   end
   if c.tag == "unseen" then
     text = text .. "?"
@@ -172,30 +179,74 @@ local function labelText(c, s)
   return text
 end
 
--- Draws the cells and returns their widths.
+-- The label of each cell in its width: a label's room on the trail follows its need. Each gets
+-- at least its one line at W.WRAP_MIN when the trail holds them all so („Ivan P.“ whole, a name's
+-- word never broken), and what is left goes to the labels that would be wider, in proportion, up
+-- to their own width. A trail too short for that (a word longer than any WoW name) gives every
+-- label that fits a fair share its line, and the rest share what is left.
+local function labelWidths(f, labels, n, nums)
+  local total = WIDTH - (n - 1) * (f.arrows[1]:GetStringWidth() + 2 * MIN_GAP) - 4 * n
+  local full, line, sumFull, sumLine = {}, {}, 0, 0
+  for i = 1, n do
+    local fs = f.cells[i].label
+    fs:SetWidth(0)
+    W.fit(fs, labels[i], math.huge) -- its own size, one line: the width it would take
+    full[i] = math.max(W.textWidth(fs), nums[i]) -- a cell is never narrower than its number
+    W.fit(fs, labels[i], 0, W.WRAP_MIN)
+    line[i] = math.max(math.min(W.textWidth(fs), full[i]), nums[i]) -- one line at the least size
+    sumFull, sumLine = sumFull + full[i], sumLine + line[i]
+  end
+  local out = {}
+  if sumFull <= total then return full end
+  if sumLine <= total then
+    for i = 1, n do out[i] = line[i] + (full[i] - line[i]) * (total - sumLine) / math.max(1e-9, sumFull - sumLine) end
+    return out
+  end
+  local left, pending, count = total, {}, n
+  for i = 1, n do pending[i] = true end
+  local changed = true
+  while changed do
+    changed = false
+    for i in pairs(pending) do
+      if line[i] <= left / count then out[i], left, pending[i], count, changed = line[i], left - line[i], nil, count - 1, true; break end
+    end
+  end
+  for i in pairs(pending) do out[i] = left / count end
+  return out
+end
+
+-- Draws the cells and returns their widths and the tallest label.
 local function drawCells(f, s, cells, client)
-  local widths = {}
+  local widths, n, tallest = {}, #cells, 0
+  local labels, nums = {}, {}
+  for i = 1, n do
+    local cell, c = f.cells[i], cells[i]
+    local text, size, color, alpha = numberLook(c, i, client)
+    cell.number:SetFont(Theme.font.heading, size, "")
+    cell.number:SetText(text)
+    cell.number:SetTextColor(color[1], color[2], color[3])
+    cell.number:SetAlpha(alpha)
+    labels[i], nums[i] = labelText(c, s), cell.number:GetStringWidth()
+  end
+  local room = labelWidths(f, labels, n, nums)
   for i = 1, MAX_CELLS do
     local cell, c = f.cells[i], cells[i]
     if c then
-      local text, size, color, alpha = numberLook(c, i, client)
-      cell.number:SetFont(Theme.font.heading, size, "")
-      cell.number:SetText(text)
-      cell.number:SetTextColor(color[1], color[2], color[3])
-      cell.number:SetAlpha(alpha)
-      cell.label:SetText(labelText(c, s))
+      W.fitWrap(cell.label, labels[i], math.max(1, room[i]))
+      tallest = math.max(tallest, cell.label:GetStringHeight())
       cell.tip = c.tag and TIPS[c.tag] or nil
-      if not cell.tip then hideTip(cell) end
-      widths[i] = math.max(cell.number:GetStringWidth(), cell.label:GetStringWidth()) + 4
+      cell.name = c.name
+      if not cell.tip and not cell.name then hideTip(cell) end
+      widths[i] = math.max(cell.number:GetStringWidth(), cell.label:GetWidth()) + 4
       cell.frame:SetWidth(widths[i])
       cell.frame:Show()
     else
-      cell.tip = nil
+      cell.tip, cell.name = nil, nil
       hideTip(cell)
       cell.frame:Hide()
     end
   end
-  return widths
+  return widths, tallest
 end
 
 -- Centres the trail; the room beside each „›“ shrinks when it would not fit.
@@ -232,7 +283,7 @@ local function groupText(s, client)
   local missing = Party.missing(s)
   if #missing == 0 then return nil end
   local firsts = {}
-  for i = 1, #missing do firsts[i] = W.colored(client, missing[i], W.firstWord(missing[i])) end
+  for i = 1, #missing do firsts[i] = W.shortColored(client, missing[i], s.seats) end
   return L("deathroll.group.missing", table.concat(firsts, ", "))
 end
 
@@ -246,18 +297,22 @@ local function statusLine(s, myTurn, client)
     -- A loser who has left since: nobody seated now is named.
     if not result then return (not st.loser) and L("deathroll.void") or nil, Theme.color.inkDim end
     local loser = s.seats[result.losers[1]]
-    if loser then return L("deathroll.lost", W.colored(client, loser)), Theme.color.gold end
+    if loser then return L("deathroll.lost", W.shortColored(client, loser, s.seats)), Theme.color.gold end
     return nil
   end
   if s.status ~= "live" or myTurn then return nil end
   local name = s.seats[st.turn]
   if not name then return nil end
-  return L("deathroll.waitFor", W.colored(client, name)), Theme.color.ink
+  return L("deathroll.waitFor", W.shortColored(client, name, s.seats)), Theme.color.ink
 end
 
 function View.update(f, s)
   local client, st = ns.client, s.state
-  layout(f, drawCells(f, s, View.cells(s), client))
+  local widths, tallest = drawCells(f, s, View.cells(s), client)
+  layout(f, widths)
+  -- a name wrapped under its number pushes the caption down by its extra lines
+  f.caption:ClearAllPoints()
+  f.caption:SetPoint("TOP", f, "TOP", 0, -(TRAIL_TOP + CELL_H + 10 + math.max(0, tallest - LABEL_H)))
 
   local group = groupText(s, client)
   f.group:SetText(group or "")

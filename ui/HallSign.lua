@@ -4,8 +4,9 @@ local _, ns = ...
 -- each side of the guild's name (heading font, goldHi), and a small dim note
 -- „само за гилдията“ after it, on a plate in the skin's banner colour with a
 -- brass edge. It is centred on the header and never reaches the title at the
--- left or the hint at the right: the name shrinks (W.fit) and, at its least,
--- is cut at its column; when even that leaves no room the note goes first.
+-- left or the hint at the right: the name shrinks (W.fit); when that leaves no
+-- room the note goes first, and a name still too long shrinks to 9 and wraps
+-- onto more lines, the sign as tall as they are (W.fitWrap): never cut.
 -- Hidden without a guild or while its name is not known (Adapter.guildName).
 -- Hover: the name and who may see the tables. Hall.render calls HallSign.render.
 local Theme, W, L = ns.Theme, ns.W, ns.L
@@ -65,6 +66,8 @@ function HallSign.render(v)
     W.fit(f.name, name, avail - fixed, NAME_FLOOR)
   end
   local nameW = math.min(W.textWidth(f.name), avail - fixed - noteW)
+  if W.textWidth(f.name) > nameW + 0.01 then W.fitWrap(f.name, name, nameW) end -- the sign grows to hold it
   f.name:SetWidth(nameW)
+  f:SetHeight(math.max(SIGN_H, f.name:GetStringHeight() + 4))
   f:SetWidth(fixed + nameW + noteW)
 end

@@ -51,7 +51,7 @@ local function matchWithBot()
   w:click(v.inviteButton)
   local row
   for _, r in ipairs(v.picker.rows) do
-    if r.frame:IsVisible() and r.name:GetText() == BOT then row = r end
+    if r.frame:IsVisible() and r.peerName == BOT then row = r end
   end
   assert(row, "no row for the bot in the picker")
   w:click(row.frame)
@@ -90,7 +90,7 @@ describe("ui: table frame", function()
     w:advance(0)
     local v = w.ns.TableFrame.view
     ok(v.banner:IsVisible(), "no banner"); eq(v.bannerText:GetText(), "Чакаме втори играч…")
-    eq(v.plates[1].name:GetText(), ME); eq(color(v.plates[1].name), MAGE)
+    eq(v.plates[1].name:GetText(), "Иван"); eq(color(v.plates[1].name), MAGE) -- the short name
     eq(v.plates[1].note:GetText(), w.ns.W.paint("Х", w.ns.Theme.rgb("brassLight")))
     eq(v.plates[2].name:GetText(), L("table.free"))
     eq(v.plates[1].portrait.glow:IsVisible(), false); eq(v.plates[1].clock:IsVisible(), false)
@@ -116,8 +116,8 @@ describe("ui: table frame", function()
     eq(v.picker:IsShown(), false)
     eq(v.inviteButton:IsVisible(), false) -- no free seat any more
     eq(v.banner:IsVisible(), false)
-    eq(v.line:GetText(), "|cffffffff" .. BOT .. "|r прие поканата.")
-    eq(v.plates[2].name:GetText(), BOT); eq(color(v.plates[2].name), PRIEST)
+    eq(v.line:GetText(), "|cffffffffIvanov|r " .. w.ns.W.BOT_MARK .. " прие поканата.") -- the short name, the cog
+    eq(v.plates[2].name:GetText(), "Ivanov " .. w.ns.W.BOT_MARK); eq(color(v.plates[2].name), PRIEST)
     eq(v.plates[2].note:GetText(), "|cffe2735aО|r")
     -- I start: the ring and the clock are on my plate, the edge is gold.
     ok(v.plates[1].portrait.glow:IsVisible(), "no ring on my plate"); eq(v.plates[2].portrait.glow:IsVisible(), false)
@@ -138,7 +138,7 @@ describe("ui: table frame", function()
     ok(p1.portrait.glow:IsVisible(), "no glow on turn"); eq(p1.portrait.ring.vertex, rgb(w, "goldHi"))
     eq(p2.portrait.glow:IsVisible(), false); eq(p2.portrait.ring.vertex, rgb(w, "brass"))
     ok(p1.portrait.badge:IsVisible(), "no class badge"); ok(p2.portrait.badge:IsVisible(), "no class badge")
-    eq(p1.name.points[1], { "LEFT", p1.frame, "LEFT", 40, 0 }); eq(p1.name:GetWidth(), 190 - 104)
+    eq(p1.name.points[1], { "LEFT", p1.frame, "LEFT", 40, 0 }); eq(p1.name:GetWidth(), 190 - 42 - 40 - p1.note:GetStringWidth() - 4) -- all the note leaves
     eq({ p1.frame:GetWidth(), p1.frame:GetHeight() }, { 190, 26 })                     -- the bar keeps its size
     for k = 1, 8 do eq(p1.tricks[k]:IsVisible(), false, "pip " .. k) end              -- Морски шах counts no tricks
     local draws = 0; local coord = p1.portrait.tex.SetTexCoord
@@ -183,8 +183,10 @@ describe("ui: table frame", function()
     local right, top = 40 + 8 * 5 + 7 * 3, 1 + 8 / 2
     ok(right <= 165 - 64, "the pips reach into the note and clock column: " .. right)  -- the column the name keeps clear of
     ok(top < (26 - 13) / 2, "the pips reach into the line of text")                    -- the note (13) and the clock (12) are centred
-    -- the name ends 4 px before the note („разд.“, 32.5 px at 13): the column it kept before reached into the note
-    eq(p.name.points[1], { "LEFT", p.frame, "LEFT", 40, 0 }); eq(p.name:GetWidth(), 165 - 42 - 40 - 32.5 - 4)
+    -- the name comes first: „Константин“ (60 px at 12) wants more than the note („разд.“, 32.5 px at 13) leaves, so the
+    -- note shrinks to 9 (22.5 px) and the name ends 4 px before it
+    eq(select(2, p.note:GetFont()), 9); eq(p.note:GetStringWidth(), 22.5)
+    eq(p.name.points[1], { "LEFT", p.frame, "LEFT", 40, 0 }); eq(p.name:GetWidth(), 165 - 42 - 40 - 22.5 - 4)
     ok(40 + p.name:GetWidth() <= 165 - 42 - p.note:GetStringWidth(), "the name runs into the note")
   end)
 
@@ -194,17 +196,69 @@ describe("ui: table frame", function()
       build = function(parent) local f = w.G.CreateFrame("Frame", nil, parent); f:SetSize(parent:GetWidth(), parent:GetHeight()); return f end })
     w.ns.client:openTable{ game = "holdem", access = "invite", turn = 45 }; w:advance(0)
     local v, s = T.view, w.ns.client.session
-    s.seats[1] = "Константинов"; s.status, s.state = "live", { turn = 1 }; s.deadline = w.ns.client.env.now() + 30 -- 12 characters, on turn
+    s.status, s.state = "live", { turn = 1 }; s.deadline = w.ns.client.env.now() + 30 -- seat 1 on turn: its clock shows
     local p = v.plates[1]
-    -- the stack -> the name's width and the note's font size
-    for _, case in ipairs({ { w:coins("199g 95s"), 24, 8 }, { w:coins("9g 95s"), 32, 8 }, { "100000", 34, 10 }, { "1000", 38, 13 }, { "995", 44.5, 13 } }) do
-      note = case[1]; T.plates.render(v, s, w.ns.client)
-      local nameRight, noteLeft, noteRight = 40 + p.name:GetWidth(), 150 - 42 - p.note:GetStringWidth(), 150 - 42
-      eq({ p.frame:GetWidth(), p.note:GetText(), p.name:GetWidth(), (select(2, p.note:GetFont())) }, { 150, case[1], case[2], case[3] })
-      ok(nameRight <= noteLeft, "the name runs over the note: " .. nameRight .. " > " .. noteLeft)
-      ok(noteLeft >= 40 and nameRight <= 150, "outside the plate")
-      ok(p.clock:IsShown() and 150 - 6 - p.clock:GetStringWidth() >= noteRight, "the note meets the clock")
+    -- QA follow-up: a WoW name's word has at most 12 letters; the widest Latin ones („Mormogwathum“ is 63 px at 9 in
+    -- PT Sans) and the collision form („Ivan P.“) show whole on one line at 9 or more, on turn with a big stack too:
+    -- a name that does not fit beside the note gets the bar's upper line, the note the lower one
+    local cases = { w:coins("1199g 95s"), w:coins("199g 95s"), w:coins("9g 95s"), "100000", "1000", "995", "" }
+    for _, seats in ipairs({ { "Mormogwathum Ironfoot", "Ivan Kolevski" }, { "Wolfgarmmund Deepforge", "Ivan Kolevski" },
+      { "Ivan Petrovski", "Ivan Kolevski" } }) do
+      s.seats[1], s.seats[2] = seats[1], seats[2]
+      local short = w.ns.Names.short(seats[1], s.seats)
+      for _, turn in ipairs({ 1, 2 }) do
+        s.state.turn = turn
+        for _, text in ipairs(cases) do
+          note = text; T.plates.render(v, s, w.ns.client)
+          local why = short .. " / " .. text .. " / turn " .. turn
+          eq(p.name:GetText(), short, why .. ": the name broken") -- whole, one line
+          eq(p.name:GetStringHeight(), select(2, p.name:GetFont()) * 1.25, why .. ": not one line")
+          ok(select(2, p.name:GetFont()) >= 9 and (text == "" or select(2, p.note:GetFont()) >= 9), why .. ": unreadable")
+          local right = turn == 1 and 42 or 6
+          local noteW = (p.note.fixedWidth or 0) > 0 and p.note.fixedWidth or p.note:GetStringWidth()
+          local stacked = p.name.points[1][5] ~= 0
+          if stacked then
+            eq({ p.name.points[1][5], p.note.points[1][5] }, { 6.5, -4 })
+            ok(p.name:GetWidth() >= 64, why .. ": the name's line holds no 12-letter name: " .. p.name:GetWidth())
+            ok(150 - right - noteW >= 40, why .. ": the note passes the portrait")
+            ok(p.note:GetStringHeight() <= 13 * 1.25, why .. ": the note's line passes the bar")
+          else
+            ok(40 + p.name:GetWidth() <= 150 - right - noteW, why .. ": the name runs over the note")
+            ok(p.note:GetStringHeight() <= 26, why .. ": the note passes the bar")
+          end
+          eq(p.note.points[1][4], -right)
+          if turn == 1 then ok(p.clock:IsShown() and 150 - 6 - p.clock:GetStringWidth() >= 150 - right, why .. ": the note meets the clock") end
+        end
+      end
     end
+  end)
+
+  it("plates: the short names among the seats (two Ivans an initial, a bot its cog), the whole name on hover, never cut", function()
+    local w = withBots(); local T = w.ns.TableFrame
+    T.registerView("holdem", { size = { 760, 532 }, ring = true, update = function() end, seatNote = function() return "" end,
+      build = function(parent) local f = w.G.CreateFrame("Frame", nil, parent); f:SetSize(parent:GetWidth(), parent:GetHeight()); return f end })
+    w.ns.client:openTable{ game = "holdem", access = "invite", turn = 45 }; w:advance(0)
+    local v, s = T.view, w.ns.client.session
+    local P, K, LONG = "Ivan Petrovski", "Ivan Kolev", "Barleybrewstersonwoodhill Hill"
+    s.seats[1], s.seats[2], s.seats[3], s.seats[4] = P, K, "Bot Barleybrew", LONG
+    T.plates.render(v, s, w.ns.client)
+    eq({ v.plates[1].name:GetText(), v.plates[2].name:GetText(), v.plates[3].name:GetText() },
+      { "Ivan P.", "Ivan K.", "Barleybrew " .. w.ns.W.BOT_MARK })
+    w:hover(v.plates[1].frame); eq(w.G.GameTooltip.lines, { P })
+    v.plates[1].frame.scripts.OnLeave(v.plates[1].frame)
+    w:hover(v.plates[3].frame); eq(w.G.GameTooltip.lines, { "Bot Barleybrew" })
+    v.plates[3].frame.scripts.OnLeave(v.plates[3].frame)
+    -- a long first word: down to the readable floor, then broken onto the next line, not cut
+    local fs = v.plates[4].name
+    ok(select(2, fs:GetFont()) >= 9 * 0.93 - 0.01, "smaller than readable")
+    eq((fs:GetText():gsub("\n", "")), "Barleybrewstersonwoodhill")
+    for line in (fs:GetText() .. "\n"):gmatch("(.-)\n") do
+      local probe = fs.parent:CreateFontString(nil, "OVERLAY"); probe:SetFont(fs:GetFont()); probe:SetText(line)
+      ok(probe:GetUnboundedStringWidth() <= fs:GetWidth() + 0.01, "a line past its column: " .. line)
+    end
+    -- a free seat has no tooltip
+    s.seats[4] = false; T.plates.render(v, s, w.ns.client)
+    w.G.GameTooltip:Hide(); w:hover(v.plates[4].frame); eq(w.G.GameTooltip:IsShown(), false)
   end)
 
   it("the felt wears the faction: its texture, the crest as a watermark, the stitch", function()
@@ -316,7 +370,7 @@ describe("ui: table frame", function()
     w.ns.client:openTable{ game = "ttt", access = "invite", turn = 45 }
     w:advance(0)
     local v, emit = w.ns.TableFrame.view, function(...) w.ns.client.events:emit("inviteAnswer", ...) end
-    local who = "|cfff2e6c8" .. B .. "|r" -- class unknown: ink
+    local who = "|cfff2e6c8Мария|r" -- the short name; class unknown: ink
     local cases = {
       { { "yes" }, who .. " прие поканата." },
       { { "no" }, who .. " отказа поканата." },
@@ -401,7 +455,7 @@ describe("ui: table frame, host-started games", function()
     w:click(v.inviteButton)
     local row
     for _, r in ipairs(v.picker.rows) do
-      if r.frame:IsVisible() and r.name:GetText() == BOT then row = r end
+      if r.frame:IsVisible() and r.peerName == BOT then row = r end
     end
     assert(row, "no row for the bot in the picker")
     w:click(row.frame)
@@ -499,7 +553,7 @@ describe("ui: table frame, card fairness", function()
     w:click(v.inviteButton)
     local row
     for _, r in ipairs(v.picker.rows) do
-      if r.frame:IsVisible() and r.name:GetText() == BOT then row = r end
+      if r.frame:IsVisible() and r.peerName == BOT then row = r end
     end
     assert(row, "no row for the bot in the picker")
     w:click(row.frame)
@@ -778,7 +832,7 @@ describe("ui: table frame, a staked Сантасе that fills up again", functio
     w:advance(1.5)
     eq(v.bannerText:GetText(), L("table.holdStart", 24))
     -- A seated player silent for SILENT_AFTER: the line names her, it never restarts a count.
-    local silent = w.ns.W.colored(client, "Тодор Ангелов")
+    local silent = w.ns.W.colored(client, "Тодор Ангелов", "Тодор") -- the short name
     s.lastHeard["Тодор Ангелов"] = client.env.now() - w.ns.Const.SILENT_AFTER
     w:advance(1)
     eq(v.bannerText:GetText(), L("table.holdSilent", silent))
@@ -866,7 +920,7 @@ describe("ui: Морски шах view", function()
     st.board = { 1, 1, 1, 2, 2, 0, 0, 0, 0 }; st.line = { 1, 2, 3 }; st.score = { 3, 1 }
     st.turn, st.phase, st.winner = nil, "match", 1
     view.update(f, session(st, 2))
-    ok(f.result:IsVisible(), "no result"); eq(f.result:GetText(), "|cff40c7eb" .. ME .. "|r печели мача!")
+    ok(f.result:IsVisible(), "no result"); eq(f.result:GetText(), "|cff40c7ebИван|r печели мача!")
     ok(f.rematch:IsVisible(), "no Реванш"); eq(f.rematch.text:GetText(), "Реванш")
     eq(f.waiting:IsVisible(), false)
     w:click(f.rematch)
@@ -874,10 +928,14 @@ describe("ui: Морски шах view", function()
     st.rematch = { false, true }
     view.update(f, session(st, 2))
     eq(f.rematch:IsVisible(), false)
-    ok(f.waiting:IsVisible(), "no waiting line"); eq(f.waiting:GetText(), "Чакаме |cff40c7eb" .. ME .. "|r…")
+    ok(f.waiting:IsVisible(), "no waiting line"); eq(f.waiting:GetText(), "Чакаме |cff40c7ebИван|r…")
     view.update(f, session(st, nil))
     ok(f.result:IsVisible(), "watcher sees no result")
     eq(f.rematch:IsVisible(), false); eq(f.waiting:IsVisible(), false)
+    -- two Ivans at the table: the line names the winner with his initial
+    local two = session(st, 2); two.seats = { "Иван Петров", "Иван Колев" }
+    view.update(f, two)
+    eq(f.result:GetText(), "|cff40c7ebИван П.|r печели мача!")
   end)
 end)
 
@@ -894,7 +952,8 @@ describe("ui: invite toast", function()
     eq(T.title:GetText(), "Покана за Морски шах")
     local host = w.ns.client.invites.received.host
     ok(T.text:GetText():find("те кани на Морски шах", 1, true), "text: " .. tostring(T.text:GetText()))
-    ok(T.text:GetText():find(host, 1, true), "no host name")
+    ok(T.text:GetText():find(w.ns.Names.short(host), 1, true), "no host's short name")
+    w:hover(T.frame); eq(w.G.GameTooltip.lines, { host }) -- a hover gives the whole name
     eq(T.accept.text:GetText(), L("invite.accept")); eq(T.notNow.text:GetText(), L("invite.notNow"))
     eq(T.snooze.text:GetText(), L("invite.snooze"))
     eq(T.snooze.text:GetText(), "Не ме безпокой 30 мин")
@@ -993,5 +1052,34 @@ describe("ui: invite toast", function()
       w:advance(0)
       ok(T.frame:IsShown(), "no toast"); eq(#w.sounds, 0)
     end
+  end)
+end)
+
+-- QA (layout): the table's two lines of words with the longest texts and names.
+describe("ui: the table's news line and fairness line, long texts", function()
+  it("the news line shrinks to its width between the buttons, then wraps: never cut, never under 9", function()
+    local w, v = matchWithBot()
+    local T, L = w.ns.TableFrame, w.ns.L
+    v.line.width = 126 -- the room the client lays out between the last button and the grip (the fake has no layout)
+    local long = L("start.group")
+    T.say(long)
+    eq(v.line:GetText(), long); eq(v.line.wordWrap, true)
+    ok(select(2, v.line:GetFont()) >= 9, "unreadable")
+    -- a short line is back at its own size
+    T.say(L("table.addBots.asked"))
+    ok(select(2, v.line:GetFont()) > 10, "still shrunk")
+  end)
+
+  it("the fairness line: a lapse with a claim and long names shrinks, then wraps in two lines of its 18 px", function()
+    local w, v = matchWithBot()
+    local Deal = w.ns.Deal
+    Deal.status = function() return "fair.lapse", "Barleybrewster Ironfoot", 3 end
+    Deal.claim = function() return "Добромирослава Великотърновска" end
+    w.ns.TableFrame.render()
+    local fs = v.fairLine.text
+    ok(fs:GetText():find("Добромирослава Великотърновска", 1, true), "the claim")
+    ok(select(2, fs:GetFont()) >= 9, "unreadable")
+    eq(fs:GetWidth(), v.fairLine:GetWidth())
+    ok(fs:GetStringHeight() <= 2 * select(2, fs:GetFont()) * 1.25, "more than two lines: " .. fs:GetStringHeight())
   end)
 end)

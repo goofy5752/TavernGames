@@ -56,6 +56,7 @@ local Theme = {
     point = { 32, 128 }, checker = 64, dice = { 128, 64 }, -- Табла: dice = faces 1-4 on top, 5 and 6 below
     oval = { 512, 256 }, chip = 32, -- Холдем: the oval table and a chip
     mug = 64, -- the addon icon's mug alone, by the window title
+    botmark = 32, -- the brass cog after a bot's short name (ui/NameTag.lua, tools/gen_botmark.py)
   },
 }
 

@@ -159,7 +159,7 @@ describe("ui: the amounts on the felt", function()
     -- after the showdown: the win beside the plate, the words and the log in coins
     H.checkdown(st); View.update(f, sess(st, 1))
     eq({ f.seat[1].bet:GetText(), f.seat[1].chip:IsVisible(), plain(f.text:GetText()), f.log:GetText() },
-       { "+" .. w:coins("30s"), false, w:coins("Иван Петров взе 30s с флош"), w:coins("#1 Иван Петров взе 30s с флош") })
+       { "+" .. w:coins("30s"), false, w:coins("Иван взе 30s с флош"), w:coins("#1 Иван взе 30s с флош") })
     -- the same table for fun (no stake): numbers and the chip again
     View.update(f, funSess(dealt(false), 1))
     eq({ f.pot:GetText(), f.seat[2].bet:GetText(), f.seat[2].chip:IsVisible() }, { "Пот 15", "5", true })
@@ -202,7 +202,7 @@ describe("ui: the amounts on the felt", function()
     eq(both(2)[7], "Пот 70")
     H.checkdown(fun); H.checkdown(cash)
     local after = both(1)
-    eq({ after[2], after[11], after[12] }, { "+70", "Иван Петров взе 70 с флош", "#1 Иван Петров взе 70 с флош" })
+    eq({ after[2], after[11], after[12] }, { "+70", "Иван взе 70 с флош", "#1 Иван взе 70 с флош" })
     -- a hand won when the others fold, then a pot split three ways (all play the board): the same words either way
     local function deal(deckOf)
       for _, st in ipairs({ fun, cash }) do ok(E.apply(st, 0, { k = "hand" })); ok(E.apply(st, 0, { k = "deal", deck = deckOf(st) })) end
@@ -210,7 +210,7 @@ describe("ui: the amounts on the felt", function()
     deal(function() return E.DECK end)
     for _ = 1, 2 do local seat = fun.turn; ok(E.apply(fun, seat, { k = "fold" })); ok(E.apply(cash, seat, { k = "fold" })) end
     after = both(1)
-    eq({ after[11], after[12] }, { "Иван Петров взе 10. Останалите се отказаха.", "#2 Иван Петров взе 10 без показване" })
+    eq({ after[11], after[12] }, { "Иван взе 10. Останалите се отказаха.", "#2 Иван взе 10 без показване" })
     deal(function(st) return H.deckFor(st, { [1] = "2C 3D", [2] = "2D 3C", [3] = "2H 3S" }, "TC JD QH KS AD") end)
     H.checkdown(fun); H.checkdown(cash)
     after = both(1)
@@ -348,6 +348,8 @@ describe("ui: „Сметка“ and the buy-in on the felt", function()
     eq(rows()[1], { "", "взел от теб", "взел си", "нето" })
     eq(rows()[2], { "Мария", w:coins("0c"), w:coins("10s"), w:coins("10s") })
     eq(rows()[3], { "Kiro", w:coins("0c"), w:coins("10s"), w:coins("10s") })
+    w:hover(f.cash.rows[2].frame); eq(w.G.GameTooltip.lines, { B }) -- the short name, the whole one on hover
+    f.cash.rows[2].frame.scripts.OnLeave(f.cash.rows[2].frame)
     w:click(f.cash.tabs[2])
     eq(rows()[1], { "", "вход", "чипове", "нето" })
     eq(rows()[2], { "Иван", w:coins("10g"), w:coins("10g 20s"), w:coins("20s") })
@@ -522,6 +524,19 @@ describe("ui: the bill of a cash table", function()
     eq(b:GetHeight(), 32 + 18 * 4) -- the keys' line is long: it takes two rows
   end)
 
+  it("the bill's names: short among the bill's, an initial for two alike, the cog of a bot; the whole names on hover", function()
+    local P1, P2, BOT = "Мария Стоянова", "Мария Колева-Forever", "Bot Barleybrewstersonwoodhill"
+    local w, b = bill({ pairs = { { f = P2, t = P1, c = 1500 }, { f = BOT, t = P1, c = 999999 } } }, "left")
+    eq(plain(b.lines[1].text:GetText()), "Мария С. стана от масата. Сметката по двойки:")
+    eq(plain(b.lines[2].text:GetText()), w:coins("Мария К. дължи на Мария С. 15s"))
+    local row = b.lines[3].text -- a long row: shrunk to fit beside its mark, nothing cut
+    eq(plain(row:GetText()), w:coins("Barleybrewstersonwoodhill " .. w.ns.W.BOT_MARK .. " дължи на Мария С. 99g 99s 99c"))
+    ok(select(2, row:GetFont()) >= 9 * w.ns.Theme.fontScale.ui - 0.01, "smaller than readable")
+    ok(row:GetUnboundedStringWidth() <= row:GetWidth() + 0.01 or row:GetStringHeight() > 15, "cut")
+    w:hover(b)
+    eq(w.G.GameTooltip.lines, { A, P1, C, "Мария Колева", BOT }) -- no realm
+  end)
+
   it("a close says the game is over; a note that no longer waits has no keys line", function()
     local w, b = bill({}, "close")
     eq(plain(b.lines[1].text:GetText()), "Играта приключи. Сметката по двойки:")
@@ -618,5 +633,14 @@ describe("ui: the end of my own cash-out", function()
     eq(#w.ns.HoldemCashView.lines("t#9"), 1)
     client.events:emit("session", nil)
     eq(#w.ns.HoldemCashView.lines("t#9"), 0)
+  end)
+end)
+
+-- QA (layout): over the felt's right side the panel was translucent: a plate's name and stack showed through its rows.
+describe("ui: the account panel over the felt", function()
+  it("the panel and the buy-in stepper lie on a solid ground", function()
+    local _, _, f = setup()
+    ok(f.cash.panel.fill.color[4] >= 0.9, "the panel lets the plates through")
+    ok(f.cash.buyBox.fill.color[4] >= 0.9, "the stepper lets the plates through")
   end)
 end)

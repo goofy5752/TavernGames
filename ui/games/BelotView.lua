@@ -49,7 +49,7 @@ end
 local function colouredName(f, s, seat)
   local n = nameOf(f, s, seat)
   if not n then return L("table.free") end
-  return W.colored(ns.client, n)
+  return W.shortColored(ns.client, n, f.names or s.seats) -- the short name among the match's (ui/NameTag.lua)
 end
 
 -- „Игра: Купа, контра“.
@@ -308,7 +308,7 @@ local function drawText(f, st, m)
   local args = {}
   for k = 2, #t do
     local x = t[k]
-    args[k - 1] = type(x) == "string" and W.colored(ns.client, x) or x
+    args[k - 1] = type(x) == "string" and W.seatColored(x) or x
   end
   f.text:SetText(L(t[1], unpack(args)))
   f.text:SetTextColor(Theme.rgb((st.phase == "deal" or E.over(st)) and "gold" or "ink"))

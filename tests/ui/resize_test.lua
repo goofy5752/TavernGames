@@ -48,7 +48,7 @@ describe("ui: resize", function()
     ok(grip.scripts.OnUpdate == nil, "still dragging")
   end)
 
-  it("the scale stays between MIN and what fits on the screen", function()
+  it("the scale stays between the least readable one and what fits on the screen", function()
     local w = boot()
     w.ns.MainWindow.show()
     local f, R = w.ns.MainWindow.frame, w.ns.Resize
@@ -57,10 +57,52 @@ describe("ui: resize", function()
     grip.scripts.OnMouseDown(grip, "LeftButton")
     w.cursor = { 0, 1080 }
     grip.scripts.OnUpdate(grip, 0)
-    eq(f:GetScale(), R.MIN)
+    eq(f:GetScale(), R.least()) -- a 1080p screen of 1080 units: 8 / 9
     w.cursor = { 9000, -9000 }
     grip.scripts.OnUpdate(grip, 0)
     ok(math.abs(f:GetScale() - 1080 / 620) < 1e-9, "max " .. f:GetScale()) -- 1920 / 1100 is larger
+  end)
+
+  -- Review: with „История“ open the scale is held by its room; a click on the grip saved that.
+  it("a side window's room is never saved: a click keeps my scale, a drag saves what I dragged to", function()
+    local w = boot()
+    w.ns.db.scale = { main = 1.5 }
+    w.ns.MainWindow.show()
+    local f, R = w.ns.MainWindow.frame, w.ns.Resize
+    f.left, f.top = 100, 900
+    R.extra.main = function() return 500 end -- 1100 + 500 on 1920: 1.2 at most
+    R.refit("main")
+    ok(math.abs(f:GetScale() - 1.2) < 1e-9, "not held: " .. f:GetScale())
+    local grip = gripOf(f)
+    local x0, y0 -- the corner where the grip was pressed (the fake keeps f.left in its own units)
+    local function at(s) return { x0 + s * 1100, y0 - s * 620 } end
+    local function down() -- pressed on the grip's corner, at the scale in use
+      local k = f:GetEffectiveScale() / w.G.UIParent:GetEffectiveScale()
+      x0, y0 = f:GetLeft() * k, f:GetTop() * k
+      w.cursor = at(f:GetScale())
+      grip.scripts.OnMouseDown(grip, "LeftButton")
+    end
+    -- a plain click on the grip
+    down()
+    grip.scripts.OnUpdate(grip, 0)
+    grip.scripts.OnMouseUp(grip, "LeftButton")
+    eq(w.ns.db.scale.main, 1.5)
+    -- a drag past the side window's room: the window stays on the screen, the drag is saved
+    down()
+    w.cursor = at(1.6)
+    grip.scripts.OnUpdate(grip, 0)
+    ok(math.abs(f:GetScale() - 1.2) < 1e-9, "past the screen: " .. f:GetScale())
+    grip.scripts.OnMouseUp(grip, "LeftButton")
+    ok(math.abs(w.ns.db.scale.main - 1.6) < 1e-9, "saved " .. w.ns.db.scale.main)
+    R.extra.main = nil
+    R.refit("main") -- the side window closed: my own scale
+    ok(math.abs(f:GetScale() - 1.6) < 1e-9, "not mine: " .. f:GetScale())
+    -- a drag smaller is saved as such
+    down()
+    w.cursor = at(1.1)
+    grip.scripts.OnUpdate(grip, 0)
+    grip.scripts.OnMouseUp(grip, "LeftButton")
+    ok(math.abs(w.ns.db.scale.main - 1.1) < 1e-9, "saved " .. w.ns.db.scale.main)
   end)
 
   it("a right click gives the normal size back; a saved scale is applied on the next build", function()
@@ -96,11 +138,67 @@ describe("ui: resize", function()
 
   it("the table frame has its own grip and scale", function()
     local w = boot()
-    w.ns.db.scale = { table = 0.8 }
+    w.ns.db.scale = { table = 0.9 }
     w.ns.TableFrame.build()
     local f = w.ns.TableFrame.frame
     eq(gripOf(f).key, "table")
-    eq(f:GetScale(), 0.8)
+    eq(f:GetScale(), 0.9)
+  end)
+
+  -- QA: the smallest text the addon draws (W.WRAP_MIN, 9) stays 8 screen pixels tall at the least scale.
+  it("the least scale keeps the smallest text 8 screen pixels tall, on any screen", function()
+    local w = boot()
+    local R, UI = w.ns.Resize, w.G.UIParent
+    local function least(uw, uh, pw, ph)
+      UI:SetSize(uw, uh)
+      w.G.GetPhysicalScreenSize = pw and function() return pw, ph end or nil
+      return R.least()
+    end
+    ok(math.abs(least(1920, 1080) - 8 / 9) < 1e-9, "no screen size: a 1080p screen")
+    ok(math.abs(least(1365, 768, 1920, 1080) - 8 / (9 * 1080 / 768)) < 1e-9, "the default UI scale on 1080p")
+    eq(least(1365, 768, 3840, 2160), R.MIN) -- 4K: MIN reads well
+    for _, case in ipairs({ { 1024, 768, 1440, 1080 }, { 1365, 768, 1920, 1080 }, { 1820, 768, 2560, 1080 }, { 1920, 1080, 1920, 1080 } }) do
+      local s = least(unpack(case))
+      ok(9 * s * case[4] / case[2] >= 8 - 1e-9, "unreadable at the least scale on " .. case[1] .. "x" .. case[2])
+    end
+  end)
+
+  it("a saved scale too big for this screen is held to what fits; the saved one stays for a bigger screen", function()
+    local w = boot()
+    local R, UI = w.ns.Resize, w.G.UIParent
+    UI:SetSize(1365, 768); w.G.GetPhysicalScreenSize = function() return 1920, 1080 end
+    w.ns.db.scale = { main = 2 }
+    w.ns.MainWindow.show()
+    local f = w.ns.MainWindow.frame
+    ok(math.abs(f:GetScale() - 768 / 620) < 1e-9, "opened past the screen: " .. f:GetScale())
+    eq(w.ns.db.scale.main, 2)
+    -- the screen grows (the UI scale): the window takes more of its saved scale
+    UI:SetSize(1920, 1080); w:fire("UI_SCALE_CHANGED")
+    ok(math.abs(f:GetScale() - 1080 / 620) < 1e-9, "not fitted again: " .. f:GetScale())
+    -- a dialog that follows takes the scale in use, not the saved one
+    local d = w.G.CreateFrame("Frame", nil, UI)
+    R.follow(d, "main")
+    eq(d:GetScale(), f:GetScale())
+  end)
+
+  it("a table of another size fits the screen again: Шах is taller than Белот", function()
+    local w = Wow.new{ ui = true }
+    w.inGuild = true
+    w.roster = { { name = "Иван Петров-Forever", online = true, guid = Wow.GUID } }
+    w:boot(); w:firstRunDone(); w:fire("GUILD_ROSTER_UPDATE"); w:fire("PLAYER_LOGIN")
+    local UI = w.G.UIParent
+    UI:SetSize(1365, 768); w.G.GetPhysicalScreenSize = function() return 1920, 1080 end
+    w.ns.db.scale = { table = 1.6 }
+    w.ns.client:openTable{ game = "belot", access = "guild", turn = 45 }; w:advance(0)
+    local f = w.ns.TableFrame.frame
+    eq(f:GetScale(), 1.6) -- 560 x 420 at 1.6 fits 1365 x 768
+    w.ns.client:stand(); w:advance(0)
+    w.ns.client:openTable{ game = "chess", access = "guild", turn = 45 }; w:advance(0)
+    eq({ f:GetWidth(), f:GetHeight() }, { 780, 660 })
+    ok(math.abs(f:GetScale() - 768 / 660) < 1e-9, "the chess table passes the screen: " .. f:GetScale())
+    w.ns.client:stand(); w:advance(0)
+    w.ns.client:openTable{ game = "belot", access = "guild", turn = 45 }; w:advance(0)
+    eq(f:GetScale(), 1.6); eq(w.ns.db.scale.table, 1.6)
   end)
 
   it("the grip names what it does in its tooltip", function()

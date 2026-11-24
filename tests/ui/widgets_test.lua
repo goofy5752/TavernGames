@@ -168,3 +168,84 @@ describe("ui: W.fit measures the whole text (final fix)", function()
     eq(W.textWidth(bare), 7) -- a client without GetUnboundedStringWidth
   end)
 end)
+
+describe("ui: W.fitWrap shrinks, then wraps: never clips", function()
+  it("a short text keeps its size; a long one shrinks to the floor, then wraps; a long word breaks", function()
+    local w = boot(); local W = w.ns.W
+    local fs = W.Label(w.G.UIParent, "ui", "", 12)
+    fs:SetFont(w.ns.Theme.font.ui, 12, "") -- 6 px a character in the fake
+    local h = W.fitWrap(fs, "Ivan", 46)
+    eq({ fs:GetText(), select(2, fs:GetFont()), fs.wordWrap, fs:GetWidth(), h }, { "Ivan", 12, true, 46, 15 })
+    W.fitWrap(fs, "Barleybrew", 46) -- 10 characters: 60 px at 12, 45 at 9
+    eq({ fs:GetText(), (select(2, fs:GetFont())) }, { "Barleybrew", 9 })
+    -- 14 characters at the floor (4.5 px): 63 px in 46, broken after 10 letters
+    W.fitWrap(fs, "Barleybrewster", 46)
+    eq({ fs:GetText(), (select(2, fs:GetFont())) }, { "Barleybrew\nster", 9 })
+    -- words wrap at their spaces; only the word too long alone is broken
+    W.fitWrap(fs, "a Barleybrewster b", 46)
+    eq(fs:GetText(), "a Barleybrew\nster b")
+    -- a colour-coded word is never cut inside its codes
+    W.fitWrap(fs, "|cffff0000Barleybrewster|r", 46)
+    eq(fs:GetText(), "|cffff0000Barleybrewster|r")
+  end)
+
+  -- Review: a colour-coded word wider than the room was never broken; a width of 0 meant unbounded.
+  it("a colour-coded word too wide is broken by the client where it can; the width is never 0", function()
+    local w = boot(); local W = w.ns.W
+    local fs = W.Label(w.G.UIParent, "ui", "", 12)
+    fs:SetFont(w.ns.Theme.font.ui, 12, "")
+    W.fitWrap(fs, "|cffff0000Barleybrewster|r", 46) -- no SetNonSpaceWrap (an old client): no fault
+    local nonSpace
+    fs.SetNonSpaceWrap = function(_, on) nonSpace = on end
+    W.fitWrap(fs, "|cffff0000Barleybrewster|r", 46)
+    eq(nonSpace, true)
+    W.fitWrap(fs, "Barleybrewster", 46) -- broken by its letters here: the client's own breaking off
+    eq(nonSpace, false)
+    W.fitWrap(fs, "Ivan", 0)
+    eq(fs:GetWidth(), 1)
+    W.fitWrap(fs, "Ivan", -5)
+    eq(fs:GetWidth(), 1)
+  end)
+end)
+
+describe("ui: a name on screen (ui/NameTag.lua)", function()
+  it("short: a person's first word, a bot's own name with the brass cog after it, an initial for two alike", function()
+    local w = boot(); local W, T = w.ns.W, w.ns.Theme
+    eq(W.BOT_MARK, "|T" .. T.tex.botmark .. ":0|t")
+    eq(T.tex.botmark, "Interface\\AddOns\\TavernGames\\media\\botmark")
+    eq(W.short("Ivan Petrovski-Forever"), "Ivan")
+    eq(W.short("Bot Barleybrew"), "Barleybrew " .. W.BOT_MARK)
+    eq(W.short("Bot Number12"), "Number12 " .. W.BOT_MARK)
+    local seats = { "Ivan Petrovski", "Ivan Kolev", "Bot Ivanov", false }
+    eq({ W.short(seats[1], seats), W.short(seats[2], seats), W.short(seats[3], seats) },
+      { "Ivan P.", "Ivan K.", "Ivanov " .. W.BOT_MARK })
+    -- in a sentence: the name in its class colour, the mark after the colour (it keeps its brass)
+    eq(W.shortColored(nil, "Bot Petrova"), W.paint("Petrova", w.ns.classColor(nil)) .. " " .. W.BOT_MARK)
+    eq(W.shortColored(nil, "Ivan Petrovski"), W.paint("Ivan", w.ns.classColor(nil)))
+    eq(W.shortColored(nil, nil), "?")
+    eq({ W.fullName("Ivan Petrovski-Forever"), W.fullName(nil) }, { "Ivan Petrovski", "?" })
+  end)
+
+  it("a hover shows the whole name without the realm; the frame's own hover still works", function()
+    local w = boot(); local W = w.ns.W
+    local f = w.G.CreateFrame("Frame", nil, w.G.UIParent)
+    local lit, who = 0, "Ivan Petrovski-Forever"
+    f:SetScript("OnEnter", function() lit = lit + 1 end)
+    f:SetScript("OnLeave", function() lit = lit - 1 end)
+    W.nameTip(f, function() return who end)
+    eq(f.mouse, true)
+    w:hover(f)
+    eq(lit, 1); eq(w.G.GameTooltip.lines, { "Ivan Petrovski" }); eq(w.G.GameTooltip:IsShown(), true)
+    f.scripts.OnLeave(f)
+    eq(lit, 0); eq(w.G.GameTooltip:IsShown(), false)
+    -- several names (a list with an empty seat and one name twice): each once, in order
+    who = { "Bot Petrova", false, "Maria Stoyanova", "Bot Petrova" }
+    w:hover(f)
+    eq(w.G.GameTooltip.lines, { "Bot Petrova", "Maria Stoyanova" })
+    f.scripts.OnLeave(f)
+    -- nothing to name: no tooltip
+    who = nil
+    w:hover(f)
+    eq(w.G.GameTooltip:IsShown(), false)
+  end)
+end)

@@ -20,7 +20,7 @@ from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
 BUILD = os.path.join(ROOT, "tools", "shots", "build")
-OUT = os.path.join(ROOT, "docs", "screenshots")
+OUT = os.environ.get("SHOTS_OUT") or os.path.join(ROOT, "docs", "screenshots")  # SHOTS_OUT: elsewhere (the lint shots)
 SCALE = 1.25   # output px per UI unit (a scene's draw list may set its own)
 SS = 2         # supersampling factor
 K = SCALE * SS

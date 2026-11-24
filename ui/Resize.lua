@@ -6,12 +6,18 @@ local _, ns = ...
 -- it is. A right click on the grip gives the normal size back. The scale is
 -- kept per window key ("main", "table") in ns.db.scale, account-wide.
 -- Dialogs that open over a window follow its scale (Resize.follow).
+-- The scale in use is the saved one held between two bounds, set again whenever
+-- they move (the window's size, a side window shown, the screen): at most what
+-- fits on the screen (with Resize.extra[key]'s width beside the window), at
+-- least MIN and what keeps the smallest text (FONT_MIN, W.WRAP_MIN) READ_PX
+-- screen pixels tall. Fitting on the screen comes first.
 local Theme, L = ns.Theme, ns.L
 
-local Resize = { MIN = 0.6, MAX = 2.0, GRIP = 24 }
+local Resize = { MIN = 0.6, MAX = 2.0, GRIP = 24, READ_PX = 8, FONT_MIN = 9 }
 ns.Resize = Resize
 local frames = {} -- key -> the window frame
 local followers = {} -- key -> { frame, ... }
+Resize.extra = {} -- key -> function() -> the width (window units) of what opens beside it
 
 local function clampTo(s, lo, hi)
   if s < lo then return lo end
@@ -35,14 +41,39 @@ local function store(key, s)
   ns.db.scale = t
 end
 
--- The largest scale at which `f` still fits on the screen (at most MAX).
-local function maxScale(f)
+-- Screen pixels per UIParent unit: the physical screen's height over UIParent's
+-- (a client that does not say its screen's size: a 1080p screen).
+function Resize.pixels()
+  local h = UIParent:GetHeight()
+  local ph = GetPhysicalScreenSize and select(2, GetPhysicalScreenSize()) or 1080
+  if not (h and h > 0 and ph and ph > 0) then return 1 end
+  return ph / h
+end
+
+-- The smallest scale that keeps the smallest text readable on this screen (at least MIN).
+function Resize.least()
+  return math.max(Resize.MIN, Resize.READ_PX / (Resize.FONT_MIN * Resize.pixels()))
+end
+
+-- The largest scale at which window `key` (frame `f`) and what opens beside it still fit on the screen
+-- (at most MAX); `alone`: the window alone, without what opens beside it (Resize.extra).
+local function maxScale(f, key, alone)
   local w, h = f:GetWidth(), f:GetHeight()
+  local extra = not alone and Resize.extra[key]
+  if w and extra then w = w + (extra() or 0) end
   local sw, sh = UIParent:GetWidth(), UIParent:GetHeight()
   local hi = Resize.MAX
   if w and w > 0 and sw and sw > 0 then hi = math.min(hi, sw / w) end
   if h and h > 0 and sh and sh > 0 then hi = math.min(hi, sh / h) end
-  return math.max(hi, Resize.MIN)
+  return hi
+end
+
+-- The bounds of window `key`'s scale -> lo, hi (on a screen too small for both, the window fits);
+-- `alone`: the window's own, without the room of what opens beside it.
+function Resize.bounds(key, alone)
+  local f = frames[key]
+  local hi = f and maxScale(f, key, alone) or Resize.MAX
+  return math.min(Resize.least(), hi), hi
 end
 
 -- Scales `f` to `s`, its top-left corner held at (left, top) in UIParent units.
@@ -71,13 +102,25 @@ local function apply(key, s)
   for _, d in ipairs(followers[key] or {}) do d:SetScale(s) end
 end
 
--- Sets window `key` to scale `s` (clamped) and keeps it.
+-- Sets window `key` to scale `s` (within its bounds) and keeps it.
 function Resize.set(key, s)
-  local f = frames[key]
-  s = clampTo(s, Resize.MIN, f and maxScale(f) or Resize.MAX)
+  s = clampTo(s, Resize.bounds(key))
   apply(key, s)
   store(key, s)
   return s
+end
+
+-- Window `key` at its saved scale held within its bounds again (they moved); the saved scale stays.
+function Resize.refit(key)
+  local f = frames[key]
+  if not f then return end
+  local s = clampTo(Resize.get(key), Resize.bounds(key))
+  if math.abs(s - f:GetScale()) > 1e-9 then apply(key, s) end
+end
+
+-- The screen changed (its size, the UI scale): every window fits again.
+function Resize.screenChanged()
+  for key in pairs(frames) do Resize.refit(key) end
 end
 
 -- The scale for a drag: the cursor at (x, y) and the corner at (left, top),
@@ -94,12 +137,15 @@ local function cursor()
   return x / k, y / k
 end
 
+-- The drag ends: the scale it was dragged to is kept, held by the window's own bounds, not by
+-- the room of a side window open now (that would lower my scale for good); a plain click on
+-- the grip (no drag) keeps the saved scale as it is.
 local function stopDrag(grip)
-  if not grip.drag then return end
+  local d = grip.drag
+  if not d then return end
   grip:SetScript("OnUpdate", nil)
-  local key = grip.drag.key
   grip.drag = nil
-  store(key, frames[key]:GetScale())
+  if d.want then store(d.key, d.want) end
 end
 
 local function onDown(grip, button)
@@ -108,13 +154,18 @@ local function onDown(grip, button)
   if button ~= "LeftButton" then return end
   local left, top = corner(f)
   if not left then return end
-  grip.drag = { key = grip.key, left = left, top = top, hi = maxScale(f) }
+  local lo, hi = Resize.bounds(grip.key)
+  local alo, ahi = Resize.bounds(grip.key, true)
+  local x0, y0 = cursor()
+  grip.drag = { key = grip.key, left = left, top = top, lo = lo, hi = hi, alo = alo, ahi = ahi, x = x0, y = y0 }
   grip:SetScript("OnUpdate", function()
     local d = grip.drag
     if not d then return end
     local x, y = cursor()
+    if not d.want and math.abs(x - d.x) < 0.5 and math.abs(y - d.y) < 0.5 then return end -- not dragged yet
     local s = Resize.dragScale(x, y, d.left, d.top, f:GetWidth(), f:GetHeight())
-    s = clampTo(s, Resize.MIN, d.hi)
+    d.want = clampTo(s, d.alo, d.ahi) -- kept: the window's own bounds
+    s = clampTo(s, d.lo, d.hi) -- shown: on the screen with what is open beside it
     place(f, s, d.left, d.top)
     for _, dlg in ipairs(followers[d.key] or {}) do dlg:SetScale(s) end
   end)
@@ -173,13 +224,20 @@ function Resize.attach(f, key, inset)
     tint(self, false)
     GameTooltip:Hide()
   end)
-  f:SetScale(Resize.get(key))
+  f:SetScale(clampTo(Resize.get(key), Resize.bounds(key)))
   return grip
 end
 
--- Dialog `d` takes the scale of window `key`, now and whenever it changes.
+-- Dialog `d` takes the scale of window `key` (the one in use), now and whenever it changes.
 function Resize.follow(d, key)
   followers[key] = followers[key] or {}
   table.insert(followers[key], d)
-  d:SetScale(Resize.get(key))
+  local f = frames[key]
+  d:SetScale(f and f:GetScale() or clampTo(Resize.get(key), Resize.bounds(key)))
 end
+
+-- The screen's size or the UI scale changed: the windows fit again.
+local watch = CreateFrame("Frame")
+watch:RegisterEvent("UI_SCALE_CHANGED")
+watch:RegisterEvent("DISPLAY_SIZE_CHANGED")
+watch:SetScript("OnEvent", function() Resize.screenChanged() end)

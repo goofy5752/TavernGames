@@ -38,31 +38,32 @@ local function pickerRow(picker, i)
   b:SetScript("OnEnter", function() hl:Show() end)
   b:SetScript("OnLeave", function() hl:Hide() end)
   local name = W.Label(b, "ui", "", 12)
-  name:SetWidth(picker.rowW - 4)
-  name:SetWordWrap(false)
   name:SetPoint("LEFT", b, "LEFT", 2, 0)
   r = { frame = b, name = name }
   b:SetScript("OnClick", function() TableFrame.invite(r.peerName) end)
+  W.nameTip(b, function() return r.peerName end)
   picker.rows[i] = r
   return r
 end
 
--- Everyone in the tavern with a compatible addon who is not seated at my table.
+-- Everyone in the tavern with a compatible addon who is not seated at my table, by the
+-- short name among the list's (a hover gives the whole name; shrunk, then wrapped, never cut).
 local function renderPicker(v, client, s)
-  local picker, n = v.picker, 0
+  local picker, list, names = v.picker, {}, {}
   for _, p in ipairs(client.presence:list()) do
-    if not p.incompatible and not seated(s.seats, p.name) then
-      n = n + 1
-      local r = pickerRow(picker, n)
-      r.peerName = p.name
-      r.name:SetText(p.name)
-      r.name:SetTextColor(ns.classColor(p.cls))
-      r.frame:Show()
-    end
+    if not p.incompatible and not seated(s.seats, p.name) then list[#list + 1] = p; names[#names + 1] = p.name end
   end
-  for i = n + 1, #picker.rows do picker.rows[i].frame:Hide() end
-  picker.scroll:setContentHeight(n * PICK_ROW_H)
-  picker.empty:SetShown(n == 0)
+  names = ns.Names.shorts(names) -- worked out once for the list
+  for n, p in ipairs(list) do
+    local r = pickerRow(picker, n)
+    r.peerName = p.name
+    W.fitWrap(r.name, W.short(p.name, names), picker.rowW - 4)
+    r.name:SetTextColor(ns.classColor(p.cls))
+    r.frame:Show()
+  end
+  for i = #list + 1, #picker.rows do picker.rows[i].frame:Hide() end
+  picker.scroll:setContentHeight(#list * PICK_ROW_H)
+  picker.empty:SetShown(#list == 0)
 end
 
 function TableFrame.togglePicker()
@@ -97,7 +98,7 @@ local function renderFair(v, s)
     key, tone, arg, arg2 = ns.Dice.status(s)
     if not key then key, tone, arg, arg2 = ns.Book.status(s) end
     line:SetShown(key ~= nil)
-    if key then line.text:SetText(L(key, arg or "?", arg2 or "?")); line.text:SetTextColor(Theme.rgb(tone)) end
+    if key then W.fitWrap(line.text, L(key, arg or "?", arg2 or "?"), line:GetWidth()); line.text:SetTextColor(Theme.rgb(tone)) end
     return
   end
   line:Show()
@@ -107,7 +108,7 @@ local function renderFair(v, s)
   local text = arg ~= nil and L(key, arg, arg2) or L(key)
   local claimer = (key == "fair.last" or key == "fair.lapse" or key:sub(1, 9) == "fair.void") and ns.Deal.claim(s) or nil
   if claimer then text = text .. " · " .. L("fair.claim", claimer) end
-  line.text:SetText(text)
+  W.fitWrap(line.text, text, line:GetWidth()) -- shrunk, then wrapped: never cut
   local verdict = key == "fair.last" and s.fairLast.verdict
   local amber = claimer or key == "fair.lapse"
   line.text:SetTextColor(Theme.rgb(ns.Deal.alarm(s) and "red" or amber and "gold" or verdict == "ok" and "good" or "inkDim"))

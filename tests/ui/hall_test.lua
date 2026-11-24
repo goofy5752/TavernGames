@@ -264,8 +264,9 @@ describe("ui: hall", function()
     eq(w.ns.Hall.mode, "list"); eq(view.floor:IsVisible(), false); ok(view.list:IsVisible(), "list hidden")
     eq(visible(view.rows), 9)
     local first, last = view.rows[1], view.rows[9]
-    eq(first.title:GetText(), "Морски шах при |cffc79c6eГост 1|r")
-    eq(view.rows[2].title:GetText(), "Морски шах при |cfff2e6c8Гост 2|r") -- no class known: ink
+    -- the short name among everyone the hall shows: nine hosts read „Гост“, so each takes its next word
+    eq(first.title:GetText(), "Морски шах при |cffc79c6eГост 1.|r")
+    eq(view.rows[2].title:GetText(), "Морски шах при |cfff2e6c8Гост 2.|r") -- no class known: ink
     eq(first.seats:GetText(), "1/2"); eq(first.state:GetText(), "чака"); eq(first.action.text:GetText(), "Седни")
     eq(last.seats:GetText(), "2/2"); eq(last.state:GetText(), "тече"); eq(last.action.text:GetText(), "Гледай")
     w:click(first.action)
@@ -329,7 +330,7 @@ describe("ui: hall", function()
     hi(w, D, "WARRIOR", tid); hi(w, B, "MAGE"); hi(w, C, "WARRIOR", tid); hi(w, "Яна Жекова", "MAGE", tid)
     local rows, byName = w.ns.Hall.view.peers, {}
     for _, r in ipairs(rows) do
-      if r.frame:IsVisible() then byName[r.name:GetText()] = r end
+      if r.frame:IsVisible() then byName[r.peerName] = r end
     end
     eq(byName[B].status:GetText(), "в залата")
     eq({ byName[B].name:GetTextColor() }, { 0.25, 0.78, 0.92, 1 })
@@ -586,5 +587,170 @@ describe("ui: the table label stays clear of the chair labels", function()
         end
       end
     end
+  end)
+end)
+
+describe("ui: short names in the hall, the whole name on hover", function()
+  local P, K, BOT = "Ivan Petrovski", "Ivan Kolev", "Bot Barleybrew"
+
+  it("chairs and the host: two Ivans take an initial, a bot its own name and the cog; a hover names the whole", function()
+    local w = guildWow()
+    w.ns.MainWindow.show()
+    local W = w.ns.W
+    hi(w, P, "MAGE")
+    tbl(w, P, { P, K, BOT, false }, "open", "belot")
+    local t = w.ns.Hall.view.tables[1]
+    eq({ t.chairs[1].label:GetText(), t.chairs[2].label:GetText(), t.chairs[3].label:GetText() },
+      { "Ivan P.", "Ivan K.", "Barleybrew " .. W.BOT_MARK })
+    eq(t.host:GetText(), "Ivan P.")
+    w:hover(t.chairs[1].button); eq(w.G.GameTooltip.lines, { P })
+    w:hover(t.chairs[3].button); eq(w.G.GameTooltip.lines, { BOT })
+    w:hover(t.top)
+    eq({ w.G.GameTooltip.lines[2], w.G.GameTooltip.lines[3], w.G.GameTooltip.lines[4] }, { P, K, BOT })
+    ok(w.G.GameTooltip.lines[1]:find(P, 1, true), "the host's whole name in the title")
+    -- a chair at the side has its name beside it, outward (centred on it, the portrait hid its ends)
+    eq(t.chairs[2].label.points, { { "LEFT", t.chairs[2].button, "RIGHT", 2, 0 } }); eq(t.chairs[2].label.justifyH, "LEFT")
+    eq(t.chairs[2].label:GetWidth(), 70)
+    -- each label in its column: shrunk, then wrapped, never cut
+    for i = 1, 3 do
+      local fs = t.chairs[i].label
+      ok(fs:GetUnboundedStringWidth() <= 76 or fs.wordWrap, "chair label " .. i); ok(select(2, fs:GetFont()) >= 9 - 0.01, "readable")
+    end
+  end)
+
+  it("a long one-word name on a chair shrinks to fit its column, then breaks; nothing is cut", function()
+    local w = guildWow()
+    w.ns.MainWindow.show()
+    local LONG = "Barleybrewstersonwood Hill"
+    hi(w, LONG, "MAGE")
+    tbl(w, LONG, { LONG, false })
+    local fs = w.ns.Hall.view.tables[1].chairs[1].label
+    ok(select(2, fs:GetFont()) < 10, "shrunk to the floor")
+    for line in (fs:GetText() .. "\n"):gmatch("(.-)\n") do
+      local probe = fs.parent:CreateFontString(nil, "OVERLAY"); probe:SetFont(fs:GetFont()); probe:SetText(line)
+      ok(probe:GetUnboundedStringWidth() <= 76, "a line wider than its column: " .. line)
+    end
+    eq((fs:GetText():gsub("\n", "")), "Barleybrewstersonwood")
+  end)
+
+  it("„В кръчмата сега“: the short names among the list's, the status names the host short; a hover names the whole", function()
+    local w = guildWow()
+    w.ns.MainWindow.show()
+    local tid = tbl(w, P, { P, K }, "live")
+    hi(w, P, "MAGE", tid); hi(w, K, "WARRIOR", tid); hi(w, BOT, "PRIEST")
+    local byName = {}
+    for _, r in ipairs(w.ns.Hall.view.peers) do if r.frame:IsVisible() then byName[r.peerName] = r end end
+    eq({ byName[P].name:GetText(), byName[K].name:GetText(), byName[BOT].name:GetText() },
+      { "Ivan P.", "Ivan K.", "Barleybrew " .. w.ns.W.BOT_MARK })
+    eq(byName[K].status:GetText(), "на маса при " .. w.ns.W.paint("Ivan P.", w.ns.W.nameColor(w.ns.client, P)))
+    w:hover(byName[K].frame); eq(w.G.GameTooltip.lines, { K })
+    byName[K].frame.scripts.OnLeave(byName[K].frame); eq(w.G.GameTooltip:IsShown(), false)
+  end)
+end)
+
+-- QA (layout): with seven tables (four columns) a side chair's name beside it ran under the next table's top.
+describe("ui: a side chair's name stays in its table's cell", function()
+  -- the widest 12-letter Latin first words a WoW name has on the side chairs, the two Ivans top and bottom
+  local LONG = { "Ivan Petrovski", "Mormogwathum Ironfoot", "Ivan Kolevski", "Wolfgarmmund Deepforge" }
+
+  -- The x range (from the table's centre) of chair i's label, from its anchor and width.
+  local function span(t, i)
+    local c, x = t.chairs[i], 60 * (i == 2 and 1 or -1)
+    local p, wd = c.label.points[1], c.label:GetWidth()
+    if p[1] == "TOP" then return p[4] - wd / 2, p[4] + wd / 2 end
+    if p[1] == "LEFT" then return x + 13 + p[4], x + 13 + p[4] + wd end
+    return x - 13 + p[4] - wd, x - 13 + p[4]
+  end
+
+  it("beside the chair while the cell has room, under it in three and four columns; whole on one line, never past the cell", function()
+    for _, count in ipairs({ 1, 2, 5, 7 }) do
+      local w = guildWow()
+      w.ns.MainWindow.show()
+      hi(w, LONG[1], "MAGE")
+      tbl(w, LONG[1], LONG, "live", "belot")
+      for k = 2, count do tbl(w, "Host" .. k, { "Host" .. k, false }) end
+      local v = w.ns.Hall.view
+      local t
+      for _, x in ipairs(v.tables) do if x.rec and x.rec.host == LONG[1] and x.frame:IsShown() then t = x end end
+      local half = v.floorW / w.ns.HallLayout.columns(count) / 2
+      for _, i in ipairs({ 2, 4 }) do
+        local fs = t.chairs[i].label
+        ok(fs:IsShown(), "no label")
+        local l, r = span(t, i)
+        ok(l >= -half - 0.5 and r <= half + 0.5, count .. " tables: chair " .. i .. "'s name past its cell: " .. l .. ".." .. r .. " / " .. half)
+        if fs.points[1][1] == "TOP" then ok(fs.points[1][5] <= -32, "into the top's lines of text") end
+        if count <= 2 then eq(fs.points[1][1], i == 2 and "LEFT" or "RIGHT") else eq(fs.points[1][1], "TOP") end
+        ok(fs:GetWidth() >= 64, "narrower than a 12-letter name at 9 (64 px in PT Sans)")
+        ok(select(2, fs:GetFont()) >= 9, "unreadable")
+        eq(fs:GetText(), i == 2 and "Mormogwathum" or "Wolfgarmmund") -- whole, one line
+      end
+      for _, i in ipairs({ 1, 3 }) do eq(t.chairs[i].label:GetText(), i == 1 and "Ivan P." or "Ivan K.") end
+      if count == 7 then -- under the chairs, the two names of one table apart and clear of the top's lines
+        local l2 = span(t, 2); local _, r4 = span(t, 4)
+        ok(r4 < l2, "the two side names meet")
+      end
+    end
+  end)
+end)
+
+-- QA (layout): a long name in „В кръчмата сега“ ran into its status („at …'s table“) on the same row.
+describe("ui: „В кръчмата сега“ rows", function()
+  it("the status takes what the name leaves: shrunk, then wrapped, never over it", function()
+    local w = guildWow()
+    w.ns.MainWindow.show()
+    local LONGEST = "Добромирослава Великотърновска"
+    local tid = tbl(w, LONGEST, { LONGEST, false }, "open", "santase")
+    hi(w, LONGEST, "MAGE", tid)
+    local v, row = w.ns.Hall.view, nil
+    for _, r in ipairs(v.peers) do if r.frame:IsVisible() and r.peerName == LONGEST then row = r end end
+    local nameRight = 28 + math.min(w.ns.HallPeers.NAME_W(v), w.ns.W.textWidth(row.name))
+    local statusLeft = v.peerW - 2 - row.status:GetWidth()
+    ok(nameRight <= statusLeft, "the status over the name: " .. nameRight .. " > " .. statusLeft)
+    ok(select(2, row.status:GetFont()) >= 9, "unreadable")
+    ok(row.status:GetStringHeight() <= 26 and row.name:GetStringHeight() <= 26, "past the row")
+  end)
+end)
+
+-- QA follow-up: two who would both read „Ivan“ take their initials everywhere in the hall, not only at one table.
+describe("ui: one short name per person in the whole hall", function()
+  local P, K, M = "Ivan Petrovski", "Ivan Kolevski", "Mormogwathum Ironfoot"
+
+  it("two Ivans at different tables read „Ivan P.“ and „Ivan K.“ in the list, the statuses, the chairs and the tops", function()
+    local w = guildWow()
+    w.ns.MainWindow.show()
+    local t1 = tbl(w, P, { P, M }, "live")
+    local t2 = tbl(w, K, { K, false }, "open")
+    hi(w, P, "MAGE", t1); hi(w, K, "WARRIOR", t2); hi(w, M, "PRIEST", t1)
+    local v, plain = w.ns.Hall.view, function(s) return (s:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")) end
+    local byName = {}
+    for _, r in ipairs(v.peers) do if r.frame:IsVisible() then byName[r.peerName] = r end end
+    eq({ byName[P].name:GetText(), byName[K].name:GetText(), byName[M].name:GetText() }, { "Ivan P.", "Ivan K.", "Mormogwathum" })
+    eq({ plain(byName[M].status:GetText()), plain(byName[K].status:GetText()) }, { "на маса при Ivan P.", "на маса при Ivan K." })
+    local tops, chairs = {}, {}
+    for _, t in ipairs(v.tables) do
+      if t.frame:IsShown() then tops[t.rec.host] = t.host:GetText(); chairs[t.rec.host] = t.chairs[1].label:GetText() end
+    end
+    eq({ tops[P], tops[K] }, { "Ivan P.", "Ivan K." })
+    eq({ chairs[P], chairs[K] }, { "Ivan P.", "Ivan K." })
+  end)
+end)
+
+-- Review: Names.short against the whole hall for every name drawn was O(n²) per render.
+describe("ui: the hall's short names, once per render", function()
+  it("a crowded hall: the short names are worked out once, linear in the people shown", function()
+    local w = guildWow()
+    w.ns.MainWindow.show()
+    local n = 120
+    for i = 1, n do hi(w, "Guest" .. i .. " Tavernson", "MAGE") end
+    hi(w, "Ivan Petrovski", "MAGE"); hi(w, "Ivan Kolevski", "MAGE")
+    local N, calls = w.ns.Names, 0
+    local normalize = N.normalize
+    N.normalize = function(...) calls = calls + 1; return normalize(...) end
+    w.ns.Hall.render()
+    N.normalize = normalize
+    ok(calls < 20 * n, "the hall's names worked out " .. calls .. " times for " .. n .. " people")
+    local byName = {}
+    for _, r in ipairs(w.ns.Hall.view.peers) do if r.frame:IsVisible() then byName[r.peerName] = r.name:GetText() end end
+    eq({ byName["Ivan Petrovski"], byName["Ivan Kolevski"], byName["Guest7 Tavernson"] }, { "Ivan P.", "Ivan K.", "Guest7" })
   end)
 end)

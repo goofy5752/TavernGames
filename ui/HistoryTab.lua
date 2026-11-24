@@ -43,9 +43,9 @@ local function name(client, who)
   local p = who ~= client.env.me and client.presence:get(who)
   local cls = who == client.env.me and client.env.cls or p and p.cls
   local colors = CUSTOM_CLASS_COLORS or RAID_CLASS_COLORS
-  if not (cls and colors and colors[cls]) then return who end
+  if not (cls and colors and colors[cls]) then return W.fullName(who) end
   local r, g, b = ns.classColor(cls)
-  return W.paint(who, r * HistoryTab.DARK, g * HistoryTab.DARK, b * HistoryTab.DARK)
+  return W.paint(W.fullName(who), r * HistoryTab.DARK, g * HistoryTab.DARK, b * HistoryTab.DARK)
 end
 
 local function join(client, names)
@@ -172,12 +172,10 @@ local function makeRow(r)
   r.text = W.Label(f, "paperNote", "", 14)
   r.text:SetPoint("LEFT", f, "LEFT", 8, 0)
   r.text:SetWidth(TEXT_W)
-  r.text:SetWordWrap(false)
   r.mark = W.Label(f, "paperNote", "", 11)
   r.mark:SetTextColor(Theme.rgb("felt"))
   r.mark:SetPoint("LEFT", f, "LEFT", 8 + TEXT_W + 6, 0)
   r.mark:SetWidth(MARK_W)
-  r.mark:SetWordWrap(false)
   r.age = W.Label(f, "paper", "", 11)
   r.age:SetTextColor(AGE[1], AGE[2], AGE[3])
   r.age:SetJustifyH("RIGHT")
@@ -188,7 +186,6 @@ local function makeRow(r)
   r.amount:SetTextColor(Theme.rgb("felt"))
   r.amount:SetJustifyH("RIGHT")
   r.amount:SetWidth(AMOUNT_W)
-  r.amount:SetWordWrap(false)
   r.amount:SetPoint("RIGHT", r.age, "LEFT", -10, 0)
   W.tooltip(f, function(tip)
     if not r.line then return end
@@ -203,9 +200,9 @@ end
 local function fillRow(r, line)
   local l = dress(ns.client, line, HistoryTab.view.today)
   r.line = l
-  r.text:SetText(l.text)
-  r.mark:SetText(l.mark or "")
-  W.fit(r.amount, l.amount, AMOUNT_W)
+  W.fitWrap(r.text, l.text, TEXT_W) -- the whole names: shrunk, then wrapped, never cut
+  W.fitWrap(r.mark, l.mark or "", MARK_W)
+  W.fitWrap(r.amount, l.amount, AMOUNT_W)
   r.age:SetText(l.age)
   r.frame:SetAlpha(l.kind == "denied" and 0.6 or 1)
 end

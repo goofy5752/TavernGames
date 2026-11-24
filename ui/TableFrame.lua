@@ -82,10 +82,19 @@ end
 
 -- One line at the bottom of the table frame for SAY_SECONDS -> true, or false
 -- when the frame is not on screen.
+-- The news line between its two anchors: shrunk to fit their width, then wrapped (never cut);
+-- a width the client does not know yet leaves it at its size, wrapping.
+local function fitLine(v)
+  local text, w = v.lineText or "", v.line:GetWidth()
+  if w and w > 1 then W.fit(v.line, text, w, W.WRAP_MIN) else v.line:SetText(text) end
+end
+TableFrame.fitLine = fitLine
+
 function TableFrame.say(text)
   local v = TableFrame.view
   if not v or not TableFrame.frame:IsShown() then return false end
-  v.line:SetText(text)
+  v.lineText = text
+  fitLine(v)
   v.line:Show()
   if TableFrame.sayTimer then TableFrame.sayTimer:Cancel() end
   TableFrame.sayTimer = C_Timer.NewTimer(SAY_SECONDS, function()
@@ -152,7 +161,7 @@ function TableFrame.invite(name)
   local client = ns.client
   TableFrame.view.picker:Hide()
   if not client then return end
-  local who = W.colored(client, name)
+  local who = W.shortColored(client, name)
   TableFrame.say(L(client:invite(name) and "invite.sent" or "invite.fail", who))
 end
 
@@ -199,7 +208,7 @@ local function bannerKey(s, engine)
   if TableFrame.resyncTid == s.tid then return "table.resynced" end
   local left, silent
   if s.holdTimer and s.role == "host" then left, silent = ns.Stakes.held(s) end
-  if left then return silent and "table.holdSilent" or "table.holdStart", silent and W.colored(ns.client, silent) or math.max(1, math.ceil(left)), left end
+  if left then return silent and "table.holdSilent" or "table.holdStart", silent and W.shortColored(ns.client, silent, s.seats) or math.max(1, math.ceil(left)), left end
   if s.status == "aborted" then return "table.aborted" end
   if s.status ~= "open" then return nil end
   if engine.start ~= "host" then return engine.minSeats > 2 and "table.waitingMore" or "table.waiting" end
@@ -249,6 +258,7 @@ local function renderStart(v, s, engine, client)
   v.line:ClearAllPoints()
   v.line:SetPoint("LEFT", slot or shown and b or v.inviteButton, "RIGHT", 8, 0)
   v.line:SetPoint("RIGHT", TableFrame.frame, "BOTTOMRIGHT", -(EDGE + 24), EDGE + 20) -- clear of the resize grip
+  if v.line:IsShown() then fitLine(v) end -- its width moved with the buttons
 end
 
 -- A countdown on the felt (the held start, a guest's bill line), `left` s to go: redrawn as its whole second changes.
@@ -290,6 +300,7 @@ local function fit(v, w, h)
   v.watermark:SetPoint("CENTER", v.area, "CENTER", 0, 0.04 * mark) -- 4 % of its height above the middle
   v.banner:SetWidth(v.areaW)
   v.fairLine:SetWidth(v.areaW - 40)
+  ns.Resize.refit("table") -- another game's size: the scale fits the screen again
 end
 
 -- Redraws the table frame now; shows it while I am at a table, hides it otherwise.
@@ -475,8 +486,7 @@ function TableFrame.build()
   fairLine:RegisterForClicks("LeftButtonUp")
   local fairText = W.Label(fairLine, "ui", "", 12)
   fairText:SetJustifyH("CENTER")
-  fairText:SetWordWrap(false)
-  fairText:SetAllPoints(fairLine)
+  fairText:SetPoint("CENTER", fairLine, "CENTER") -- as wide as the line (TablePanels: shrunk, then wrapped, never cut)
   fairLine.text = fairText
   fairLine:SetScript("OnClick", function() if ns.HelpBook then ns.HelpBook.open("fair") end end)
   W.tooltip(fairLine, function(tip) TableFrame.panels.fairTooltip(tip) end)
@@ -512,7 +522,7 @@ function TableFrame.build()
   local line = W.Label(f, "ui", "", 12)
   line:SetTextColor(Theme.rgb("gold"))
   line:SetJustifyH("RIGHT")
-  line:SetWordWrap(false)
+  line:SetWordWrap(true) -- a long line wraps between its two anchors, never cut
   line:SetPoint("LEFT", invite, "RIGHT", 14, 0)
   line:SetPoint("RIGHT", f, "BOTTOMRIGHT", -(EDGE + 8), EDGE + 20)
   line:Hide()

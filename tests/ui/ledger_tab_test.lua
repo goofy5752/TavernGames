@@ -299,8 +299,18 @@ describe("ui: the tab „Тефтер“", function()
       ok(mr <= al, "the mark runs into the amount: " .. mr .. " > " .. al)
       ok(ar <= gl, "the amount runs into the age")
       ok(wl >= 0 and select(2, edges(r.age, r)) <= v.rowW, "out of the row")
-      for _, fs in ipairs({ r.who, r.mark, r.amount }) do eq(fs.wordWrap, false) end
-      ok(r.amount:GetStringWidth() <= r.amount:GetWidth(), "the amount is clipped: " .. r.amount:GetText())
+      -- never cut: each column shrinks (not below 9), then wraps inside its row; no word is wider than its box
+      for _, fs in ipairs({ r.who, r.mark, r.amount }) do
+        ok(select(2, fs:GetFont()) >= 9 - 0.01, "smaller than readable: " .. fs:GetText())
+        ok(fs:GetUnboundedStringWidth() <= fs:GetWidth() + 0.01 or fs.wordWrap, "cut on one line: " .. fs:GetText())
+        ok(fs:GetStringHeight() <= 26, "taller than its row: " .. fs:GetText())
+        for word in plain(fs:GetText()):gmatch("%S+") do
+          local probe = fs.parent:CreateFontString(nil, "OVERLAY"); probe:SetFont(fs:GetFont()); probe:SetText(word)
+          ok(probe:GetUnboundedStringWidth() <= fs:GetWidth() + 0.01, "a word cut: " .. word)
+        end
+      end
+      local whole = plain(r.who:GetText()) -- the whole names, at 9 on two lines
+      ok(whole:find(F, 1, true) and whole:find(T2, 1, true), "a name not whole: " .. whole)
       w:hover(r.frame)
       local tip = table.concat(w.G.GameTooltip.lines, "\n")
       ok(plain(tip):find(plain(r.who:GetText()), 1, true), "the tooltip lacks the whole line: " .. tip)

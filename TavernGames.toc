@@ -120,6 +120,7 @@ wow/Slash.lua
 # UI
 ui/Theme.lua
 ui/Widgets.lua
+ui/NameTag.lua
 ui/Resize.lua
 ui/Decks.lua
 ui/Silhouette.lua
@@ -142,7 +143,11 @@ ui/TableFrame.lua
 ui/TablePlates.lua
 ui/TablePanels.lua
 ui/StakePanels.lua
+ui/HistoryKit.lua
 ui/HandHistory.lua
+ui/HandHistoryHoldem.lua
+ui/HandHistoryRows.lua
+ui/HandHistoryDraw.lua
 ui/HandHistoryPanel.lua
 ui/ChessHistory.lua
 ui/games/TicTacToeView.lua
@@ -157,6 +162,7 @@ ui/games/HoldemModel.lua
 ui/games/HoldemView.lua
 ui/games/HoldemCashView.lua
 ui/games/ChessModel.lua
+ui/games/ChessMoves.lua
 ui/games/ChessPanels.lua
 ui/games/ChessView.lua
 ui/InviteToast.lua

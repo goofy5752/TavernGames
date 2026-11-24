@@ -2,6 +2,7 @@ local Wow = require("wow")
 
 local ME, B, C = "Иван Петров", "Мария Стоянова", "Kiro Barley"
 local BOT = "Bot Ivanov"
+local MARK = "|TInterface\\AddOns\\TavernGames\\media\\botmark:0|t" -- the bot's cog after its short name
 
 -- In a guild, booted with the ui/ files, own name resolved, PLAYER_LOGIN fired.
 local function guildWow()
@@ -59,7 +60,7 @@ local function play()
   w:click(v.inviteButton)
   local row
   for _, r in ipairs(v.picker.rows) do
-    if r.frame:IsVisible() and r.name:GetText() == BOT then row = r end
+    if r.frame:IsVisible() and r.peerName == BOT then row = r end
   end
   assert(row, "no row for the bot in the picker")
   w:click(row.frame)
@@ -132,16 +133,16 @@ describe("ui: Death Roll view", function()
     eq(V.cells[2].number:GetText(), "57"); eq(color(V.cells[2].number), MAGE)
     eq(V.cells[2].label:GetText(), "Ти")
     eq(V.cells[3].number:GetText(), "?"); eq(V.cells[3].number:GetAlpha(), 0.35)
-    eq(color(V.cells[3].number), rgb(w, "oMark")); eq(V.cells[3].label:GetText(), "Bot")
-    local wait = plainTexts(w, "Изчакай Bot Ivanov…")
-    eq(#wait, 1); eq(wait[1]:GetText(), "Изчакай |cffffffffBot Ivanov|r…")
+    eq(color(V.cells[3].number), rgb(w, "oMark")); eq(V.cells[3].label:GetText(), "Ivanov " .. MARK)
+    local wait = plainTexts(w, "Изчакай Ivanov " .. MARK .. "…")
+    eq(#wait, 1); eq(wait[1]:GetText(), "Изчакай |cffffffffIvanov|r " .. MARK .. "…")
     eq(V.rollButton:IsVisible(), false)
     eq(#w:texts(L("deathroll.caption")), 1)
     w:advance(2)
     cells = View.cells(w.ns.client.session)
     eq({ cells[3].n, cells[3].tag }, { 30, "table" }); eq(color(V.cells[3].number), PRIEST)
-    eq(#w:texts("· маса"), 1); eq(V.cells[3].label:GetText(), "Bot · маса")
-    w:hover(V.cells[3].frame); eq(w.G.GameTooltip.lines[1], L("deathroll.tip.table"))
+    eq(#w:texts("· маса"), 1); eq(V.cells[3].label:GetText(), "Ivanov " .. MARK .. " · маса")
+    w:hover(V.cells[3].frame); eq(w.G.GameTooltip.lines, { BOT, L("deathroll.tip.table") }) -- the whole name, then the mark's meaning
     eq({ V.cells[1].number:GetFont() }, { w.ns.Theme.font.heading, 30, "" })
     eq(select(2, V.cells[2].number:GetFont()), 28); eq(select(2, V.cells[3].number:GetFont()), 26)
     eq(#w:texts("от 1 до 30"), 1) -- my turn again
@@ -155,7 +156,7 @@ describe("ui: Death Roll view", function()
     eq(cells[2].n, 40); eq(cells[2].tag, "unseen")
     local V = w.ns.TableFrame.built.deathroll
     eq(V.cells[2].label:GetText(), "Мария?")
-    w:hover(V.cells[2].frame); eq(w.G.GameTooltip.lines[1], w.ns.L("deathroll.tip.unseen"))
+    w:hover(V.cells[2].frame); eq(w.G.GameTooltip.lines, { B, w.ns.L("deathroll.tip.unseen") })
 
     w = setup()
     tid = seatedAtB(w)
@@ -165,7 +166,7 @@ describe("ui: Death Roll view", function()
     eq(cells[2].tag, "mismatch")
     V = w.ns.TableFrame.built.deathroll
     eq(V.cells[2].label:GetText(), "Мария|cffa3161c!|r")
-    w:hover(V.cells[2].frame); eq(w.G.GameTooltip.lines[1], w.ns.L("deathroll.tip.mismatch"))
+    w:hover(V.cells[2].frame); eq(w.G.GameTooltip.lines, { B, w.ns.L("deathroll.tip.mismatch") })
   end)
 
   it("no echo within 3 s: the hint to type /roll by hand, and typing it works", function()
@@ -218,11 +219,11 @@ describe("ui: Death Roll view", function()
     w:advance(0)
     cells = View.cells(s)
     eq(#cells, 7); eq(cells[1].kind, "more"); eq(cells[7].n, 1)
-    local lost = plainTexts(w, "Bot Ivanov хвърли 1 и губи!")
+    local lost = plainTexts(w, "Ivanov " .. MARK .. " хвърли 1 и губи!")
     eq(#lost, 1); eq(color(lost[1]), rgb(w, "gold"))
     -- the loser's name in his class colour (PRIEST) inside the gold line
-    eq(lost[1]:GetText(), "|cffffffffBot Ivanov|r хвърли 1 и губи!")
-    eq(lost[1]:GetText(), w.ns.L("deathroll.lost", w.ns.W.colored(w.ns.client, BOT)))
+    eq(lost[1]:GetText(), "|cffffffffIvanov|r " .. MARK .. " хвърли 1 и губи!")
+    eq(lost[1]:GetText(), w.ns.L("deathroll.lost", w.ns.W.shortColored(w.ns.client, BOT)))
     eq(V.rollButton:IsVisible(), false)
     eq(select(2, V.cells[7].number:GetFont()), 34); eq(color(V.cells[7].number), rgb(w, "oMark"))
     eq(V.cells[7].number:GetText(), "1")
@@ -245,7 +246,7 @@ describe("ui: Death Roll view", function()
     s:play(1, { k = "roll", n = 50, max = 100, src = "ask" })
     s:play(2, { k = "roll", n = 1, max = 50, src = "ask" })
     w:advance(0)
-    eq(#plainTexts(w, "Bot Ivanov хвърли 1 и губи!"), 1)
+    eq(#plainTexts(w, "Ivanov " .. MARK .. " хвърли 1 и губи!"), 1)
     for _, bot in ipairs(w.ns.bots.list) do
       if bot.env.me == BOT then bot:stand() end
     end
@@ -301,5 +302,63 @@ describe("ui: Death Roll view", function()
     eq(View.seatNote(s, 1), ""); eq(View.seatNote(s, 4), "")
     w.ns.client.events:emit("session", s); w:advance(0)
     eq(w.ns.TableFrame.view.plates[3].note:GetText(), "от следващата игра")
+  end)
+end)
+
+describe("ui: Death Roll ladder, short names", function()
+  it("two Ivans an initial, a bot its cog; an unreal 40-letter word may wrap: the seven cells always fit the trail", function()
+    local w, V, View = setup()
+    local seats = { "Ivan Petrovski", "Ivan Kolev", "Bot Barleybrewster", "Konstantinopolskiovichvelikopreslavskiev Velikov" }
+    local s = { seats = seats, status = "live", role = "watcher", client = { env = {} },
+      gameOver = function() return false end,
+      state = { start = 100, max = 30, turn = 2, players = { 1, 2, 3, 4 },
+        rolls = { { seat = 1, n = 80 }, { seat = 2, n = 60 }, { seat = 3, n = 50 }, { seat = 4, n = 40 }, { seat = 1, n = 30 } } } }
+    View.update(V, s)
+    eq({ V.cells[2].label:GetText(), V.cells[3].label:GetText(), (V.cells[4].label:GetText():gsub("\n", "")) },
+      { "Ivan P.", "Ivan K.", "Barleybrewster " .. MARK }) -- whole: the trail gives the longer labels more room
+    eq((V.cells[5].label:GetText():gsub("\n", "")), "Konstantinopolskiovichvelikopreslavskiev")
+    -- inside the 512 px trail: the first cell's left and the last cell's right (anchored on the top's middle)
+    local first, last = V.cells[1].frame.points[1], V.cells[7].frame.points[1]
+    ok(first[4] >= -256, "the trail starts left of the view: " .. first[4])
+    ok(last[4] + V.cells[7].frame:GetWidth() <= 256 + 0.01, "the trail ends right of the view")
+    for i = 1, 7 do
+      local fs = V.cells[i].label
+      ok(select(2, fs:GetFont()) >= 9 * w.ns.Theme.fontScale.ui - 0.01, "smaller than readable: " .. i)
+      for line in (fs:GetText() .. "\n"):gmatch("(.-)\n") do
+        local probe = fs.parent:CreateFontString(nil, "OVERLAY"); probe:SetFont(fs:GetFont()); probe:SetText(line)
+        ok(probe:GetUnboundedStringWidth() <= fs:GetWidth() + 0.01, "a line wider than its cell: " .. line)
+      end
+    end
+    -- a wrapped name pushes the caption down, so the two never meet
+    local tall = V.cells[5].label:GetStringHeight()
+    ok(tall > 16, "the 40-letter word did not wrap")
+    eq(V.caption.points[1][5], -(10 + 60 + 10 + tall - 16))
+    -- a hover names the whole
+    w:hover(V.cells[5].frame); eq(w.G.GameTooltip.lines, { seats[4] })
+  end)
+end)
+
+-- QA follow-up: a WoW name's word has at most 12 letters; the widest ones show whole on one line.
+describe("ui: Death Roll ladder, 12-letter names", function()
+  it("seven cells of the widest 12-letter names and two Ivans: every label one line, whole, at 9 or more", function()
+    local w, V, View = setup()
+    local seats = { "Mormogwathum Ironfoot", "Wolfgarmmund Deepforge", "Ivan Petrovski", "Ivan Kolevski", "Mwaargrimmon Ash" }
+    local s = { seats = seats, status = "live", role = "watcher", client = { env = {} },
+      gameOver = function() return false end,
+      state = { start = 1000, max = 30, turn = 2, players = { 1, 2, 3, 4, 5 },
+        rolls = { { seat = 1, n = 800 }, { seat = 2, n = 600 }, { seat = 3, n = 500 }, { seat = 4, n = 400 }, { seat = 5, n = 300 },
+                  { seat = 1, n = 30 } } } }
+    View.update(V, s)
+    local seen = 0
+    for i = 1, 7 do
+      local fs = V.cells[i].label
+      if fs:IsVisible() and (fs:GetText() or "") ~= "" then
+        seen = seen + 1
+        ok(not fs:GetText():find("\n", 1, true), "a name broken: " .. fs:GetText())
+        ok(select(2, fs:GetFont()) >= 9, "unreadable: " .. fs:GetText())
+      end
+    end
+    ok(seen >= 6, "cells drawn: " .. seen)
+    eq(V.cells[3].label:GetText(), "Ivan P.")
   end)
 end)

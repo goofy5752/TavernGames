@@ -26,9 +26,27 @@ local function feed(st)
   H.observe({ game = "chess", tid = "t#1", state = st, seats = { A, B }, seq = seq, epoch = 1, mySeat = 2 })
 end
 local function new(first) return Chess.E.new{ first = first or 2, opt = { clock = 10 } } end
+-- The sans of a recorded game's moves.
+local function sans(hand)
+  local out = {}
+  for i, m in ipairs(hand.moves) do out[i] = m.san end
+  return out
+end
+local function plain(t) return (tostring(t):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")) end
+-- The window's texts of table s: each game's title, its sides, its moves "1. Nf3 Nf6" (by SAN), its end.
 local function texts(s)
   local out = {}
-  for i, x in ipairs(H.lines(s)) do out[i] = x[2] end
+  for _, b in ipairs(H.blocks(s)) do
+    out[#out + 1] = b.title
+    for _, row in ipairs(b.rows) do
+      if row.k == "side" then out[#out + 1] = row.list[1].name .. " · " .. row.list[2].name end
+      if row.k == "moves" then
+        for _, r in ipairs(row.rows) do out[#out + 1] = r.no .. ". " .. r.white.san .. (r.black and (" " .. r.black.san) or "") end
+      end
+      if row.text then out[#out + 1] = plain(row.text) end
+    end
+    if b.sum then out[#out + 1] = "= " .. plain(b.sum) end
+  end
   return out
 end
 local function has(list, text)
@@ -42,13 +60,13 @@ describe("ui: the chess table history", function()
     feed(st)
     Chess.play(st, "f2f3 e7e5 g2g4")
     feed(st)
-    eq(H.tables["t#1"].hands[1].moves, { "f3", "e5", "g4" })
+    eq(sans(H.tables["t#1"].hands[1]), { "f3", "e5", "g4" })
     eq(H.tables["t#1"].hands[1].res, nil)
     Chess.play(st, "d8h4")
     feed(st)
     local b = H.tables["t#1"]
     eq(#b.hands, 1)
-    eq(b.hands[1].moves, { "f3", "e5", "g4", "Qh4#" })
+    eq(sans(b.hands[1]), { "f3", "e5", "g4", "Qh4#" })
     eq(b.hands[1].white, 2)
     eq(b.hands[1].names, { A, B })
     eq(b.hands[1].res, { winner = 1, reason = "mate" })
@@ -74,7 +92,7 @@ describe("ui: the chess table history", function()
     eq(#hands, 10)
     eq(hands[10].no, 13)
     eq(hands[1].no, 4)
-    eq(hands[10].moves, { "e4" })
+    eq(sans(hands[10]), { "e4" })
     local again = new(1) -- another game: an entry once it has its first move
     feed(again)
     eq(H.tables["t#1"].hands[10].no, 13)
@@ -99,7 +117,7 @@ describe("ui: the chess table history", function()
     eq(#hands, 2)
     eq(hands[1].res, { winner = 1, reason = "resign" })
     eq(hands[2].res, nil)
-    eq(hands[2].moves, { "e4" })
+    eq(sans(hands[2]), { "e4" })
   end)
 
   it("a running state between two games adds no empty entry", function()
@@ -116,10 +134,10 @@ describe("ui: the chess table history", function()
     local hands = H.tables["t#1"].hands
     eq(#hands, 1)
     eq(hands[1].res, { winner = 1, reason = "mate" })
-    eq(hands[1].moves, { "f3", "e5", "g4", "Qh4#" })
+    eq(sans(hands[1]), { "f3", "e5", "g4", "Qh4#" })
     Chess.play(rematch, "e2e4"); feed(rematch)
     eq(#hands, 2)
-    eq({ hands[2].no, hands[2].white, hands[2].moves }, { 2, 1, { "e4" } })
+    eq({ hands[2].no, hands[2].white, sans(hands[2]) }, { 2, 1, { "e4" } })
   end)
 
   it("the panel prints it in my language", function()
@@ -131,14 +149,14 @@ describe("ui: the chess table history", function()
     local bg = texts(s)
     ok(has(bg, "Партия 1"), "game head")
     ok(has(bg, "1. f3 e5"), "first pair")
-    ok(has(bg, "2. g4 Дh4#"), "second pair")
-    ok(has(bg, "Бели: " .. B .. " · Черни: " .. A), "sides")
-    ok(has(bg, "Мат! " .. A .. " печели"), "end")
+    ok(has(bg, "2. g4 Qh4#"), "second pair")
+    ok(has(bg, "Мария · Иван"), "sides: white first, short names")
+    ok(has(bg, "Мат! Иван печели"), "end")
+    ok(has(bg, "= Мат! Иван печели · 4 хода"), "a closed game: its end and its length")
     w.ns.Locale.set("en")
     local en = texts(s)
     ok(has(en, "Game 1"), "game head")
-    ok(has(en, "2. g4 Qh4#"), "second pair")
-    ok(has(en, "Checkmate! " .. A .. " wins"), "end")
+    ok(has(en, "Checkmate! Иван wins"), "end")
     w.ns.Locale.set("bg")
     -- an odd number of moves ends on a single move, a resignation names the one who resigned
     local g = new(); feed(g); Chess.play(g, "e2e4"); feed(g)
@@ -146,7 +164,56 @@ describe("ui: the chess table history", function()
     feed(g)
     local lines = texts(s)
     ok(has(lines, "1. e4"), "single move")
-    ok(has(lines, A .. " се предаде") or has(lines, B .. " се предаде"), "resign line")
+    ok(has(lines, "Иван се предаде") or has(lines, "Мария се предаде"), "resign line")
+    ok(has(lines, "= Иван се предаде · 1 ход") or has(lines, "= Мария се предаде · 1 ход"), "one move")
+  end)
+
+  it("the window: each move its piece and squares, captures with the piece taken, castling, promotion, mate; inside the list", function()
+    H.observe(nil)
+    local st = new()
+    feed(st)
+    -- en passant (3. dxc6), a capture that promotes (5. bxa8=Q), castling (8. O-O), a bishop takes a bishop
+    Chess.play(st, "e2e4 d7d5 e4d5 c7c5 d5c6 b8a6 c6b7 c8d7 b7a8q g8f6 g1f3 e7e6 f1e2 d7b5 e1g1 b5e2")
+    feed(st)
+    local mate = new(1) -- the rematch: fool's mate
+    feed(mate); Chess.play(mate, "f2f3 e7e5 g2g4 d8h4"); feed(mate)
+    local game = H.tables["t#1"].hands[1]
+    local m = game.moves
+    eq({ m[5].ep, m[5].take, m[5].from, m[5].to }, { true, -1, "d5", "c6" })
+    eq({ m[9].take, m[9].promo, m[9].piece }, { -4, 5, 1 })
+    eq({ m[15].castle, m[15].piece, m[15].from, m[15].to }, { "K", 6, "e1", "g1" })
+    eq({ m[16].take, m[16].piece }, { 3, -3 })
+    eq(H.tables["t#1"].hands[2].moves[4].mate, true)
+    -- drawn: the newest game open, a click opens the older one; nothing past the list's right edge
+    local parent = w.G.CreateFrame("Frame", nil, w.G.UIParent)
+    parent:SetSize(532, 340)
+    local panel = H.buildPanel(parent)
+    panel:Show()
+    local s = { game = "chess", tid = "t#1", mySeat = 2 }
+    H.draw(panel, s)
+    local buttons = {}
+    for _, b in ipairs(panel.pool.kinds.button) do if b:IsShown() then buttons[#buttons + 1] = b end end
+    eq(#buttons, 2)
+    buttons[2]:GetScript("OnClick")(buttons[2])
+    local Fit = require("fit")
+    ok(Fit.check(panel.pool, panel.textW, "the chess history") > 40, "widgets checked")
+    -- a hover over a side's name gives the whole name
+    local hovers = {}
+    for _, p in ipairs(panel.pool.placed) do if p.r.objectType == "Frame" and p.r.name then hovers[#hovers + 1] = p.r.name end end
+    eq(#hovers, 4) -- the two sides of each game
+    for _, name in ipairs(hovers) do ok(name == game.names[1] or name == game.names[2], "a side's whole name: " .. tostring(name)) end
+    -- the icons on their light discs: every piece icon follows a disc at its place
+    local discs, icons = 0, 0
+    for _, p in ipairs(panel.pool.placed) do
+      if p.r.texture == w.ns.Theme.tex.chair then discs = discs + 1 end
+      if p.r.texture and p.r.texture:find("chess", 1, true) then icons = icons + 1 end
+    end
+    ok(icons > 20 and discs >= icons, "discs " .. discs .. " icons " .. icons)
+    -- the tags: castling, mate
+    local tags = {}
+    for _, p in ipairs(panel.pool.placed) do if p.r.objectType == "FontString" and p.r:IsShown() then tags[p.r.text] = true end end
+    ok(tags[w.ns.L("chess.history.castle")] and tags[w.ns.L("chess.history.mate")], "the tags")
+    ok(tags["d5"] and tags["c6"] and tags["e1"] and tags["g1"], "the squares")
   end)
 
   it("the history button stands at a chess table", function()
@@ -159,7 +226,7 @@ describe("ui: the chess table history", function()
     g:advance(0)
     g:click(T.view.inviteButton)
     for _, r in ipairs(T.view.picker.rows) do
-      if r.frame:IsVisible() and r.name:GetText() == BOT then g:click(r.frame) end
+      if r.frame:IsVisible() and r.peerName == BOT then g:click(r.frame) end
     end
     g:advance(0)
     g:advance(3)

@@ -36,7 +36,7 @@ local function setup(fen, minutes)
   w:advance(0)
   w:click(T.view.inviteButton)
   for _, r in ipairs(T.view.picker.rows) do
-    if r.frame:IsVisible() and r.name:GetText() == BOT then w:click(r.frame) end
+    if r.frame:IsVisible() and r.peerName == BOT then w:click(r.frame) end
   end
   w:advance(0)
   w:advance(3)
@@ -156,7 +156,7 @@ describe("ui: the chess view", function()
     c.button.scripts.OnClick(c.button)
     cell(f, "e5").button.scripts.OnClick(cell(f, "e5").button)
     eq({ acts, marked(f, "dot") }, { {}, {} })
-    eq(f.status:GetText(), "На ход е " .. BOT)
+    eq(f.status:GetText(), "На ход е Ivanov " .. w.ns.W.BOT_MARK) -- the bot's short name and its cog
   end)
 
   it("a promotion asks for the piece", function()
@@ -239,6 +239,22 @@ describe("ui: the chess view", function()
     eq({ p[1].clock:GetText(), p[2].clock:GetText() }, { "∞", "∞" })
   end)
 
+  -- Review: an untimed plate kept the 42 px of a running clock for its note; it needs only the sign's.
+  it("without a limit the note leaves only the sign's room, and never runs under it", function()
+    local w, T = setup(nil, 0)
+    local W = w.ns.W
+    for _, p in ipairs(T.view.plates) do
+      local pt = p.note.points[1]
+      eq({ pt[1], pt[3] }, { "RIGHT", "RIGHT" })
+      local right, sign = -pt[4], 6 + W.textWidth(p.clock) -- the clock stands 6 in, as wide as its text
+      eq(p.clock:GetText(), "∞")
+      ok(right >= sign + 2, "the note under the sign: " .. right .. " < " .. sign)
+      ok(right < 42, "the room of a running clock kept: " .. right)
+    end
+    local _, T2 = setup(nil, 10) -- a timed game keeps the clock's whole room
+    for _, p in ipairs(T2.view.plates) do eq(-p.note.points[1][4], 42) end
+  end)
+
   it("a view without seatClock keeps the plates as they were", function()
     local w = guildWow()
     local client, T = w.ns.client, w.ns.TableFrame
@@ -257,7 +273,7 @@ describe("ui: the chess view", function()
     T.render()
     ok(f.strip:IsVisible(), "the strip shows")
     eq(#w:texts("Приеми"), 1); eq(#w:texts("Откажи"), 1)
-    ok(plain(f.strip.text:GetText()):find(BOT, 1, true), "names the offerer")
+    ok(plain(f.strip.text:GetText()):find("Ivanov " .. w.ns.W.BOT_MARK, 1, true), "names the offerer")
     ok(not f.offer:IsShown(), "no offer of mine while theirs stands")
     w:click(f.decline); T.render()
     eq(s.state.offer, nil); eq(s.state.wait[2], 3)
@@ -280,7 +296,7 @@ describe("ui: the chess view", function()
     w:click(f.resign); w:click(d.yes); T.render()
     eq(acts, { { k = "resign" } })
     eq(s.state.phase, "over"); eq(s.state.result.reason, "resign")
-    eq(f.strip.text:GetText(), A .. " се предаде")
+    eq(f.strip.text:GetText(), "Иван се предаде")
     ok(not f.resign:IsShown(), "no resign after the end")
     ok(not T.view.plates[1].bar:IsShown() and not T.view.plates[2].bar:IsShown(), "no turn bar after the end")
   end)
@@ -289,7 +305,7 @@ describe("ui: the chess view", function()
     local w, T, f, s, _, set = setup()
     set(Chess.play(Chess.at("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", { first = 1, opt = { clock = 10 } }), "f2f3 e7e5 g2g4 d8h4"))
     ok(f.strip:IsVisible(), "the strip")
-    eq(f.strip.text:GetText(), "Мат! " .. BOT .. " печели")
+    eq(f.strip.text:GetText(), "Мат! Ivanov " .. w.ns.W.BOT_MARK .. " печели")
     ok(cell(f, "e1").check:IsShown() and not cell(f, "e8").check:IsShown(), "the king is red")
     eq(f.status:GetText(), "")
   end)
@@ -387,5 +403,32 @@ describe("ui: the chess view", function()
     end
     eq({ Theme.SKINS.alliance.color.sqLast[1] * 255, Theme.SKINS.horde.color.sqLast[2] * 255 }, { 0xff, 0x8c })
     eq(Theme.color.clockLow, { 1, 0x5a / 255, 0x4a / 255 })
+  end)
+end)
+
+-- QA (layout): the line of status lay at the felt's right under my plate, its text hidden there.
+describe("ui: the chess status line", function()
+  it("sits right of the last button shown, in the board's column: never under the plates", function()
+    local w, T, f, s = setup()
+    local plateX = w.ns.ChessPanels.X -- the plates' column
+    local function at()
+      local p = f.status.points[1]
+      eq({ p[1], p[2], p[3] }, { "LEFT", f, "TOPLEFT" })
+      return p[4], p[4] + f.status:GetWidth()
+    end
+    -- my turn: „Предложи реми“ and „Предай се“
+    local left, right = at()
+    eq(left, 8 + 124 + 8 + 124 + 12); eq(right, plateX - 15 - 8) -- clear of my plate's portrait
+    ok(right <= 8 + 496, "past the board: " .. right)
+    eq(f.status:GetText(), "Ти си на ход")
+    -- their turn, a long name: the bot's short name; shrunk, then wrapped in the same room
+    s.state.turn = 2; T.render()
+    left, right = at()
+    eq(right, plateX - 15 - 8); ok(f.status:GetText():find("Ivanov", 1, true), "the short name")
+    ok(select(2, f.status:GetFont()) >= 9, "unreadable")
+    -- no buttons (a watcher): the line from the board's left edge
+    s.mySeat = nil; T.render()
+    left = at()
+    eq(left, 8)
   end)
 end)
