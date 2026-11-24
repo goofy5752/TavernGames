@@ -516,6 +516,30 @@ scene("ledger", function()
   write("ledger", w, { w.ns.MainWindow.frame })
 end)
 
+-- „Нова маса“ on Белот with a gold stake and the game drop-down open (made only when named).
+scene("newtable", function()
+  local w = boot()
+  w.ns.MainWindow.show()
+  local D = w.ns.NewTableDialog
+  D.open("belot")
+  w:click(D.stake.options[2].frame)
+  D.goldBox:SetText("25"); D.silverBox:SetText("50")
+  w:click(D.picker)
+  run(w, 1)
+  write("newtable", w, { w.ns.MainWindow.frame })
+end, true)
+
+scene("newtable_gold", function()
+  local w = boot()
+  w.ns.MainWindow.show()
+  local D = w.ns.NewTableDialog
+  D.open("belot")
+  w:click(D.stake.options[2].frame)
+  D.goldBox:SetText("25"); D.silverBox:SetText("50")
+  run(w, 1)
+  write("newtable_gold", w, { w.ns.MainWindow.frame })
+end, true)
+
 scene("historytab", function()
   local w = boot{ seed = 21 }
   w:advance(w.ns.Const.LEDGER_ADOPT_WAIT + 1)

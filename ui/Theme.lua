@@ -57,6 +57,7 @@ local Theme = {
     oval = { 512, 256 }, chip = 32, -- Холдем: the oval table and a chip
     mug = 64, -- the addon icon's mug alone, by the window title
     botmark = 32, -- the brass cog after a bot's short name (ui/NameTag.lua, tools/gen_botmark.py)
+    dropdown = 32, -- the arrow of a drop-down (the game in „Нова маса“, tools/gen_dropdown.py)
   },
 }
 
