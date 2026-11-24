@@ -167,13 +167,10 @@ local function capped(fs)
   local path, size, flags = fs:GetFont()
   if size > STACK_SIZE then fs:SetFont(path, STACK_SIZE, flags) end
 end
--- The room a plate's sign of no limit („∞“, a view's seatClock "none") takes right of the note:
--- the sign's own width, not a running clock's NOTE_RIGHT.
+-- The room the sign of no limit („∞“, seatClock "none") takes right of the note: its own, not NOTE_RIGHT.
 local function signRoom(p)
-  local old = p.clock:GetText()
-  p.clock:SetText(ns.ChessModel.clockText(nil))
-  local room = NOTE_EDGE + W.textWidth(p.clock) + NOTE_GAP
-  p.clock:SetText(old)
+  local old = p.clock:GetText(); p.clock:SetText(ns.ChessModel.clockText(nil))
+  local room = NOTE_EDGE + W.textWidth(p.clock) + NOTE_GAP; p.clock:SetText(old)
   return math.min(NOTE_RIGHT, room)
 end
 
@@ -237,12 +234,8 @@ local function render(v, s, client)
     hero(p, client, name or nil)
     local onTurn = turn == i
     local clocked -- the clock shows on this plate: every seat's in a game of seat clocks, else the one on turn in a timed game
-    if view and view.seatClock then
-      local c = view.seatClock(s, i) -- "none": only the sign of no limit shows, in its own room
-      if c == "none" then clocked = signRoom(p) else clocked = c ~= nil end
-    else
-      clocked = onTurn and s.deadline ~= nil
-    end
+    local c = view and view.seatClock and view.seatClock(s, i) -- "none": only the sign of no limit, in its own room
+    if view and view.seatClock then clocked = c == "none" and signRoom(p) or c ~= nil else clocked = onTurn and s.deadline ~= nil end
     noteAndName(p, spot[3], view and view.seatNote and view.seatNote(s, i) or "", name and W.short(name, s.seats) or L("table.free"), clocked)
     p.portrait:turn(onTurn and name ~= false and name ~= nil) -- an empty chair never glows
     if view and view.seatClock then
