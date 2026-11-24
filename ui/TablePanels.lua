@@ -97,7 +97,7 @@ local function renderFair(v, s)
     key, tone, arg, arg2 = ns.Dice.status(s)
     if not key then key, tone, arg, arg2 = ns.Book.status(s) end
     line:SetShown(key ~= nil)
-    if key then line.text:SetText(L(key, arg or "?", arg2 or "?")); line.text:SetTextColor(Theme.rgb(tone)) end
+    if key then W.fitWrap(line.text, L(key, arg or "?", arg2 or "?"), line:GetWidth()); line.text:SetTextColor(Theme.rgb(tone)) end
     return
   end
   line:Show()
@@ -107,7 +107,7 @@ local function renderFair(v, s)
   local text = arg ~= nil and L(key, arg, arg2) or L(key)
   local claimer = (key == "fair.last" or key == "fair.lapse" or key:sub(1, 9) == "fair.void") and ns.Deal.claim(s) or nil
   if claimer then text = text .. " · " .. L("fair.claim", claimer) end
-  line.text:SetText(text)
+  W.fitWrap(line.text, text, line:GetWidth()) -- shrunk, then wrapped: never cut
   local verdict = key == "fair.last" and s.fairLast.verdict
   local amber = claimer or key == "fair.lapse"
   line.text:SetTextColor(Theme.rgb(ns.Deal.alarm(s) and "red" or amber and "gold" or verdict == "ok" and "good" or "inkDim"))
