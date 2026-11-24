@@ -50,6 +50,19 @@ local function owe(w, f, t, c, g)
   entry(w, f, "D", { gid = gid(), g = g or "ttt", f = f, t = t, c = c, why = "lost" })
 end
 
+
+-- Never cut: font string fs shrinks to 9 at the least, a word is never wider than its box, and it
+-- stays inside a row of `rowH`.
+local function fits(fs, rowH)
+  ok(select(2, fs:GetFont()) >= 9 * 0.91 - 0.01, "smaller than readable: " .. tostring(fs:GetText()))
+  ok(fs:GetUnboundedStringWidth() <= fs:GetWidth() + 0.01 or fs.wordWrap, "cut on one line: " .. tostring(fs:GetText()))
+  ok(fs:GetStringHeight() <= rowH, "taller than its row: " .. tostring(fs:GetText()))
+  for word in plain(fs:GetText()):gmatch("%S+") do
+    local probe = fs.parent:CreateFontString(nil, "OVERLAY"); probe:SetFont(fs:GetFont()); probe:SetText(word)
+    ok(probe:GetUnboundedStringWidth() <= fs:GetWidth() + 0.01, "a word cut: " .. word)
+  end
+end
+
 local function Bd(w) return w.ns.BoardTab end
 local function open(w) w.ns.MainWindow.show("board"); w:advance(0); return Bd(w).view end
 local function shown(w)
@@ -281,6 +294,25 @@ describe("ui: the tab „Класация“", function()
     eq(v.nameHead:GetText(), "Играч")
   end)
 
+end)
+
+describe("ui: the leaderboard keeps the whole names", function()
+  it("a long two-word name: whole (not the short one), shrunk then wrapped in its column; the net never cut", function()
+    local w = readyWow()
+    local LONG = "Константинопол Велики"
+    result(w, "ttt", { ME, LONG }, { 1 }, { 2 }); owe(w, LONG, ME, 99999999)
+    open(w)
+    local rows = shown(w)
+    eq(#rows, 2)
+    local r = rows[1].line.name == ME and rows[1] or rows[2]
+    local o = r == rows[1] and rows[2] or rows[1]
+    eq(plain(o.name:GetText()), LONG) -- the whole name, not the short one
+    for _, row in ipairs(rows) do
+      for _, key in ipairs({ "place", "name", "games", "wins", "pct", "net", "fav", "honour" }) do fits(row[key], 26) end
+    end
+    w:hover(o.frame); ok(table.concat(w.G.GameTooltip.lines):find("Константинопол Велики", 1, true), "the tooltip's name")
+    ok(not table.concat(w.G.GameTooltip.lines):find("Forever", 1, true), "a realm in the tooltip")
+  end)
 end)
 
 describe("ui: BookList", function()

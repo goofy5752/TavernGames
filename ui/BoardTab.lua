@@ -7,7 +7,8 @@ local _, ns = ...
 -- place, the name, games, wins, the percent, a bar for the gold net (green to the right
 -- of its middle when it is positive, red to the left when negative, at most 60 px a
 -- side, with the amount), the favourite game and an honour (a run of three or more wins
--- or losses). A click on a line opens that player's history (ui/HistoryTab.lua) when it
+-- or losses). The whole names without the realm (never the short ones); a text too long
+-- for its column shrinks, then wraps (W.fitWrap), never cut. A click on a line opens that player's history (ui/HistoryTab.lua) when it
 -- exists. The page redraws on "ledger", on the next frame and at most once per 2 s,
 -- only while it is shown (J3); the buttons and OnShow redraw at once.
 local Theme, W, L = ns.Theme, ns.W, ns.L
@@ -41,9 +42,9 @@ local function paint(client, who)
   local p = who ~= client.env.me and client.presence:get(who)
   local cls = who == client.env.me and client.env.cls or p and p.cls
   local colors = CUSTOM_CLASS_COLORS or RAID_CLASS_COLORS
-  if not (cls and colors and colors[cls]) then return who end
+  if not (cls and colors and colors[cls]) then return W.fullName(who) end
   local r, g, b = ns.classColor(cls)
-  return W.paint(who, r * BoardTab.DARK, g * BoardTab.DARK, b * BoardTab.DARK)
+  return W.paint(W.fullName(who), r * BoardTab.DARK, g * BoardTab.DARK, b * BoardTab.DARK)
 end
 
 -- „+5g“, „−3g 20s“ or „0“.
@@ -84,9 +85,11 @@ local function column(f, key, text, size, style)
   fs:SetPoint("LEFT", f, "LEFT", c[1], 0)
   fs:SetWidth(c[2])
   fs:SetJustifyH(c[3])
-  fs:SetWordWrap(false)
   return fs
 end
+
+-- `text` in the column of key `key`: shrunk, then wrapped, never cut (two lines at 9 fit a row).
+local function put(fs, key, text) W.fitWrap(fs, text, COL[key][2]) end
 
 local function makeRow(r)
   local f = r.frame
@@ -107,7 +110,7 @@ local function makeRow(r)
   r.pos:SetHeight(10); r.neg:SetHeight(10)
   r.net = column(f, "net", "", 12)
   r.fav, r.honour = column(f, "fav", "", 12, "paperNote"), column(f, "honour", "", 11, "paperNote")
-  W.tooltip(f, function(tip) if r.line then tip:SetText(L("board.row.tip", r.line.name)) end end)
+  W.tooltip(f, function(tip) if r.line then tip:SetText(L("board.row.tip", W.fullName(r.line.name))) end end)
   f:SetScript("OnMouseUp", function()
     if r.line and ns.HistoryTab then ns.HistoryTab.open(r.line.name) end
   end)
@@ -115,17 +118,17 @@ end
 
 local function fillRow(r, line, i)
   r.line = line
-  r.place:SetText(i .. ".")
-  r.name:SetText(line.who)
+  put(r.place, "place", i .. ".")
+  put(r.name, "name", line.who)
   r.portrait:set(ns.Portrait.who(ns.client, line.name))
   r.portrait:turn(line.king)
-  r.games:SetText(line.games); r.wins:SetText(line.wins); r.pct:SetText(line.pct)
-  r.net:SetText(line.net)
+  put(r.games, "games", line.games); put(r.wins, "wins", line.wins); put(r.pct, "pct", line.pct)
+  put(r.net, "net", line.net)
   r.pos:SetShown(line.bar > 0); r.neg:SetShown(line.bar < 0)
   if line.bar > 0 then r.pos:SetWidth(math.max(1, line.bar * BAR)) end
   if line.bar < 0 then r.neg:SetWidth(math.max(1, -line.bar * BAR)) end
-  r.fav:SetText(line.fav)
-  r.honour:SetText(line.honour or "")
+  put(r.fav, "fav", line.fav)
+  put(r.honour, "honour", line.honour or "")
 end
 
 -- Redraws the page now (only while it is on screen; OnShow redraws it).

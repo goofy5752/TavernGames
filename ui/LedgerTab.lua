@@ -7,9 +7,10 @@ local _, ns = ...
 -- author denied: „отречено“, or „отречено от автора си“ when I got it straight
 -- from that author), each group newest first. A partly paid debt shows what is
 -- left of it. Each line: „длъжник → кредитор“ (names in a darkened class colour
--- when presence knows the class, else in the ink of the page), its mark, the
--- amount and the age in calendar days, each in a fixed one-line column (a long
--- name is clipped); its tooltip gives the whole line, the game and the day,
+-- when presence knows the class, else in the ink of the page; the whole names
+-- without the realm, never the short ones), its mark, the amount and the age in
+-- calendar days, each in a fixed column: a long text shrinks, then wraps
+-- (W.fitWrap), never cut; its tooltip gives the whole line, the game and the day,
 -- and says „пренесено“ when an entry it rests on reached me only through a
 -- third player. The head counts the open debts, the foot names the biggest
 -- debtor (hidden when nobody owes). The lines are ordered once per redraw (one
@@ -29,7 +30,7 @@ ns.LedgerTab = LedgerTab
 
 local BOOK_W, PAD, HEAD_H, ROW_H, ROWS, FOOT_H = 760, 14, 52, 26, 16, 24
 local AGE_W, MARGIN = 56, 22
--- Fixed columns, one line each (clipped, never wrapped): 22 + 286 + 8 + 120 + 196 + 10 + 56 + 6 <= the row.
+-- Fixed columns (shrunk, then wrapped, never cut; two lines at 9 fit the row): 22 + 286 + 8 + 120 + 196 + 10 + 56 + 6 <= the row.
 -- The amount fits „остават 99g 98s от 99g 99s“ with a coin for each letter.
 local WHO_W, MARK_W, AMOUNT_W = 286, 120, 196
 local GROUP = { open = 1, pending = 2, contested = 3, paid = 4, denied = 5 }
@@ -47,9 +48,9 @@ local function name(client, who)
   local p = who ~= client.env.me and client.presence:get(who)
   local cls = who == client.env.me and client.env.cls or p and p.cls
   local colors = CUSTOM_CLASS_COLORS or RAID_CLASS_COLORS
-  if not (cls and colors and colors[cls]) then return who end
+  if not (cls and colors and colors[cls]) then return W.fullName(who) end
   local r, g, b = ns.classColor(cls)
-  return W.paint(who, r * LedgerTab.DARK, g * LedgerTab.DARK, b * LedgerTab.DARK)
+  return W.paint(W.fullName(who), r * LedgerTab.DARK, g * LedgerTab.DARK, b * LedgerTab.DARK)
 end
 
 local function date(client, t) return (client.env.date or ns.Pay.utc)(t) end
@@ -157,12 +158,10 @@ local function rowWidget(v, j)
   local who = W.Label(f, "paperNote", "", 14)
   who:SetPoint("LEFT", f, "LEFT", MARGIN, 0)
   who:SetWidth(WHO_W)
-  who:SetWordWrap(false)
   local mark = W.Label(f, "paperNote", "", 11)
   mark:SetTextColor(Theme.rgb("felt"))
   mark:SetPoint("LEFT", f, "LEFT", MARGIN + WHO_W + 8, 0)
   mark:SetWidth(MARK_W)
-  mark:SetWordWrap(false)
   local age = W.Label(f, "paper", "", 11)
   age:SetTextColor(AGE[1], AGE[2], AGE[3])
   age:SetJustifyH("RIGHT")
@@ -172,7 +171,6 @@ local function rowWidget(v, j)
   Theme.setFont(amount, "uiBold", 13)
   amount:SetJustifyH("RIGHT")
   amount:SetWidth(AMOUNT_W)
-  amount:SetWordWrap(false)
   amount:SetPoint("RIGHT", age, "LEFT", -10, 0)
   local strike = f:CreateTexture(nil, "OVERLAY")
   strike:SetColorTexture(Theme.color.felt[1], Theme.color.felt[2], Theme.color.felt[3], 1)
@@ -197,10 +195,10 @@ local function fillRow(v, r, i)
   r.line, r.index = l, i
   r.frame:ClearAllPoints()
   r.frame:SetPoint("TOPLEFT", v.scroll.content, "TOPLEFT", 0, -(i - 1) * ROW_H)
-  r.who:SetText(l.who)
-  r.mark:SetText(l.mark or "")
+  W.fitWrap(r.who, l.who, WHO_W)
+  W.fitWrap(r.mark, l.mark or "", MARK_W)
   r.mark:SetShown(l.mark ~= nil)
-  W.fit(r.amount, l.amount, AMOUNT_W)
+  W.fitWrap(r.amount, l.amount, AMOUNT_W)
   if l.state == "paid" then r.amount:SetTextColor(PAID[1], PAID[2], PAID[3]) else r.amount:SetTextColor(Theme.rgb("felt")) end
   r.age:SetText(l.age)
   r.strike:SetShown(l.state == "paid")
