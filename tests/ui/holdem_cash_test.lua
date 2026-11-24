@@ -159,7 +159,7 @@ describe("ui: the amounts on the felt", function()
     -- after the showdown: the win beside the plate, the words and the log in coins
     H.checkdown(st); View.update(f, sess(st, 1))
     eq({ f.seat[1].bet:GetText(), f.seat[1].chip:IsVisible(), plain(f.text:GetText()), f.log:GetText() },
-       { "+" .. w:coins("30s"), false, w:coins("Иван Петров взе 30s с флош"), w:coins("#1 Иван Петров взе 30s с флош") })
+       { "+" .. w:coins("30s"), false, w:coins("Иван взе 30s с флош"), w:coins("#1 Иван взе 30s с флош") })
     -- the same table for fun (no stake): numbers and the chip again
     View.update(f, funSess(dealt(false), 1))
     eq({ f.pot:GetText(), f.seat[2].bet:GetText(), f.seat[2].chip:IsVisible() }, { "Пот 15", "5", true })
@@ -202,7 +202,7 @@ describe("ui: the amounts on the felt", function()
     eq(both(2)[7], "Пот 70")
     H.checkdown(fun); H.checkdown(cash)
     local after = both(1)
-    eq({ after[2], after[11], after[12] }, { "+70", "Иван Петров взе 70 с флош", "#1 Иван Петров взе 70 с флош" })
+    eq({ after[2], after[11], after[12] }, { "+70", "Иван взе 70 с флош", "#1 Иван взе 70 с флош" })
     -- a hand won when the others fold, then a pot split three ways (all play the board): the same words either way
     local function deal(deckOf)
       for _, st in ipairs({ fun, cash }) do ok(E.apply(st, 0, { k = "hand" })); ok(E.apply(st, 0, { k = "deal", deck = deckOf(st) })) end
@@ -210,7 +210,7 @@ describe("ui: the amounts on the felt", function()
     deal(function() return E.DECK end)
     for _ = 1, 2 do local seat = fun.turn; ok(E.apply(fun, seat, { k = "fold" })); ok(E.apply(cash, seat, { k = "fold" })) end
     after = both(1)
-    eq({ after[11], after[12] }, { "Иван Петров взе 10. Останалите се отказаха.", "#2 Иван Петров взе 10 без показване" })
+    eq({ after[11], after[12] }, { "Иван взе 10. Останалите се отказаха.", "#2 Иван взе 10 без показване" })
     deal(function(st) return H.deckFor(st, { [1] = "2C 3D", [2] = "2D 3C", [3] = "2H 3S" }, "TC JD QH KS AD") end)
     H.checkdown(fun); H.checkdown(cash)
     after = both(1)

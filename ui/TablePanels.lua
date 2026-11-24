@@ -38,31 +38,31 @@ local function pickerRow(picker, i)
   b:SetScript("OnEnter", function() hl:Show() end)
   b:SetScript("OnLeave", function() hl:Hide() end)
   local name = W.Label(b, "ui", "", 12)
-  name:SetWidth(picker.rowW - 4)
-  name:SetWordWrap(false)
   name:SetPoint("LEFT", b, "LEFT", 2, 0)
   r = { frame = b, name = name }
   b:SetScript("OnClick", function() TableFrame.invite(r.peerName) end)
+  W.nameTip(b, function() return r.peerName end)
   picker.rows[i] = r
   return r
 end
 
--- Everyone in the tavern with a compatible addon who is not seated at my table.
+-- Everyone in the tavern with a compatible addon who is not seated at my table, by the
+-- short name among the list's (a hover gives the whole name; shrunk, then wrapped, never cut).
 local function renderPicker(v, client, s)
-  local picker, n = v.picker, 0
+  local picker, list, names = v.picker, {}, {}
   for _, p in ipairs(client.presence:list()) do
-    if not p.incompatible and not seated(s.seats, p.name) then
-      n = n + 1
-      local r = pickerRow(picker, n)
-      r.peerName = p.name
-      r.name:SetText(p.name)
-      r.name:SetTextColor(ns.classColor(p.cls))
-      r.frame:Show()
-    end
+    if not p.incompatible and not seated(s.seats, p.name) then list[#list + 1] = p; names[#names + 1] = p.name end
   end
-  for i = n + 1, #picker.rows do picker.rows[i].frame:Hide() end
-  picker.scroll:setContentHeight(n * PICK_ROW_H)
-  picker.empty:SetShown(n == 0)
+  for n, p in ipairs(list) do
+    local r = pickerRow(picker, n)
+    r.peerName = p.name
+    W.fitWrap(r.name, W.short(p.name, names), picker.rowW - 4)
+    r.name:SetTextColor(ns.classColor(p.cls))
+    r.frame:Show()
+  end
+  for i = #list + 1, #picker.rows do picker.rows[i].frame:Hide() end
+  picker.scroll:setContentHeight(#list * PICK_ROW_H)
+  picker.empty:SetShown(#list == 0)
 end
 
 function TableFrame.togglePicker()

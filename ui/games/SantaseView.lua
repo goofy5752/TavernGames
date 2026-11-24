@@ -330,7 +330,7 @@ local function drawText(f, s, m)
   end
   local args = {}
   for k = 2, #t do args[k - 1] = t[k] end
-  if type(args[1]) == "string" then args[1] = W.colored(ns.client, args[1]) end
+  if type(args[1]) == "string" then args[1] = W.shortColored(ns.client, args[1], s.seats) end
   f.text:SetText(L(t[1], unpack(args)))
   local phase = s.state.phase
   f.text:SetTextColor(Theme.rgb((phase == "hand" or s:gameOver()) and "gold" or "ink"))

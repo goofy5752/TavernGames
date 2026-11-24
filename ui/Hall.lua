@@ -37,12 +37,12 @@ local TABLE_SIZE, TOP_SIZE, CHAIR_R, LABEL_R = 150, 94, 60, 80
 local LIFT = 24
 local GAME_H, ROW_H = 40, 40
 -- Chair name labels fit around a table of at most this many seats; at a larger
--- one only the tooltips name the players.
+-- one only the tooltips name the players. A label is the short name (ui/NameTag.lua)
+-- in CHAIR_LABEL_W, the host's on the top in HOST_W: shrunk, then wrapped, never cut.
 local LABELLED_SEATS = 4
+local CHAIR_LABEL_W, HOST_W = 76, TOP_SIZE - 8
 
 local MESSAGES = { noguild = "hall.noguild", wait = "hall.wait", empty = "hall.empty" }
-
-local firstWord = W.firstWord
 
 -- The first UTF-8 character of `text`.
 local function initial(text) return text:match("^[%z\1-\127\194-\244][\128-\191]*") or "" end
@@ -175,10 +175,10 @@ end
 function Hall.tableTooltip(tip, rec)
   local client = ns.client
   if not rec or not client then return end
-  tip:SetText(L("hall.host", gameName(rec.game), colored(client, rec.host)), Theme.rgb("gold"))
+  tip:SetText(L("hall.host", gameName(rec.game), colored(client, rec.host, W.fullName(rec.host))), Theme.rgb("gold"))
   for i = 1, #rec.seats do
     local name = rec.seats[i]
-    if name then tip:AddLine(name, nameColor(client, name)) end
+    if name then tip:AddLine(W.fullName(name), nameColor(client, name)) end
   end
   tip:AddLine(L("access." .. tostring(rec.access)) .. " · " .. W.timeText(rec.game, rec.turn, rec.opt), Theme.rgb("inkDim"))
   if stakeText(rec) then tip:AddLine(stakeText(rec), Theme.rgb("gold")) end
@@ -196,7 +196,7 @@ function Hall.chairTooltip(tip, rec, seat)
   if not rec or not client then return end
   local name = rec.seats[seat]
   if name then
-    tip:SetText(name, nameColor(client, name))
+    tip:SetText(W.fullName(name), nameColor(client, name))
   else
     tip:SetText(L("hall.tip.sit"), Theme.rgb("good"))
     if stakeText(rec) then tip:AddLine(stakeText(rec), Theme.rgb("gold")) end
@@ -297,7 +297,7 @@ local function fillTable(t, rec, client, compact)
   -- the picture on the top names it, the label keeps only the stake.
   local stake = stakeText(rec) or L("table.stake.none")
   t.label:SetText((compact and pic) and stake or gameName(rec.game) .. " · " .. stake)
-  t.host:SetText(firstWord(rec.host))
+  W.fitWrap(t.host, W.short(rec.host, rec.seats), HOST_W)
   t.host:SetTextColor(nameColor(client, rec.host))
   t.state:SetText(L("hall.live"))
   t.state:SetShown(rec.state == "live")
@@ -314,7 +314,7 @@ local function fillTable(t, rec, client, compact)
     c.label:SetPoint("CENTER", t.frame, "CENTER", x * k, y * k)
     c.empty = not name
     if name then
-      c.label:SetText(firstWord(name))
+      W.fitWrap(c.label, W.short(name, rec.seats), CHAIR_LABEL_W)
       c.label:SetTextColor(nameColor(client, name))
       c.label:SetShown(labelled)
       c.button:SetEnabled(false)
@@ -361,6 +361,7 @@ local function rowWidget(v, i)
   local sub = W.Label(f, "dim", "")
   sub:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -2)
   r = { frame = f, mark = mark, title = title, sub = sub }
+  W.nameTip(f, function() return r.rec and r.rec.host end)
   local action = W.Button(f, "", function() Hall.clickRow(r) end, true)
   action:SetSize(74, 22)
   action:SetPoint("RIGHT", f, "RIGHT", -4, 0)
@@ -376,7 +377,7 @@ end
 
 local function fillRow(r, rec, client)
   r.rec, r.tid = rec, rec.tid
-  r.title:SetText(L("hall.host", gameName(rec.game), colored(client, rec.host)))
+  r.title:SetText(L("hall.host", gameName(rec.game), W.shortColored(client, rec.host, rec.seats)))
   r.sub:SetText(L("access." .. tostring(rec.access)) .. " · " .. W.timeText(rec.game, rec.turn, rec.opt) .. " · " .. (stakeText(rec) or L("table.stake.none")))
   r.seats:SetText(seatedCount(rec.seats) .. "/" .. #rec.seats)
   r.state:SetText(L(rec.state == "live" and "hall.live" or "hall.waiting"))

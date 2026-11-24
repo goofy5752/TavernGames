@@ -152,7 +152,7 @@ function TableFrame.invite(name)
   local client = ns.client
   TableFrame.view.picker:Hide()
   if not client then return end
-  local who = W.colored(client, name)
+  local who = W.shortColored(client, name)
   TableFrame.say(L(client:invite(name) and "invite.sent" or "invite.fail", who))
 end
 
@@ -199,7 +199,7 @@ local function bannerKey(s, engine)
   if TableFrame.resyncTid == s.tid then return "table.resynced" end
   local left, silent
   if s.holdTimer and s.role == "host" then left, silent = ns.Stakes.held(s) end
-  if left then return silent and "table.holdSilent" or "table.holdStart", silent and W.colored(ns.client, silent) or math.max(1, math.ceil(left)), left end
+  if left then return silent and "table.holdSilent" or "table.holdStart", silent and W.shortColored(ns.client, silent, s.seats) or math.max(1, math.ceil(left)), left end
   if s.status == "aborted" then return "table.aborted" end
   if s.status ~= "open" then return nil end
   if engine.start ~= "host" then return engine.minSeats > 2 and "table.waitingMore" or "table.waiting" end

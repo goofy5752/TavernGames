@@ -1,8 +1,9 @@
 local _, ns = ...
 
 -- The lower part of the hall's right column (below „Сметки“, ui/Accounts.lua),
--- „В кръчмата сега“: every guild member with the
--- addon, in class color, and where they are (in the hall, at a table, watching).
+-- „В кръчмата сега“: every guild member with the addon by the short name
+-- (ui/NameTag.lua: among the list's names; a hover gives the whole name), in class
+-- color, and where they are (in the hall, at a table, watching).
 -- A click on a name offers „Покани“ while I host a table with a free seat
 -- (Hall.clickPeer, Hall.invite). Hall is looked up at call time: this file
 -- loads before ui/Hall.lua.
@@ -12,6 +13,8 @@ local HallPeers = {}
 ns.HallPeers = HallPeers
 
 local PEER_H = 26
+-- The name's column: the row less the portrait and the status (or „Покани“) at the right.
+function HallPeers.NAME_W(v) return v.peerW - 100 end
 
 -- May I invite `name` to my table now: I host with a free seat, the name is
 -- not seated there, and its client speaks our protocol?
@@ -37,8 +40,6 @@ local function peerWidget(v, i)
   b:SetScript("OnEnter", function() hl:Show() end)
   b:SetScript("OnLeave", function() hl:Hide() end)
   local name = W.Label(b, "ui", "", 12)
-  name:SetWidth(v.peerW - 100)
-  name:SetWordWrap(false)
   name:SetPoint("LEFT", b, "LEFT", 28, 0)
   local portrait = ns.Portrait.new(b, 22)
   portrait.frame:SetPoint("LEFT", b, "LEFT", 2, 0)
@@ -52,6 +53,7 @@ local function peerWidget(v, i)
   invite:Hide()
   r.invite = invite
   b:SetScript("OnClick", function() ns.Hall.clickPeer(r) end)
+  W.nameTip(b, function() return r.peerName end)
   v.peers[i] = r
   return r
 end
@@ -61,7 +63,7 @@ local function whereIs(client, p, byTid)
   local rec = p.at and byTid[p.at]
   if not rec then return L("peers.hall") end
   if Util.contains(rec.seats, p.name) then
-    return L("peers.at", W.colored(client, rec.host, W.firstWord(rec.host)))
+    return L("peers.at", W.shortColored(client, rec.host, rec.seats))
   end
   return L("peers.watching")
 end
@@ -75,11 +77,12 @@ function HallPeers.render(v, client)
     local recs = client.lobby:tables()
     for i = 1, #recs do byTid[recs[i].tid] = recs[i] end
   end
-  local selectedListed = false
+  local selectedListed, names = false, {}
+  for i, p in ipairs(peers) do names[i] = p.name end
   for i, p in ipairs(peers) do
     local r = peerWidget(v, i)
     r.peerName = p.name
-    r.name:SetText(p.name)
+    W.fitWrap(r.name, W.short(p.name, names), HallPeers.NAME_W(v)) -- the short name among the list's
     r.portrait:set(ns.Portrait.who(client, p.name))
     r.name:SetTextColor(ns.classColor(p.cls))
     r.status:SetText(whereIs(client, p, byTid))

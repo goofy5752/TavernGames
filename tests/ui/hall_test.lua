@@ -264,8 +264,8 @@ describe("ui: hall", function()
     eq(w.ns.Hall.mode, "list"); eq(view.floor:IsVisible(), false); ok(view.list:IsVisible(), "list hidden")
     eq(visible(view.rows), 9)
     local first, last = view.rows[1], view.rows[9]
-    eq(first.title:GetText(), "Морски шах при |cffc79c6eГост 1|r")
-    eq(view.rows[2].title:GetText(), "Морски шах при |cfff2e6c8Гост 2|r") -- no class known: ink
+    eq(first.title:GetText(), "Морски шах при |cffc79c6eГост|r") -- the short name
+    eq(view.rows[2].title:GetText(), "Морски шах при |cfff2e6c8Гост|r") -- no class known: ink
     eq(first.seats:GetText(), "1/2"); eq(first.state:GetText(), "чака"); eq(first.action.text:GetText(), "Седни")
     eq(last.seats:GetText(), "2/2"); eq(last.state:GetText(), "тече"); eq(last.action.text:GetText(), "Гледай")
     w:click(first.action)
@@ -329,7 +329,7 @@ describe("ui: hall", function()
     hi(w, D, "WARRIOR", tid); hi(w, B, "MAGE"); hi(w, C, "WARRIOR", tid); hi(w, "Яна Жекова", "MAGE", tid)
     local rows, byName = w.ns.Hall.view.peers, {}
     for _, r in ipairs(rows) do
-      if r.frame:IsVisible() then byName[r.name:GetText()] = r end
+      if r.frame:IsVisible() then byName[r.peerName] = r end
     end
     eq(byName[B].status:GetText(), "в залата")
     eq({ byName[B].name:GetTextColor() }, { 0.25, 0.78, 0.92, 1 })
@@ -586,5 +586,60 @@ describe("ui: the table label stays clear of the chair labels", function()
         end
       end
     end
+  end)
+end)
+
+describe("ui: short names in the hall, the whole name on hover", function()
+  local P, K, BOT = "Ivan Petrovski", "Ivan Kolev", "Bot Barleybrew"
+
+  it("chairs and the host: two Ivans take an initial, a bot its own name and the cog; a hover names the whole", function()
+    local w = guildWow()
+    w.ns.MainWindow.show()
+    local W = w.ns.W
+    hi(w, P, "MAGE")
+    tbl(w, P, { P, K, BOT, false }, "open", "belot")
+    local t = w.ns.Hall.view.tables[1]
+    eq({ t.chairs[1].label:GetText(), t.chairs[2].label:GetText(), t.chairs[3].label:GetText() },
+      { "Ivan P.", "Ivan K.", "Barleybrew " .. W.BOT_MARK })
+    eq(t.host:GetText(), "Ivan P.")
+    w:hover(t.chairs[1].button); eq(w.G.GameTooltip.lines, { P })
+    w:hover(t.chairs[3].button); eq(w.G.GameTooltip.lines, { BOT })
+    w:hover(t.top)
+    eq({ w.G.GameTooltip.lines[2], w.G.GameTooltip.lines[3], w.G.GameTooltip.lines[4] }, { P, K, BOT })
+    ok(w.G.GameTooltip.lines[1]:find(P, 1, true), "the host's whole name in the title")
+    -- each label in its column: shrunk, then wrapped, never cut
+    for i = 1, 3 do
+      local fs = t.chairs[i].label
+      ok(fs:GetUnboundedStringWidth() <= 76 or fs.wordWrap, "chair label " .. i); ok(select(2, fs:GetFont()) >= 9 * 0.91 - 0.01, "readable")
+    end
+  end)
+
+  it("a long one-word name on a chair shrinks to fit its column, then breaks; nothing is cut", function()
+    local w = guildWow()
+    w.ns.MainWindow.show()
+    local LONG = "Barleybrewstersonwood Hill"
+    hi(w, LONG, "MAGE")
+    tbl(w, LONG, { LONG, false })
+    local fs = w.ns.Hall.view.tables[1].chairs[1].label
+    ok(select(2, fs:GetFont()) < 10, "shrunk to the floor")
+    for line in (fs:GetText() .. "\n"):gmatch("(.-)\n") do
+      local probe = fs.parent:CreateFontString(nil, "OVERLAY"); probe:SetFont(fs:GetFont()); probe:SetText(line)
+      ok(probe:GetUnboundedStringWidth() <= 76, "a line wider than its column: " .. line)
+    end
+    eq((fs:GetText():gsub("\n", "")), "Barleybrewstersonwood")
+  end)
+
+  it("„В кръчмата сега“: the short names among the list's, the status names the host short; a hover names the whole", function()
+    local w = guildWow()
+    w.ns.MainWindow.show()
+    local tid = tbl(w, P, { P, K }, "live")
+    hi(w, P, "MAGE", tid); hi(w, K, "WARRIOR", tid); hi(w, BOT, "PRIEST")
+    local byName = {}
+    for _, r in ipairs(w.ns.Hall.view.peers) do if r.frame:IsVisible() then byName[r.peerName] = r end end
+    eq({ byName[P].name:GetText(), byName[K].name:GetText(), byName[BOT].name:GetText() },
+      { "Ivan P.", "Ivan K.", "Barleybrew " .. w.ns.W.BOT_MARK })
+    eq(byName[K].status:GetText(), "на маса при " .. w.ns.W.paint("Ivan P.", w.ns.W.nameColor(w.ns.client, P)))
+    w:hover(byName[K].frame); eq(w.G.GameTooltip.lines, { K })
+    byName[K].frame.scripts.OnLeave(byName[K].frame); eq(w.G.GameTooltip:IsShown(), false)
   end)
 end)

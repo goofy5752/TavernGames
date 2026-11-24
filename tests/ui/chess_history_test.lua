@@ -221,7 +221,7 @@ describe("ui: the chess table history", function()
     g:advance(0)
     g:click(T.view.inviteButton)
     for _, r in ipairs(T.view.picker.rows) do
-      if r.frame:IsVisible() and r.name:GetText() == BOT then g:click(r.frame) end
+      if r.frame:IsVisible() and r.peerName == BOT then g:click(r.frame) end
     end
     g:advance(0)
     g:advance(3)

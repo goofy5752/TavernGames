@@ -351,7 +351,7 @@ local function drawText(f, st, m)
   local args = {}
   for k = 2, #t do
     local x = t[k]
-    args[k - 1] = type(x) == "string" and W.colored(ns.client, x) or x
+    args[k - 1] = type(x) == "string" and W.seatColored(x) or x
   end
   f.text:SetText(L(t[1], unpack(args)))
   f.text:SetTextColor(Theme.rgb((st.phase == "game" or st.phase == "match") and "gold" or "ink"))

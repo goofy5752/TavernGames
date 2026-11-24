@@ -51,7 +51,7 @@ local function matchWithBot()
   w:click(v.inviteButton)
   local row
   for _, r in ipairs(v.picker.rows) do
-    if r.frame:IsVisible() and r.name:GetText() == BOT then row = r end
+    if r.frame:IsVisible() and r.peerName == BOT then row = r end
   end
   assert(row, "no row for the bot in the picker")
   w:click(row.frame)
@@ -90,7 +90,7 @@ describe("ui: table frame", function()
     w:advance(0)
     local v = w.ns.TableFrame.view
     ok(v.banner:IsVisible(), "no banner"); eq(v.bannerText:GetText(), "Чакаме втори играч…")
-    eq(v.plates[1].name:GetText(), ME); eq(color(v.plates[1].name), MAGE)
+    eq(v.plates[1].name:GetText(), "Иван"); eq(color(v.plates[1].name), MAGE) -- the short name
     eq(v.plates[1].note:GetText(), w.ns.W.paint("Х", w.ns.Theme.rgb("brassLight")))
     eq(v.plates[2].name:GetText(), L("table.free"))
     eq(v.plates[1].portrait.glow:IsVisible(), false); eq(v.plates[1].clock:IsVisible(), false)
@@ -116,8 +116,8 @@ describe("ui: table frame", function()
     eq(v.picker:IsShown(), false)
     eq(v.inviteButton:IsVisible(), false) -- no free seat any more
     eq(v.banner:IsVisible(), false)
-    eq(v.line:GetText(), "|cffffffff" .. BOT .. "|r прие поканата.")
-    eq(v.plates[2].name:GetText(), BOT); eq(color(v.plates[2].name), PRIEST)
+    eq(v.line:GetText(), "|cffffffffIvanov|r " .. w.ns.W.BOT_MARK .. " прие поканата.") -- the short name, the cog
+    eq(v.plates[2].name:GetText(), "Ivanov " .. w.ns.W.BOT_MARK); eq(color(v.plates[2].name), PRIEST)
     eq(v.plates[2].note:GetText(), "|cffe2735aО|r")
     -- I start: the ring and the clock are on my plate, the edge is gold.
     ok(v.plates[1].portrait.glow:IsVisible(), "no ring on my plate"); eq(v.plates[2].portrait.glow:IsVisible(), false)
@@ -205,6 +205,34 @@ describe("ui: table frame", function()
       ok(noteLeft >= 40 and nameRight <= 150, "outside the plate")
       ok(p.clock:IsShown() and 150 - 6 - p.clock:GetStringWidth() >= noteRight, "the note meets the clock")
     end
+  end)
+
+  it("plates: the short names among the seats (two Ivans an initial, a bot its cog), the whole name on hover, never cut", function()
+    local w = withBots(); local T = w.ns.TableFrame
+    T.registerView("holdem", { size = { 760, 532 }, ring = true, update = function() end, seatNote = function() return "" end,
+      build = function(parent) local f = w.G.CreateFrame("Frame", nil, parent); f:SetSize(parent:GetWidth(), parent:GetHeight()); return f end })
+    w.ns.client:openTable{ game = "holdem", access = "invite", turn = 45 }; w:advance(0)
+    local v, s = T.view, w.ns.client.session
+    local P, K, LONG = "Ivan Petrovski", "Ivan Kolev", "Barleybrewstersonwoodhill Hill"
+    s.seats[1], s.seats[2], s.seats[3], s.seats[4] = P, K, "Bot Barleybrew", LONG
+    T.plates.render(v, s, w.ns.client)
+    eq({ v.plates[1].name:GetText(), v.plates[2].name:GetText(), v.plates[3].name:GetText() },
+      { "Ivan P.", "Ivan K.", "Barleybrew " .. w.ns.W.BOT_MARK })
+    w:hover(v.plates[1].frame); eq(w.G.GameTooltip.lines, { P })
+    v.plates[1].frame.scripts.OnLeave(v.plates[1].frame)
+    w:hover(v.plates[3].frame); eq(w.G.GameTooltip.lines, { "Bot Barleybrew" })
+    v.plates[3].frame.scripts.OnLeave(v.plates[3].frame)
+    -- a long first word: down to the readable floor, then broken onto the next line, not cut
+    local fs = v.plates[4].name
+    ok(select(2, fs:GetFont()) >= 9 * 0.93 - 0.01, "smaller than readable")
+    eq((fs:GetText():gsub("\n", "")), "Barleybrewstersonwoodhill")
+    for line in (fs:GetText() .. "\n"):gmatch("(.-)\n") do
+      local probe = fs.parent:CreateFontString(nil, "OVERLAY"); probe:SetFont(fs:GetFont()); probe:SetText(line)
+      ok(probe:GetUnboundedStringWidth() <= fs:GetWidth() + 0.01, "a line past its column: " .. line)
+    end
+    -- a free seat has no tooltip
+    s.seats[4] = false; T.plates.render(v, s, w.ns.client)
+    w.G.GameTooltip:Hide(); w:hover(v.plates[4].frame); eq(w.G.GameTooltip:IsShown(), false)
   end)
 
   it("the felt wears the faction: its texture, the crest as a watermark, the stitch", function()
@@ -316,7 +344,7 @@ describe("ui: table frame", function()
     w.ns.client:openTable{ game = "ttt", access = "invite", turn = 45 }
     w:advance(0)
     local v, emit = w.ns.TableFrame.view, function(...) w.ns.client.events:emit("inviteAnswer", ...) end
-    local who = "|cfff2e6c8" .. B .. "|r" -- class unknown: ink
+    local who = "|cfff2e6c8Мария|r" -- the short name; class unknown: ink
     local cases = {
       { { "yes" }, who .. " прие поканата." },
       { { "no" }, who .. " отказа поканата." },
@@ -401,7 +429,7 @@ describe("ui: table frame, host-started games", function()
     w:click(v.inviteButton)
     local row
     for _, r in ipairs(v.picker.rows) do
-      if r.frame:IsVisible() and r.name:GetText() == BOT then row = r end
+      if r.frame:IsVisible() and r.peerName == BOT then row = r end
     end
     assert(row, "no row for the bot in the picker")
     w:click(row.frame)
@@ -499,7 +527,7 @@ describe("ui: table frame, card fairness", function()
     w:click(v.inviteButton)
     local row
     for _, r in ipairs(v.picker.rows) do
-      if r.frame:IsVisible() and r.name:GetText() == BOT then row = r end
+      if r.frame:IsVisible() and r.peerName == BOT then row = r end
     end
     assert(row, "no row for the bot in the picker")
     w:click(row.frame)
@@ -778,7 +806,7 @@ describe("ui: table frame, a staked Сантасе that fills up again", functio
     w:advance(1.5)
     eq(v.bannerText:GetText(), L("table.holdStart", 24))
     -- A seated player silent for SILENT_AFTER: the line names her, it never restarts a count.
-    local silent = w.ns.W.colored(client, "Тодор Ангелов")
+    local silent = w.ns.W.colored(client, "Тодор Ангелов", "Тодор") -- the short name
     s.lastHeard["Тодор Ангелов"] = client.env.now() - w.ns.Const.SILENT_AFTER
     w:advance(1)
     eq(v.bannerText:GetText(), L("table.holdSilent", silent))
@@ -866,7 +894,7 @@ describe("ui: Морски шах view", function()
     st.board = { 1, 1, 1, 2, 2, 0, 0, 0, 0 }; st.line = { 1, 2, 3 }; st.score = { 3, 1 }
     st.turn, st.phase, st.winner = nil, "match", 1
     view.update(f, session(st, 2))
-    ok(f.result:IsVisible(), "no result"); eq(f.result:GetText(), "|cff40c7eb" .. ME .. "|r печели мача!")
+    ok(f.result:IsVisible(), "no result"); eq(f.result:GetText(), "|cff40c7ebИван|r печели мача!")
     ok(f.rematch:IsVisible(), "no Реванш"); eq(f.rematch.text:GetText(), "Реванш")
     eq(f.waiting:IsVisible(), false)
     w:click(f.rematch)
@@ -874,10 +902,14 @@ describe("ui: Морски шах view", function()
     st.rematch = { false, true }
     view.update(f, session(st, 2))
     eq(f.rematch:IsVisible(), false)
-    ok(f.waiting:IsVisible(), "no waiting line"); eq(f.waiting:GetText(), "Чакаме |cff40c7eb" .. ME .. "|r…")
+    ok(f.waiting:IsVisible(), "no waiting line"); eq(f.waiting:GetText(), "Чакаме |cff40c7ebИван|r…")
     view.update(f, session(st, nil))
     ok(f.result:IsVisible(), "watcher sees no result")
     eq(f.rematch:IsVisible(), false); eq(f.waiting:IsVisible(), false)
+    -- two Ivans at the table: the line names the winner with his initial
+    local two = session(st, 2); two.seats = { "Иван Петров", "Иван Колев" }
+    view.update(f, two)
+    eq(f.result:GetText(), "|cff40c7ebИван П.|r печели мача!")
   end)
 end)
 
@@ -894,7 +926,8 @@ describe("ui: invite toast", function()
     eq(T.title:GetText(), "Покана за Морски шах")
     local host = w.ns.client.invites.received.host
     ok(T.text:GetText():find("те кани на Морски шах", 1, true), "text: " .. tostring(T.text:GetText()))
-    ok(T.text:GetText():find(host, 1, true), "no host name")
+    ok(T.text:GetText():find(w.ns.Names.short(host), 1, true), "no host's short name")
+    w:hover(T.frame); eq(w.G.GameTooltip.lines, { host }) -- a hover gives the whole name
     eq(T.accept.text:GetText(), L("invite.accept")); eq(T.notNow.text:GetText(), L("invite.notNow"))
     eq(T.snooze.text:GetText(), L("invite.snooze"))
     eq(T.snooze.text:GetText(), "Не ме безпокой 30 мин")

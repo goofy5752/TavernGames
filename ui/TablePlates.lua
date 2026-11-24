@@ -12,7 +12,10 @@ local _, ns = ...
 -- game's mark for the seat (seatNote); on the plate on turn a gold edge, the
 -- turn clock and a 3 px gold line along the bar's bottom (under the pips) as
 -- wide as the share of the turn time left. A portrait is set only when the
--- seat's hero changes. TableFrame.plates is what the frame calls.
+-- seat's hero changes. The name is the short one among the table's seats
+-- (ui/NameTag.lua, a bot's with its cog), shrunk and then wrapped in its column,
+-- never cut; a hover over the plate gives the whole name. TableFrame.plates is
+-- what the frame calls.
 local TableFrame = ns.TableFrame
 local Theme, W, L, Portrait = ns.Theme, ns.W, ns.L, ns.Portrait
 
@@ -20,6 +23,7 @@ local PLATE_W, PLATE_H = 190, 26          -- plate size before ns.HallLayout.pla
 local PORTRAIT, NAME_X = 30, 40           -- the hero centred on the bar's left end; the name after it
 local PLATE_NAME_INSET = NAME_X + 64      -- the plate width the portrait and the clock/note keep from the name
 local NOTE_RIGHT, NOTE_GAP, NAME_MIN = 42, 4, 32 -- the note ends 42 px in (the clock's room); a gap to the name; the least name a wide note leaves
+local NAME_LEAST = 16                     -- a name's column is never narrower (W.fitWrap breaks it by letters there)
 local PIPS, PIP_W, PIP_H, PIP_GAP = 8, 5, 8, 3 -- eight reach NAME_X + 61: inside the name's column on every plate
 local PIP_Y = 1                           -- the pips' middle over the bar's bottom edge, clear of the line of text
 local TURN_H = 3                          -- the turn bar along the bottom
@@ -39,8 +43,6 @@ local function plateWidget(v, i)
   portrait.frame:SetPoint("CENTER", f, "LEFT", 0, 0)
   local name = W.Label(f, "ui", "", 12)
   Theme.setFont(name, "uiBold", 12)
-  name:SetWordWrap(false)
-  name:SetWidth(PLATE_W - PLATE_NAME_INSET)
   name:SetPoint("LEFT", f, "LEFT", NAME_X, 0)
   local clock = W.Label(f, "ui", "", 12)
   clock:SetTextColor(Theme.rgb("gold"))
@@ -68,6 +70,7 @@ local function plateWidget(v, i)
     tricks[k] = t
   end
   p = { frame = f, edges = edges, portrait = portrait, name = name, note = note, clock = clock, bar = bar, tricks = tricks }
+  W.nameTip(f, function() return p.seatName end)
   v.plates[i] = p
   return p
 end
@@ -136,13 +139,14 @@ local function tick(v, s)
   end
 end
 
--- The note, and the name's width in what the note leaves: the name ends NOTE_GAP before the
--- note, never past its old column; the note shrinks (W.fit) so that the name keeps NAME_MIN
--- if it can (a stack in coins at Холдем). The two never meet, whatever the note.
-local function noteAndName(p, w, text)
+-- The note, and the name in what the note leaves: the name ends NOTE_GAP before the note,
+-- never past its old column; the note shrinks (W.fit) so that the name keeps NAME_MIN if it
+-- can (a stack in coins at Холдем). The name shrinks, then wraps (W.fitWrap): never cut. The
+-- two never meet, whatever the note.
+local function noteAndName(p, w, text, name)
   local room = w - NOTE_RIGHT - NAME_X
   W.fit(p.note, text, room - NAME_MIN - NOTE_GAP)
-  p.name:SetWidth(math.max(0, math.min(w - PLATE_NAME_INSET, room - W.textWidth(p.note) - NOTE_GAP)))
+  W.fitWrap(p.name, name, math.max(NAME_LEAST, math.min(w - PLATE_NAME_INSET, room - W.textWidth(p.note) - NOTE_GAP)))
 end
 
 -- Places the plates on the grid of ns.HallLayout.plates, or around the felt
@@ -163,15 +167,14 @@ local function render(v, s, client)
     p.frame:ClearAllPoints()
     p.frame:SetPoint("TOPLEFT", v.area, "TOPLEFT", spot[1], spot[2])
     p.frame:SetWidth(spot[3])
+    p.seatName = name or nil
     if name then
-      p.name:SetText(name)
       p.name:SetTextColor(W.nameColor(client, name))
     else
-      p.name:SetText(L("table.free"))
       p.name:SetTextColor(Theme.rgb("inkDim"))
     end
     hero(p, client, name or nil)
-    noteAndName(p, spot[3], view and view.seatNote and view.seatNote(s, i) or "")
+    noteAndName(p, spot[3], view and view.seatNote and view.seatNote(s, i) or "", name and W.short(name, s.seats) or L("table.free"))
     local onTurn = turn == i
     p.portrait:turn(onTurn and name ~= false and name ~= nil) -- an empty chair never glows
     if view and view.seatClock then

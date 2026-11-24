@@ -123,13 +123,13 @@ function View.update(f, s)
 
   local match = live and st.phase == "match" and not ns.StakePanels.shown
   local winner = match and s.seats[st.winner]
-  f.result:SetText(winner and L("ttt.winner", W.colored(client, winner)) or "")
+  f.result:SetText(winner and L("ttt.winner", W.shortColored(client, winner, s.seats)) or "")
   f.result:SetShown(winner and true or false)
   local player = match and (me == 1 or me == 2)
   local asked = player and st.rematch and st.rematch[me]
   local other = player and s.seats[3 - me]
   f.rematch:SetShown(player and not asked)
-  f.waiting:SetText(asked and other and L("ttt.waitingFor", W.colored(client, other)) or "")
+  f.waiting:SetText(asked and other and L("ttt.waitingFor", W.shortColored(client, other, s.seats)) or "")
   f.waiting:SetShown(asked and other and true or false)
 end
 

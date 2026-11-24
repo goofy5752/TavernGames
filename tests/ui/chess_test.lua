@@ -36,7 +36,7 @@ local function setup(fen, minutes)
   w:advance(0)
   w:click(T.view.inviteButton)
   for _, r in ipairs(T.view.picker.rows) do
-    if r.frame:IsVisible() and r.name:GetText() == BOT then w:click(r.frame) end
+    if r.frame:IsVisible() and r.peerName == BOT then w:click(r.frame) end
   end
   w:advance(0)
   w:advance(3)

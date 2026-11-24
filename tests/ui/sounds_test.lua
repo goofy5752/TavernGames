@@ -97,7 +97,7 @@ describe("ui: game sounds", function()
     local v = w.ns.TableFrame.view
     w:click(v.inviteButton)
     for _, r in ipairs(v.picker.rows) do
-      if r.frame:IsVisible() and r.name:GetText() == BOT then w:click(r.frame) end
+      if r.frame:IsVisible() and r.peerName == BOT then w:click(r.frame) end
     end
     w:advance(2)
     local s = w.ns.client.session

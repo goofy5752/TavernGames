@@ -34,6 +34,12 @@ function W.shortColored(client, name, others)
   return text
 end
 
+-- W.shortColored among the seats of my table (ns.client.session), for a game's line of text.
+function W.seatColored(name)
+  local s = ns.client and ns.client.session
+  return W.shortColored(ns.client, name, s and s.seats)
+end
+
 -- The names of `names` (a name, a list with gaps or seats set to false, or nil), each once.
 local function list(names)
   if type(names) == "string" then return { names } end

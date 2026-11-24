@@ -228,7 +228,7 @@ describe("ui: rules book", function()
     w:click(v.inviteButton)
     local row
     for _, r in ipairs(v.picker.rows) do
-      if r.frame:IsVisible() and r.name:GetText() == BOT then row = r end
+      if r.frame:IsVisible() and r.peerName == BOT then row = r end
     end
     assert(row, "no row for the bot in the picker")
     w:click(row.frame)

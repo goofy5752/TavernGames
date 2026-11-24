@@ -812,7 +812,7 @@ describe("ui: the staked table of Сантасе, Белот and Табла (F2)
     w:deliver("WHISPER", C, { v = 1, t = "STD", tid = tid2 }); w:advance(0)
     eq(w.ns.StakePanels.shown, false); eq(v.bill:IsVisible(), false)
     local f = w.ns.TableFrame.built.belot
-    ok(f.text:IsVisible(), "no end line"); ok(has(f.text:GetText(), "Тодор Ангелов"), plain(f.text:GetText()))
+    ok(f.text:IsVisible(), "no end line"); ok(has(f.text:GetText(), "Тодор"), plain(f.text:GetText())) -- the short name
   end)
 
   it("a guest's bill says when the next match may begin", function()
