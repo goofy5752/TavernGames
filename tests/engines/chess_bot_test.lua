@@ -33,6 +33,27 @@ describe("chess bot", function()
     ok(E.botCount <= 1)
   end)
 
+  it("with the cap in the first root move it still mates and never stalemates when ahead", function()
+    local keep = E.BOT_NODES
+    E.BOT_NODES = 1
+    local function after(s, a)
+      local child = R.copy(s)
+      R.make(child, assert(R.find(s, a.f, a.t, a.p), "illegal move"))
+      return R.status(child)
+    end
+    -- Qf8# is the only mate; Qf7 stalemates.
+    local mate = Chess.at("7k/8/6K1/8/8/8/8/5Q2 w - - 0 1")
+    -- No mate in one; Qg6 and Qb1 stalemate, and by material every move looks the same.
+    local stale = Chess.at("7k/5K2/1Q5P/8/8/8/8/8 w - - 0 1")
+    for k = 1, 40 do
+      local function pick(_, hi) return math.min(k, hi) end
+      eq(after(mate, E.bot(mate, mate.turn, pick)), "mate")
+      local a = E.bot(stale, stale.turn, pick)
+      ok(after(stale, a) ~= "stalemate", "stalemated with " .. a.f .. "-" .. a.t)
+    end
+    E.BOT_NODES = keep
+  end)
+
   it("equal moves are chosen by the random it is given", function()
     local s = E.new{ first = 2, opt = { clock = 0 } }
     local a, b = E.bot(s, 2, first), E.bot(s, 2, last)
