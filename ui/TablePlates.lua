@@ -99,12 +99,17 @@ local function seatClock(p, s, view, seat)
   p.clock:SetShown(t ~= nil)
   local number = type(t) == "number"
   local base = s.state and s.state.base
-  local bar = number and base and s.state.turn == seat
+  local bar = number and base and s.state.phase == "play" and s.state.turn == seat
   p.bar:SetShown(bar or false)
   if t == nil then return end
-  p.clock:SetText(ns.ChessModel.clockText(number and t or nil))
-  p.clock:SetTextColor(Theme.rgb(number and t < CLOCK_LOW and "clockLow" or "gold"))
-  if bar then p.bar:SetWidth(math.max(1, p.frame:GetWidth() * math.min(t, base) / base)) end
+  -- every frame: only what changed is set again
+  local text, low = ns.ChessModel.clockText(number and t or nil), number and t < CLOCK_LOW
+  if p.clockText ~= text then p.clockText = text; p.clock:SetText(text) end
+  if p.clockLow ~= low then p.clockLow = low; p.clock:SetTextColor(Theme.rgb(low and "clockLow" or "gold")) end
+  if bar then
+    local w = math.max(1, p.frame:GetWidth() * math.min(t, base) / base)
+    if p.barWidth ~= w then p.barWidth = w; p.bar:SetWidth(w) end
+  end
 end
 
 -- The turn clock and the turn bar on the plate of the player on turn (a view with seatClock: on every plate).
@@ -168,6 +173,7 @@ local function render(v, s, client)
     if view and view.seatClock then
       seatClock(p, s, view, i)
     else
+      p.clockText, p.clockLow, p.barWidth = nil, nil, nil -- a seatClock view sets them again
       local timed = onTurn and s.deadline ~= nil
       p.clock:SetShown(timed)
       p.bar:SetShown(timed)

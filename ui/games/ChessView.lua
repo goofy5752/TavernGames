@@ -25,14 +25,15 @@ local FILES = { "a", "b", "c", "d", "e", "f", "g", "h" }
 
 local View = { size = { 780, 660 }, ring = true }
 
+local function redraw(f)
+  if f.session then View.update(f, f.session) end
+end
+
 local function send(f, from, to, promotion)
   local client = ns.client
   f.sel = nil
   if client then client:act({ k = "move", f = from, t = to, p = promotion }) end
-end
-
-local function redraw(f)
-  if f.session then View.update(f, f.session) end
+  redraw(f) -- the dots go now, not at the host's echo (a refused move leaves nothing behind)
 end
 
 -- A click on the cell `i`.

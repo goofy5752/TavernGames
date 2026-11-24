@@ -126,8 +126,11 @@ end
 function Panels.promotion(f, cell, colour, onPick)
   local pick = f.side.promo
   if not pick then
-    local catcher = CreateFrame("Button", nil, f)
-    catcher:SetAllPoints(f)
+    -- over the whole table frame (its buttons and the plates too): any click outside the picker cancels it
+    local top = f
+    while top:GetParent() and top:GetParent() ~= UIParent do top = top:GetParent() end
+    local catcher = CreateFrame("Button", nil, top)
+    catcher:SetAllPoints(top)
     catcher:SetFrameLevel(f:GetFrameLevel() + PROMO_LEVEL)
     catcher:RegisterForClicks("LeftButtonUp")
     local box = CreateFrame("Frame", nil, f)

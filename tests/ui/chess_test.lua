@@ -105,6 +105,34 @@ describe("ui: the chess view", function()
     eq(marked(f, "dot"), {})
   end)
 
+  it("a refused move leaves no dots behind", function()
+    local w, _, f, s, acts = setup()
+    w.ns.client.act = function(_, a) acts[#acts + 1] = a; return nil, "refused" end
+    click(w, f, "e2")
+    eq(marked(f, "dot"), { "e3", "e4" })
+    click(w, f, "e4")
+    eq(#acts, 1); eq(marked(f, "dot"), {}); eq(cell(f, "e2").edges[1]:IsShown(), false)
+  end)
+
+  it("the plates' clock is set again only when it changed", function()
+    local w, T = setup()
+    local p = T.view.plates[1]
+    local sets = 0
+    local setText = p.clock.SetText
+    p.clock.SetText = function(fs, t) sets = sets + 1; return setText(fs, t) end
+    T.tick(); T.tick(); eq(sets, 0)
+    w:advance(31); T.tick(); eq(sets, 1)
+  end)
+
+  it("a click on the table's own button cancels the picker", function()
+    local w, T = setup("4k3/P7/8/8/8/8/8/4K3 w - - 0 1")
+    local f = T.built.chess
+    click(w, f, "a7"); click(w, f, "a8")
+    local c = f.side.promo.catcher
+    eq(c:GetParent(), T.frame)
+    ok(c:GetFrameLevel() > T.view.standButton:GetFrameLevel() and c:GetFrameLevel() > T.view.plates[1].frame:GetFrameLevel(), "above the table's buttons and plates")
+  end)
+
   it("a capture shows a ring, a click elsewhere clears, another own piece reselects", function()
     local w, _, f, _, acts = setup("rnbqkbnr/ppp1pppp/8/3p4/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2")
     click(w, f, "e4")
@@ -236,6 +264,7 @@ describe("ui: the chess view", function()
     eq(s.state.phase, "over"); eq(s.state.result.reason, "resign")
     eq(f.strip.text:GetText(), A .. " се предаде")
     ok(not f.resign:IsShown(), "no resign after the end")
+    ok(not T.view.plates[1].bar:IsShown() and not T.view.plates[2].bar:IsShown(), "no turn bar after the end")
   end)
 
   it("the end banner", function()
