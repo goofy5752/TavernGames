@@ -678,7 +678,7 @@ describe("ui: a side chair's name stays in its table's cell", function()
         ok(fs:IsShown(), "no label")
         local l, r = span(t, i)
         ok(l >= -half - 0.5 and r <= half + 0.5, count .. " tables: chair " .. i .. "'s name past its cell: " .. l .. ".." .. r .. " / " .. half)
-        if fs.points[1][1] == "TOP" then ok(fs.points[1][5] <= -28, "into the top's lines of text") end
+        if fs.points[1][1] == "TOP" then ok(fs.points[1][5] <= -32, "into the top's lines of text") end
         if count <= 2 then eq(fs.points[1][1], i == 2 and "LEFT" or "RIGHT") else eq(fs.points[1][1], "TOP") end
         ok(fs:GetWidth() >= 64, "narrower than a 12-letter name at 9 (64 px in PT Sans)")
         ok(select(2, fs:GetFont()) >= 9, "unreadable")

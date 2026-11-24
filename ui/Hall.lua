@@ -46,7 +46,7 @@ local GAME_H, ROW_H = 40, 40
 -- moved in just enough to stay in its cell (three and four columns).
 local LABELLED_SEATS = 4
 local CHAIR_LABEL_W, SIDE_LABEL_W, HOST_W, SIDE_NEED = 76, 70, TOP_SIZE - 8, 66
-local CHAIR_HALF, UNDER_Y = 13, 28 -- half a chair; an under label's top below the chair's centre
+local CHAIR_HALF, UNDER_Y = 13, 32 -- half a chair; an under label's top below the chair's centre (clear of „играе“ on the top)
 
 local MESSAGES = { noguild = "hall.noguild", wait = "hall.wait", empty = "hall.empty" }
 
