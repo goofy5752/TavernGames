@@ -20,7 +20,7 @@
 --     before every commit of its round was public;
 --   * the timers drain: an idle guild does not grow its timer list.
 -- Usage (from the repo root): luajit tools/sim/e2e_soak.lua [tables] [seed] [game|all] [wire] [dead] [one staked|fun]
---   dead: at every table the host's client also dies for good at a random step (hostdead: in the mix too).
+--   dead: at every table the host's client also dies for good at a random step (it is not in the default mix).
 --   game: ttt deathroll santase belot tabla holdem cash bots (default all, mixed)
 --   wire: every message goes through the real wire format (AceSerializer + LibDeflate).
 -- Deterministic per seed. Prints a summary and every failure with its seed.
@@ -130,7 +130,7 @@ local function onFork(name, client)
   local s = client.session
   -- (a claimant whose old host is dead for good is the table: the soak knows, the client cannot)
   return (T.sim.offlineSet[name] or (s and s.role == "host" and s.claimedFrom ~= nil and not T.dead[s.claimedFrom]
-    and not T.gone[s.claimedFrom] and not ns.Succession.followed(s))) and true or false
+    and not T.gone[s.claimedFrom] and not T.left[s.claimedFrom] and not ns.Succession.followed(s))) and true or false
 end
 
 local function listen(name, client)
@@ -299,7 +299,8 @@ local function step(sim, tid)
 end
 
 -- ---------------------------------------------------------------- disruptions
-local KINDS = { "reload", "crash", "offline", "loading", "hostleave", "leave", "silence", "hostgone", "newcomer", "hostdead" }
+-- hostdead (the host dies for good) is drawn only with the flag `dead`: the repro seeds of runs without it hold
+local KINDS = { "reload", "crash", "offline", "loading", "hostleave", "leave", "silence", "hostgone", "newcomer" }
 
 local function disrupt(sim, tid, kind)
   local rng = sim.rng
