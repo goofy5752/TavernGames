@@ -53,6 +53,7 @@ local function renderPicker(v, client, s)
   for _, p in ipairs(client.presence:list()) do
     if not p.incompatible and not seated(s.seats, p.name) then list[#list + 1] = p; names[#names + 1] = p.name end
   end
+  names = ns.Names.shorts(names) -- worked out once for the list
   for n, p in ipairs(list) do
     local r = pickerRow(picker, n)
     r.peerName = p.name

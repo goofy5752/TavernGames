@@ -734,3 +734,23 @@ describe("ui: one short name per person in the whole hall", function()
     eq({ chairs[P], chairs[K] }, { "Ivan P.", "Ivan K." })
   end)
 end)
+
+-- Review: Names.short against the whole hall for every name drawn was O(n²) per render.
+describe("ui: the hall's short names, once per render", function()
+  it("a crowded hall: the short names are worked out once, linear in the people shown", function()
+    local w = guildWow()
+    w.ns.MainWindow.show()
+    local n = 120
+    for i = 1, n do hi(w, "Guest" .. i .. " Tavernson", "MAGE") end
+    hi(w, "Ivan Petrovski", "MAGE"); hi(w, "Ivan Kolevski", "MAGE")
+    local N, calls = w.ns.Names, 0
+    local normalize = N.normalize
+    N.normalize = function(...) calls = calls + 1; return normalize(...) end
+    w.ns.Hall.render()
+    N.normalize = normalize
+    ok(calls < 20 * n, "the hall's names worked out " .. calls .. " times for " .. n .. " people")
+    local byName = {}
+    for _, r in ipairs(w.ns.Hall.view.peers) do if r.frame:IsVisible() then byName[r.peerName] = r.name:GetText() end end
+    eq({ byName["Ivan Petrovski"], byName["Ivan Kolevski"], byName["Guest7 Tavernson"] }, { "Ivan P.", "Ivan K.", "Guest7" })
+  end)
+end)

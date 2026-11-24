@@ -45,9 +45,14 @@ end
 local function second(full) return full:match("^%S+%s+(%S+)") end
 local function initialOf(full) return full:match("^%S+%s+([%z\1-\127\194-\244][\128-\191]*)") end
 
+local SHORTS = {} -- the metatable of a Names.shorts map
+
 function Names.short(name, others)
   local short, full = bare(name)
   if not short then return "?" end
+  if getmetatable(others) == SHORTS then -- worked out once (Names.shorts): only those who read alike
+    return others.map[full] or Names.short(name, others.groups[short])
+  end
   local initial = initialOf(full)
   local level = 0 -- 0 the bare name, 1 the initial, 2 the next word, 3 the whole name
   for _, o in pairs(others or {}) do
@@ -63,6 +68,29 @@ function Names.short(name, others)
   if level == 2 then return short .. " " .. second(full) end
   if level == 3 then return full end
   return short
+end
+
+-- The short names of the list `names` (as `others`) worked out once: a map that Names.short
+-- (so W.short, W.shortColored) takes in place of the list, with the same answers, each name
+-- weighed only against those that read like it. A screen that names everyone of a long list
+-- (the hall) builds it once per redraw, not Names.short against the whole list per name.
+function Names.shorts(names)
+  local groups, map = {}, {}
+  for _, n in pairs(names or {}) do
+    local short = bare(n)
+    if short then
+      local g = groups[short] or {}
+      groups[short] = g
+      g[#g + 1] = n
+    end
+  end
+  for _, g in pairs(groups) do
+    for _, n in ipairs(g) do
+      local _, full = bare(n)
+      map[full] = Names.short(n, g)
+    end
+  end
+  return setmetatable({ map = map, groups = groups }, SHORTS)
 end
 
 -- `shown` (a name as seen in chat) stands for the full name `full`: the same

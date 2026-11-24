@@ -42,6 +42,13 @@ describe("foundations", function()
     eq(N.short("Bot Ivan", { "Bot Ivan", "Ivan Petrov" }), "Ivan")
   end)
 
+  it("Names.shorts: the short names of a list worked out once, the same as each one's Names.short", function()
+    local seats = { "Ivan Petrov", "Ivan Pavlov-Forever", "Ivan Kolev", "Bot Ivanov", "Maria Stoyanova", false, 7 }
+    local map = N.shorts(seats)
+    for i = 1, 5 do eq(N.short(seats[i], map), N.short(seats[i], seats)) end
+    eq({ N.short("Ivan Petrov-Forever", map), N.short("Ivan Dimov", map), N.short(nil, map) }, { "Ivan Petrov", "Ivan D.", "?" })
+  end)
+
   it("a bot is a name that starts with \"Bot \": the rule the screen marks it by", function()
     eq({ N.isBot("Bot Petrova"), N.isBot("Bot Number12-Forever"), N.isBot("  Bot Ivanov ") }, { true, true, true })
     eq({ N.isBot("Bot"), N.isBot("Botan Ivanov"), N.isBot("Ivan Bot"), N.isBot(nil), N.isBot(7) }, { false, false, false, false, false })

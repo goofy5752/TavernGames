@@ -486,7 +486,7 @@ function Hall.render()
     mode = #recs == 0 and "empty" or HallLayout.mode(#recs)
   end
   Hall.mode = mode
-  Hall.shown = Hall.names(client) -- the names the hall shows: every short name's `others`
+  Hall.shown = ns.Names.shorts(Hall.names(client)) -- the names the hall shows: every short name's `others`, worked out once
   local key = MESSAGES[mode]
   if key then v.message:SetText(L(key)) end
   v.message:SetShown(key ~= nil)
