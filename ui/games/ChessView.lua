@@ -164,11 +164,15 @@ function View.seatNote(s, seat)
   return L(seat == st.white and "chess.white" or "chess.black")
 end
 
--- The time of the seat in tenths, "none" without a limit, nil when no game is on.
+-- The time of the seat in tenths, "none" without a limit, nil when no game is on. Asked every
+-- frame, it also redraws the table once the claim opens or closes: a host that withholds its
+-- own flag sends no event to redraw on.
 function View.seatClock(s, seat)
   local st = s.state
   if not st or s.status ~= "live" then return nil end
   if not st.clock then return "none" end
+  local f = ns.TableFrame.built.chess
+  if f and f.claim:IsShown() ~= ns.Clock.canClaim(s) then ns.TableFrame.refresh() end
   return ns.Clock.left(s, seat)
 end
 

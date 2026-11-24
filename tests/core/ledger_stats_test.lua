@@ -227,6 +227,18 @@ describe("ledger stats: forging routes", function()
     eq(row(board(b).rows, Q), nil); eq(row(board(b).rows, I).wins, 1); eq(row(board(b).rows, M).games, 1)
   end)
 
+  it("a staked R with no winner and no loser is a draw only for chess", function()
+    -- spec 5.4: chess is the only two-seat game that ends without a winner; elsewhere it is a claim
+    local b = book()
+    b.result(I, { gid = gid(1), g = "ttt", n = { I, M }, w = {}, l = {}, sk = 1000 }, nil, NOW)
+    b.result(I, { gid = gid(2), g = "chess", n = { I, M }, w = {}, l = {}, sk = 1000 }, nil, NOW + 1)
+    local g = games(b)
+    eq(#g, 2)
+    local ttt, chess = g[1].g == "ttt" and g[1] or g[2], g[1].g == "chess" and g[1] or g[2]
+    eq(ttt.counts, {}); eq(ttt.state, "claim")
+    eq(chess.counts, { [I] = "draw", [M] = "draw" }); eq(chess.state, "drawn")
+  end)
+
   it("a copied R with the sides swapped wins nobody anything", function()
     local b = book()
     b.staked(1, I, M, 1000)

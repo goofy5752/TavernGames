@@ -119,6 +119,13 @@ describe("chess at a staked table", function()
     local x = Util.copy(b); x.offer, x.claimed, x.wait = 1, 3, { 3, 0 }
     eq(SC.valid(x), true)
     eq(SC.valid(Chess.play(E.new{ first = 1, opt = { clock = 0 } }, "e2e4", nil)), true)
+    -- a flag zeroes the flagged clock, and the replay agrees
+    local flagged = Util.copy(b)
+    ok(E.apply(flagged, flagged.turn, { k = "flag" }))
+    eq(flagged.clock[flagged.result.winner == 1 and 2 or 1], 0)
+    eq(SC.valid(flagged), true)
+    local kept = Util.copy(flagged); kept.clock = Util.copy(b.clock)
+    eq(SC.valid(kept), false)
   end)
 
   it("a state that crossed the wire is still a chess state", function()

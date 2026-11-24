@@ -5,8 +5,9 @@ local _, ns = ...
 -- author is one of them. Staked R: a loss on the loser's word (f of a confirmed debt of
 -- the gid, or it wrote the R), a win on a debtor's (t of one), a draw only when an author
 -- is a party there; a staked R that names no winner and no loser, at a gid without any debt,
--- is a draw for each of its names on a seated author's word (rec.drawn: a staked draw owes
--- nothing, as chess's; a debt there makes it a claim again). S (Холдем): for its f when f
+-- is a draw for each of its names on a seated author's word when its g is chess (rec.drawn:
+-- a staked draw owes nothing; no other game ends without a winner, spec 5.4; a debt there
+-- makes it a claim again). S (Холдем): for its f when f
 -- is f or t of a confirmed debt there and an author is a party; won or lost by the sign of
 -- f's confirmed copper there. A party of a gid is f or t of a confirmed debt of it that t
 -- has claimed too (its own D): both sides spoke, as every honest staked game does, so a
@@ -104,7 +105,7 @@ local function judge(rec, x)
     counts[e.f] = c > 0 and "win" or c < 0 and "loss" or "draw"
   end
   local w, l = list(e.w), list(e.l)
-  rec.drawn = not free and not rec.cash and x == nil and seated and #w == 0 and #l == 0 or nil
+  rec.drawn = not free and not rec.cash and e.g == "chess" and x == nil and seated and #w == 0 and #l == 0 or nil
   for i, name in ipairs(rec.cash and NONE or n) do
     if str(name) and not counts[name] then
       local r = role[name] or 0

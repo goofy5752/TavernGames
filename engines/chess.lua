@@ -128,10 +128,11 @@ local ACTIONS = {
     s.wait[s.offer], s.offer = WAIT, nil
     return true
   end,
-  -- seat: the flagged seat. Only a bare king on the other side makes it a draw.
+  -- seat: the flagged seat; its clock shows 0. Only a bare king on the other side makes it a draw.
   flag = function(s, seat)
     if s.turn ~= seat then return nil, "turn" end
     if not s.clock then return nil, "clock" end
+    s.clock[seat] = 0
     local other = 3 - seat
     if ns.ChessRules.bare(s, colour(s, other)) then finish(s, nil, "flagdraw")
     else finish(s, other, "flag") end

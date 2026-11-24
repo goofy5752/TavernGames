@@ -108,12 +108,10 @@ describe(".pkgmeta", function()
     }
     for _, l in ipairs(LIMITS) do
       local f = io.open(l[1], "r")
-      if f then -- Task 10 removes this guard: every file exists by then
-        f:close()
-        local n = 0; for _ in io.lines(l[1]) do n = n + 1 end
-        ok(n < l[2], l[1] .. " " .. n)
-      end
+      ok(f, "missing " .. l[1])
+      f:close()
+      local n = 0; for _ in io.lines(l[1]) do n = n + 1 end
+      ok(n < l[2], l[1] .. " " .. n)
     end
-    ok(true)
   end)
 end)
