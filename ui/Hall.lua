@@ -285,7 +285,7 @@ local function chairWidget(t, i)
   return c
 end
 
-local function fillTable(t, rec, client)
+local function fillTable(t, rec, client, compact)
   t.rec, t.tid = rec, rec.tid
   local mine = here(client, rec)
   t.game:SetText(gameName(rec.game))
@@ -293,7 +293,10 @@ local function fillTable(t, rec, client)
   if pic then t.icon:SetTexture(pic) end
   t.icon:SetShown(pic ~= nil)
   t.game:SetShown(pic == nil)
-  t.label:SetText(gameName(rec.game) .. " · " .. (stakeText(rec) or L("table.stake.none")))
+  -- In four columns (7–8 tables) the game name would run into the next table:
+  -- the picture on the top names it, the label keeps only the stake.
+  local stake = stakeText(rec) or L("table.stake.none")
+  t.label:SetText((compact and pic) and stake or gameName(rec.game) .. " · " .. stake)
   t.host:SetText(firstWord(rec.host))
   t.host:SetTextColor(nameColor(client, rec.host))
   t.state:SetText(L("hall.live"))
@@ -400,7 +403,7 @@ local function renderFloor(v, recs, client)
   local slots = HallLayout.slots(#recs, v.floorW, v.floorH)
   for i, rec in ipairs(recs) do
     local t = tableWidget(v, i)
-    fillTable(t, rec, client)
+    fillTable(t, rec, client, HallLayout.columns(#recs) >= 4)
     t.frame:ClearAllPoints()
     t.frame:SetPoint("CENTER", v.floor, "TOPLEFT", slots[i][1], LIFT - slots[i][2])
     t.frame:Show()

@@ -541,6 +541,17 @@ describe("ui: the hall's faction look", function()
     eq(t.game:IsShown(), false)
   end)
 
+  it("seven tables (four columns): the label under a table is only its stake, six keep the game", function()
+    local w = guildWow()
+    w.ns.MainWindow.show()
+    local view = w.ns.Hall.view
+    for i = 1, 6 do tbl(w, "Гост " .. i) end
+    eq(view.tables[1].label:GetText(), "Морски шах · За удоволствие")
+    tbl(w, "Гост 7")
+    eq(w.ns.Hall.mode, "floor"); eq(visible(view.tables), 7)
+    for i = 1, 7 do eq(view.tables[i].label:GetText(), "За удоволствие") end
+  end)
+
   it("everyone in the tavern has a portrait in the list", function()
     local w = guildWow()
     w.ns.MainWindow.show()
