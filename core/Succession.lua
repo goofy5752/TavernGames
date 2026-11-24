@@ -33,6 +33,20 @@ function Succession.candidates(seats, oldHost)
   return out
 end
 
+-- Host: whom my stand hands the table to -> the first candidate heard within
+-- PING_EVERY + SYN_MIN_GAP (a member pings every PING_EVERY), else the first
+-- candidate. A seat whose client is cut off would miss the HND while the others
+-- follow it, and once it claims by silence they take up the state it holds:
+-- every event since it was cut off, lost (e2e soak).
+function Succession.heir(s, me)
+  local list, now = Succession.candidates(s.seats, me), s.client.env.now()
+  for _, name in ipairs(list) do
+    local at = s.lastHeard and s.lastHeard[name]
+    if at and now - at <= C.PING_EVERY + C.SYN_MIN_GAP then return name end
+  end
+  return list[1]
+end
+
 -- Of two hosts at the same epoch: the one in the lower seat. An unseated name
 -- loses to a seated one; two unseated names fall back to byte order.
 function Succession.wins(seats, hostA, hostB)
@@ -42,30 +56,123 @@ function Succession.wins(seats, hostA, hostB)
   return byteLess(hostB, hostA) and hostB or hostA
 end
 
--- What `sender`, speaking as a host at `epoch` (TBL, SNP or TCK), is to session s:
+-- A cut-off seat (e2e soak): a seat whose client hears nothing for SILENT_AFTER
+-- claims the table from the state it holds, while the host it lost may be alive
+-- and the others still at it. Its higher epoch used to win, and every client
+-- took up its stale state: the events since it was cut off (moves, settled
+-- hands, their ledger entries) undone. So a host tells whether a seated member
+-- spoke to it lately, f (Succession.followed), and a host that took the table
+-- by silence also where its epoch began, b = {e, q} (the epoch my seq counted in and
+-- that seq, s.base). A seat that holds as much of that line as b or more
+-- (Succession.behind) follows no such host while nobody follows it, when it
+-- still hears its own table (a member: its host is not silent; a host: a member
+-- spoke to it lately); and such a host, hearing the host it took over from,
+-- followed by others, still run it, or another claimant others follow (TBL, TCK),
+-- or the host it lost announce the table at b's epoch without my seat (TBL: it
+-- stood me up), gives the table back (Succession.yields). Two hosts nobody follows (two players cut from each
+-- other) end as before: the claimant keeps the table. A host that is really
+-- gone leaves its members silent: they follow the claimant as before, behind
+-- or not. Without b and f (an older client) the epochs decide as before.
+
+-- The epoch my seq counts in: a member that follows a new host without its
+-- snapshot yet (stale) still holds the old epoch's events.
+local function heldEpoch(s) return s.stale and s.staleE or s.epoch end
+
+-- Does a host whose epoch began at b miss events I hold (`even`: or hold no
+-- more than I do) -> bool. A host that took the table over itself holds, of that
+-- line, what it held then (s.base).
+function Succession.behind(s, b, even)
+  if type(b) ~= "table" or type(b.e) ~= "number" or type(b.q) ~= "number" then return false end
+  local mine = s.role == "host" and s.base
+  local e, q = mine and mine.e or heldEpoch(s), mine and mine.q or s.seq
+  return b.e < e or (b.e == e and (b.q < q or (even == true and b.q == q)))
+end
+
+-- Host: has a seated member spoken to me (PNG, SYN, ACT: s.memberHeard, since
+-- I took the table over) within SILENT_AFTER -> bool.
+function Succession.followed(s)
+  local now = s.client.env.now()
+  for name, at in pairs(s.memberHeard or {}) do
+    if seatOf(s.seats, name) and now - at < C.SILENT_AFTER then return true end
+  end
+  return false
+end
+
+-- The fields f and b of my TBL, SNP and TCK as host: both once I took the table
+-- over (s.base), f alone once I heard another host of my table (s.rival); none
+-- otherwise (a table that never forked sends what it always sent).
+function Succession.mark(s, m)
+  if s.base or s.rival then m.f = Succession.followed(s) end
+  if s.base then m.b = { e = s.base.e, q = s.base.q } end
+  return m
+end
+
+-- Host: another host of my table spoke (a TBL or TCK I do not follow): mine say f from now on.
+function Succession.rival(s, kind)
+  if s.role == "host" and kind == nil then s.rival = true end
+end
+
+-- Was the host of message m cut off from a table I still hear (see above) -> bool.
+-- A host others follow keeps its table against one nobody follows that holds no more than it.
+local function cutOff(s, m)
+  if not s.mySeat or type(m) ~= "table" or m.f ~= false then return false end
+  if s.role == "host" then return Succession.followed(s) and Succession.behind(s, m.b, true) end
+  return Succession.behind(s, m.b, true) and s.client.env.now() - (s.hostHeard or 0) <= C.PING_EVERY + C.SYN_MIN_GAP -- my host spoke lately
+end
+
+-- What `sender`, speaking as a host at `epoch` (TBL, SNP or TCK `m`), is to session s:
 --   "current"  my host at my epoch;
 --   "new"      a seated sender with a higher epoch, or at my epoch winning the
---              seat-order tie against my host: to be followed;
+--              seat-order tie against my host: to be followed (not when it was
+--              cut off from a table I still hear: see above);
 --   nil        anything else (lower epoch, not seated, tie lost): ignored.
-function Succession.authority(s, sender, epoch)
+function Succession.authority(s, sender, epoch, m)
   if type(epoch) ~= "number" or epoch < s.epoch then return nil end
   if epoch == s.epoch and sender == s.host then return "current" end
   if not seatOf(s.seats, sender) then return nil end
   if epoch == s.epoch and Succession.wins(s.seats, s.host, sender) ~= sender then return nil end
+  if cutOff(s, m) then return nil end
   return "new"
+end
+
+-- Host that took the table over and that nobody follows, hearing another host of
+-- my table that I would not follow: one that others follow (m.f: the host my
+-- claim came from, still running its epoch, or a seat that claimed it too), or
+-- the host my claim came from announcing the table at that epoch without my seat
+-- (TBL: it stood me up) -> true: I was the one cut off; I follow it.
+function Succession.yields(s, sender, m)
+  local b, me = s.base, s.client.env.me
+  if s.role ~= "host" or not b or Succession.followed(s) or sender == me or not seatOf(s.seats, sender) then return false end
+  local seats = m.t == "TBL" and type(m.s) == "table" and m.s or nil
+  local stood = seats ~= nil and sender == s.claimedFrom and m.e == b.e and not seatOf(seats, me)
+  if m.f ~= true and not stood then return false end
+  Succession.follow(s, sender, m.e, seats)
+  s.yielded = true -- its snapshot may show my seat stood up offline: no foul of that host's (core/StakesWatch.lua)
+  s:requestSync()
+  return true
 end
 
 ---------------------------------------------------------------------------
 -- Host side: silent members
 ---------------------------------------------------------------------------
 
--- One timer for the member whose limit runs out first.
+-- A host that claimed the table by silence and that no member (seat or watcher)
+-- has spoken to since: it may well be the one cut off (e2e soak: such a host stood
+-- every other seat up "offline" and wrote their settlements as debts to it, for
+-- a game the table never had). It stands no seat up until somebody speaks to it,
+-- and plays no other seat's timeout (Session:armTimers).
+local function alone(s) return s.claimedFrom ~= nil and next(s.memberHeard or {}) == nil end
+Succession.alone = alone
+
+-- One timer for the member whose limit runs out first (alone: a seat's, looked at again every PING_EVERY).
 function Succession.armSweep(s)
   cancel(s, "sweepTimer")
-  local now, wait = s.client.env.now(), nil
+  local now, wait, lone = s.client.env.now(), nil, alone(s)
   for name, at in pairs(s.lastHeard) do
-    local limit = seatOf(s.seats, name) and C.OFFLINE_STAND_SECONDS or C.SILENT_AFTER
+    local seated = seatOf(s.seats, name)
+    local limit = seated and C.OFFLINE_STAND_SECONDS or C.SILENT_AFTER
     local w = at + limit - now
+    if seated and lone then w = math.max(w, C.PING_EVERY) end
     if not wait or w < wait then wait = w end
   end
   if not wait then return end
@@ -76,11 +183,11 @@ function Succession.armSweep(s)
 end
 
 function Succession.sweep(s)
-  local now, changed, stood = s.client.env.now(), false, false
+  local now, changed, stood, lone = s.client.env.now(), false, false, alone(s)
   for i = 1, #s.seats do
     local name = s.seats[i]
     local at = name and s.lastHeard[name]
-    if at and now - at >= C.OFFLINE_STAND_SECONDS then
+    if at and not lone and now - at >= C.OFFLINE_STAND_SECONDS then
       s.lastHeard[name] = nil
       s:event(0, { k = "stand", seat = i, why = "offline" })
       changed, stood = true, true
@@ -150,6 +257,10 @@ function Succession.heard(s, sender, m)
   local now = s.client.env.now()
   if s.role == "host" then
     if s.lastHeard[sender] then s.lastHeard[sender] = now end
+    if m.tid == s.tid and (m.t == "PNG" or m.t == "SYN" or m.t == "ACT") then
+      s.memberHeard = s.memberHeard or {}
+      s.memberHeard[sender] = now
+    end
   elseif sender == s.host and not (m.t == "HI" and m.at ~= s.tid) then
     s.hostHeard = now
     if s.hostSilent then
@@ -166,10 +277,12 @@ end
 -- Member -> host at s.epoch (already raised by the caller), from my own state.
 -- Every seated player gets an SNP; watchers are unknown to a member, so they
 -- come back with WAT when they see the TBL. `oldHost` keeps its seat and, when
--- `oldHeard` is given, its offline clock runs from that moment.
-local function becomeHost(s, oldHost, oldHeard)
+-- `oldHeard` is given, its offline clock runs from that moment. `base`: where my
+-- epoch begins, {e, q} (s.base; see Succession.behind).
+local function becomeHost(s, oldHost, oldHeard, base)
   local client = s.client
   local me, now = client.env.me, client.env.now()
+  s.base, s.memberHeard = base, {}
   cancel(s, "pingTimer")
   cancel(s, "silenceTimer")
   s.role, s.host = "host", me
@@ -204,8 +317,10 @@ end
 function Succession.claim(s)
   if s.stakeAsk then return ns.Stake.standUp(s.client, s) end
   local oldHost, oldHeard = s.host, s.hostHeard
+  local base = { e = heldEpoch(s), q = s.seq }
   s.epoch = s.epoch + 1
-  becomeHost(s, oldHost, oldHeard)
+  becomeHost(s, oldHost, oldHeard, base)
+  s.claimedFrom = oldHost
 end
 
 -- Host -> member of somebody else's epoch.
@@ -215,6 +330,7 @@ function Succession.demote(s)
   cancel(s, "turnTimer"); cancel(s, "systemTimer"); cancel(s, "sweepTimer")
   s.role = s.mySeat and "player" or "watcher"
   s.watcherSet, s.lastHeard, s.lastAnnounce, s.deadline = nil, nil, nil, nil
+  s.base, s.memberHeard, s.claimedFrom, s.rival = nil, nil, nil, nil
   client.lobby:remove(s.tid) -- no longer my own record; the new host's TBL lists it again
   s:schedulePing()
 end
@@ -223,6 +339,7 @@ end
 -- `seats` (the new host's record, when known) tells whether I still hold my seat.
 function Succession.follow(s, host, epoch, seats)
   if seats and s.mySeat and seats[s.mySeat] ~= s.client.env.me then s.mySeat = nil end
+  if not s.stale then s.staleE = s.epoch end -- the epoch my seq counts in until the snapshot
   if s.role == "host" then Succession.demote(s) end
   s.role = s.mySeat and "player" or "watcher"
   s.host, s.epoch, s.stale, s.lastSyn = host, epoch, true, nil
@@ -262,14 +379,16 @@ function Succession.onHandoff(client, sender, m)
   s.epoch = m.e
   s.invited = s.invited or {}
   s:addInvited(m.inv) -- invitations sent after my snapshot
-  becomeHost(s, sender)
+  becomeHost(s, sender) -- given the table, not claimed: no b (its members follow the HND)
 end
 
 -- TBL about my table from somebody claiming to host it.
 function Succession.onTable(client, channel, sender, m)
   local s = client.session
   if not s or s.tid ~= m.tid or not ns.Lobby.valid(m) or m.h ~= sender then return end
-  local kind = Succession.authority(s, sender, m.e)
+  local kind = Succession.authority(s, sender, m.e, m)
+  if kind == nil and Succession.yields(s, sender, m) then return client.lobby:receive(channel, sender, m) end
+  Succession.rival(s, kind)
   if kind == "new" then
     local wasHost = s.role == "host"
     Succession.follow(s, sender, m.e, m.s)
