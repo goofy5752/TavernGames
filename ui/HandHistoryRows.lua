@@ -54,6 +54,15 @@ end
 
 local function count(n) return n == 1 and L("table.historyTricks1") or L("table.historyTricks", n) end
 
+-- Were the hand's tricks seen from the first (1 … the last done, none missing)? A hand first
+-- seen mid-way (a watcher come late, a /reload) has only some: no count nor running total then.
+local function fromStart(hand)
+  local top = 0
+  for n in pairs(hand.tricks) do if n > top then top = n end end
+  for n = 1, top do if not hand.tricks[n] then return false end end
+  return true
+end
+
 -- The tricks and events of a card game hand in order: trick(n, t) for each trick (the one under
 -- way too), event(e) before the trick it opens.
 local function walk(hand, trick, event)
@@ -118,7 +127,7 @@ local function belot(hand, s)
     local pts
     if not cur and hand.contract then
       pts = n == 8 and 10 or 0
-      for _, c in ipairs(t.cards) do pts = pts + (ns.Engines.belot.cardValue(hand.contract.b, c.face) or 0) end
+      for _, c in ipairs(t.cards) do pts = pts + (c.face and ns.Engines.belot.cardValue(hand.contract.b, c.face) or 0) end
       -- Без коз: the engine doubles the hand's points (with the last 10; no announces in N), so a
       -- trick counts double and the tricks add up to the final line. Контра / реконтра multiply
       -- only the result, never a trick.
@@ -132,15 +141,19 @@ local function belot(hand, s)
   local a, b = T[1][2], T[2][2]
   local total = hand.score or sum
   local score = L("table.historyScore", T[1][1], total[a], T[2][1], total[b])
-  if hand.score then
-    block.sum = count(tricks) .. " · " .. score .. (hand.valat and ", " .. L("belot.historyValat") or "")
+  local whole = fromStart(hand)
+  if hand.score then -- the deal's own totals: right however much of it was seen
+    block.sum = (whole and count(tricks) or L("table.historyPartial")) .. " · " .. score .. (hand.valat and ", " .. L("belot.historyValat") or "")
     rows[#rows + 1] = { k = "result", text = block.sum }
   elseif hand.passed then
     block.sum = L("belot.passed")
     rows[#rows + 1] = { k = "note", text = block.sum }
+  elseif hand.closed and not hand.ended then -- the next deal came with no score: annulled
+    block.sum = L("belot.historyVoid")
+    rows[#rows + 1] = { k = "note", text = block.sum }
   elseif tricks > 0 then
-    block.sum = L("table.historySoFar", score)
-    rows[#rows + 1] = { k = "result", text = block.sum }
+    block.sum = whole and L("table.historySoFar", score) or L("table.historyPartial")
+    rows[#rows + 1] = { k = whole and "result" or "note", text = block.sum }
   end
   return block
 end
@@ -184,7 +197,7 @@ local function santase(hand, s)
     end
     rows[#rows + 1] = { k = "result", text = block.sum }
   elseif tricks > 0 then
-    block.sum = count(tricks)
+    block.sum = fromStart(hand) and count(tricks) or L("table.historyPartial")
   end
   return block
 end

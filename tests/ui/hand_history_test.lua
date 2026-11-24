@@ -236,7 +236,10 @@ describe("ui: hand history — Белот", function()
     -- seat 2's view: its team's tricks are "us", the running total by team, mine first
     local rows = H.blocks(bsess(EB.new{ first = 1 }, 2))[1].rows
     eq({ rows[2].side, rows[3].side, rows[4].side }, { "them", "us", "them" })
-    eq(bare(rows[5].text), L("table.historySoFar", L("table.historyScore", L("table.historyUs"), 31, L("table.historyThem"), 72)))
+    eq(bare(rows[5].text), L("table.historyPartial")) -- tricks 3 … 7 unseen: no running total
+    book(H, "A", { { spades, 1, 1 }, { hearts, 1, 2 }, { spades, 3, 3 } })
+    rows = H.blocks(bsess(EB.new{ first = 1 }, 2))[1].rows
+    eq(bare(rows[5].text), L("table.historySoFar", L("table.historyScore", L("table.historyUs"), 31, L("table.historyThem"), 62)))
   end)
 
   it("контра and реконтра multiply only the result: a trick keeps its plain points", function()
@@ -400,7 +403,7 @@ describe("ui: hand history — Белот", function()
     w:hover(areas[3]); eq(w.G.GameTooltip.lines, { "Bot Barleybrewster" }) -- the even cards' names come after the odd ones
   end)
 
-  it("a passed-out deal says so; a deal voided in the auction does not", function()
+  it("a passed-out deal says so; a deal voided in the auction says it was annulled", function()
     local w, panel = setup()
     local H, L = w.ns.HandHistory, w.ns.L
     local st = EB.new{ first = 1 }
@@ -415,8 +418,61 @@ describe("ui: hand history — Белот", function()
     H.draw(panel, bsess(st, 1))
     -- newest first: the passed-out deal (#1 again: a void keeps the round), then the voided one
     local blocks = H.blocks(bsess(st, 1))
-    eq({ blocks[1].title, blocks[1].sum, blocks[2].title, blocks[2].sum }, { L("table.historyHand", 1), L("belot.passed"), L("table.historyHand", 1), nil })
+    eq({ blocks[1].title, blocks[1].sum, blocks[2].title, blocks[2].sum }, { L("table.historyHand", 1), L("belot.passed"), L("table.historyHand", 1), L("belot.historyVoid") })
     eq(#H.tables["t#1"].hands, 2)
+  end)
+
+  -- Review: a hand first seen mid-way (a watcher, a /reload) summed only the tricks it saw.
+  it("a hand first seen mid-way: no running total nor trick count, it says its start was not seen", function()
+    local w = setup()
+    local H, L = w.ns.HandHistory, w.ns.L
+    local spades, hearts = { "JS", "7S", "AS", "8S" }, { "9H", "TH", "KH", "QD" }
+    book(H, "S", { [3] = { spades, 1, 1 }, [4] = { hearts, 1, 2 } })
+    local b = H.blocks(bsess(EB.new{ first = 1 }, 1))[1]
+    eq(bare(b.sum), L("table.historyPartial"))
+    ok(lineWith(H, bsess(EB.new{ first = 1 }, 1), L("table.historyPartial")), "no line says so")
+    eq(lineWith(H, bsess(EB.new{ first = 1 }, 1), (L("table.historySoFar", ""):gsub("%s+$", ""))), nil)
+    eq(pts(H, 1), { [3] = 31, [4] = 17 }) -- each trick's own points still
+    -- scored: the deal's own totals, without a count of the tricks it saw
+    local hand = book(H, "S", { [3] = { spades, 1, 1 }, [4] = { hearts, 1, 2 } })
+    hand.score, hand.closed = { 100, 62 }, true
+    b = H.blocks(bsess(EB.new{ first = 1 }, 1))[1]
+    eq(bare(b.sum), L("table.historyPartial") .. " · " .. L("table.historyScore", L("table.historyUs"), 100, L("table.historyThem"), 62))
+    -- every trick from the first: the count and the total, as before
+    book(H, "S", { { spades, 1, 1 }, { hearts, 1, 2 } })
+    b = H.blocks(bsess(EB.new{ first = 1 }, 1))[1]
+    eq(bare(b.sum), L("table.historySoFar", L("table.historyScore", L("table.historyUs"), 31, L("table.historyThem"), 17)))
+  end)
+
+  it("a deal voided in play keeps no running total: a note says it was annulled", function()
+    local w, panel = setup()
+    local H, L = w.ns.HandHistory, w.ns.L
+    local st = EB.new{ first = 1 }
+    ok(EB.apply(st, 0, { k = "deal", deck = DECK_A })); H.observe(bsess(st, 1))
+    for _, b in ipairs({ "H", "P", "P", "P" }) do ok(EB.apply(st, st.turn, { k = "bid", b = b })); H.observe(bsess(st, 1)) end
+    for _, face in ipairs({ "8C", "7C", "TC", "AC" }) do
+      ok(EB.apply(st, st.turn, { k = "play", i = bidx(st, face), c = face })); H.observe(bsess(st, 1))
+    end
+    ok(EB.apply(st, 0, { k = "void" })); H.observe(bsess(st, 1))
+    eq(st.phase, "deal")
+    local b = H.blocks(bsess(st, 1))[1]
+    eq(bare(b.sum), L("belot.historyVoid"))
+    eq(lineWith(H, bsess(st, 1), (L("table.historySoFar", ""):gsub("%s+$", ""))), nil)
+    local last = b.rows[#b.rows]
+    eq({ last.k, bare(last.text) }, { "note", L("belot.historyVoid") })
+    H.draw(panel, bsess(st, 1))
+  end)
+
+  it("a card with no face, a chess game with no white: no fault", function()
+    local w = setup()
+    local H = w.ns.HandHistory
+    local hand = book(H, "S", { { { "JS", "7S", "AS", "8S" }, 1, 1 } })
+    hand.tricks[1].cards[2].face = nil
+    local fine, why = pcall(H.blocks, bsess(EB.new{ first = 1 }, 1))
+    ok(fine, tostring(why))
+    H.tables["t#1"] = { game = "chess", ver = 1, hands = { { key = "chess:1", no = 1, names = { A, B }, moves = {} } } }
+    fine, why = pcall(H.blocks, { game = "chess", tid = "t#1", mySeat = 1 })
+    ok(fine, tostring(why))
   end)
 
   it("a new hand goes on top; at most 10 hands, the oldest dropped", function()
@@ -546,6 +602,18 @@ describe("ui: hand history — Сантасе", function()
     eq(lines(H, s)[16], "12. Иван 9C · Ivanov[bot] JC* +2 them")
     H.draw(panel, s)
     require("fit").check(panel.pool, panel.textW, "Сантасе events")
+  end)
+
+  it("a hand first seen mid-way counts no tricks: it says its start was not seen", function()
+    local w = setup()
+    local H, L = w.ns.HandHistory, w.ns.L
+    local function trick(a, b, win) return { cards = { { seat = 1, face = a }, { seat = 2, face = b } }, win = win } end
+    local hand = { key = ":1", no = 1, names = { A, BOT }, tricks = { [4] = trick("AD", "JC", 1), [5] = trick("KH", "QH", 2) }, events = {}, acts = {}, board = {} }
+    H.tables["t#1"] = { game = "santase", ver = 1, hands = { hand } }
+    local s = { game = "santase", tid = "t#1", mySeat = 1 }
+    eq(bare(H.blocks(s)[1].sum), L("table.historyPartial"))
+    hand.tricks = { trick("AD", "JC", 1), trick("KH", "QH", 2) }
+    eq(bare(H.blocks(s)[1].sum), L("table.historyTricks", 2))
   end)
 
   it("the button only at Белот, Сантасе and Холдем tables; standing up drops the table's history", function()
@@ -777,6 +845,31 @@ describe("ui: hand history — the panel beside the table", function()
       end
     end)
   end
+
+  -- Review: a fault drawing the history aborted TableFrame.render, on every render.
+  it("a fault drawing the history is noted, never stops the table, and is not drawn again until it changes", function()
+    local w = guildWow()
+    w.ns.client:openTable{ game = "belot", access = "guild", turn = 45 }
+    w:advance(0)
+    local TF, H = w.ns.TableFrame, w.ns.HandHistory
+    local v = TF.view
+    local blocks, calls = H.blocks, 0
+    H.blocks = function() calls = calls + 1; error("boom") end
+    H.lastError = nil
+    w:click(v.historyButton)
+    ok(v.history:IsShown(), "not open")
+    ok(H.lastError and tostring(H.lastError):find("boom", 1, true), "not noted")
+    ok(v.history.empty:IsShown(), "the empty line not shown")
+    local n = calls
+    local ran = false
+    local tick = TF.tick
+    TF.tick = function(...) ran = true; return tick(...) end
+    TF.render()
+    TF.tick = tick
+    ok(ran, "the render stopped before its tick")
+    eq(calls, n) -- the same history: not drawn again
+    H.blocks = blocks
+  end)
 
   -- Review: a game event mid-drag re-placed the frame under the mouse.
   it("while the frame is dragged, a redraw does not place it again", function()

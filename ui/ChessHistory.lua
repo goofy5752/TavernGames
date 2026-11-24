@@ -58,7 +58,8 @@ end
 -- The window's block of one game (ui/HandHistoryRows.lua): the sides, the moves, the end.
 local function block(hand)
   local side = {}
-  for k, seat in ipairs({ hand.white, 3 - hand.white }) do
+  local white = hand.white == 2 and 2 or 1 -- none known (a record before it was seen): seat 1
+  for k, seat in ipairs({ white, 3 - white }) do
     local name, color, full = H.who(hand, seat)
     side[k] = { piece = k == 1 and 6 or -6, name = name, color = color, full = full }
   end

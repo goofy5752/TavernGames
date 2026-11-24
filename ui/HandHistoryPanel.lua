@@ -21,10 +21,11 @@ local EDGE = 12 -- the window chrome's band, as the table frame's (TableFrame ED
 local SIDE_W = PANEL_W + 2 * EDGE -- the side window beside the table frame
 
 -- Fills the panel with table s's history (H.blocks, laid out by H.layout in its pool); a
--- click on a hand's header opens or closes it and draws again.
-function H.draw(panel, s)
+-- click on a hand's header opens or closes it and draws again. A fault in it never stops the
+-- table's render (as the recorder's, ui/HandHistory.lua): it is noted (H.lastError), the list
+-- left empty with its line, and not drawn again until the history changes.
+local function fill(panel, s)
   local blocks = H.blocks(s)
-  panel.s = s
   panel.pool:begin()
   local y = H.layout(panel.pool, blocks, panel.textW, function(block)
     H.toggle(block.hand, block.newest)
@@ -34,6 +35,19 @@ function H.draw(panel, s)
   panel.used = #blocks
   panel.empty:SetShown(#blocks == 0)
   panel.scroll:setContentHeight(y)
+end
+
+function H.draw(panel, s)
+  panel.s = s
+  local fine, why = pcall(fill, panel, s)
+  if not fine then
+    H.lastError = why
+    pcall(panel.pool.begin, panel.pool) -- nothing half drawn stays
+    pcall(panel.pool.finish, panel.pool)
+    panel.used = 0
+    panel.empty:Show()
+    panel.scroll:setContentHeight(0)
+  end
   local b = s and H.tables[s.tid]
   panel.ver, panel.tid = b and b.ver, s and s.tid
 end
