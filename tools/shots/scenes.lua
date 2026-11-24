@@ -24,11 +24,17 @@ local RACES = { Alliance = { "Human", "Human", 1 }, Horde = { "Orc", "Orc", 2 } 
 
 -- A fresh client in a guild, English UI, the player's name known, logged in.
 -- opts.faction: "Alliance" (default) | "Horde"; opts.members: more guild members (online).
+-- The client art tools/shots/client_art.py took out of the WoW install (none: the addon's stand-ins show).
+local CLIENT_ART = Shim.loadClientArt()
+
 local function boot(opts)
   opts = opts or {}
   math.randomseed(opts.seed or 7)
   Wow.FIRST = ME
-  local w = Wow.new{ ui = true, noArt = true }
+  local w = Wow.new{ ui = true, noArt = not CLIENT_ART }
+  -- The client has the files we took out; no atlas (their coordinates live in the client's database), so the
+  -- addon takes each asset's file candidate.
+  for path in pairs(Shim.clientFiles) do w:hasFile(path) end
   Shim.G = w.G
   -- A table's address feeds the deal's seed pool (Adapter's entropy): numbered
   -- instead, so a scene deals the same cards on every run.
@@ -97,7 +103,8 @@ local function write(name, w, frames, opts)
   opts = opts or {}
   local snap = Shim.snapshot(w, opts.skip)
   snap.name = name
-  snap.crop = Shim.bounds(frames, opts.margin or 24)
+  -- With the client's art the world shows around the window(s): a wider margin.
+  snap.crop = Shim.bounds(frames, opts.margin or (CLIENT_ART and 44 or 24))
   snap.screen = { w.G.UIParent.width, w.G.UIParent.height }
   -- Output px per UI unit: about 1400 px wide, between 1.25 and 2.
   local cw = snap.crop[3] - snap.crop[1]
@@ -463,8 +470,30 @@ end)
 
 ---------------------------------------------------------------------------
 
-os.execute(package.config:sub(1, 1) == "\\" and 'if not exist "tools\\shots\\build" mkdir "tools\\shots\\build"' or "mkdir -p " .. OUT)
 local wanted = { ... }
+-- --art: the client files the addon may ask for (wow/Art.lua's file candidates), one per line, for client_art.py.
+if wanted[1] == "--art" then
+  local w = boot()
+  local Art, seen = w.ns.Art, {}
+  local function add(kind, id, sub)
+    for _, c in ipairs(Art.candidates(kind, id, sub)) do
+      if c.file and not seen[c.file] then seen[c.file] = true; print(c.file) end
+    end
+  end
+  add("crest", "alliance"); add("crest", "horde")
+  local races = { "human", "nightelf", "dwarf", "gnome", "draenei", "orc", "undead", "tauren", "troll", "bloodelf" }
+  for _, race in ipairs(races) do
+    add("leader", race)
+    add("race", race, "male"); add("race", race, "female")
+  end
+  local classes = {}
+  for cls in pairs(CLASS_COLORS) do classes[#classes + 1] = cls end
+  table.sort(classes)
+  for _, cls in ipairs(classes) do add("class", cls) end
+  for _, coin in ipairs({ "gold", "silver", "copper" }) do add("coin", coin) end
+  os.exit(0)
+end
+os.execute(package.config:sub(1, 1) == "\\" and 'if not exist "tools\\shots\\build" mkdir "tools\\shots\\build"' or "mkdir -p " .. OUT)
 if #wanted == 0 then wanted = ORDER end
 for _, name in ipairs(wanted) do
   local fn = Scenes[name]

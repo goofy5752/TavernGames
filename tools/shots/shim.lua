@@ -502,11 +502,32 @@ local function clipOf(r, memo)
 end
 
 local MEDIA_PREFIX = "interface\\addons\\taverngames\\"
--- A texture path of the addon -> repo file (media/....tga), or nil (client art).
+Shim.CLIENT = "tools/shots/build/client/"
+Shim.clientFiles = {} -- client path, lower case with backslashes, no extension -> repo-relative PNG
+
+-- Reads tools/shots/build/client/have.txt (written by client_art.py) -> true when it lists any file.
+function Shim.loadClientArt()
+  local f = io.open(Shim.CLIENT .. "have.txt", "rb")
+  if not f then return false end
+  for line in f:lines() do
+    line = line:gsub("\r$", "")
+    if line ~= "" then
+      local key = (line:lower():gsub("/", "\\"))
+      Shim.clientFiles[key] = Shim.CLIENT .. (key:gsub("\\", "/")) .. ".png"
+    end
+  end
+  f:close()
+  return next(Shim.clientFiles) ~= nil
+end
+
+-- A texture path -> repo file: the addon's own (media/....tga), the client's art that
+-- client_art.py took out (tools/shots/build/client/....png), or nil (client art we lack).
 function Shim.file(path)
   if type(path) ~= "string" then return nil end
   local low = path:lower():gsub("/", "\\")
-  if low:sub(1, #MEDIA_PREFIX) ~= MEDIA_PREFIX then return nil end
+  if low:sub(1, #MEDIA_PREFIX) ~= MEDIA_PREFIX then
+    return Shim.clientFiles[(low:gsub("%.blp$", ""))]
+  end
   local rest = path:sub(#MEDIA_PREFIX + 1):gsub("\\", "/")
   if not rest:match("%.%w+$") then rest = rest .. ".tga" end
   return rest

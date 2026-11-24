@@ -16,7 +16,7 @@ import re
 import sys
 
 import numpy as np
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
 BUILD = os.path.join(ROOT, "tools", "shots", "build")
@@ -53,12 +53,30 @@ def cap_height(f):
     return _cap[f]
 
 
+CLIENT = os.path.join(ROOT, "tools", "shots", "build", "client")
+# The world behind the windows, when client_art.py took it out: a loading screen of the faction's continent.
+WORLD = {
+    "Alliance": "interface/glues/loadingscreens/loadscreeneasternkingdom.png",
+    "Horde": "interface/glues/loadingscreens/loadscreenkalimdor.png",
+}
+
+
+def client_file(path):
+    """A client texture path (no extension) -> its PNG under build/client, or None."""
+    rel = path.lower().replace("\\", "/")
+    rel = re.sub(r"\.blp$", "", rel) + ".png"
+    full = os.path.join(CLIENT, *rel.split("/"))
+    return os.path.relpath(full, ROOT) if os.path.exists(full) else None
+
+
 class Canvas:
-    def __init__(self, crop):
+    def __init__(self, crop, data=None):
         self.l, self.b, self.r, self.t = crop
         self.w = int(round((self.r - self.l) * K))
         self.h = int(round((self.t - self.b) * K))
-        self.px = backdrop(self.w, self.h)
+        self.px = world(self, data or {})
+        if self.px is None:
+            self.px = backdrop(self.w, self.h)
 
     def box(self, rect):
         """UI rect [l, b, r, t] -> canvas px (x0, y0, x1, y1), rounded so adjacent pieces abut."""
@@ -102,6 +120,36 @@ def backdrop(w, h):
     vign = 1.0 - 0.35 * np.clip(d - 0.3, 0, 1)
     lum = (1 + 0.07 * blot + 0.012 * grain) * vign
     return (base[None, None, :] * lum[..., None]).astype(np.float32)
+
+
+def world(cv, data):
+    """The faction's loading screen laid over the whole screen as the game shows it (4:3,
+    covering the 16:9 screen), the part behind the crop, softened and dimmed like a world
+    behind an open window -> float RGB, or None without client art."""
+    rel = WORLD.get(data.get("faction") or "Alliance")
+    path = rel and os.path.join(CLIENT, *rel.split("/"))
+    if not path or not os.path.exists(path):
+        return None
+    sw, sh = data.get("screen") or (1920, 1080)
+    img = Image.open(path).convert("RGB")
+    iw, ih = img.size
+    # The texture is square; the client stretches it to a 4:3 frame. Cover the screen with that frame.
+    fw = max(sw, sh * 4 / 3)
+    fh = fw * 3 / 4
+    ox, oy = (fw - sw) / 2, (fh - sh) / 2
+
+    def px(x, y_up):
+        return (x + ox) / fw * iw, (sh - y_up + oy) / fh * ih
+
+    x0, y0 = px(cv.l, cv.t)
+    x1, y1 = px(cv.r, cv.b)
+    patch = img.transform((cv.w, cv.h), Image.EXTENT, (x0, y0, x1, y1), resample=Image.BICUBIC)
+    patch = patch.filter(ImageFilter.GaussianBlur(radius=max(1.0, cv.w / 900)))
+    arr = np.asarray(patch, dtype=np.float32) / 255.0
+    yy, xx = np.mgrid[0:cv.h, 0:cv.w].astype(np.float32)
+    d = np.sqrt(((xx - cv.w / 2) / (cv.w / 2)) ** 2 + ((yy - cv.h / 2) / (cv.h / 2)) ** 2)
+    dim = 0.62 * (1.0 - 0.35 * np.clip(d - 0.4, 0, 1))
+    return (arr * dim[..., None]).astype(np.float32)
 
 
 def sample(path, tc, wrap, w, h):
@@ -219,6 +267,8 @@ def inline_spec(spec, size):
         file = path[len(prefix):].replace("\\", "/")
         if not re.search(r"\.\w+$", file):
             file += ".tga"
+    else:
+        file = client_file(path)
     return file, w * K, h * K, dx * K, dy * K, tc
 
 
@@ -340,7 +390,7 @@ def render(name):
     crop = data["crop"]
     global K
     K = data.get("scale", SCALE) * SS
-    cv = Canvas(crop)
+    cv = Canvas(crop, data)
     for it in data["items"]:
         if it["k"] == "tex":
             draw_texture(cv, it)
