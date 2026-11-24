@@ -402,13 +402,13 @@ describe("ui: the chess status line", function()
     end
     -- my turn: „Предложи реми“ and „Предай се“
     local left, right = at()
-    eq(left, 8 + 124 + 8 + 124 + 12); eq(right, 8 + 496)
-    ok(right <= plateX, "under the plates: " .. right .. " > " .. plateX)
+    eq(left, 8 + 124 + 8 + 124 + 12); eq(right, plateX - 15 - 8) -- clear of my plate's portrait
+    ok(right <= 8 + 496, "past the board: " .. right)
     eq(f.status:GetText(), "Ти си на ход")
     -- their turn, a long name: the bot's short name; shrunk, then wrapped in the same room
     s.state.turn = 2; T.render()
     left, right = at()
-    eq(right, 8 + 496); ok(f.status:GetText():find("Ivanov", 1, true), "the short name")
+    eq(right, plateX - 15 - 8); ok(f.status:GetText():find("Ivanov", 1, true), "the short name")
     ok(select(2, f.status:GetFont()) >= 9, "unreadable")
     -- no buttons (a watcher): the line from the board's left edge
     s.mySeat = nil; T.render()

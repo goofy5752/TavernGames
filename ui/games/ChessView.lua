@@ -146,9 +146,10 @@ function View.build(parent)
   return f
 end
 
--- The line of status right of the last button shown, ending at the board's right edge (the plates'
--- column is right of it): shrunk, then wrapped, never under a plate.
+-- The line of status right of the last button shown, ending clear of my plate's portrait (the plates'
+-- column is right of the board): shrunk, then wrapped, never under a plate.
 local STATUS_GAP = 12
+local STATUS_RIGHT = math.min(BOARD_X + BOARD, P.X - 15 - 8) -- clear of my plate's portrait (30 px, centred on its left end)
 local function drawStatus(f, text)
   local x, right = BOARD_X, BOARD_X
   for _, b in ipairs({ f.offer, f.resign, f.claim }) do -- each anchored right of the one before
@@ -157,7 +158,7 @@ local function drawStatus(f, text)
   end
   f.status:ClearAllPoints()
   f.status:SetPoint("LEFT", f, "TOPLEFT", x, BUTTONS_Y - 12)
-  W.fitWrap(f.status, text, math.max(1, BOARD_X + BOARD - x))
+  W.fitWrap(f.status, text, math.max(1, STATUS_RIGHT - x))
 end
 
 -- The plates: the opponent's at the top of the side column, mine (a watcher: white's) at the bottom.
