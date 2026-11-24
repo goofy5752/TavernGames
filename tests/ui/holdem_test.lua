@@ -107,7 +107,7 @@ describe("ui: the Холдем view", function()
       eq({ View.seatNote(sess(st, 1), 1), View.seatNote(sess(st, 1), 2), f.pot:GetText(), f.seat[2].bet:GetText(), f.seat[3].bet:GetText() },
          { "1000", "995", "Пот 15", "5", "10" })
       eq({ f.callButton.text:GetText(), f.raiseButton.text:GetText(), f.allinButton.text:GetText(), f.text:GetText() },
-         { "Плащам 10", "Вдигам до 20", "Ва банк 1000", "Твой ход: 10 за плащане" })
+         { "Плащам 10", "Вдигам до 20", "Ол-ин 1000", "Твой ход: 10 за плащане" })
       local bannerHi = { T.color.bannerHi[1], T.color.bannerHi[2], T.color.bannerHi[3], 1 }
       eq({ f.seat[2].chip:IsVisible(), f.seat[2].chip:GetTexture(), { f.seat[2].chip:GetVertexColor() }, { f.seat[3].chip:GetVertexColor() } },
          { true, T.tex.chip, bannerHi, bannerHi })
@@ -130,7 +130,7 @@ describe("ui: the Холдем view", function()
     -- six digits at the 200 bb option: the label shrinks until it fits its button, and grows back
     drawAt(f, hand3({ blinds = 200, stack = 200 }, { [1] = 240000, [2] = 240000, [3] = 240000 }), 1, 9)
     local function size(b) return select(2, b.text:GetFont()) end
-    eq({ f.raiseButton.text:GetText(), size(f.raiseButton), f.allinButton.text:GetText() }, { "Вдигам до 400", 13, "Ва банк 240000" })
+    eq({ f.raiseButton.text:GetText(), size(f.raiseButton), f.allinButton.text:GetText() }, { "Вдигам до 400", 13, "Ол-ин 240000" })
     f.want = 123456; View.update(f, f.session)
     eq({ f.raiseButton.text:GetText(), f.callButton.text:GetText() }, { "Вдигам до 123456", "Плащам 200" })
     ok(size(f.raiseButton) < 13 and size(f.raiseButton) >= 10, "the label kept its size")
@@ -141,15 +141,15 @@ describe("ui: the Холдем view", function()
     w:click(f.foldButton); eq({ f.sent, f.foldButton:IsEnabled(), f.callButton:IsEnabled() }, { nil, true, true })
   end)
 
-  it("No Limit: „Ва банк“ sends all-in; a short stack has no raise row; check when nothing is owed", function()
+  it("No Limit: „Ол-ин“ sends all-in; a short stack has no raise row; check when nothing is owed", function()
     local w, View, f, acts = setup(); local st = hand3(); draw(f, st, 1)
     eq({ f.allinButton:IsVisible(), f.allinButton.text:GetText(), f.foldButton.text:GetText(), f.halfButton.text:GetText(), f.potButton.text:GetText() },
-       { true, "Ва банк 1000", "Пас", "½ пот", "Пот" })
+       { true, "Ол-ин 1000", "Фолд", "½ пот", "Пот" })
     w:click(f.allinButton); eq(acts, { { k = "allin" } })
 
     drawAt(f, hand3(nil, { [1] = 15 }), 1, 2)
     eq({ f.raiseButton:IsVisible(), f.plusButton:IsVisible(), f.minusButton:IsVisible(), f.halfButton:IsVisible(), f.potButton:IsVisible() }, { false, false, false, false, false })
-    eq({ f.allinButton.text:GetText(), f.callButton.text:GetText(), f.foldButton:IsVisible() }, { "Ва банк 15", "Плащам 10", true })
+    eq({ f.allinButton.text:GetText(), f.callButton.text:GetText(), f.foldButton:IsVisible() }, { "Ол-ин 15", "Плащам 10", true })
 
     st = hand3(); ok(E.apply(st, 1, { k = "call" })); ok(E.apply(st, 2, { k = "call" })); drawAt(f, st, 3, 3)
     eq(f.callButton.text:GetText(), "Чек"); w:click(f.callButton); eq(acts[2], { k = "check" })

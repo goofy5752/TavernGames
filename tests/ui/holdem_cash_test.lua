@@ -152,7 +152,7 @@ describe("ui: the amounts on the felt", function()
     eq({ w.ns.HoldemCash.CHIP, View.cash(s), View.cash(funSess(st, 1)) }, { 100, true, false })
     eq({ View.amount(s, 200), View.amount(s, 15), View.amount(s, 0), w.ns.HoldemCashView.coins(200) }, { w:coins("2g"), w:coins("15s"), w:coins("0c"), w:coins("2g") })
     eq(felt(View, f, s), { w:coins("4g"), "-", w:coins("3g 95s"), w:coins("5s"), w:coins("3g 90s"), w:coins("10s"),
-      w:coins("Пот 15s"), w:coins("Плащам 10s"), w:coins("Вдигам до 20s"), w:coins("Ва банк 4g"), w:coins("Твой ход: 10s за плащане"), "-" })
+      w:coins("Пот 15s"), w:coins("Плащам 10s"), w:coins("Вдигам до 20s"), w:coins("Ол-ин 4g"), w:coins("Твой ход: 10s за плащане"), "-" })
     -- the coin is in the text: no chip picture beside a bet, and the bet alone is centred on its place
     local p, sw = f.seat[2], f.seat[2].bet:GetStringWidth()
     eq({ p.bet:IsVisible(), p.chip:IsVisible(), p.bet.points[1] }, { true, false, { "LEFT", f, "TOPLEFT", 250 - sw / 2, -272 } })
@@ -173,7 +173,7 @@ describe("ui: the amounts on the felt", function()
     View.update(f, sess(st, 1)); f.want = 19995; View.update(f, f.session) -- the amount I set, kept until the next event
     local function size(b) return (select(2, b.text:GetFont())) end
     eq({ f.raiseButton.text:GetText(), f.callButton.text:GetText(), f.allinButton.text:GetText() },
-       { w:coins("Вдигам до 199g 95s"), w:coins("Плащам 2g"), w:coins("Ва банк 200g") })
+       { w:coins("Вдигам до 199g 95s"), w:coins("Плащам 2g"), w:coins("Ол-ин 200g") })
     for _, b in ipairs({ f.raiseButton, f.callButton, f.allinButton }) do
       ok(b.text:GetStringWidth() <= b:GetWidth() - 6, plain(b.text:GetText()) .. " leaves no padding: " .. b.text:GetStringWidth())
       ok(size(b) >= 8, "below the floor")

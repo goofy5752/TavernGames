@@ -12,8 +12,8 @@ local _, ns = ...
 -- last hand. Every chip count on the felt is View.amount: coins (chips x
 -- HoldemCash.CHIP) at a cash table, where a chip is real silver; the bare
 -- number at a fun one, with a chip in the skin's bannerHi beside a bet. On
--- my turn the bet buttons: „½ пот“, „Пот“, „Ва банк“, − and +
--- for the amount, „Пас“, „Чек“ / „Плащам“, „Залагам“ / „Вдигам до“; the host
+-- my turn the bet buttons: „½ пот“, „Пот“, „Ол-ин“, − and +
+-- for the amount, „Фолд“, „Чек“ / „Плащам“, „Залагам“ / „Вдигам до“; the host
 -- of a running game has „Приключи“. The amount the buttons set is the view's
 -- memory (`want`) until any table event; after an accepted action the buttons
 -- are dead until the next event (`sent`). Every move goes through

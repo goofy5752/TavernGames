@@ -69,7 +69,7 @@ describe("ui: the Холдем model", function()
     m = build(st, 4); eq({ st.seats[4], m.seated, m.me, m.mine }, { false, false, 1, false })   -- a seat taken while the game closes has no chair in the engine
   end)
 
-  it("Pot Limit: the biggest raise the buttons offer is the engine's cap; no „Ва банк“ above it", function()
+  it("Pot Limit: the biggest raise the buttons offer is the engine's cap; no „Ол-ин“ above it", function()
     local st = hand3{ betting = "pl" }; local m = build(st, 1)
     eq(m.act, { fold = true, call = 10, raise = { k = "raise", min = 20, max = 35 } }); eq({ m.to, m.half, m.potTo, build(st, 1, 999).to }, { 20, 22, 35, 35 })
     ok(try(st, 1, { k = "raise", to = m.potTo })); eq({ try(st, 1, { k = "raise", to = m.potTo + 1 }) }, { nil, "amount" }); eq({ try(st, 1, { k = "allin" }) }, { nil, "amount" })
