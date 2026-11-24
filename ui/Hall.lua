@@ -561,8 +561,14 @@ local function buildLeft(v, page, colH)
       letter:SetJustifyH("CENTER")
       letter:SetPoint("CENTER", icon, "CENTER", 0, 0)
     end
+    -- ⓘ at the row's right end: the game's rules in the rules book, in sight of everyone
+    -- choosing a game (its own button: a click on it never opens the new-table dialog).
+    local info = W.Info(row, g.id, L("hall.rulesOf", title))
+    info:SetSize(20, 20)
+    info:SetPoint("RIGHT", row, "RIGHT", -6, 0)
     local name = W.Label(row, "ui", title, 13)
     name:SetPoint("TOPLEFT", icon, "TOPRIGHT", 9, 1)
+    W.fitWrap(name, title, LEFT_W - 20 - (2 + 34 + 9) - (6 + 20 + 4)) -- stops before the ⓘ
     local sub = W.Label(row, "dim", L("games.players", g.players))
     sub:SetPoint("TOPLEFT", name, "BOTTOMLEFT", 0, -1)
     local soon = W.Label(row, "dim", L("games.soon"))
@@ -576,7 +582,7 @@ local function buildLeft(v, page, colH)
       row:SetAlpha(0.45)
       row:SetScript("OnClick", function() if ns.HelpBook then ns.HelpBook.open("soon") end end)
     end
-    v.games[i] = { id = g.id, frame = row, name = name, soon = soon }
+    v.games[i] = { id = g.id, frame = row, name = name, soon = soon, info = info }
   end
   local open = W.Button(left, L("hall.open"), function() ns.NewTableDialog.open(firstActive) end)
   open:SetSize(LEFT_W - 20, 28)

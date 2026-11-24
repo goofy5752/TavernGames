@@ -170,6 +170,52 @@ local function buildLooks(page, v)
   end
 end
 
+-- „Направено с ♥ от goofy5752“ and the source code's address under the versions. The
+-- heart is the red suit of our own cards. The client cannot open a web page, so the
+-- address sits in a read-only box: a click selects all of it, Ctrl+C copies it.
+local function heart()
+  local r, g, b = Theme.rgb("oMark")
+  local function byte(x) return math.floor(x * 255 + 0.5) end
+  return "|T" .. Theme.tex.suits .. ":0:0:0:-1:128:32:64:96:0:32:" .. byte(r) .. ":" .. byte(g) .. ":" .. byte(b) .. "|t"
+end
+
+local function buildCredits(panel, v, y)
+  local C = ns.Const
+  v.credit = W.Label(panel, "heading", "", 15)
+  v.credit:SetPoint("TOPLEFT", panel, "TOPLEFT", PAD, -y)
+  v.credit:SetText(L("settings.madeBy", heart(), W.paint(C.AUTHOR, Theme.rgb("gold"))))
+  v.credit:SetTextColor(Theme.rgb("inkDim"))
+  y = y + 28
+  local label = W.Label(panel, "dim", L("settings.repo"), 12)
+  label:SetPoint("TOPLEFT", panel, "TOPLEFT", PAD, -(y + 4))
+  local box = CreateFrame("EditBox", nil, panel)
+  local lw = W.textWidth(label)
+  box:SetSize(PANEL_W - 2 * PAD - lw - 8, 22)
+  box:SetPoint("TOPLEFT", panel, "TOPLEFT", PAD + lw + 8, -y)
+  box:SetAutoFocus(false)
+  Theme.setFont(box, "ui", 12)
+  box:SetTextColor(Theme.rgb("brassLight"))
+  box:SetTextInsets(6, 6, 0, 0)
+  local fill = box:CreateTexture(nil, "BACKGROUND")
+  fill:SetAllPoints(box)
+  fill:SetColorTexture(unpack(W.DARK_FILL))
+  W.edges(box, 1).setColor(Theme.rgb("brass"))
+  box:SetText(C.REPO)
+  local function selectAll(self) if self.HighlightText then self:HighlightText() end end
+  box:SetScript("OnEditFocusGained", selectAll)
+  box:SetScript("OnMouseUp", selectAll)
+  -- read-only: whatever is typed, the address comes back
+  box:SetScript("OnTextChanged", function(self, user)
+    if user and self:GetText() ~= C.REPO then self:SetText(C.REPO); selectAll(self) end
+  end)
+  box:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+  box:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
+  W.tooltip(box, function(t) t:SetText(L("settings.copyHint")) end)
+  v.repo, v.repoLabel = box, label
+  v.copyHint = W.Label(panel, "dim", L("settings.copyHint"), 11)
+  v.copyHint:SetPoint("TOPLEFT", box, "BOTTOMLEFT", 2, -4)
+end
+
 function Settings.build(page)
   local v = {}
   Settings.view = v
@@ -211,7 +257,8 @@ function Settings.build(page)
   v.version = W.Label(panel, "dim", L("settings.version", C.VERSION), 12)
   v.version:SetPoint("TOPLEFT", panel, "TOPLEFT", PAD, -y); y = y + 20
   v.protocol = W.Label(panel, "dim", L("settings.protocol", C.PROTOCOL), 12)
-  v.protocol:SetPoint("TOPLEFT", panel, "TOPLEFT", PAD, -y)
+  v.protocol:SetPoint("TOPLEFT", panel, "TOPLEFT", PAD, -y); y = y + 30
+  buildCredits(panel, v, y)
 
   buildLooks(page, v)
   sync()

@@ -5,6 +5,8 @@ ns.Const = {
   PROTOCOL = 1,
   PREFIX = "TAVG",
   VERSION = "0.1.0",
+  REPO = "https://github.com/goofy5752/TavernGames", -- the source code (Settings, „За аддона“)
+  AUTHOR = "goofy5752",
 
   TURN_DEFAULT = 45,
   TURN_CHOICES = { 30, 45, 60, 90 },
