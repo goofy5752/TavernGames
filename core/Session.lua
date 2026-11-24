@@ -209,14 +209,11 @@ function Session:armTimers()
   if seat then
     self.deadline = client.env.now() + self.turn
     if engine.view and seat ~= self.mySeat and not engine.publicAuto then return end
-    local function due()
+    self.turnTimer = client:after(self.turn + (seat ~= self.mySeat and (engine.view or self.stake) and C.AUTO_GRACE or 0), function()
       self.turnTimer = nil
-      -- A claimant nobody follows may be the one cut off: not for another seat (looked at again later).
-      if seat ~= self.mySeat and Succession.alone(self) then self.turnTimer = client:after(C.PING_EVERY, due); return end
       local auto = engine.auto(self.state, seat, client.env.random)
       if auto then self:play(seat, auto, true) end
-    end
-    self.turnTimer = client:after(self.turn + (seat ~= self.mySeat and (engine.view or self.stake) and C.AUTO_GRACE or 0), due)
+    end)
   end
 end
 

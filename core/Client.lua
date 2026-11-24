@@ -152,6 +152,7 @@ function Client:answerInvite(tid, answer) self.invites:answer(tid, answer) end
 
 function Client:receive(channel, sender, msg)
   if not self.running then return end
+  self.heardAt = self.env.now() -- anything at all reached me (Succession.claim: was I cut off?)
   if self.env.log then self.env.log("in", channel, sender, msg) end
   if type(msg) ~= "table" or msg.v == nil or msg.t == nil then return end
   if type(sender) ~= "string" or sender == self.env.me then return end
