@@ -1,6 +1,7 @@
 local Sim = require("sim")
 require("fake_engine")
 local S = Sim.ns.Succession
+local C_PING = Sim.ns.Const.PING_EVERY
 
 local A, B, C, D = "Иван Петров", "Мария Стоянова", "Kiro Barley", "Пешо Тодоров"
 
@@ -293,6 +294,31 @@ describe("graceful handoff", function()
     d:receive("WHISPER", A, { v = 1, t = "HND", tid = tid, e = 2, to = D }); sim:run(1)
     eq(d.session.role, "watcher"); eq(d.session.epoch, 1)
   end)
+
+  -- e2e soak (seed 200021): the HND went to a seat whose client had been cut off; the others
+  -- followed it and, once it claimed by silence from the state it held, rolled back to it.
+  it("the table goes to the first seat heard lately, not to one silent since before the last ping", function()
+    local sim, a, b, c, d, tid = fake()
+    incs(sim, a, b, c)
+    sim:offline(B); sim:run(C_PING + 10)
+    incs(sim, a)
+    local q = a.session.seq
+    a:stand(); sim:run(2)
+    eq(c.session.role, "host"); eq(c.session.epoch, 2); eq(d.session.host, C)
+    eq(c.session.seq, q + 1) -- the state the table had, plus the host's stand
+    sim:online(B); sim:run(C_PING + 5)
+    eq({ b.session.host, b.session.role, b.session.epoch }, { C, "player", 2 })
+    eq(b.session.seq, c.session.seq); eq(b.session.state, c.session.state)
+  end)
+
+  it("with nobody heard lately the first seat takes the table, as before", function()
+    local sim, a, b, c, _, tid = fake()
+    sim:offline(B); sim:offline(C); sim:run(C_PING + 10)
+    sim:online(B); sim:online(C)
+    a:stand(); sim:run(2)
+    eq(b.session.role, "host"); eq(c.session.host, B)
+    _ = tid
+  end)
 end)
 
 describe("host silence and convergence", function()
@@ -405,6 +431,38 @@ describe("host silence and convergence", function()
     local q = b.session.seq
     sim:run(200); eq(b.session.seats, { A, B, C }) -- heard again: stays seated
     ok(b.session.seq > q); eq(a.session.seq, b.session.seq)
+  end)
+
+  -- e2e soak (seeds 300074, 200031): the seat cut off claimed from its stale state; back, its
+  -- higher epoch won and the live host and every member took that state up (a close undone).
+  it("a seat cut off claims alone; back, the table it lost stays as it is and it follows it again", function()
+    local sim, a, b, c, d = fake()
+    incs(sim, a)
+    sim:offline(B); sim:run(80)
+    eq(b.session.role, "host"); eq(b.session.epoch, 2) -- alone, it took the table over
+    eq({ a.session.role, a.session.epoch, c.session.host, d.session.host }, { "host", 1, A, A })
+    local n = a.session.state.n
+    ok(n > 1, "the table played on")
+    sim:online(B); sim:run(35)
+    eq({ a.session.role, a.session.epoch, c.session.host, c.session.epoch, d.session.host }, { "host", 1, A, 1, A })
+    eq({ b.session.role, b.session.host, b.session.epoch }, { "player", A, 1 })
+    ok(a.session.state.n >= n, "nothing undone")
+    eq(b.session.state, a.session.state); eq(c.session.state, a.session.state); eq(b.session.seq, a.session.seq)
+    eq(a.lobby:get(a.session.tid).host, A); eq(c.lobby:get(a.session.tid).host, A)
+  end)
+
+  -- Two players cut from each other: neither can tell who was cut off; nobody follows either.
+  -- As before, the claimant keeps the table; what matters is that they end at one state.
+  it("two players: the guest cut off claims alone; back, both end at the claimant's table", function()
+    local sim, a, b = ttt()
+    ok(a:act{k="mark", c=1}); sim:run(1); ok(b:act{k="mark", c=5}); sim:run(1)
+    local q0 = a.session.seq
+    sim:offline(B); sim:run(80)
+    eq(b.session.role, "host")
+    ok(a.session.seq > q0, "the host played on (its clock moved for the silent guest)")
+    sim:online(B); sim:run(35)
+    eq({ a.session.role, a.session.host, b.session.role, b.session.epoch }, { "player", B, "host", 2 })
+    eq(a.session.seq, b.session.seq); eq(a.session.state, b.session.state)
   end)
 
   it("a host that reloads loses the table to the guest and gets its seat back from him", function()

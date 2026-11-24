@@ -71,6 +71,8 @@ end
 -- another host restarted it and the turn's first clock agrees. After my own
 -- roll on that turn at its max (Rolls: s.myRoll) such a stand is "roll", but
 -- from the first other host since that roll (myRoll.pass). Judged once a game.
+-- "unseen" too in the snapshot of the host I gave the table back to (s.yielded,
+-- Succession.yields: my client was the one cut off, the host stood me up offline).
 function Stakes.stood(s, seat, why, snap, max)
   if not s.stakeLive or s.role == "host" or s.stakeStood or sentIn(s, "stand") then return end
   s.stakeStood = true
@@ -79,7 +81,7 @@ function Stakes.stood(s, seat, why, snap, max)
   local mine = s:engine().idle and why ~= "left" and t and t.seat == seat
   if mine and r and r.max == max and r.pass ~= s.host then return pend(s, "roll") end
   if mine and now >= t.at + due then return end
-  pend(s, (mine and (not t.seen or (t.was and now >= t.was + due))) and "unseen" or snap and "forged" or "stand")
+  pend(s, ((mine and (not t.seen or (t.was and now >= t.was + due))) or (snap and s.yielded)) and "unseen" or snap and "forged" or "stand")
 end
 
 -- My Морски шах timeout is due by my own clock (Member.timedOut's rule for a
@@ -230,6 +232,7 @@ ns.Ext.stakes.adopted = function(s, prev, m, how)
   local sameTurn = cont and on and t ~= nil and t.seat == st.turn and (identical or (turnKey(st) ~= nil and turnKey(prev) == turnKey(st)))
   refresh(s, not cont, not sameTurn, how)
   if kept then Stakes.foul(s, kept) end
+  s.yielded = nil
   s.stakeHost, t = s.host, s.stakeTurn
   s.turnAt = t and t.seat == s.mySeat and t.at or nil
 end
