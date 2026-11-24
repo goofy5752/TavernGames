@@ -641,7 +641,17 @@ local function checkMoney(sim)
         if #L == 0 then L, W = o.l, o.w end
         for i = 1, math.min(#L, #W) do want[gid .. "|" .. L[i] .. "|" .. W[i]] = T.sk end
       else
-        for _, f in ipairs(o.l) do
+        local L = o.l
+        if o.why and #L > 1 then
+          -- a team's forfeit: the R names the whole team as losers, the debt is the leaver's alone
+          local leaver
+          for _, x in ipairs(T.forfeits) do if x.v.tid .. "/" .. x.v.q == gid and (x.who ~= x.v.name or x.host) then leaver = x.v.name end end
+          for _, x in ipairs(T.results) do
+            if not leaver and x.r.tid .. "/" .. x.r.q == gid and x.r.left then leaver = x.r.names[x.r.left] end
+          end
+          L = leaver and { leaver } or L
+        end
+        for _, f in ipairs(L) do
           for _, t in ipairs(o.w) do if f ~= t then want[gid .. "|" .. f .. "|" .. t] = T.sk end end
         end
       end
