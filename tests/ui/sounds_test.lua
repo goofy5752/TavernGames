@@ -164,16 +164,10 @@ describe("ui: game sounds", function()
       tid = "t#1", epoch = 1, seq = 1, role = "host", stake = cash and 1000 or nil, engine = function() return E end }
   end
 
-  it("Холдем: a deal sounds per hand; coins sound in the pot of a cash table only", function()
+  it("Холдем: the view plays no SOUNDKIT deal or coins (its own files: ui/games/HoldemSounds.lua)", function()
     local w, View, f = viewOf("holdem")
-    View.update(f, holdem(w, 1, 30, true)); eq(#w.sounds, 0) -- first sight
-    View.update(f, holdem(w, 1, 50, true)); eq(count(w, COIN), 1)
-    View.update(f, holdem(w, 1, 50, true)); eq(count(w, COIN), 1)
-    View.update(f, holdem(w, 2, 0, true)); eq(count(w, DEAL), 1); eq(count(w, COIN), 1) -- a new hand, the pot empty
-    View.update(f, holdem(w, 2, 15, true)); eq(count(w, COIN), 2)
-    local w2, View2, f2 = viewOf("holdem")
-    View2.update(f2, holdem(w2, 1, 30, false)); View2.update(f2, holdem(w2, 1, 60, false))
-    View2.update(f2, holdem(w2, 2, 15, false))
-    eq(count(w2, COIN), 0); eq(count(w2, DEAL), 1) -- chips on a fun table: no coins
+    View.update(f, holdem(w, 1, 30, true)); View.update(f, holdem(w, 1, 50, true))
+    View.update(f, holdem(w, 2, 0, true)); View.update(f, holdem(w, 2, 15, false))
+    eq(count(w, COIN), 0); eq(count(w, DEAL), 0); eq(w.soundFiles, {})
   end)
 end)

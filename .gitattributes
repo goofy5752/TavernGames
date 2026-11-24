@@ -3,3 +3,4 @@ Libs/** -text
 media/fonts/** -text
 *.ttf binary
 *.tga binary
+*.ogg binary

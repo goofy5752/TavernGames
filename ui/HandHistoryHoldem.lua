@@ -99,3 +99,12 @@ local function holdem(s, st, b)
 end
 
 H.RECORD.holdem = holdem
+
+-- The same reading for the table's sounds (ui/games/HoldemSounds.lua): the seats' state an event is read
+-- against, and what each seat did since it -> {{street, seat, k, amt}…} in seat order.
+H.holdemSnapshot = snapshot
+function H.holdemActs(st, was)
+  local t = { acts = {} }
+  diff(t, st, was)
+  return t.acts
+end

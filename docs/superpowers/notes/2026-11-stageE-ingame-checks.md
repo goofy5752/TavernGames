@@ -13,12 +13,12 @@ Message budget as measured in the simulator (real wire format, Task 5): an **ord
 | # | Check | What to look for | Result |
 |---|---|---|---|
 | 1 | `/tavern bots`, open Холдем „Само поканени“, `/tavern bots fill 5`, „Започни“ | the dialog names „Без лимит“ / „Пот лимит“, „5/10“ ..., „100 ГБ“; the frame is the big one (760 x 532); six plates around the oval, mine at the bottom; my two cards face up, the bots' face down; „D“, „МБ“, „ГБ“ at the right seats | not yet measured |
-| 2 | my turn | „Пас“, „Плащам N“ or „Чек“, „Вдигам до N“; „-“ / „+“ move the amount by a big blind; „½ пот“, „Пот“, „Ва банк N“; the clock runs on my plate; a long amount (six digits, or the 200 big-blind option) still fits the raise button, the label stepping down in font size; the three buttons of row 3 do not overlap | not yet measured |
-| 3 | a Pot Limit table | no „Ва банк“ while my stack is above the pot; „Пот“ gives the biggest amount and it is accepted | not yet measured |
+| 2 | my turn | „Фолд“, „Плащам N“ or „Чек“, „Вдигам до N“; „-“ / „+“ move the amount by a big blind; „½ пот“, „Пот“, „Ол-ин N“; the clock runs on my plate; a long amount (six digits, or the 200 big-blind option) still fits the raise button, the label stepping down in font size; the three buttons of row 3 do not overlap | not yet measured |
+| 3 | a Pot Limit table | no „Ол-ин“ while my stack is above the pot; „Пот“ gives the biggest amount and it is accepted | not yet measured |
 | 4 | a hand to the showdown | flop, turn and river come about a second apart; only the hands that went to the showdown turn face up; „+N“ at the winner; „X взе N с ...“; the log line at the bottom left | not yet measured |
 | 5 | everybody folds to one player | no card is shown; „... Останалите се отказаха.“ | not yet measured |
 | 6 | an all-in with three stacks of different size | the pots are paid as the rules-book example says; the chips of all seats still add up | not yet measured |
-| 7 | let my clock run out | „Чек“ when nothing is owed, else „Пас“; no script error | not yet measured |
+| 7 | let my clock run out | „Чек“ when nothing is owed, else „Фолд“; no script error | not yet measured |
 | 8 | lose all chips; „Стани“ and sit again | „без чипове“ on my plate and no cards; after sitting again a fresh stack from the next hand | not yet measured |
 | 9 | „Приключи“ as host | the note at the left under the felt reads „Последна ръка...“ and touches neither the board nor the text line; after the hand „Играта приключи...“; within some seconds the line under the felt reads „Всичките N ръце са проверени“ in green; „Нова игра“ starts with fresh stacks; ⓘ opens „Тексас Холдем“ | not yet measured |
 | 10 | two characters in different zones | hands are dealt; each sees only its own cards; `/tavern debug` shows no face of the other player before a showdown and no `keys` line before a „Стани“ or the close | not yet measured |

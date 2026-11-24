@@ -12,8 +12,8 @@ local _, ns = ...
 -- last hand. Every chip count on the felt is View.amount: coins (chips x
 -- HoldemCash.CHIP) at a cash table, where a chip is real silver; the bare
 -- number at a fun one, with a chip in the skin's bannerHi beside a bet. On
--- my turn the bet buttons: „½ пот“, „Пот“, „Ва банк“, − and +
--- for the amount, „Пас“, „Чек“ / „Плащам“, „Залагам“ / „Вдигам до“; the host
+-- my turn the bet buttons: „½ пот“, „Пот“, „Ол-ин“, − and +
+-- for the amount, „Фолд“, „Чек“ / „Плащам“, „Залагам“ / „Вдигам до“; the host
 -- of a running game has „Приключи“. The amount the buttons set is the view's
 -- memory (`want`) until any table event; after an accepted action the buttons
 -- are dead until the next event (`sent`). Every move goes through
@@ -69,8 +69,11 @@ end
 -- An action to the client; accepted, the buttons are dead until the next event (not
 -- the event it may already have drawn: the host plays it at once).
 local function send(f, a)
-  local client, key = ns.client, f.key
-  if a and client and not f.sent and client:act(a) and f.key == key then f.sent = true end
+  local client, key, turn = ns.client, f.key, ns.HoldemSounds.key(f.session)
+  if a and client and not f.sent and client:act(a) then
+    ns.HoldemSounds.acted(turn) -- my turn clock stops ticking (ui/games/HoldemSounds.lua)
+    if f.key == key then f.sent = true end
+  end
   redraw(f)
 end
 
@@ -428,9 +431,6 @@ function View.update(f, s)
   if f.key ~= key then f.key, f.want, f.sent = key, nil, nil end
   local m = M.build(s, f.want)
   f.model = m
-  local hand = s.state.hand or 0
-  ns.Sounds.once("deal", s.tid .. ":" .. hand, s.tid, hand > 0)
-  if View.cash(s) then ns.Sounds.once("coins", s.tid .. ":" .. hand .. ":" .. m.pot, s.tid, m.pot > 0) end
   drawSeats(f, s, m)
   drawTable(f, s, m)
   drawButtons(f, s, m)

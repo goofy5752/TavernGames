@@ -114,4 +114,21 @@ describe(".pkgmeta", function()
       ok(n < l[2], l[1] .. " " .. n)
     end
   end)
+
+  it("the zip ships media/sounds (Hold'em's sounds, one per name) and leaves tools/ out", function()
+    local ignored, inIgnore = {}, false
+    for line in io.lines(".pkgmeta") do
+      line = line:gsub("\r", "")
+      if line:match("^%S") then inIgnore = line:match("^ignore:") ~= nil end
+      local path = inIgnore and line:match("^%s+%-%s*(%S+)")
+      if path then ignored[path] = true end
+    end
+    ok(ignored.tools, "tools/ is packaged")
+    for path in pairs(ignored) do ok(not ("media/sounds"):find("^" .. path:gsub("%p", "%%%0")), "ignored: " .. path) end
+    for _, name in ipairs({ "turn", "tick", "tickLast", "timeout", "check", "call", "bet", "allin", "fold", "deal", "board", "win" }) do
+      local f = io.open("media/sounds/" .. name .. ".ogg", "rb")
+      ok(f, "missing media/sounds/" .. name .. ".ogg")
+      if f then ok(f:read(4) == "OggS", name .. ".ogg is not an Ogg file"); f:close() end
+    end
+  end)
 end)

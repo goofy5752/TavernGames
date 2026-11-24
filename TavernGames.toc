@@ -161,6 +161,7 @@ ui/games/TablaView.lua
 ui/games/HoldemModel.lua
 ui/games/HoldemView.lua
 ui/games/HoldemCashView.lua
+ui/games/HoldemSounds.lua
 ui/games/ChessModel.lua
 ui/games/ChessMoves.lua
 ui/games/ChessPanels.lua

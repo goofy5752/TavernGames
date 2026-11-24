@@ -111,7 +111,7 @@ function Wow.new(opts)
   local self = setmetatable({
     clock = 0, timers = {}, seq = 0, frames = {}, sent = {}, chat = {}, filters = {},
     roster = {}, rosterRequests = 0, inGuild = false, combat = false, instance = false,
-    dnd = false, group = {}, money = 0, icons = {}, sounds = {}, reloads = 0,
+    dnd = false, group = {}, money = 0, icons = {}, sounds = {}, soundFiles = {}, reloads = 0,
     rolls = {}, groupInvites = {}, accepted = 0, popupsHidden = {},
     -- My group roster by name: unit names UnitInParty / UnitInRaid know, and GetRaidRosterInfo's rows.
     partyNames = {}, raidNames = {}, groupRoster = {},
@@ -223,6 +223,8 @@ function Wow.new(opts)
   G.RAID_CLASS_COLORS = { MAGE = { r = 0.25, g = 0.78, b = 0.92 } }
   G.SOUNDKIT = { TELL_MESSAGE = 3081 }
   G.PlaySound = function(id, channel) self.sounds[#self.sounds + 1] = { id, channel } end
+  -- Our own files (ns.Art.playFile): { path, channel } in w.soundFiles, apart from the SOUNDKIT ids.
+  G.PlaySoundFile = function(path, channel) self.soundFiles[#self.soundFiles + 1] = { path, channel }; return true end
   G.SlashCmdList = {}
   G.ReloadUI = function() self.reloads = self.reloads + 1 end
   G.InitiateTrade = api(self, "InitiateTrade")
