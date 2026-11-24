@@ -138,7 +138,7 @@ describe("ui: table frame", function()
     ok(p1.portrait.glow:IsVisible(), "no glow on turn"); eq(p1.portrait.ring.vertex, rgb(w, "goldHi"))
     eq(p2.portrait.glow:IsVisible(), false); eq(p2.portrait.ring.vertex, rgb(w, "brass"))
     ok(p1.portrait.badge:IsVisible(), "no class badge"); ok(p2.portrait.badge:IsVisible(), "no class badge")
-    eq(p1.name.points[1], { "LEFT", p1.frame, "LEFT", 40, 0 }); eq(p1.name:GetWidth(), 190 - 104)
+    eq(p1.name.points[1], { "LEFT", p1.frame, "LEFT", 40, 0 }); eq(p1.name:GetWidth(), 190 - 42 - 40 - p1.note:GetStringWidth() - 4) -- all the note leaves
     eq({ p1.frame:GetWidth(), p1.frame:GetHeight() }, { 190, 26 })                     -- the bar keeps its size
     for k = 1, 8 do eq(p1.tricks[k]:IsVisible(), false, "pip " .. k) end              -- Морски шах counts no tricks
     local draws = 0; local coord = p1.portrait.tex.SetTexCoord
@@ -183,8 +183,10 @@ describe("ui: table frame", function()
     local right, top = 40 + 8 * 5 + 7 * 3, 1 + 8 / 2
     ok(right <= 165 - 64, "the pips reach into the note and clock column: " .. right)  -- the column the name keeps clear of
     ok(top < (26 - 13) / 2, "the pips reach into the line of text")                    -- the note (13) and the clock (12) are centred
-    -- the name ends 4 px before the note („разд.“, 32.5 px at 13): the column it kept before reached into the note
-    eq(p.name.points[1], { "LEFT", p.frame, "LEFT", 40, 0 }); eq(p.name:GetWidth(), 165 - 42 - 40 - 32.5 - 4)
+    -- the name comes first: „Константин“ (60 px at 12) wants more than the note („разд.“, 32.5 px at 13) leaves, so the
+    -- note shrinks to 9 (22.5 px) and the name ends 4 px before it
+    eq(select(2, p.note:GetFont()), 9); eq(p.note:GetStringWidth(), 22.5)
+    eq(p.name.points[1], { "LEFT", p.frame, "LEFT", 40, 0 }); eq(p.name:GetWidth(), 165 - 42 - 40 - 22.5 - 4)
     ok(40 + p.name:GetWidth() <= 165 - 42 - p.note:GetStringWidth(), "the name runs into the note")
   end)
 
@@ -196,15 +198,26 @@ describe("ui: table frame", function()
     local v, s = T.view, w.ns.client.session
     s.seats[1] = "Константинов"; s.status, s.state = "live", { turn = 1 }; s.deadline = w.ns.client.env.now() + 30 -- 12 characters, on turn
     local p = v.plates[1]
-    -- the stack -> the name's width and the note's font size
-    for _, case in ipairs({ { w:coins("199g 95s"), 24, 8 }, { w:coins("9g 95s"), 32, 8 }, { "100000", 34, 10 }, { "1000", 38, 13 }, { "995", 44.5, 13 } }) do
+    -- the stack -> the name's width, the note's font size and lines: the name keeps 32 px at least, the note never goes
+    -- under 9 and wraps on two lines in what the name leaves (the bar holds them), never into the name
+    for _, case in ipairs({ { w:coins("199g 95s"), 32, 9, 2 }, { w:coins("9g 95s"), 32, 9, 2 }, { "100000", 37, 9, 1 }, { "1000", 46, 9, 1 },
+      { "995", 50.5, 9, 1 } }) do
       note = case[1]; T.plates.render(v, s, w.ns.client)
-      local nameRight, noteLeft, noteRight = 40 + p.name:GetWidth(), 150 - 42 - p.note:GetStringWidth(), 150 - 42
+      local noteW = (p.note.fixedWidth or 0) > 0 and p.note.fixedWidth or p.note:GetStringWidth()
+      local nameRight, noteLeft, noteRight = 40 + p.name:GetWidth(), 150 - 42 - noteW, 150 - 42
+      eq(p.note:GetStringHeight(), case[4] * 9 * 1.25); ok(p.note:GetStringHeight() <= 26, "the note passes the bar")
       eq({ p.frame:GetWidth(), p.note:GetText(), p.name:GetWidth(), (select(2, p.note:GetFont())) }, { 150, case[1], case[2], case[3] })
       ok(nameRight <= noteLeft, "the name runs over the note: " .. nameRight .. " > " .. noteLeft)
       ok(noteLeft >= 40 and nameRight <= 150, "outside the plate")
       ok(p.clock:IsShown() and 150 - 6 - p.clock:GetStringWidth() >= noteRight, "the note meets the clock")
     end
+    -- off turn the plate shows no clock: the note takes its room, the name keeps its size on one line (QA)
+    note = w:coins("199g 95s"); s.state.turn = 2; T.plates.render(v, s, w.ns.client)
+    eq(p.clock:IsShown(), false); eq(p.note.points[1], { "RIGHT", p.frame, "RIGHT", -6, 0 })
+    local noteW = (p.note.fixedWidth or 0) > 0 and p.note.fixedWidth or p.note:GetStringWidth()
+    eq(p.name:GetWidth(), 150 - 6 - 40 - noteW - 4)
+    ok(40 + p.name:GetWidth() <= 150 - 6 - noteW, "the name runs over the note")
+    eq(p.name:GetStringHeight(), select(2, p.name:GetFont()) * 1.25) -- one line
   end)
 
   it("plates: the short names among the seats (two Ivans an initial, a bot its cog), the whole name on hover, never cut", function()
@@ -1026,5 +1039,34 @@ describe("ui: invite toast", function()
       w:advance(0)
       ok(T.frame:IsShown(), "no toast"); eq(#w.sounds, 0)
     end
+  end)
+end)
+
+-- QA (layout): the table's two lines of words with the longest texts and names.
+describe("ui: the table's news line and fairness line, long texts", function()
+  it("the news line shrinks to its width between the buttons, then wraps: never cut, never under 9", function()
+    local w, v = matchWithBot()
+    local T, L = w.ns.TableFrame, w.ns.L
+    v.line.width = 126 -- the room the client lays out between the last button and the grip (the fake has no layout)
+    local long = L("start.group")
+    T.say(long)
+    eq(v.line:GetText(), long); eq(v.line.wordWrap, true)
+    ok(select(2, v.line:GetFont()) >= 9, "unreadable")
+    -- a short line is back at its own size
+    T.say(L("table.addBots.asked"))
+    ok(select(2, v.line:GetFont()) > 10, "still shrunk")
+  end)
+
+  it("the fairness line: a lapse with a claim and long names shrinks, then wraps in two lines of its 18 px", function()
+    local w, v = matchWithBot()
+    local Deal = w.ns.Deal
+    Deal.status = function() return "fair.lapse", "Barleybrewster Ironfoot", 3 end
+    Deal.claim = function() return "Добромирослава Великотърновска" end
+    w.ns.TableFrame.render()
+    local fs = v.fairLine.text
+    ok(fs:GetText():find("Добромирослава Великотърновска", 1, true), "the claim")
+    ok(select(2, fs:GetFont()) >= 9, "unreadable")
+    eq(fs:GetWidth(), v.fairLine:GetWidth())
+    ok(fs:GetStringHeight() <= 2 * select(2, fs:GetFont()) * 1.25, "more than two lines: " .. fs:GetStringHeight())
   end)
 end)

@@ -21,8 +21,8 @@ local Theme, W, L, Portrait = ns.Theme, ns.W, ns.L, ns.Portrait
 
 local PLATE_W, PLATE_H = 190, 26          -- plate size before ns.HallLayout.plates sets the width
 local PORTRAIT, NAME_X = 30, 40           -- the hero centred on the bar's left end; the name after it
-local PLATE_NAME_INSET = NAME_X + 64      -- the plate width the portrait and the clock/note keep from the name
 local NOTE_RIGHT, NOTE_GAP, NAME_MIN = 42, 4, 32 -- the note ends 42 px in (the clock's room); a gap to the name; the least name a wide note leaves
+local NOTE_EDGE = 6                       -- where the note ends on a plate that shows no clock
 local NAME_LEAST = 16                     -- a name's column is never narrower (W.fitWrap breaks it by letters there)
 local PIPS, PIP_W, PIP_H, PIP_GAP = 8, 5, 8, 3 -- eight reach NAME_X + 61: inside the name's column on every plate
 local PIP_Y = 1                           -- the pips' middle over the bar's bottom edge, clear of the line of text
@@ -140,13 +140,41 @@ local function tick(v, s)
 end
 
 -- The note, and the name in what the note leaves: the name ends NOTE_GAP before the note,
--- never past its old column; the note shrinks (W.fit) so that the name keeps NAME_MIN if it
--- can (a stack in coins at Холдем). The name shrinks, then wraps (W.fitWrap): never cut. The
--- two never meet, whatever the note.
-local function noteAndName(p, w, text, name)
-  local room = w - NOTE_RIGHT - NAME_X
-  W.fit(p.note, text, room - NAME_MIN - NOTE_GAP)
-  W.fitWrap(p.name, name, math.max(NAME_LEAST, math.min(w - PLATE_NAME_INSET, room - W.textWidth(p.note) - NOTE_GAP)))
+-- and the two never meet. The name comes first: it keeps its own width on one line if it
+-- can, and NAME_MIN at least (a stack in coins at Холдем). The note shrinks (W.fit, never
+-- under W.WRAP_MIN) into what is left; still too wide, it wraps (W.fitWrap: „199g 95s“ on
+-- two lines at 9 fit the bar). The name shrinks, then wraps: never cut. The clock keeps its
+-- room right of the note (NOTE_RIGHT) while it shows; a plate without a clock gives the note
+-- that room too (NOTE_EDGE), so a long name keeps its size off turn.
+local function widthOf(fs, text, floor)
+  W.fit(fs, text, floor and 0 or math.huge, floor)
+  return W.textWidth(fs)
+end
+local function widestWord(fs, text) -- at the font fs has now
+  local most = 0
+  for word in text:gmatch("%S+") do
+    fs:SetText(word)
+    most = math.max(most, W.textWidth(fs))
+  end
+  fs:SetText(text)
+  return most
+end
+local function noteAndName(p, w, text, name, clocked)
+  local right = clocked and NOTE_RIGHT or NOTE_EDGE
+  p.note:ClearAllPoints()
+  p.note:SetPoint("RIGHT", p.frame, "RIGHT", -right, 0)
+  local room = w - right - NAME_X
+  local least = widthOf(p.note, text, W.WRAP_MIN)
+  local want = math.max(NAME_MIN, math.min(widthOf(p.name, name), room - NOTE_GAP - least))
+  local noteW = math.max(room - want - NOTE_GAP, widestWord(p.note, text))
+  p.note:SetWidth(0)
+  if least <= noteW then
+    W.fit(p.note, text, noteW, W.WRAP_MIN)
+    noteW = W.textWidth(p.note)
+  else
+    W.fitWrap(p.note, text, noteW)
+  end
+  W.fitWrap(p.name, name, math.max(NAME_LEAST, room - noteW - NOTE_GAP))
 end
 
 -- Places the plates on the grid of ns.HallLayout.plates, or around the felt
@@ -174,8 +202,10 @@ local function render(v, s, client)
       p.name:SetTextColor(Theme.rgb("inkDim"))
     end
     hero(p, client, name or nil)
-    noteAndName(p, spot[3], view and view.seatNote and view.seatNote(s, i) or "", name and W.short(name, s.seats) or L("table.free"))
     local onTurn = turn == i
+    local clocked -- the clock shows on this plate: every seat's in a game of seat clocks, else the one on turn in a timed game
+    if view and view.seatClock then clocked = view.seatClock(s, i) ~= nil else clocked = onTurn and s.deadline ~= nil end
+    noteAndName(p, spot[3], view and view.seatNote and view.seatNote(s, i) or "", name and W.short(name, s.seats) or L("table.free"), clocked)
     p.portrait:turn(onTurn and name ~= false and name ~= nil) -- an empty chair never glows
     if view and view.seatClock then
       seatClock(p, s, view, i)
