@@ -209,4 +209,61 @@ describe("ui: resize", function()
     eq(w.G.GameTooltip.lines[1], w.ns.L("resize.tip"))
     grip.scripts.OnLeave(grip)
   end)
+  -- A clamped window is drawn inside the screen even when its anchor lies past an edge;
+  -- the client starts a drag from the anchor, so the window stuck to that edge until the
+  -- cursor made up the difference. Every drag now starts from where it is seen.
+  it("a drag starts from where the window is seen, even when its anchor lies past an edge", function()
+    local w = boot()
+    w.ns.MainWindow.show()
+    local f = w.ns.MainWindow.frame
+    local sw, sh = w.G.UIParent:GetWidth(), w.G.UIParent:GetHeight()
+    local fw, fh = f:GetWidth(), f:GetHeight()
+    f.left, f.top = sw - fw + 300, fh - 200 -- 300 past the right edge, 200 under the bottom one
+    f.scripts.OnDragStart(f)
+    ok(f.moving, "not moving")
+    local p = f.points[#f.points]
+    eq({ p[1], p[3] }, { "TOPLEFT", "BOTTOMLEFT" }); ok(p[2] == w.G.UIParent, "not on UIParent")
+    ok(math.abs(p[4] - (sw - fw)) < 1e-9, "left not on the screen: " .. p[4])
+    ok(math.abs(p[5] - fh) < 1e-9, "top not on the screen: " .. p[5])
+    f.scripts.OnDragStop(f)
+    ok(not f.moving, "still moving")
+    ok(f.points[#f.points] == p, "let go: the client keeps where it was dropped")
+    -- a window inside the screen keeps its place
+    f.left, f.top = 200, 800
+    f.scripts.OnDragStart(f)
+    p = f.points[#f.points]
+    eq({ p[4], p[5] }, { 200, 800 })
+    f.scripts.OnDragStop(f)
+  end)
+
+  it("the title bar's drag and the table's drag start from the seen place too", function()
+    local w = boot()
+    w.ns.MainWindow.show()
+    local f, bar = w.ns.MainWindow.frame, w.ns.MainWindow.titleBar
+    f.left, f.top = -150, 700
+    bar.scripts.OnDragStart(bar)
+    local p = f.points[#f.points]
+    eq({ p[4], p[5] }, { 0, 700 })
+    bar.scripts.OnDragStop(bar)
+    w.ns.TableFrame.build()
+    local t = w.ns.TableFrame.frame
+    t.left, t.top = 100, w.G.UIParent:GetHeight() + 120 -- above the top edge
+    t.scripts.OnDragStart(t)
+    p = t.points[#t.points]
+    eq({ p[4], p[5] }, { 100, w.G.UIParent:GetHeight() })
+    t.scripts.OnDragStop(t)
+  end)
+
+  it("growing a window near the right or bottom edge keeps its corner where the whole window fits", function()
+    local w = boot()
+    w.ns.MainWindow.show()
+    local f, R = w.ns.MainWindow.frame, w.ns.Resize
+    local sw = w.G.UIParent:GetWidth()
+    f.left, f.top = sw - f:GetWidth() - 10, f:GetHeight() + 10 -- 10 from the right and the bottom edge
+    local s = R.set("main", 1.2)
+    local p = f.points[#f.points]
+    eq({ p[1], p[3] }, { "TOPLEFT", "BOTTOMLEFT" })
+    ok(math.abs(p[4] * s - (sw - f:GetWidth() * s)) < 1e-6, "left past the right edge: " .. p[4] * s)
+    ok(math.abs(p[5] * s - f:GetHeight() * s) < 1e-6, "bottom under the screen: " .. p[5] * s)
+  end)
 end)

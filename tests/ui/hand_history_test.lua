@@ -883,8 +883,8 @@ describe("ui: hand history — the panel beside the table", function()
     w:click(v.historyButton)
     ok(v.history:IsShown(), "not open")
     f.left = 150 -- fits on neither side: placing it moves the frame
+    f:GetScript("OnDragStart")(f) -- the user holds it (anchored where it is seen, W.onScreen)
     local p0 = f.points[#f.points]
-    f:GetScript("OnDragStart")(f) -- the user holds it
     TF.render()
     ok(f.points[#f.points] == p0, "moved under the mouse")
     f:GetScript("OnDragStop")(f) -- let go: placed again
