@@ -137,7 +137,7 @@ function H.lines(s)
   if not b then return out end
   for k = #b.hands, 1, -1 do
     if k < #b.hands then add("dim", " ") end
-    if b.game == "holdem" then holdemHand(add, b.hands[k], s) else cardHand(add, b.hands[k], b.game) end
+    if H.DRAW[b.game] then H.DRAW[b.game](add, b.hands[k], s) elseif b.game == "holdem" then holdemHand(add, b.hands[k], s) else cardHand(add, b.hands[k], b.game) end
   end
   return out
 end

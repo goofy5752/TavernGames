@@ -132,7 +132,7 @@ end
 
 -- The picture of game `id` (media/games/<id>.tga, white, tinted by the caller;
 -- tools/gen_game_icons.py) -> its path, or nil for a game without one.
-local GAME_ICONS = { belot = true, santase = true, tabla = true, holdem = true, ttt = true, deathroll = true }
+local GAME_ICONS = { belot = true, santase = true, tabla = true, holdem = true, ttt = true, deathroll = true, chess = true }
 function Theme.gameIcon(id)
   if GAME_ICONS[id] then return MEDIA .. "games\\" .. id end
 end

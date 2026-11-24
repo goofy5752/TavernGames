@@ -2,12 +2,12 @@
 
 # Tavern Games: a World of Warcraft guild games addon
 
-**Play Belot, Santase, Backgammon, Texas Hold'em, Tic-tac-toe and Death Roll with your guild inside WoW. Play just for fun or for gold, with a shared debt ledger and payment by trade or mail.**
+**Play Belot, Santase, Backgammon, Texas Hold'em, Chess, Tic-tac-toe and Death Roll with your guild inside WoW. Play just for fun or for gold, with a shared debt ledger and payment by trade or mail.**
 
 [![WoW Forever](https://img.shields.io/badge/WoW-Forever%201.60.1-b0813f)](#installation)
 [![Interface](https://img.shields.io/badge/Interface-16001-7a1f24)](TavernGames.toc)
 [![Lua](https://img.shields.io/badge/Lua-5.1-2c2d72?logo=lua)](#development)
-[![Tests](https://img.shields.io/badge/tests-2042%20passing-2e7d32)](#development)
+[![Tests](https://img.shields.io/badge/tests-2372%20passing-2e7d32)](#development)
 [![Languages](https://img.shields.io/badge/UI-English%20%7C%20Български-e9c98a)](#languages)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
@@ -17,11 +17,11 @@
 
 ---
 
-**Tavern Games** is a free, open-source **World of Warcraft addon** that turns your guild into a tavern. Guild members open tables, invite each other and play **real-time multiplayer card and board games** without leaving the game: **Bulgarian Belot**, **Santase (Sixty-six)**, **Backgammon (Tabla)**, **Texas Hold'em poker**, **Tic-tac-toe** and the classic **WoW Death Roll**.
+**Tavern Games** is a free, open-source **World of Warcraft addon** that turns your guild into a tavern. Guild members open tables, invite each other and play **real-time multiplayer card and board games** without leaving the game: **Bulgarian Belot**, **Santase (Sixty-six)**, **Backgammon (Tabla)**, **Texas Hold'em poker**, **Chess**, **Tic-tac-toe** and the classic **WoW Death Roll**.
 
 Every table is either **just for fun** or **staked in gold and silver**. The addon never moves gold by itself. It keeps a **guild-wide debt ledger**, fills in the amount for a **trade** or a **mail**, and you press the button. The addon runs on GUILD and WHISPER addon messages only, so it needs no server, website or external service.
 
-> **Status: alpha.** All six games, stakes, the ledger, the leaderboard and the history are built and covered by 2042 automated tests. In-game testing on WoW Forever is in progress. Please [open an issue](../../issues) if something misbehaves.
+> **Status: alpha.** All seven games, stakes, the ledger, the leaderboard and the history are built and covered by 2372 automated tests. In-game testing on WoW Forever is in progress. Please [open an issue](../../issues) if something misbehaves.
 
 ## Table of contents
 
@@ -46,7 +46,7 @@ Every table is either **just for fun** or **staked in gold and silver**. The add
 
 ## Features
 
-- 🃏 **Six multiplayer games**: Belot, Santase, Backgammon, Texas Hold'em, Tic-tac-toe and Death Roll, all with full rules played turn by turn in real time.
+- 🃏 **Seven multiplayer games**: Belot, Santase, Backgammon, Texas Hold'em, Chess, Tic-tac-toe and Death Roll, all with full rules played turn by turn in real time.
 - 🍺 **The tavern hall**: see every open table in your guild, who sits where and who is watching. Invite guildmates, sit down, stand up, or spectate.
 - 🪙 **Optional gold stakes**: each table is *Just for fun* or *With a stake*, in gold and silver, with no house and no rake.
 - 📒 **A shared debt ledger**: everyone in the guild sees the same record of who owes whom. A debt counts only after the debtor's own client confirms it.
@@ -68,6 +68,7 @@ Every table is either **just for fun** or **staked in gold and silver**. The add
 | **Santase** (Сантасе, Sixty-six) | 2 | Trick-taking card game | 24-card deck, closing, marriages (20 / 40), trump nine exchange, match to 11 game points |
 | **Backgammon** (Табла) | 2 | Board game with dice | Bulgarian Tabla; the dice are rolled by commit-reveal between both players, so neither can choose them |
 | **Texas Hold'em** | 2–6 | Poker | Chip tables for fun, plus cash tables with real gold buy-ins |
+| **Chess** (Шах) | 2 | Board game | Full FIDE rules (castling, en passant, promotion, mate, stalemate, threefold repetition, 50 moves), a clock of 5 to 30 minutes with +5 s a move, offering a draw and resigning, a bot opponent, and staked games where a draw owes nothing |
 | **Tic-tac-toe** (Морски шах) | 2 | Board game | First to 3 wins, quick games between raids |
 | **Death Roll** | 2–5, in a group | Dice | The classic `/roll` duel: each roll sets the new maximum, and whoever rolls 1 loses |
 
@@ -194,7 +195,7 @@ There are no AI opponents. A tester-only bot mode exists for development.
 
 ## Development
 
-The addon is written in **Lua 5.1** and has a headless test suite of **2042 tests** that runs outside the game with stubbed WoW APIs.
+The addon is written in **Lua 5.1** and has a headless test suite of **2372 tests** that runs outside the game with stubbed WoW APIs.
 
 ```bash
 # needs Lua 5.1 or LuaJIT on PATH (or tools/lua/lua5.1.exe)
@@ -211,7 +212,7 @@ The design spec, the per-stage implementation plans, the rulings log and the in-
 TavernGames/
 ├── TavernGames.toc   # addon manifest (load order)
 ├── core/             # protocol, sessions, fairness, stakes, ledger, sync, payments
-├── engines/          # pure game rules: belot, santase, tabla, holdem, tictactoe, deathroll
+├── engines/          # pure game rules: belot, santase, tabla, holdem, chess, tictactoe, deathroll
 ├── ui/               # windows, hall, table views, ledger, leaderboard, history
 ├── wow/              # the WoW API adapter: trade, mail, rolls, slash commands
 ├── locale/           # English and Bulgarian strings
@@ -235,12 +236,13 @@ Bug reports, rule corrections (especially for regional Belot and Santase variant
 
 ## На български
 
-**Tavern Games** е безплатен аддон за **World of Warcraft (WoW Forever)**, с който гилдията играе заедно направо в играта: **Белот**, **Сантасе**, **Табла**, **Тексас Холдем покер**, **Морски шах** и **Death Roll**.
+**Tavern Games** е безплатен аддон за **World of Warcraft (WoW Forever)**, с който гилдията играе заедно направо в играта: **Белот**, **Сантасе**, **Табла**, **Тексас Холдем покер**, **Шах**, **Морски шах** и **Death Roll**.
 
 - **Залог по желание:** всяка маса е „Само за удоволствие“ или „Със залог“ в голд и силвер.
 - **Общ тефтер на дълговете:** всички в гилдията виждат кой на кого дължи. Дълг се записва само след потвърждение от клиента на длъжника.
 - **Плащане с трейд или поща:** аддонът попълва сумата, а бутона натискаш ти. Аддонът никога не мести голд сам.
 - **Честно раздаване:** всички участват в разбъркването на тестето (commit-reveal), раздаващият се сменя всяка ръка и всеки клиент проверява всеки ход.
+- **Шах:** пълни правила (рокада, мимоходно вземане, превръщане на пешка), часовник от 5 до 30 минути, реми по съгласие, предаване, бот за противник и игра със залог, при която реми не дължи нищо.
 - **Холдем със злато:** вход от 40 до 100 големи блайнда, докупуване и сметка между всеки двама играчи.
 - **Класация и история:** седмица, месец и всичко, титлата „Кралят/Кралицата на механата“, хронология на игрите и сравнение между двама играчи.
 - **Разтегаеми прозорци:** хващаш ъгъла на прозореца или на масата и го правиш колкото искаш голям. Всичко вътре се уголемява заедно с него.
@@ -248,4 +250,4 @@ Bug reports, rule corrections (especially for regional Belot and Santase variant
 
 **Инсталиране:** копирай папките `Libs`, `core`, `engines`, `locale`, `wow`, `ui`, `media` и файла `TavernGames.toc` в `World of Warcraft\_forever_\Interface\AddOns\TavernGames\`. После напиши `/tavern` в играта.
 
-<sub>Keywords: WoW addon, World of Warcraft addon, guild games, Belot addon, Santase addon, Backgammon addon, Tabla, Texas Hold'em poker addon, WoW poker, Death Roll addon, gold betting, guild bank, debt ledger, Lua addon, WoW Forever, аддон за WoW, Белот, Сантасе, Табла, покер.</sub>
+<sub>Keywords: WoW addon, World of Warcraft addon, guild games, Belot addon, Santase addon, Backgammon addon, Tabla, Texas Hold'em poker addon, WoW poker, Chess addon, WoW chess, Death Roll addon, gold betting, guild bank, debt ledger, Lua addon, WoW Forever, аддон за WoW, Белот, Сантасе, Табла, покер, Шах.</sub>

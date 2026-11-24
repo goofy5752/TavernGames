@@ -14,7 +14,7 @@ local _, ns = ...
 local Theme, W, L = ns.Theme, ns.W, ns.L
 
 local HelpBook = {
-  WIDTH = 640, HEIGHT = 520, -- thirteen topics (F4 added „Класация“ and „История“)
+  WIDTH = 640, HEIGHT = 540, -- fourteen topics (F4 added „Класация“ and „История“, chess „Шах“)
   frame = nil,   -- built on the first open
   current = nil, -- the topic id shown
   topics = {},   -- { id, button } per topic, in Help order
