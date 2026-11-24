@@ -8,6 +8,24 @@ describe("foundations", function()
     eq(N.normalize("  Мария Стоянова "), "Мария Стоянова"); eq(N.normalize(""), nil); eq(N.normalize(nil), nil)
   end)
 
+  it("short names: the first word, a bot's own name, an initial when two would read the same", function()
+    eq(N.short("Ivan Petrov-Forever"), "Ivan")
+    eq(N.short("Brannoc-Forever"), "Brannoc")
+    eq(N.short("Bot Petrova"), "Petrova"); eq(N.short("Bot Number12"), "Number12")
+    eq(N.short("Bot Barleybrewster"), "Barleybrewster")
+    -- the same first word at the table: the next word's initial (a Cyrillic letter too)
+    local seats = { "Ivan Petrov", "Ivan Kolev-Forever", "Bot Ivanov", false }
+    eq({ N.short(seats[1], seats), N.short(seats[2], seats), N.short(seats[3], seats) }, { "Ivan P.", "Ivan K.", "Ivanov" })
+    eq(N.short("Иван Петров", { "Иван Петров", "Иван Стоянов" }), "Иван П.")
+    -- the same name twice is one person; a one-word name has no initial to add
+    eq(N.short("Ivan Petrov", { "Ivan Petrov", "Ivan Petrov-Forever" }), "Ivan")
+    eq(N.short("Ivan", { "Ivan", "Ivan Kolev" }), "Ivan")
+    eq(N.short("Ivan Kolev", { "Ivan", "Ivan Kolev" }), "Ivan K.")
+    -- a bot that reads as a person's first word: the person takes the initial
+    eq(N.short("Ivan Petrov", { "Ivan Petrov", "Bot Ivan" }), "Ivan P.")
+    eq({ N.short(nil), N.short(""), N.short(42) }, { "?", "?", "?" })
+  end)
+
   it("bus copies, orders, filters", function()
     local bus = Bus.new()
     local got = { x = {}, y = {} }
