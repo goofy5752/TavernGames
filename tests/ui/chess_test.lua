@@ -217,6 +217,19 @@ describe("ui: the chess view", function()
     eq(p[1].frame:GetWidth(), 220)
   end)
 
+  it("a clock's text is made once a whole second, not every frame", function()
+    local w, T = setup()
+    local p, M = T.view.plates, w.ns.ChessModel
+    local made, clockText = 0, M.clockText
+    M.clockText = function(...) made = made + 1; return clockText(...) end
+    for _ = 1, 3 do w:advance(0.2); T.tick() end -- 0.6 s: both clocks still show the same second
+    local still = made
+    w:advance(1); T.tick() -- the clock on turn shows the next second
+    M.clockText = clockText
+    eq({ still, made }, { 0, 1 })
+    eq({ p[1].clock:GetText(), p[2].clock:GetText() }, { "9:59", "10:00" })
+  end)
+
   it("without a limit both plates show the sign and no bar", function()
     local w, T = setup(nil, 0)
     local p = T.view.plates
