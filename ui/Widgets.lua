@@ -472,8 +472,9 @@ function W.GhostButton(parent, text, color, onClick)
   return b
 end
 
--- The ⓘ button: opens the rules book on `topicId`.
-function W.Info(parent, topicId)
+-- The ⓘ button: opens the rules book on `topicId`; `tip` (a text) names it on hover
+-- (default: the rules book's title).
+function W.Info(parent, topicId, tip)
   local b = CreateFrame("Button", nil, parent)
   b:SetSize(18, 18)
   b:RegisterForClicks("LeftButtonUp")
@@ -482,7 +483,7 @@ function W.Info(parent, topicId)
   t:SetTexture(Theme.tex.info)
   b.icon = t
   b.topic = topicId
-  W.tooltip(b, function(tip) tip:SetText(L("book.title")) end)
+  W.tooltip(b, function(t) t:SetText(tip or L("book.title")) end)
   b:HookScript("OnEnter", function() t:SetVertexColor(Theme.rgb("gold")) end)
   b:HookScript("OnLeave", function() t:SetVertexColor(1, 1, 1) end)
   b:SetScript("OnClick", function(self)

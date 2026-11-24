@@ -171,6 +171,28 @@ describe("ui: hall", function()
     eq(w.ns.NewTableDialog.gameId, "ttt")
   end)
 
+  it("every game row has its ⓘ: the game's rules in the book, named on hover, never the new-table dialog", function()
+    local w = guildWow()
+    w.ns.MainWindow.show()
+    local games = w.ns.Hall.view.games
+    for i, g in ipairs(games) do
+      local info = g.info
+      ok(info and info:IsVisible(), g.id .. ": no ⓘ")
+      eq(info.topic, g.id)
+      eq({ info:GetSize() }, { 20, 20 })
+      eq(info.points[1], { "RIGHT", g.frame, "RIGHT", -6, 0 })
+      local tip = {}
+      w.G.GameTooltip.SetText = function(_, text) tip[#tip + 1] = text end
+      info.scripts.OnEnter(info)
+      eq(tip[1], "Правила на " .. g.name:GetText())
+      w:click(info)
+      eq(w.ns.HelpBook.current, g.id)
+      ok(not (w.ns.NewTableDialog.frame and w.ns.NewTableDialog.frame:IsVisible()), g.id .. ": the dialog opened")
+      -- the name stops before the ⓘ: the 170 wide row, the disc and the ⓘ taken off
+      ok(g.name:GetWidth() <= 170 - 45 - 30 + 0.01, g.id .. ": the name runs under the ⓘ")
+    end
+  end)
+
   it("an empty hall says so", function()
     local w = guildWow()
     w.ns.MainWindow.show()
