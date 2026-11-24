@@ -22,7 +22,7 @@ local BoardTab = {
 }
 ns.BoardTab = BoardTab
 
-local BOOK_W, PAD, HEAD_H, ROW_H, ROWS = 760, 14, 90, 26, 14
+local BOOK_W, PAD, ROW_H, ROWS = 760, 14, 26, 14
 local BAR, MID = 60, 352 -- the bar's longest side, and its middle from the row's left
 local PERIODS = { "week", "month", "all" }
 local GREEN, RED, RULE = { 0.27, 0.48, 0.2 }, { 0.66, 0.2, 0.18 }, { 0xd9 / 255, 0xc4 / 255, 0x9a / 255 }
@@ -207,8 +207,7 @@ function BoardTab.build(page)
   v.head = W.Label(panel, "dim", "", 13)
   v.head:SetPoint("TOPLEFT", panel, "TOPLEFT", PAD, -62)
   local book = CreateFrame("Frame", nil, panel)
-  book:SetPoint("TOPLEFT", panel, "TOPLEFT", 10, -HEAD_H)
-  book:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -10, 10)
+  W.bookUnder(book, panel, v.head, 10)
   W.paper(book)
   v.seal = W.seal(book, 56)
   local cols = CreateFrame("Frame", nil, book)

@@ -318,6 +318,19 @@ function W.seal(parent, size)
   return f
 end
 
+-- The gap between a tab's head (its title and the lines under it) and its book:
+-- the same in every tab of the tavern window (History, Ledger, Leaderboard).
+W.HEAD_GAP = 12
+
+-- Puts `book` (a child of the tab's panel, its left edge 10 in) W.HEAD_GAP under
+-- `last`, the lowest line of the head (its left edge 14 in); the book's
+-- bottom-right corner stays `inset` in from the panel's.
+function W.bookUnder(book, panel, last, inset)
+  book:ClearAllPoints()
+  book:SetPoint("TOPLEFT", last, "BOTTOMLEFT", -4, -W.HEAD_GAP)
+  book:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -10, inset)
+end
+
 -- A left-button drag on `handle` moves `target` (default: the handle itself, a
 -- movable window), and any press on it raises the target above its siblings. The
 -- resize grip is a child that takes its own press and registers no drag, so

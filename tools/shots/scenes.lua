@@ -516,6 +516,15 @@ scene("ledger", function()
   write("ledger", w, { w.ns.MainWindow.frame })
 end)
 
+scene("historytab", function()
+  local w = boot{ seed = 21 }
+  w:advance(w.ns.Const.LEDGER_ADOPT_WAIT + 1)
+  ledgerHistory(w)
+  w.ns.MainWindow.show("history")
+  run(w, 3)
+  write("historytab", w, { w.ns.MainWindow.frame })
+end, true)
+
 ---------------------------------------------------------------------------
 -- Short names (ui/NameTag.lua), for checking them: made only when named
 -- (luajit tools/shots/scenes.lua names_hall names_belot names_deathroll names_ledger).
