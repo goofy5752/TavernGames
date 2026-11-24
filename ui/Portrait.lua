@@ -39,6 +39,15 @@ function Portrait.new(parent, size, opts)
   local f = p.frame
   f:SetSize(size, size)
 
+  -- The turn glow: a halo behind the portrait, under the disc, so only its rim
+  -- shows around the face (a glow in the frame above would cover the face).
+  p.glow = f:CreateTexture(nil, "BACKGROUND", nil, -1)
+  p.glow:SetTexture(Theme.tex.glow)
+  p.glow:SetPoint("CENTER", f, "CENTER")
+  p.glow:SetSize(size * 1.9, size * 1.9)
+  tint(p.glow, "goldHi")
+  p.glow:Hide()
+
   p.bg = f:CreateTexture(nil, "BACKGROUND")
   p.bg:SetAllPoints(f)
   p.bg:SetTexture(Theme.tex.mask)
@@ -52,18 +61,11 @@ function Portrait.new(parent, size, opts)
   p.sil.frame:SetAllPoints(f)
   p.sil.frame:Hide()
 
-  -- Ring, glow and badge sit in a frame above the silhouette's.
+  -- Ring and badge sit in a frame above the silhouette's.
   local top = CreateFrame("Frame", nil, f)
   top:SetAllPoints(f)
   top:SetFrameLevel(f:GetFrameLevel() + 5)
   p.top = top
-
-  p.glow = top:CreateTexture(nil, "BACKGROUND")
-  p.glow:SetTexture(Theme.tex.glow)
-  p.glow:SetPoint("CENTER", f, "CENTER")
-  p.glow:SetSize(size * 1.5, size * 1.5)
-  tint(p.glow, "goldHi")
-  p.glow:Hide()
 
   p.ring = top:CreateTexture(nil, "OVERLAY")
   p.ring:SetTexture(Theme.tex.pring)
