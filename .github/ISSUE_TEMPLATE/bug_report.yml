@@ -1,0 +1,31 @@
+name: Bug report
+description: Something in a game, the ledger or the interface does not work as it should
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What did you see, and what did you expect instead?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: How to reproduce
+      description: The game, for fun or staked, how many players, and the steps.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Addon version
+      description: The version from the addon list or `/tavern`.
+    validations:
+      required: true
+  - type: textarea
+    id: errors
+    attributes:
+      label: Lua errors
+      description: Paste any error text (BugSack / `/console scriptErrors 1`). Leave out character and guild names if you prefer.
+      render: text

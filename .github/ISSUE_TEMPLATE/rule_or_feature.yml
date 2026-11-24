@@ -1,0 +1,18 @@
+name: Rule correction or feature request
+description: A game rule that differs from how you play it, or an idea for the tavern
+labels: [enhancement]
+body:
+  - type: dropdown
+    id: game
+    attributes:
+      label: Game
+      options: [Belot, Santase, Backgammon (Tabla), Texas Hold'em, Chess, Tic-tac-toe, Death Roll, Not game-specific]
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What should change
+      description: For a rule, say where it is played that way and link a rule source if you have one.
+    validations:
+      required: true

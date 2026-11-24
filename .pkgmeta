@@ -35,3 +35,7 @@ ignore:
   - tests
   - tools
   - t.sh
+  - .github
+  - CONTRIBUTING.md
+  - CODE_OF_CONDUCT.md
+  - SECURITY.md
