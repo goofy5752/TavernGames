@@ -67,9 +67,9 @@ end
 -- (Succession.behind) follows no such host while nobody follows it, when it
 -- still hears its own table (a member: its host is not silent; a host: a member
 -- spoke to it lately); and such a host, hearing the host it took over from,
--- followed by others, still run it (TCK) or announce the table at b's epoch
--- without my seat (TBL: it stood me up), gives the table back
--- (Succession.yields). Two hosts nobody follows (two players cut from each
+-- followed by others, still run it, or another claimant others follow (TBL, TCK),
+-- or the host it lost announce the table at b's epoch without my seat (TBL: it
+-- stood me up), gives the table back (Succession.yields). Two hosts nobody follows (two players cut from each
 -- other) end as before: the claimant keeps the table. A host that is really
 -- gone leaves its members silent: they follow the claimant as before, behind
 -- or not. Without b and f (an older client) the epochs decide as before.
@@ -135,19 +135,17 @@ function Succession.authority(s, sender, epoch, m)
   return "new"
 end
 
--- Host that took the table over and that nobody follows: `sender`, the host of
--- the epoch my claim came from, still runs it (its TCK m at that epoch, followed
--- by others, m.f; or its TBL m at that epoch, its seats without me: it stood me up)
--- -> true: I was the one cut off; I follow it again.
+-- Host that took the table over and that nobody follows, hearing another host of
+-- my table that I would not follow: one that others follow (m.f: the host my
+-- claim came from, still running its epoch, or a seat that claimed it too), or
+-- the host my claim came from announcing the table at that epoch without my seat
+-- (TBL: it stood me up) -> true: I was the one cut off; I follow it.
 function Succession.yields(s, sender, m)
-  local b = s.base
-  if s.role ~= "host" or not b or Succession.followed(s) or sender ~= s.claimedFrom or m.e ~= b.e then return false end
+  local b, me = s.base, s.client.env.me
+  if s.role ~= "host" or not b or Succession.followed(s) or sender == me or not seatOf(s.seats, sender) then return false end
   local seats = m.t == "TBL" and type(m.s) == "table" and m.s or nil
-  if seats then
-    if seatOf(seats, s.client.env.me) then return false end
-  elseif m.f ~= true then
-    return false
-  end
+  local stood = seats ~= nil and sender == s.claimedFrom and m.e == b.e and not seatOf(seats, me)
+  if m.f ~= true and not stood then return false end
   Succession.follow(s, sender, m.e, seats)
   s.yielded = true -- its snapshot may show my seat stood up offline: no foul of that host's (core/StakesWatch.lua)
   s:requestSync()

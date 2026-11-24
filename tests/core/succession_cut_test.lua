@@ -64,3 +64,26 @@ describe("a seat cut off at a cash table", function()
     if not okRun then error(err, 0) end
   end)
 end)
+
+describe("two seats claim a table whose host is gone", function()
+  -- e2e soak (seed 1100150): the host died and the first candidate was cut off as well; it
+  -- claimed alone, the second claimed with the last seat following it. Back, the first won
+  -- the seat tie of their epoch and stayed a host of its own: the table ran on twice.
+  it("the one nobody follows follows the one the others follow", function()
+    local sim, cl = Play.guild(4)
+    local I, P, M, G = Play.NAMES[1], Play.NAMES[2], Play.NAMES[3], Play.NAMES[4]
+    Play.open(sim, cl, "belot", nil, 4)
+    for _ = 1, 4 do Play.step(sim, cl[I]) end
+    sim.envs[I].dead = true; sim:offline(I) -- the host's client is gone
+    sim:offline(P)
+    for _ = 1, C.SILENT_AFTER + 3 * C.CLAIM_STAGGER do
+      if cl[M].session.role == "host" then break end
+      sim:run(1)
+    end
+    eq({ cl[P].session.role, cl[M].session.role, cl[G].session.host }, { "host", "host", M })
+    sim:online(P); sim:run(C.PING_EVERY + 5)
+    eq({ cl[P].session.role, cl[P].session.host, cl[G].session.host, cl[M].session.role }, { "player", M, M, "host" })
+    eq({ cl[P].session.seq, cl[G].session.seq, cl[P].session.epoch }, { cl[M].session.seq, cl[M].session.seq, cl[M].session.epoch })
+    eq(cl[P].session.state.trickNo, cl[M].session.state.trickNo); eq(cl[P].session.state.turn, cl[M].session.state.turn)
+  end)
+end)
