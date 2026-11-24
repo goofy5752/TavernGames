@@ -119,7 +119,7 @@ describe("wow: roll line", function()
     w.partyNames[B] = true; eq(env.groupedWith(B), true); w.partyNames = {}
     w.raidNames[B] = true; eq(env.groupedWith(B), true); w.raidNames = {}
     w.party.size, w.groupRoster = 2, { ME .. "-Forever", B .. "-Forever" }; eq(env.groupedWith(B), true)
-    eq(w.ns.Adapter.botEnv("Бот Иванов", "PRIEST").groupedWith, nil)
+    eq(w.ns.Adapter.botEnv("Bot Ivanov", "PRIEST").groupedWith, nil)
   end)
 
   it("env.roll, env.group and env.groupInvite reach the game API; a bot env has only random", function()
@@ -131,7 +131,7 @@ describe("wow: roll line", function()
     eq(env.group(), { grouped = true, leader = true, raid = false, size = 3 })
     env.groupInvite("Мария Стоянова"); eq(w.groupInvites, { "Мария Стоянова" })
     local r = env.random(1, 6); ok(r >= 1 and r <= 6 and r % 1 == 0, tostring(r))
-    local bot = w.ns.Adapter.botEnv("Бот Иванов", "PRIEST")
+    local bot = w.ns.Adapter.botEnv("Bot Ivanov", "PRIEST")
     eq(bot.roll, nil); eq(bot.groupInvite, nil); eq(bot.group, nil); eq(type(bot.random(1, 6)), "number")
   end)
 
@@ -141,7 +141,7 @@ describe("wow: roll line", function()
     local e1 = env.entropy(); eq(type(e1), "string"); ok(#e1 > 8)
     w.G.debugprofilestop, w.G.GetFramerate = function() return 123456.789 end, function() return 59.94 end
     local e2 = env.entropy(); ok(e2:find("123456.789", 1, true) and e2:find("59.94", 1, true), e2)
-    eq(type(w.ns.Adapter.botEnv("Бот Иванов", "PRIEST").entropy()), "string")
+    eq(type(w.ns.Adapter.botEnv("Bot Ivanov", "PRIEST").entropy()), "string")
     local seed = w.ns.Fair.seed(env, "dice|t#1/3"); ok(#seed == 32 and not seed:find("[^0-9a-f]"), seed)
     ok(w.ns.Fair.seed(env, "dice|t#1/3") ~= seed)
   end)

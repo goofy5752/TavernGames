@@ -1,7 +1,7 @@
 local Wow = require("wow")
 
 local ME = "Иван Петров"
-local BOT = "Бот Иванов"
+local BOT = "Bot Ivanov"
 
 -- In a guild, booted with the ui/ files, own name resolved, PLAYER_LOGIN fired.
 -- `fresh` keeps the first run pending (no language chosen, intro not seen).

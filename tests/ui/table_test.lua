@@ -2,7 +2,7 @@ local Wow = require("wow")
 local Play = require("play")
 
 local ME, B = "Иван Петров", "Мария Стоянова"
-local BOT = "Бот Иванов"
+local BOT = "Bot Ivanov"
 
 -- In a guild, booted with the ui/ files, own name resolved, PLAYER_LOGIN fired
 -- (`faction`: the character's UnitFactionGroup, default the fake's Alliance).
@@ -42,7 +42,7 @@ local function color(fs) return { fs:GetTextColor() } end
 
 local MAGE, PRIEST = { 0.25, 0.78, 0.92, 1 }, { 1, 1, 1, 1 }
 
--- I host an invite-only table and „Бот Иванов“ takes the invitation through the „Покани“ picker.
+-- I host an invite-only table and „Bot Ivanov“ takes the invitation through the „Покани“ picker.
 local function matchWithBot()
   local w = withBots()
   w.ns.client:openTable{ game = "ttt", access = "invite", turn = 45 }
@@ -396,7 +396,7 @@ describe("ui: table frame, host-started games", function()
     eq(#w:texts("Начално число 100"), 1)
   end)
 
-  -- „Бот Иванов“ takes my invitation through the „Покани“ picker.
+  -- „Bot Ivanov“ takes my invitation through the „Покани“ picker.
   local function inviteBot(w, v)
     w:click(v.inviteButton)
     local row
@@ -489,7 +489,7 @@ describe("ui: table frame, host-started games", function()
 end)
 
 describe("ui: table frame, card fairness", function()
-  -- I open Сантасе „Само поканени“, „Бот Иванов“ takes the invitation through
+  -- I open Сантасе „Само поканени“, „Bot Ivanov“ takes the invitation through
   -- the „Покани“ picker and a hand is dealt.
   local function santaseWithBot()
     local w = withBots()
@@ -523,7 +523,7 @@ describe("ui: table frame, card fairness", function()
     ok(tip.lines[1]:find("Проверката не излезе: изигран е ход", 1, true), tip.lines[1])
     eq(tip.lines[2], "Нередовни ръце на тази маса: 1")
     s.fairLast = { h = 11, verdict = "bad", why = "announce", who = BOT, dealer = ME }; w.ns.TableFrame.render()   -- a forged announce: by name
-    eq(v.fairLine.text:GetText(), "Последната ръка: нередовна. Бот Иванов обяви карти, които не държи."); eq(color(v.fairLine.text), rgb(w, "red"))
+    eq(v.fairLine.text:GetText(), "Последната ръка: нередовна. Bot Ivanov обяви карти, които не държи."); eq(color(v.fairLine.text), rgb(w, "red"))
     w:hover(v.fairLine); ok(tip.lines[1]:find("Обявата му не се брои", 1, true), tip.lines[1])
     s.fairLast = { verdict = "void" }; w.ns.TableFrame.render()
     eq(v.fairLine.text:GetText(), "Ръката е анулирана. Раздава се отново.")
@@ -546,11 +546,11 @@ describe("ui: table frame, card fairness", function()
     local tip = w.G.GameTooltip
     s.fair, s.fairSeen = nil, { ok = 2, bad = 0 }
     s.fairLast, s.fairVoids = { h = 7, verdict = "void", dealer = BOT, n = 1 }, { [BOT] = 1 }; w.ns.TableFrame.render()
-    eq(v.fairLine.text:GetText(), "Ръката е анулирана от Бот Иванов. Раздава следващият.")
+    eq(v.fairLine.text:GetText(), "Ръката е анулирана от Bot Ivanov. Раздава следващият.")
     eq(color(v.fairLine.text), rgb(w, "inkDim"))
-    w:hover(v.fairLine); eq(tip.lines, { w.ns.L("fair.tip.void"), "Бот Иванов: анулирани или нераздадени ръце в тази игра: 1" })
+    w:hover(v.fairLine); eq(tip.lines, { w.ns.L("fair.tip.void"), "Bot Ivanov: анулирани или нераздадени ръце в тази игра: 1" })
     s.fairLast, s.fairVoids = { h = 15, verdict = "void", dealer = BOT, n = 2 }, { [BOT] = 2 }; w.ns.TableFrame.render()
-    eq(v.fairLine.text:GetText(), "Бот Иванов анулира 2 ръце в тази игра. Раздава следващият.")
+    eq(v.fairLine.text:GetText(), "Bot Ivanov анулира 2 ръце в тази игра. Раздава следващият.")
     eq(color(v.fairLine.text), rgb(w, "red"))
     s.fairLast = { h = 21, verdict = "ok", dealer = ME }; w.ns.TableFrame.render()
     eq(v.fairLine.text:GetText(), "Последната ръка: проверена"); eq(color(v.fairLine.text), rgb(w, "red")) -- it stays red
@@ -562,13 +562,13 @@ describe("ui: table frame, card fairness", function()
     s.fair, s.fairSeen = nil, { ok = 1, bad = 0 }
     s.fairLast = { h = 5, verdict = "ok", dealer = ME }
     s.fairCry = { h = 5, seat = 2, name = BOT, why = "mine" }; w.ns.TableFrame.render()
-    eq(v.fairLine.text:GetText(), "Последната ръка: проверена · Бот Иванов твърди, че е нередовна")
+    eq(v.fairLine.text:GetText(), "Последната ръка: проверена · Bot Ivanov твърди, че е нередовна")
     eq(color(v.fairLine.text), rgb(w, "gold"))
     w:hover(v.fairLine)
     eq(tip.lines, { w.ns.L("fair.tip.ok"),
-      "Бот Иванов твърди: неговата част от разбъркването е подменена. Твоят аддон не може да провери това." })
+      "Bot Ivanov твърди: неговата част от разбъркването е подменена. Твоят аддон не може да провери това." })
     s.fairLast, s.fairSeen = { h = 5, verdict = "bad", why = "play", dealer = ME }, { ok = 0, bad = 1 }; w.ns.TableFrame.render()
-    eq(v.fairLine.text:GetText(), "Последната ръка: нередовна · Бот Иванов твърди, че е нередовна")
+    eq(v.fairLine.text:GetText(), "Последната ръка: нередовна · Bot Ivanov твърди, че е нередовна")
     eq(color(v.fairLine.text), rgb(w, "red"))                                    -- my own verdict is bad
     s.fairLast, s.fairSeen = { h = 9, verdict = "ok", dealer = BOT }, { ok = 1, bad = 0 }; w.ns.TableFrame.render()
     eq(v.fairLine.text:GetText(), "Последната ръка: проверена"); eq(color(v.fairLine.text), rgb(w, "good")) -- another hand
@@ -585,10 +585,10 @@ describe("ui: table frame, card fairness", function()
     w:hover(v.fairLine); eq(tip.lines, { w.ns.L("fair.tip.lapse") })
     ok(w.ns.L("fair.tip.lapse") ~= w.ns.L("fair.tip.void") and w.ns.L("fair.tip.lapse") ~= "fair.tip.lapse", "its own text")
     s.fairCry = { h = 5, seat = 2, name = BOT, why = "mine" }; w.ns.TableFrame.render()
-    eq(v.fairLine.text:GetText(), line .. " · Бот Иванов твърди, че е нередовна"); eq(color(v.fairLine.text), rgb(w, "gold"))
+    eq(v.fairLine.text:GetText(), line .. " · Bot Ivanov твърди, че е нередовна"); eq(color(v.fairLine.text), rgb(w, "gold"))
     w:hover(v.fairLine)
     eq(tip.lines, { w.ns.L("fair.tip.lapse"),
-      "Бот Иванов твърди: неговата част от разбъркването е подменена. Твоят аддон не може да провери това." })
+      "Bot Ivanov твърди: неговата част от разбъркването е подменена. Твоят аддон не може да провери това." })
   end)
 
   it("every reason has a text, and an unknown or missing one never shows a raw key", function()
@@ -622,9 +622,9 @@ describe("ui: table frame, card fairness", function()
     s.fair = { stage = "commit", p = { 1, 2 }, commits = { [1] = "x" }, dealer = BOT }
     w.ns.TableFrame.render()
     ok(v.fairLine:IsVisible(), "no fairness line")
-    eq(v.fairLine.text:GetText(), "Чакаме Бот Иванов за разбъркването…")
+    eq(v.fairLine.text:GetText(), "Чакаме Bot Ivanov за разбъркването…")
     s.fair.stage = "seed"; w.ns.TableFrame.render()
-    eq(v.fairLine.text:GetText(), "Бот Иванов раздава…")
+    eq(v.fairLine.text:GetText(), "Bot Ivanov раздава…")
     s.fair.dealer = nil; w.ns.TableFrame.render() -- the dealer's seat emptied: no name to show
     eq(v.fairLine.text:GetText(), "Разбъркваме заедно…")
   end)

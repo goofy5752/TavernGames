@@ -1,7 +1,7 @@
 local Wow = require("wow")
 
 local ME, B = "Иван Петров", "Мария Стоянова"
-local BOTS = { "Бот Иванов", "Bot Barleybrew", "Бот Петрова" }
+local BOTS = { "Bot Ivanov", "Bot Barleybrew", "Bot Petrova" }
 
 local function guildWow(saved)
   local w = Wow.new{ saved = saved }
@@ -86,7 +86,7 @@ describe("/tavern", function()
     eq(#c.lobby:tables(), 1)
     for _, s in ipairs(w.sent) do ok(not mentions(s.msg, BOTS), "a bot name went out for real") end
     w:slash("bots"); eq(w.ns.bots, nil)
-    ok(not c.presence:get("Бот Иванов"), "bot still present"); eq(#c.lobby:tables(), 0)
+    ok(not c.presence:get("Bot Ivanov"), "bot still present"); eq(#c.lobby:tables(), 0)
     w:slash("bots invite"); ok(w.ns.bots, "invite did not start bots"); w:advance(1)
     ok(c.invites.received, "no invitation")
     for _, s in ipairs(w.sent) do ok(not mentions(s.msg, BOTS), "a bot name went out for real") end

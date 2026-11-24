@@ -2,7 +2,7 @@ local Wow = require("wow")
 local Chess = require("chess")
 
 -- The chess table history (ui/ChessHistory.lua): one hand of the chess book is one game.
-local A, B, BOT = "Иван Петров", "Мария Стоянова", "Бот Иванов"
+local A, B, BOT = "Иван Петров", "Мария Стоянова", "Bot Ivanov"
 
 local function guildWow()
   local w = Wow.new{ ui = true }
