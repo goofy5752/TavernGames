@@ -13,7 +13,7 @@ function HallLayout.mode(n)
   return n > C.LIST_MODE_ABOVE and "list" or "floor"
 end
 
-local function columns(n)
+function HallLayout.columns(n)
   if n <= 3 then return n end
   if n == 4 then return 2 end
   if n <= 6 then return 3 end
@@ -24,7 +24,7 @@ end
 function HallLayout.slots(n, w, h)
   local out = {}
   if n <= 0 then return out end
-  local cols = columns(n)
+  local cols = HallLayout.columns(n)
   local rows = math.ceil(n / cols)
   local cw, ch = w / cols, h / rows
   for i = 1, n do

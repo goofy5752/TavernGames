@@ -31,6 +31,10 @@ Hall.RIGHT_W = 250 -- the right column: „Сметки“ (ui/Accounts.lua) ove
 Hall.ACCOUNTS_H = 190
 local FOOTER_H, HEADER_H = 22, 28
 local TABLE_SIZE, TOP_SIZE, CHAIR_R, LABEL_R = 150, 94, 60, 80
+-- A table reaches about 75 px above its centre (the top chair) but 125 px below it
+-- (the label and „Затвори“ hang under the frame), so it sits LIFT px above its
+-- cell centre: the bottom row keeps its button on the carpet.
+local LIFT = 24
 local GAME_H, ROW_H = 40, 40
 -- Chair name labels fit around a table of at most this many seats; at a larger
 -- one only the tooltips name the players.
@@ -281,7 +285,7 @@ local function chairWidget(t, i)
   return c
 end
 
-local function fillTable(t, rec, client)
+local function fillTable(t, rec, client, compact)
   t.rec, t.tid = rec, rec.tid
   local mine = here(client, rec)
   t.game:SetText(gameName(rec.game))
@@ -289,7 +293,10 @@ local function fillTable(t, rec, client)
   if pic then t.icon:SetTexture(pic) end
   t.icon:SetShown(pic ~= nil)
   t.game:SetShown(pic == nil)
-  t.label:SetText(gameName(rec.game) .. " · " .. (stakeText(rec) or L("table.stake.none")))
+  -- In four columns (7–8 tables) the game name would run into the next table:
+  -- the picture on the top names it, the label keeps only the stake.
+  local stake = stakeText(rec) or L("table.stake.none")
+  t.label:SetText((compact and pic) and stake or gameName(rec.game) .. " · " .. stake)
   t.host:SetText(firstWord(rec.host))
   t.host:SetTextColor(nameColor(client, rec.host))
   t.state:SetText(L("hall.live"))
@@ -396,9 +403,9 @@ local function renderFloor(v, recs, client)
   local slots = HallLayout.slots(#recs, v.floorW, v.floorH)
   for i, rec in ipairs(recs) do
     local t = tableWidget(v, i)
-    fillTable(t, rec, client)
+    fillTable(t, rec, client, HallLayout.columns(#recs) >= 4)
     t.frame:ClearAllPoints()
-    t.frame:SetPoint("CENTER", v.floor, "TOPLEFT", slots[i][1], -slots[i][2])
+    t.frame:SetPoint("CENTER", v.floor, "TOPLEFT", slots[i][1], LIFT - slots[i][2])
     t.frame:Show()
   end
   for i = #recs + 1, #v.tables do
