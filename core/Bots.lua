@@ -168,11 +168,14 @@ local function nextAction(bot)
     end
     return nil
   end
-  if st.turn ~= s.mySeat then return nil end
+  -- An offer of the other seat stands (chess): the bot may answer it off turn.
+  local offered = st.offer ~= nil and st.offer ~= s.mySeat
+  if st.turn ~= s.mySeat and not offered then return nil end
   return function()
     local engine = s:engine()
-    local a = engine.bot and engine.bot(st, s.mySeat, bot.env.random)
-    if a then bot:act(a) else bot:playAuto() end
+    local now = s.state
+    local a = engine.bot and now and engine.bot(now, s.mySeat, bot.env.random)
+    if a then bot:act(a) elseif now and now.turn == s.mySeat then bot:playAuto() end
   end, MOVE_AFTER
 end
 

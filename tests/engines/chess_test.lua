@@ -207,12 +207,4 @@ describe("chess engine", function()
     s = Chess.play(timed(), "e2e4"); eq(E.restore(s).ep, 21)
     s.ep = 45; eq(E.restore(s).ep, nil)
   end)
-
-  it("the provisional bot plays a random legal move", function()
-    local s = timed()
-    local n
-    local a = E.bot(s, 2, function(lo, hi) n = hi; return hi end)
-    eq(n, 20); eq(a, E.legal(s, 2)[20]); ok(E.apply(s, 2, a))
-    eq(E.bot(s, 2, function() return 1 end), nil)
-  end)
 end)

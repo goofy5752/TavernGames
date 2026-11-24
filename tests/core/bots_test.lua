@@ -456,4 +456,26 @@ describe("bots for any game", function()
     Bots.disable(bots)
     ok(envA.inGroup == orig)
   end)
+  it("a bot plays chess with me", function()
+    local sim, a = setup()
+    local Chess = ns.Engines.chess
+    local tid = a:openTable{ game = "chess", access = "invite", turn = 45 }; ok(tid); ok(a:invite("Бот Иванов")); sim:run(5)
+    eq(a.session.seats[2], "Бот Иванов")
+    if a.session.status ~= "live" then ok(a:startGame()); sim:run(1) end
+    -- whoever is white moves first; the bot answers my move (Task 4 makes it the bot, seat 2)
+    sim:run(3)
+    local st = a.session.state
+    if st.turn == 1 then ok(a:act(Chess.legal(st, 1)[1])); sim:run(3) end
+    st = a.session.state
+    eq(st.turn, 1); eq(st.phase, "play")
+    local n = #st.moves
+    ok(n >= 2, "the bot answered my move")
+    ok(a:act(Chess.legal(st, 1)[1])); sim:run(3)
+    st = a.session.state
+    eq(#st.moves, n + 2); eq(st.turn, 1)
+    -- the bot's moves were legal: replaying them from the start reaches this position
+    local replay = Chess.new{ first = st.white, opt = { clock = 10 } }
+    for i, m in ipairs(st.moves) do ok(Chess.apply(replay, replay.turn, { k = "move", f = m.f, t = m.t, p = m.p }), "move " .. i) end
+    eq(replay.board, st.board)
+  end)
 end)

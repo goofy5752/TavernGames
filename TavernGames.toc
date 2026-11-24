@@ -101,6 +101,7 @@ engines/belot.lua
 engines/chess_rules.lua
 engines/chess_san.lua
 engines/chess.lua
+engines/chess_bot.lua
 
 # Locale
 locale/bg.lua
