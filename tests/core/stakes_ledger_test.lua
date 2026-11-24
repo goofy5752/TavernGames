@@ -199,7 +199,7 @@ describe("stakes: from a game to the ledger", function()
     local sim = Sim.new()
     local a, envA = sim:add(A, { cls = "MAGE" }); Bots.enable(a, envA, sim.makeEnv)
     sim:run(1); sim:settle()
-    local tid = a:openTable{ game = "ttt", access = "invite", turn = 45 }; ok(a:invite("Бот Иванов")); sim:run(5)
+    local tid = a:openTable{ game = "ttt", access = "invite", turn = 45 }; ok(a:invite("Bot Ivanov")); sim:run(5)
     eq(envA.noLedger(tid), true); eq(envA.noLedger("Някой#1"), false)
     for _ = 1, 400 do
       local s = a.session

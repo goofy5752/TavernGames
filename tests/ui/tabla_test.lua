@@ -1,7 +1,7 @@
 local Wow = require("wow")
 
 local A, B = "Иван Петров", "Мария Стоянова"
-local BOT = "Бот Иванов"
+local BOT = "Bot Ivanov"
 
 -- In a guild, booted with the ui/ files, own name resolved, PLAYER_LOGIN fired.
 local function guildWow()

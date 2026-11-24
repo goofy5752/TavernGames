@@ -1,7 +1,7 @@
 local Wow = require("wow")
 
 local ME, B, C = "Иван Петров", "Мария Стоянова", "Kiro Barley"
-local BOT = "Бот Иванов"
+local BOT = "Bot Ivanov"
 
 -- In a guild, booted with the ui/ files, own name resolved, PLAYER_LOGIN fired.
 local function guildWow()
@@ -49,7 +49,7 @@ local function plainTexts(w, needle)
   return out
 end
 
--- I host a Death Roll table from 100; „Бот Иванов“ sits through the „Покани“
+-- I host a Death Roll table from 100; „Bot Ivanov“ sits through the „Покани“
 -- picker and I press „Започни“: my turn first.
 local function play()
   local w = withBots()
@@ -132,15 +132,15 @@ describe("ui: Death Roll view", function()
     eq(V.cells[2].number:GetText(), "57"); eq(color(V.cells[2].number), MAGE)
     eq(V.cells[2].label:GetText(), "Ти")
     eq(V.cells[3].number:GetText(), "?"); eq(V.cells[3].number:GetAlpha(), 0.35)
-    eq(color(V.cells[3].number), rgb(w, "oMark")); eq(V.cells[3].label:GetText(), "Бот")
-    local wait = plainTexts(w, "Изчакай Бот Иванов…")
-    eq(#wait, 1); eq(wait[1]:GetText(), "Изчакай |cffffffffБот Иванов|r…")
+    eq(color(V.cells[3].number), rgb(w, "oMark")); eq(V.cells[3].label:GetText(), "Bot")
+    local wait = plainTexts(w, "Изчакай Bot Ivanov…")
+    eq(#wait, 1); eq(wait[1]:GetText(), "Изчакай |cffffffffBot Ivanov|r…")
     eq(V.rollButton:IsVisible(), false)
     eq(#w:texts(L("deathroll.caption")), 1)
     w:advance(2)
     cells = View.cells(w.ns.client.session)
     eq({ cells[3].n, cells[3].tag }, { 30, "table" }); eq(color(V.cells[3].number), PRIEST)
-    eq(#w:texts("· маса"), 1); eq(V.cells[3].label:GetText(), "Бот · маса")
+    eq(#w:texts("· маса"), 1); eq(V.cells[3].label:GetText(), "Bot · маса")
     w:hover(V.cells[3].frame); eq(w.G.GameTooltip.lines[1], L("deathroll.tip.table"))
     eq({ V.cells[1].number:GetFont() }, { w.ns.Theme.font.heading, 30, "" })
     eq(select(2, V.cells[2].number:GetFont()), 28); eq(select(2, V.cells[3].number:GetFont()), 26)
@@ -218,10 +218,10 @@ describe("ui: Death Roll view", function()
     w:advance(0)
     cells = View.cells(s)
     eq(#cells, 7); eq(cells[1].kind, "more"); eq(cells[7].n, 1)
-    local lost = plainTexts(w, "Бот Иванов хвърли 1 и губи!")
+    local lost = plainTexts(w, "Bot Ivanov хвърли 1 и губи!")
     eq(#lost, 1); eq(color(lost[1]), rgb(w, "gold"))
     -- the loser's name in his class colour (PRIEST) inside the gold line
-    eq(lost[1]:GetText(), "|cffffffffБот Иванов|r хвърли 1 и губи!")
+    eq(lost[1]:GetText(), "|cffffffffBot Ivanov|r хвърли 1 и губи!")
     eq(lost[1]:GetText(), w.ns.L("deathroll.lost", w.ns.W.colored(w.ns.client, BOT)))
     eq(V.rollButton:IsVisible(), false)
     eq(select(2, V.cells[7].number:GetFont()), 34); eq(color(V.cells[7].number), rgb(w, "oMark"))
@@ -245,7 +245,7 @@ describe("ui: Death Roll view", function()
     s:play(1, { k = "roll", n = 50, max = 100, src = "ask" })
     s:play(2, { k = "roll", n = 1, max = 50, src = "ask" })
     w:advance(0)
-    eq(#plainTexts(w, "Бот Иванов хвърли 1 и губи!"), 1)
+    eq(#plainTexts(w, "Bot Ivanov хвърли 1 и губи!"), 1)
     for _, bot in ipairs(w.ns.bots.list) do
       if bot.env.me == BOT then bot:stand() end
     end
