@@ -280,7 +280,7 @@ describe("ui: the chess view", function()
     local w, T, f, s, acts, set = setup()
     set(Chess.at("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR b KQkq - 0 1", { first = 1, opt = { clock = 10 } }))
     ok(not f.claim:IsShown(), "no claim while their time runs")
-    w:advance(601); T.render()
+    w:advance(602); T.render()
     ok(w.ns.Clock.canClaim(s), "their time is up by my clock")
     ok(f.claim:IsShown(), "the claim is shown")
     local called
@@ -290,6 +290,27 @@ describe("ui: the chess view", function()
     w.ns.Clock.claim = claim
     eq(called, w.ns.client)
     eq(s.state.claimed, 0, "the host took the claim")
+  end)
+
+  it("the claim button comes by itself: a host that withholds its flag sends no event", function()
+    local w, T, f, s, _, set = setup()
+    set(Chess.at("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR b KQkq - 0 1", { first = 1, opt = { clock = 10 } }))
+    w:advance(602)
+    ok(w.ns.Clock.canClaim(s), "their time is up by my clock")
+    ok(not f.claim:IsShown(), "nothing has redrawn the table yet")
+    w:render(); w:advance(0) -- one frame: the plates' clock sees the claim open and asks for a redraw
+    ok(f.claim:IsShown(), "the claim is shown")
+  end)
+
+  it("leaving the table with the promotion picker open closes it", function()
+    local w, T, f = setup("4k3/P7/8/8/8/8/8/4K3 w - - 0 1")
+    click(w, f, "a7"); click(w, f, "a8")
+    local pick = f.side.promo
+    ok(pick.catcher:IsShown(), "the picker is open")
+    w:click(T.view.standButton); w:advance(0)
+    if T.view.confirm:IsShown() then w:click(T.view.confirm.yes); w:advance(0) end
+    eq(w.ns.client.session, nil)
+    ok(not pick.catcher:IsShown() and not pick.frame:IsShown(), "the picker is closed")
   end)
 
   it("the sounds", function()

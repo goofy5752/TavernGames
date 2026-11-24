@@ -17,9 +17,9 @@ local _, ns = ...
 --   without `dt` is forged; a flag of my seat is honest only by my clock, and
 --   "unseen" on a turn my clock did not see begin (Clock.flagHonest, Member.timedOut).
 -- - The host's own flag: the other seat may claim it once my clock says its
---   time is gone (Clock.canClaim, Clock.claim); a move of that seat, or no
---   flag within AUTO_GRACE from a host my presence still lists, is forged at
---   a staked table.
+--   time is gone a round trip ago (Clock.canClaim, Clock.claim); a move of
+--   that seat, or no flag within AUTO_GRACE from a host my presence still
+--   lists, is forged at a staked table.
 -- A turn whose beginning my clock did not see (a login's snapshot, another
 -- turn in a snapshot) is a gift to the seat on turn: measured from the
 -- snapshot, never counted in the sums.
@@ -131,8 +131,9 @@ end
 -- measured ({at, seen, seat, left}: Clock.adopted's clockPrev, or the running
 -- turn) -> true, or false and the foul. Honest: that seat was on turn, its
 -- time is gone by my clock since c.at (FLAG_TOL left), and no action I sent on
--- it, at least TOL_BASE before my own deadline, is still unmatched in s.sent
--- (the host dropped it; a move sent later is the player's lag, spec 5.3).
+-- it, at least a round trip (FLAG_TOL + RTT_MAX) before my own deadline, is
+-- still unmatched in s.sent (an honest host had it in time and dropped it; a
+-- move sent later is the player's lag, spec 5.3).
 -- Not honest: "forged", but "unseen" on a turn my clock did not see begin
 -- (c.seen false: measured from a snapshot) or did not measure (c nil).
 -- Shared with core/StakesChess.lua.
@@ -141,7 +142,7 @@ function Clock.flagHonest(s, seat, c)
   if c.seat ~= seat then return false, "forged" end
   local bad = c.seen and "forged" or "unseen"
   if (now(s) - c.at) * 10 < c.left - Clock.FLAG_TOL then return false, bad end
-  local last = c.at + (c.left - Clock.TOL_BASE) / 10
+  local last = c.at + (c.left - Clock.FLAG_TOL - Clock.RTT_MAX) / 10
   local sent = s.sent or {}
   for i = 1, #sent do
     if sent[i].at >= c.at and sent[i].at <= last then return false, bad end
@@ -243,11 +244,13 @@ function Clock.adopted(s, prevState)
 end
 
 -- May I claim the other seat's flag -> bool: seated at a timed table, the
--- other seat on turn with no time left by my clock, not claimed at this ply.
+-- other seat on turn, its time gone by my clock FLAG_TOL + RTT_MAX ago (a move
+-- of its last instant has reached me by then), not claimed at this ply.
 function Clock.canClaim(s)
   local st, me = s.state, s.mySeat
-  if not (me and Clock.timed(s) and st.turn == 3 - me) then return false end
-  return Clock.left(s, st.turn) == 0 and st.claimed ~= #st.moves
+  if not (me and Clock.timed(s) and st.turn == 3 - me and s.clockAt) then return false end
+  local gone = (now(s) - s.clockAt) * 10 - st.clock[st.turn]
+  return gone >= Clock.FLAG_TOL + Clock.RTT_MAX and st.claimed ~= #st.moves
 end
 
 -- I claim the other seat's flag -> true | nil, code (Session.act). A member
@@ -255,6 +258,7 @@ end
 -- claim only while my presence still lists the host: a host gone offline
 -- loses by its seat's offline stand (core/Succession.lua), not here.
 function Clock.claim(client)
+  if not (client.session and Clock.canClaim(client.session)) then return nil, "claim" end
   local ok, code = ns.Session.act(client, { k = "claim" })
   if not ok then return nil, code end
   local s = client.session

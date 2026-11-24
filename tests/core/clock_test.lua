@@ -182,10 +182,39 @@ describe("the clock", function()
     eq(verdict(2, unseen), { true }) -- gone by my clock even from the snapshot on
     eq(verdict(1, c), { false, "forged" })
     eq(verdict(2, nil), { false, "unseen" }) -- my clock measured nothing
-    s.sent = { { a = { k = "move", f = 13, t = 29 }, at = 295 } } -- the last seconds: my own lag
+    s.sent = { { a = { k = "move", f = 13, t = 29 }, at = 298.5 } } -- within a round trip of my deadline: my own lag
     eq(verdict(2, c), { true })
     s.sent[1].at = 285 -- in time, and the host has not shown it: dropped
     eq(verdict(2, c), { false, "forged" })
     eq(verdict(2, unseen), { false, "unseen" })
+  end)
+
+  it("a move sent 5 s before my deadline, dropped, then flag: forged", function()
+    local Clock = ns.Clock
+    local s, clock = session(5)
+    s.mySeat = 2
+    local c = { at = 0, seen = true, seat = 2, left = 3000 }
+    clock.t = 307 -- the host's flag of my seat, AUTO_GRACE after my deadline
+    s.sent = { { a = { k = "move", f = 13, t = 29 }, at = 295 } } -- an honest host had it 5 s before its deadline
+    eq({ Clock.flagHonest(s, 2, c) }, { false, "forged" })
+    -- the window ends one round trip before my deadline: a move sent later may honestly come too late
+    s.sent[1].at = (c.left - Clock.FLAG_TOL - Clock.RTT_MAX) / 10
+    eq({ Clock.flagHonest(s, 2, c) }, { false, "forged" })
+    s.sent[1].at = s.sent[1].at + 0.1
+    eq({ Clock.flagHonest(s, 2, c) }, { true })
+  end)
+
+  it("a claim waits a round trip after the other seat's time is gone by my clock", function()
+    local Clock = ns.Clock
+    local s, clock = session(5)
+    s.mySeat = 1 -- white (seat 2) is on turn with 3000 tenths
+    Clock.mark(s)
+    clock.t = 300
+    eq(Clock.left(s, 2), 0)
+    eq(Clock.canClaim(s), false) -- a move made in its last instant may still be on its way
+    clock.t = 300 + (Clock.FLAG_TOL + Clock.RTT_MAX) / 10 - 0.1
+    eq(Clock.canClaim(s), false)
+    clock.t = 300 + (Clock.FLAG_TOL + Clock.RTT_MAX) / 10
+    eq(Clock.canClaim(s), true)
   end)
 end)

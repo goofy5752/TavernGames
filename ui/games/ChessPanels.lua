@@ -143,6 +143,7 @@ function Panels.promotion(f, cell, colour, onPick)
     pick = { frame = box, catcher = catcher, buttons = {}, pieces = {} }
     function pick.close() box:Hide(); catcher:Hide() end
     catcher:SetScript("OnClick", pick.close)
+    box:SetScript("OnHide", pick.close) -- the board hidden (I left the table): the catcher goes too
     for i, letter in ipairs({ "q", "r", "b", "n" }) do
       local b = CreateFrame("Button", nil, box)
       b:SetSize(SQUARE, SQUARE)
