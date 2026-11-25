@@ -10,8 +10,10 @@
 [![Tests](https://github.com/goofy5752/TavernGames/actions/workflows/tests.yml/badge.svg)](https://github.com/goofy5752/TavernGames/actions/workflows/tests.yml)
 [![Languages](https://img.shields.io/badge/UI-English%20%7C%20Български-e9c98a)](#languages)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+[![Discord](https://img.shields.io/badge/Discord-join%20the%20tavern-5865F2?logo=discord&logoColor=white)](https://discord.gg/uuZg5TRmZz)
+[![Buy me a coffee](https://img.shields.io/badge/Buy%20me%20a%20coffee-support-FFDD00?logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/goofy5752)
 
-[Features](#features) · [Games](#games) · [Screenshots](#screenshots) · [How it works](#how-it-works) · [Installation](#installation) · [Commands](#slash-commands) · [FAQ](#faq) · [На български](#на-български)
+[Features](#features) · [Games](#games) · [Screenshots](#screenshots) · [How it works](#how-it-works) · [Installation](#installation) · [Commands](#slash-commands) · [FAQ](#faq) · [Community](#community-and-support) · [На български](#на-български)
 
 <img src="docs/screenshots/hall.png" alt="The tavern hall: seven tables of different games, some with bots playing, the guild sign, the debts owed to you and who is in the tavern now" width="900">
 
@@ -23,7 +25,7 @@
 
 Every table is either **just for fun** or **staked in gold and silver**. The addon never moves gold by itself. It keeps a **guild-wide debt ledger**, fills in the amount for a **trade** or a **mail**, and you press the button. The addon runs on GUILD and WHISPER addon messages only, so it needs no server, website or external service.
 
-> **Version 1.0.1** ([changelog](CHANGELOG.md)), the first public release with a few additions. All seven games, stakes, the ledger, the leaderboard and the history are built, tested in game on WoW Forever and covered by more than 2500 automated tests. Please [open an issue](../../issues) if something misbehaves.
+> **Version 1.0.1** ([changelog](CHANGELOG.md)), the first public release with a few additions. All seven games, stakes, the ledger, the leaderboard and the history are built, tested in game on WoW Forever and covered by more than 2500 automated tests. Please [open an issue](../../issues) or tell us on [Discord](https://discord.gg/uuZg5TRmZz) if something misbehaves.
 
 ## Table of contents
 
@@ -43,6 +45,7 @@ Every table is either **just for fun** or **staked in gold and silver**. The add
 - [Known limitations](#known-limitations)
 - [Development](#development)
 - [Project structure](#project-structure)
+- [Community and support](#community-and-support)
 - [Contributing](#contributing)
 - [License and credits](#license-and-credits)
 - [На български](#на-български)
@@ -275,6 +278,12 @@ TavernGames/
 └── docs/             # design spec, plans, notes, mockups
 ```
 
+## Community and support
+
+- **Discord:** join the [Tavern Games server](https://discord.gg/uuZg5TRmZz) to find players, ask for help, report bugs, suggest ideas and hear about new versions first.
+- **GitHub:** bugs and rule corrections are also welcome as [issues](../../issues).
+- **Support the project:** Tavern Games is free and always will be. If it made your guild nights more fun, you can [buy me a coffee](https://buymeacoffee.com/goofy5752). ☕
+
 ## Contributing
 
 Bug reports, rule corrections (especially for regional Belot and Santase variants) and translations are welcome. Please open an issue first for larger changes. Run `bash t.sh` before sending a pull request. See [CONTRIBUTING.md](CONTRIBUTING.md), and report security problems privately ([SECURITY.md](SECURITY.md)).
@@ -307,5 +316,7 @@ Bug reports, rule corrections (especially for regional Belot and Santase variant
 Как изглежда: виж [снимките](#screenshots) по-горе.
 
 **Инсталиране:** копирай папките `Libs`, `core`, `engines`, `locale`, `wow`, `ui`, `media` и файловете `TavernGames.toc` и `LICENSE-THIRD-PARTY.md` в `World of Warcraft\_forever_\Interface\AddOns\TavernGames\`. После напиши `/tavern` в играта.
+
+**Общност:** [Discord сървърът](https://discord.gg/uuZg5TRmZz) е мястото за търсене на съиграчи, въпроси, бъгове и идеи. Ако искаш да подкрепиш проекта, можеш да ми [купиш кафе](https://buymeacoffee.com/goofy5752). ☕
 
 <sub>Keywords: WoW addon, World of Warcraft addon, guild games, Belot addon, Santase addon, Backgammon addon, Tabla, Texas Hold'em poker addon, WoW poker, Chess addon, WoW chess, Death Roll addon, gold betting, guild bank, debt ledger, Lua addon, WoW Forever, аддон за WoW, Белот, Сантасе, Табла, покер, Шах.</sub>

@@ -115,7 +115,7 @@ describe("ui: settings, За аддона", function()
     local box = v.repo
     eq(box:GetText(), "https://github.com/goofy5752/TavernGames"); eq(w.ns.Const.REPO, box:GetText())
     eq(v.repoLabel:GetText(), "Изходен код:")
-    eq(v.copyHint:GetText(), "Кликни адреса и натисни Ctrl+C, за да го копираш")
+    eq(v.copyHint:GetText(), "Кликни адрес и натисни Ctrl+C, за да го копираш")
     eq(box.autoFocus, false)
     local lit = 0
     box.HighlightText = function() lit = lit + 1 end
@@ -126,6 +126,24 @@ describe("ui: settings, За аддона", function()
     eq(box:GetText(), "https://github.com/goofy5752/TavernGames")
     box:SetText("anything"); box.scripts.OnTextChanged(box, false) -- not typed: left as is (the code's own SetText)
     eq(box:GetText(), "anything")
+  end)
+
+  it("the Discord server's address in a second read-only box under it, the boxes lined up, the hint under the last", function()
+    local w, v = settings()
+    local box = v.discord
+    eq(box:GetText(), "https://discord.gg/uuZg5TRmZz"); eq(w.ns.Const.DISCORD, box:GetText())
+    eq(v.discordLabel:GetText(), "Discord:")
+    eq(box.autoFocus, false)
+    local repoAt, discordAt = v.repo.points[1], box.points[1]
+    eq(discordAt[4], repoAt[4]); eq(discordAt[5], repoAt[5] - 28)
+    eq(box:GetWidth(), v.repo:GetWidth())
+    eq(v.copyHint.points[1][2], box)
+    local lit = 0
+    box.HighlightText = function() lit = lit + 1 end
+    box.scripts.OnMouseUp(box); eq(lit, 1)
+    box:SetText("https://discord.gg/other"); box.scripts.OnTextChanged(box, true)
+    eq(box:GetText(), "https://discord.gg/uuZg5TRmZz")
+    eq(v.repo:GetText(), "https://github.com/goofy5752/TavernGames") -- each box keeps its own address
   end)
 end)
 
