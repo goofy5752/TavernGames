@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.1 (2026-11-25)
+
+- **Sounds for every game.** Belot and Santase have the deal, my turn, a card played, a trick taken, the declarations, closing the stock and the nine swap. Backgammon has the dice, a checker moved, hit and borne off. Chess has a move, a capture, check, castling, promotion and the low-time tick. Tic-tac-toe marks its X, its O and the winning line, and Death Roll its rolls and the 1. A win, loss or draw jingle plays at the end of every game.
+- **„New table“:** the game is a drop-down. Pick another game without closing the dialog; who may sit and the turn time stay as chosen. The stake boxes end in the gold and silver coin icons.
+- **Santase:** „Declare“, the nine swap and „Close“ now stand beside your hand, no longer over the last trick.
+
 ## 1.0.0 (2026-11-25)
 
 This is the first public release, for WoW Forever (game version 1.60.1).

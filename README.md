@@ -23,7 +23,7 @@
 
 Every table is either **just for fun** or **staked in gold and silver**. The addon never moves gold by itself. It keeps a **guild-wide debt ledger**, fills in the amount for a **trade** or a **mail**, and you press the button. The addon runs on GUILD and WHISPER addon messages only, so it needs no server, website or external service.
 
-> **Version 1.0.0**, the first public release ([changelog](CHANGELOG.md)). All seven games, stakes, the ledger, the leaderboard and the history are built, tested in game on WoW Forever and covered by more than 2500 automated tests. Please [open an issue](../../issues) if something misbehaves.
+> **Version 1.0.1** ([changelog](CHANGELOG.md)), the first public release with a few additions. All seven games, stakes, the ledger, the leaderboard and the history are built, tested in game on WoW Forever and covered by more than 2500 automated tests. Please [open an issue](../../issues) if something misbehaves.
 
 ## Table of contents
 
@@ -149,7 +149,7 @@ Games with no hidden information (Backgammon, Tic-tac-toe, Death Roll, Chess) ar
 
 Tavern Games is built for **WoW Forever** (the `_forever_` client, game version 1.60.1, `## Interface: 16001`).
 
-**From a release (recommended).** Download `TavernGames-1.0.0.zip` from the [latest release](../../releases/latest) and unpack it into
+**From a release (recommended).** Download the `TavernGames-<version>.zip` of the [latest release](../../releases/latest) and unpack it into
 `World of Warcraft\_forever_\Interface\AddOns\`, so that you get `AddOns\TavernGames\TavernGames.toc`. Then restart the game
 and make sure **Tavern Games** is enabled in the AddOns list.
 
