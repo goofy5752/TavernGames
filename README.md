@@ -82,36 +82,71 @@ Every table is either **just for fun** or **staked in gold and silver**. The add
 
 ## Screenshots
 
-In these shots practice bots fill the seats, and the leaderboard and the ledger show made-up guild members.
+In these shots practice bots fill the seats, and the leaderboard and the ledger show made-up guild members. The addon dresses itself in your faction's colours: click a look to open it.
+
+<details open>
+<summary><b>🦁 Alliance look</b>: lapis and gold</summary>
 
 <table>
 <tr>
-<td width="50%" align="center"><img src="docs/screenshots/belot.png" alt="Belot mid-hand: four players, a trick on the table, the face cards with the race leaders"><br><sub>Belot</sub></td>
-<td width="50%" align="center"><img src="docs/screenshots/santase.png" alt="Santase: the trump card under the stock, the last trick and the player's hand"><br><sub>Santase</sub></td>
+<td width="50%" align="center"><img src="docs/screenshots/hall.png" alt="The tavern hall: tables of different games, the guild sign, the debts owed to you and who is in the tavern (Alliance look)"><br><sub>The hall</sub></td>
+<td width="50%" align="center"><img src="docs/screenshots/belot.png" alt="Belot mid-hand: four players, a trick on the table, the face cards with the race leaders (Alliance look)"><br><sub>Belot</sub></td>
 </tr>
 <tr>
-<td width="50%" align="center"><img src="docs/screenshots/tabla.png" alt="Backgammon mid-game with the dice thrown by both players"><br><sub>Backgammon</sub></td>
-<td width="50%" align="center"><img src="docs/screenshots/holdem.png" alt="Texas Hold'em with the board out, the live hand label and the hand history beside the table"><br><sub>Texas Hold'em and the hand history</sub></td>
+<td width="50%" align="center"><img src="docs/screenshots/santase.png" alt="Santase: the trump card under the stock, the last trick and the player's hand (Alliance look)"><br><sub>Santase</sub></td>
+<td width="50%" align="center"><img src="docs/screenshots/tabla.png" alt="Backgammon mid-game with the dice thrown by both players (Alliance look)"><br><sub>Backgammon</sub></td>
 </tr>
 <tr>
-<td width="50%" align="center"><img src="docs/screenshots/chess.png" alt="Chess mid-game with the move list and both clocks"><br><sub>Chess</sub></td>
-<td width="50%" align="center"><img src="docs/screenshots/deathroll.png" alt="Death Roll: the ladder of rolls, each one setting the new maximum"><br><sub>Death Roll</sub></td>
+<td width="50%" align="center"><img src="docs/screenshots/holdem.png" alt="Texas Hold'em with the board out, the live hand label and the hand history beside the table (Alliance look)"><br><sub>Texas Hold'em and the hand history</sub></td>
+<td width="50%" align="center"><img src="docs/screenshots/chess.png" alt="Chess mid-game with the move list and both clocks (Alliance look)"><br><sub>Chess</sub></td>
 </tr>
 <tr>
-<td width="50%" align="center"><img src="docs/screenshots/ttt.png" alt="Tic-tac-toe: a finished winning line"><br><sub>Tic-tac-toe</sub></td>
-<td width="50%" align="center"><img src="docs/screenshots/leaderboard.png" alt="The leaderboard: games, wins, gold net, favourite game and streaks"><br><sub>Leaderboard</sub></td>
+<td width="50%" align="center"><img src="docs/screenshots/deathroll.png" alt="Death Roll: the ladder of rolls, each one setting the new maximum (Alliance look)"><br><sub>Death Roll</sub></td>
+<td width="50%" align="center"><img src="docs/screenshots/ttt.png" alt="Tic-tac-toe: a finished winning line (Alliance look)"><br><sub>Tic-tac-toe</sub></td>
 </tr>
 <tr>
-<td width="50%" align="center"><img src="docs/screenshots/ledger.png" alt="The guild ledger: open and settled debts"><br><sub>Ledger</sub></td>
-<td width="50%" align="center"><img src="docs/screenshots/settings.png" alt="Settings: language, Alliance or Horde look, and the decks of the races with their leaders"><br><sub>Settings and decks</sub></td>
+<td width="50%" align="center"><img src="docs/screenshots/leaderboard.png" alt="The leaderboard: games, wins, gold net, favourite game and streaks (Alliance look)"><br><sub>Leaderboard</sub></td>
+<td width="50%" align="center"><img src="docs/screenshots/ledger.png" alt="The guild ledger: open and settled debts (Alliance look)"><br><sub>Ledger</sub></td>
 </tr>
 <tr>
-<td width="50%" align="center"><img src="docs/screenshots/book.png" alt="The rules book open on Belot"><br><sub>Rules book</sub></td>
-<td width="50%" align="center"><img src="docs/screenshots/belot_horde.png" alt="Belot in the Horde look"><br><sub>Horde look</sub></td>
+<td width="50%" align="center"><img src="docs/screenshots/settings.png" alt="Settings: language, the Alliance or Horde look, the decks of the races with their leaders, and the links (Alliance look)"><br><sub>Settings and decks</sub></td>
+<td width="50%" align="center"><img src="docs/screenshots/book.png" alt="The rules book open on Belot (Alliance look)"><br><sub>Rules book</sub></td>
 </tr>
 </table>
 
-<sub>These pictures are drawn from the addon's own UI code by [`tools/shots`](tools/shots/README.md), with the client's art read from a local WoW install. The world behind the windows is a loading screen; in the game it is the world around you.</sub>
+</details>
+
+<details>
+<summary><b>🐺 Horde look</b>: blood and iron</summary>
+
+<table>
+<tr>
+<td width="50%" align="center"><img src="docs/screenshots/hall_horde.png" alt="The tavern hall: tables of different games, the guild sign, the debts owed to you and who is in the tavern (Horde look)"><br><sub>The hall</sub></td>
+<td width="50%" align="center"><img src="docs/screenshots/belot_horde.png" alt="Belot mid-hand: four players, a trick on the table, the face cards with the race leaders (Horde look)"><br><sub>Belot</sub></td>
+</tr>
+<tr>
+<td width="50%" align="center"><img src="docs/screenshots/santase_horde.png" alt="Santase: the trump card under the stock, the last trick and the player's hand (Horde look)"><br><sub>Santase</sub></td>
+<td width="50%" align="center"><img src="docs/screenshots/tabla_horde.png" alt="Backgammon mid-game with the dice thrown by both players (Horde look)"><br><sub>Backgammon</sub></td>
+</tr>
+<tr>
+<td width="50%" align="center"><img src="docs/screenshots/holdem_horde.png" alt="Texas Hold'em with the board out, the live hand label and the hand history beside the table (Horde look)"><br><sub>Texas Hold'em and the hand history</sub></td>
+<td width="50%" align="center"><img src="docs/screenshots/chess_horde.png" alt="Chess mid-game with the move list and both clocks (Horde look)"><br><sub>Chess</sub></td>
+</tr>
+<tr>
+<td width="50%" align="center"><img src="docs/screenshots/deathroll_horde.png" alt="Death Roll: the ladder of rolls, each one setting the new maximum (Horde look)"><br><sub>Death Roll</sub></td>
+<td width="50%" align="center"><img src="docs/screenshots/ttt_horde.png" alt="Tic-tac-toe: a finished winning line (Horde look)"><br><sub>Tic-tac-toe</sub></td>
+</tr>
+<tr>
+<td width="50%" align="center"><img src="docs/screenshots/leaderboard_horde.png" alt="The leaderboard: games, wins, gold net, favourite game and streaks (Horde look)"><br><sub>Leaderboard</sub></td>
+<td width="50%" align="center"><img src="docs/screenshots/ledger_horde.png" alt="The guild ledger: open and settled debts (Horde look)"><br><sub>Ledger</sub></td>
+</tr>
+<tr>
+<td width="50%" align="center"><img src="docs/screenshots/settings_horde.png" alt="Settings: language, the Alliance or Horde look, the decks of the races with their leaders, and the links (Horde look)"><br><sub>Settings and decks</sub></td>
+<td width="50%" align="center"><img src="docs/screenshots/book_horde.png" alt="The rules book open on Belot (Horde look)"><br><sub>Rules book</sub></td>
+</tr>
+</table>
+
+</details>
 
 ## How it works
 
