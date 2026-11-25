@@ -662,7 +662,8 @@ scene("settings", function()
 end)
 
 -- The deck preview: the pointer on a deck tile shows the whole deck (not in the README).
-for _, d in ipairs({ { "deck_orc", "orc", "Horde" }, { "deck_faction", "faction", "Alliance" }, { "deck_gnome", "gnome", "Alliance" } }) do
+for _, d in ipairs({ { "deck_orc", "orc", "Horde" }, { "deck_faction", "faction", "Alliance" }, { "deck_gnome", "gnome", "Alliance" },
+                  { "deck_troll", "troll", "Horde" }, { "deck_bloodelf", "bloodelf", "Horde" } }) do
   scene(d[1], function()
     local w = boot{ faction = d[3] }
     w.ns.MainWindow.show("settings")

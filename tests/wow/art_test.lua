@@ -74,7 +74,9 @@ describe("art: the check", function()
     eq(A.candidates("leader", "gnome")[1], { file = "Interface\\Icons\\Achievement_Leader_Gelbin_Mekkatorque" })
     eq(A.candidates("leader", "orc")[1], { file = "Interface\\Icons\\Achievement_Leader_ Thrall" })
     eq(A.candidates("leader", "troll"), { { file = "Interface\\Icons\\Achievement_Leader_Voljin" },
-      { file = "Interface\\Icons\\Achievement_Leader_Vol'jin" } })
+      { file = "Interface\\Icons\\Achievement_Leader_Vol'jin" }, { file = "Interface\\Icons\\INV_Misc_Head_Troll_01" } })
+    eq(A.candidates("leader", "gnome")[4], { file = "Interface\\Icons\\INV_Misc_Head_Gnome_01" })
+    eq(A.candidates("leader", "bloodelf"), { { file = "Interface\\Icons\\Achievement_Boss_Kael'thasSunstrider_01" } })
     eq(A.candidates("race", "bloodelf", "female"), { { atlas = "raceicon128-bloodelf-female" },
       { atlas = "raceicon-bloodelf-female" }, { file = "Interface\\Icons\\Achievement_Character_Bloodelf_Female" } })
     eq(A.candidates("race", "undead", "male")[3], { file = "Interface\\Icons\\Achievement_Character_Undead_Male" })
