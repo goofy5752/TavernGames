@@ -1,6 +1,7 @@
 local _, ns = ...
 
--- „Нова маса“: the game, the stake („Само за удоволствие“, and for a game
+-- „Нова маса“: the game (a drop-down of every playable game: a pick opens the dialog
+-- on that game, who may sit and the turn time kept), the stake („Само за удоволствие“, and for a game
 -- whose engine has `stakes = true` also „Със залог“, which opens a row
 -- „Залог на човек“ with a gold and a silver box, Tab between them), who
 -- may sit (Всеки от гилдията / Само поканени / Групата ми), the turn time
@@ -233,8 +234,9 @@ local function buildStake(f, y)
   local amount = CreateFrame("Frame", nil, f)
   amount:SetAllPoints(f)
   rowLabel(amount, "dialog.stake.amount", y - AMOUNT_H)
-  D.goldBox = moneyBox(amount, VALUE_X, y - AMOUNT_H, 76, 7, "g")
-  D.silverBox = moneyBox(amount, VALUE_X + 76 + 24, y - AMOUNT_H, 40, 2, "s")
+  -- the coin icons after the boxes, as the Холдем cash panel shows amounts (W.coinTag)
+  D.goldBox = moneyBox(amount, VALUE_X, y - AMOUNT_H, 76, 7, W.coinTag("gold"))
+  D.silverBox = moneyBox(amount, VALUE_X + 76 + 24, y - AMOUNT_H, 40, 2, W.coinTag("silver"))
   D.goldBox:SetScript("OnTabPressed", function() D.silverBox:SetFocus() end)
   D.silverBox:SetScript("OnTabPressed", function() D.goldBox:SetFocus() end)
   amount:Hide()
@@ -243,6 +245,96 @@ end
 
 local function showGroup(group, on)
   for _, o in ipairs(group.options) do o.frame:SetShown(on) end
+end
+
+local PICK_W, PICK_H = 200, 26 -- the game drop-down and each line of its list
+
+-- A line of the game drop-down: the game's picture and its name.
+local function gameLine(parent, w)
+  local b = CreateFrame("Button", nil, parent)
+  b:SetSize(w, PICK_H)
+  b:RegisterForClicks("LeftButtonUp")
+  b.icon = b:CreateTexture(nil, "ARTWORK")
+  b.icon:SetSize(PICK_H - 8, PICK_H - 8)
+  b.icon:SetPoint("LEFT", b, "LEFT", 6, 0)
+  b.text = W.Label(b, "heading", "", 15)
+  b.text:SetPoint("LEFT", b.icon, "RIGHT", 6, 0)
+  return b
+end
+
+local function showGame(line, id)
+  local path = Theme.gameIcon(id)
+  line.icon:SetTexture(path)
+  line.icon:SetVertexColor(Theme.rgb("brassLight"))
+  line.icon:SetShown(path ~= nil)
+  line.text:SetText(W.gameName(id))
+end
+
+-- Opens the dialog on game `id` from the drop-down, keeping who may sit and the turn time.
+function D.switch(id)
+  local access, turn = D.access.value, D.turn.value
+  D.open(id)
+  if access then D.access.set(access) end
+  if turn then D.turn.set(turn) end
+end
+
+-- The game row: the chosen game in a box with an arrow; a click opens the list of every
+-- playable game under it (the chosen one in gold), a click on one opens the dialog on it.
+local function buildPicker(f, y)
+  local pick = gameLine(f, PICK_W)
+  pick:SetPoint("TOPLEFT", f, "TOPLEFT", VALUE_X, y + 5)
+  local fill = pick:CreateTexture(nil, "BACKGROUND")
+  fill:SetAllPoints(pick)
+  fill:SetColorTexture(unpack(W.DARK_FILL))
+  W.edges(pick, 1).setColor(Theme.rgb("brass"))
+  local arrow = pick:CreateTexture(nil, "ARTWORK")
+  arrow:SetSize(16, 16)
+  arrow:SetPoint("RIGHT", pick, "RIGHT", -6, 0)
+  arrow:SetTexture(Theme.tex.dropdown)
+  arrow:SetVertexColor(Theme.rgb("brassLight"))
+  pick.arrow = arrow
+  local list = CreateFrame("Frame", nil, pick)
+  list:SetFrameStrata("FULLSCREEN_DIALOG")
+  list:SetPoint("TOPLEFT", pick, "BOTTOMLEFT", 0, -2)
+  list:EnableMouse(true)
+  local ground = list:CreateTexture(nil, "BACKGROUND")
+  ground:SetAllPoints(list)
+  ground:SetColorTexture(unpack(W.SOLID))
+  W.edges(list, 1).setColor(Theme.rgb("brass"))
+  local items = {}
+  for _, g in ipairs(ns.Games.list()) do
+    if g.engine then
+      local item = gameLine(list, PICK_W - 2)
+      item:SetPoint("TOPLEFT", list, "TOPLEFT", 1, -1 - #items * PICK_H)
+      local hl = item:CreateTexture(nil, "BACKGROUND")
+      hl:SetAllPoints(item)
+      hl:SetColorTexture(Theme.color.brassLight[1], Theme.color.brassLight[2], Theme.color.brassLight[3], 0.12)
+      hl:Hide()
+      item:SetScript("OnEnter", function() hl:Show() end)
+      item:SetScript("OnLeave", function() hl:Hide() end)
+      item.id = g.id
+      showGame(item, g.id)
+      item:SetScript("OnClick", function()
+        list:Hide()
+        if g.id ~= D.gameId then D.switch(g.id) end
+      end)
+      items[#items + 1] = item
+    end
+  end
+  list:SetSize(PICK_W, #items * PICK_H + 2)
+  list:Hide()
+  pick:SetScript("OnClick", function() list:SetShown(not list:IsShown()) end)
+  W.tooltip(pick, function(t) t:SetText(L("dialog.pickGame")) end)
+  D.picker, D.pickList, D.pickItems = pick, list, items
+  D.game = pick.text -- the chosen game's name
+end
+
+-- The drop-down shows game `id`, and its list marks it in gold.
+local function pickerShows(id)
+  showGame(D.picker, id)
+  for _, item in ipairs(D.pickItems) do
+    item.text:SetTextColor(Theme.rgb(item.id == id and "gold" or "ink"))
+  end
 end
 
 local function build()
@@ -262,8 +354,7 @@ local function build()
 
   local y = -60
   rowLabel(f, "dialog.game", y)
-  D.game = W.Label(f, "heading", "", 15)
-  D.game:SetPoint("TOPLEFT", f, "TOPLEFT", VALUE_X, y - 2)
+  buildPicker(f, y)
 
   y = y - 34
   buildStake(f, y)
@@ -303,14 +394,15 @@ local function build()
   local cancel = W.Button(f, L("dialog.cancel"), function() f:Hide() end)
   cancel:SetSize(110, 28)
   cancel:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 24, 20)
-  f:SetScript("OnHide", function() D.goldBox:ClearFocus(); D.silverBox:ClearFocus() end)
+  f:SetScript("OnHide", function() D.goldBox:ClearFocus(); D.silverBox:ClearFocus(); D.pickList:Hide() end)
 end
 
 -- Opens the dialog for `gameId` with the default choices (for fun).
 function D.open(gameId)
   if not D.frame then build() end
   D.gameId = gameId or "ttt"
-  D.game:SetText(W.gameName(D.gameId))
+  pickerShows(D.gameId)
+  D.pickList:Hide()
   local engine = ns.Games.engine(D.gameId)
   local staked = engine ~= nil and engine.stakes == true
   showGroup(D.stakeFun, not staked)

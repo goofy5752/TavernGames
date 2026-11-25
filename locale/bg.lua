@@ -252,6 +252,7 @@ T["update.available"] = "Има по-нова версия на Tavern Games."
 -- New-table dialog
 T["dialog.title"] = "Нова маса"
 T["dialog.game"] = "Игра"
+T["dialog.pickGame"] = "Избери друга игра"
 T["dialog.stake"] = "Залог"
 T["dialog.stake.none"] = "Само за удоволствие"
 T["dialog.access"] = "Кой може да седне"

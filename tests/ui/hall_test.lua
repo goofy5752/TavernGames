@@ -421,6 +421,64 @@ describe("ui: new-table dialog", function()
     eq(turns, { 30, 45, 60, 90 }); eq(D.turn.value, 45)
   end)
 
+  it("the game is a drop-down of every playable game: „Отвори маса“ starts on Морски шах, a game's row on that game", function()
+    local w = guildWow()
+    w.ns.MainWindow.show()
+    local D = w.ns.NewTableDialog
+    w:click(w.ns.Hall.view.openButton)
+    eq(D.gameId, "ttt"); eq(D.game:GetText(), "Морски шах")
+    ok(D.picker:IsVisible(), "no drop-down"); ok(not D.pickList:IsShown(), "the list starts open")
+    eq(D.picker.arrow:GetTexture(), w.ns.Theme.tex.dropdown)
+    local ids = {}
+    for i, item in ipairs(D.pickItems) do ids[i] = item.id end
+    eq(ids, { "ttt", "deathroll", "santase", "belot", "tabla", "holdem", "chess" })
+    D.frame:Hide()
+    w:click(w.ns.Hall.view.games[7].frame) -- Шах from the hall's list
+    eq(D.gameId, "chess"); eq(D.game:GetText(), "Шах")
+    w:click(D.picker); ok(D.pickList:IsShown(), "the list did not open")
+    local gold = { w.ns.Theme.rgb("gold") }
+    for _, item in ipairs(D.pickItems) do
+      local c = item.text.textColor
+      if item.id == "chess" then eq({ c[1], c[2], c[3] }, gold) else ok(not (c[1] == gold[1] and c[2] == gold[2] and c[3] == gold[3]), item.id .. " in gold") end
+    end
+  end)
+
+  it("a pick in the drop-down opens the dialog on that game, keeping who may sit and the turn time", function()
+    local w = guildWow()
+    w.ns.MainWindow.show()
+    local D = w.ns.NewTableDialog
+    D.open("ttt")
+    w:click(D.access.options[2].frame); w:click(D.turn.options[4].frame)
+    w:click(D.picker)
+    local belot
+    for _, item in ipairs(D.pickItems) do if item.id == "belot" then belot = item end end
+    w:click(belot)
+    eq(D.gameId, "belot"); eq(D.game:GetText(), "Белот")
+    ok(not D.pickList:IsShown(), "the list stays open")
+    eq({ D.access.value, D.turn.value }, { "invite", 90 })
+    eq(#D.stake.options, 2); eq(D.stake.options[2].value, "gold") -- Белот takes a stake: its own choices
+    w:click(D.openButton)
+    local s = w.ns.client.session
+    ok(s, "no table"); eq({ s.game, s.access, s.turn }, { "belot", "invite", 90 })
+  end)
+
+  it("the stake's gold and silver boxes end in the coin icons, not „g“ and „s“", function()
+    local w = guildWow()
+    w.ns.MainWindow.show()
+    local D = w.ns.NewTableDialog
+    D.open("belot")
+    local labels = {}
+    for _, r in ipairs(D.amount.regions or {}) do
+      if r.objectType == "FontString" then labels[#labels + 1] = r:GetText() end
+    end
+    local W = w.ns.W
+    local seen = {}
+    for _, t in ipairs(labels) do seen[t] = true end
+    ok(seen[W.coinTag("gold")], "no gold coin after the gold box")
+    ok(seen[W.coinTag("silver")], "no silver coin after the silver box")
+    ok(not seen.g and not seen.s, "the letters are still there")
+  end)
+
   it("„Отвори“ opens the table with the chosen options and closes the dialog", function()
     local w = guildWow()
     w.ns.MainWindow.show()

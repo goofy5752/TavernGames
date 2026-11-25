@@ -252,6 +252,7 @@ T["update.available"] = "A newer version of Tavern Games is out."
 -- New-table dialog
 T["dialog.title"] = "New table"
 T["dialog.game"] = "Game"
+T["dialog.pickGame"] = "Choose another game"
 T["dialog.stake"] = "Stake"
 T["dialog.stake.none"] = "Just for fun"
 T["dialog.access"] = "Who may sit"
