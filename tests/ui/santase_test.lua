@@ -97,6 +97,22 @@ describe("ui: Сантасе view", function()
     eq(V.closeButton:IsVisible(), true); eq(#w:texts("Тесте: 12 карти"), 1); eq(#w:texts("Коз: купа"), 1); eq(V.oppFan.cards[1].face, nil)
   end)
 
+  -- In game „Затвори“ stood over „Последна взятка“ and its cards (owner's screenshot): the buttons
+  -- now stack from the bottom right, beside my hand, the close lowest and the marriage on top.
+  it("the buttons stack up from the bottom right, clear of the last trick", function()
+    local w, V = boot(); local s = w.ns.client.session; s.state = E.view(full(), 1)
+    show(w, s.state)
+    ok(V.marryButton:IsVisible() and V.closeButton:IsVisible(), "the buttons are not shown")
+    local close, marry = V.closeButton.points[#V.closeButton.points], V.marryButton.points[#V.marryButton.points]
+    eq({ close[1], close[3], close[4], close[5] }, { "BOTTOMRIGHT", "BOTTOMRIGHT", 0, 14 })
+    eq({ marry[1], marry[3], marry[4], marry[5] }, { "BOTTOMRIGHT", "BOTTOMRIGHT", 0, 14 + 24 + 6 })
+    -- the stack's top, from the view's bottom, stays under the last trick's lowest edge
+    local H = V:GetHeight()
+    local lastBottom = H - (70 + 12 + w.ns.Cards.H * 0.7) -- the last cards: MID_Y - 12 down, 0.7 of a card tall
+    local top = 14 + 3 * 24 + 2 * 6 -- all three buttons at once
+    ok(top < lastBottom, "the buttons reach the last trick: " .. top .. " >= " .. lastBottom)
+  end)
+
   it("armed „Обяви 40“: only the king and queen are raised, and a click declares", function()
     local w, V, View = boot(); local s = w.ns.client.session; show(w, E.view(full(), 1))
     w:click(V.marryButton); local modes = {}; for k, c in ipairs(View.model(s, true).hand) do modes[k] = c.mode end
