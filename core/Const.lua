@@ -7,6 +7,7 @@ ns.Const = {
   VERSION = "1.0.1",
   REPO = "https://github.com/goofy5752/TavernGames", -- the source code (Settings, „За аддона“)
   AUTHOR = "goofy5752",
+  DISCORD = "https://discord.gg/uuZg5TRmZz", -- the community server (Settings)
 
   TURN_DEFAULT = 45,
   TURN_CHOICES = { 30, 45, 60, 90 },

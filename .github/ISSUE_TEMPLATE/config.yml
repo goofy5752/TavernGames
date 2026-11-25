@@ -1,5 +1,8 @@
 blank_issues_enabled: false
 contact_links:
+  - name: Ask a question or find players on Discord
+    url: https://discord.gg/uuZg5TRmZz
+    about: Help with installing or playing, looking for a table, or just talking about the games.
   - name: Report a security problem
     url: https://github.com/goofy5752/TavernGames/security/advisories/new
     about: Cheating, stealing gold through the ledger, or another exploit. Please report it privately, not as a public issue.

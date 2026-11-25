@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Settings:** the Discord server's address now sits under the source code's, in the same box you can copy from.
+
 ## 1.0.1 (2026-11-25)
 
 - **Sounds for every game.** Belot and Santase have the deal, my turn, a card played, a trick taken, the declarations, closing the stock and the nine swap. Backgammon has the dice, a checker moved, hit and borne off. Chess has a move, a capture, check, castling, promotion and the low-time tick. Tic-tac-toe marks its X, its O and the winning line, and Death Roll its rolls and the 1. A win, loss or draw jingle plays at the end of every game.
