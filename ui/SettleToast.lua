@@ -111,7 +111,7 @@ function SettleToast.show(client, p)
   SettleToast.place()
   t.frame:Show()
   t.frame:Raise()
-  ns.Art.play("settled")
+  if not ns.GameSounds.settled(client, p) then ns.Art.play("settled") end -- at my Death Roll table: the loss paid
 end
 
 -- The head of the queue on the next frame, unless a toast is up or due.

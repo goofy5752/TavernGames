@@ -10,7 +10,7 @@ local function guildWow()
   w.inGuild = true
   w.roster = { { name = A .. "-Forever", online = true, guid = Wow.GUID } }
   w.G.RAID_CLASS_COLORS.PRIEST = { r = 1, g = 1, b = 1 }
-  local K = w.G.SOUNDKIT
+  local K = w.G.SOUNDKIT -- the SOUNDKIT names chess once played: none plays now
   K.IG_ABILITY_ICON_DROP, K.IG_BACKPACK_CLOSE, K.IG_PLAYER_INVITE, K.IG_QUEST_LIST_COMPLETE = 701, 702, 703, 704
   w:boot()
   w:firstRunDone()
@@ -19,12 +19,6 @@ local function guildWow()
   w:slash("bots")
   w:advance(0); w:advance(0)
   return w
-end
-local SOUND = { move = 701, capture = 702, check = 703, over = 704 }
-local function count(w, id)
-  local n = 0
-  for _, s in ipairs(w.sounds) do if s[1] == id then n = n + 1 end end
-  return n
 end
 
 -- A chess table of mine with the bot in seat 2, the table frame drawn; the bot has not moved yet.
@@ -347,39 +341,44 @@ describe("ui: the chess view", function()
     ok(not pick.catcher:IsShown() and not pick.frame:IsShown(), "the picker is closed")
   end)
 
-  it("the sounds", function()
+  -- Our own files played since mark `from` (ui/games/GameSounds.lua), by name.
+  local function files(w, from)
+    local out = {}
+    for k = (from or 0) + 1, #w.soundFiles do out[#out + 1] = w.soundFiles[k][1]:match("([%w_]+)%.ogg$") end
+    return out
+  end
+
+  -- The table I host with the position set by hand, seen afresh by the sounds; each ply an event of the table.
+  local function sounding()
     local w, T, f, s = setup()
-    T.render()
-    local E = w.ns.Engines.chess
+    w.ns.GameSounds.reset(); w.ns.GameSounds.observe(s, true)
     local function ply(word, a)
-      ok(E.apply(s.state, s.state.turn, a or { k = "move", f = sq(word:sub(1, 2)), t = sq(word:sub(3, 4)) }))
-      T.render()
+      local n = #w.soundFiles
+      s:play(s.state.turn, a or { k = "move", f = sq(word:sub(1, 2)), t = sq(word:sub(3, 4)) })
+      return files(w, n)
     end
-    local base = { count(w, SOUND.move), count(w, SOUND.capture), count(w, SOUND.check), count(w, SOUND.over) }
-    local function heard() -- since the table was set up (the bot's own first move was heard on the way)
-      return { count(w, SOUND.move) - base[1], count(w, SOUND.capture) - base[2], count(w, SOUND.check) - base[3], count(w, SOUND.over) - base[4] }
-    end
-    eq(heard(), { 0, 0, 0, 0 }, "setting the position by hand plays nothing")
-    ply("e2e4"); eq(heard(), { 1, 0, 0, 0 })
-    T.render(); eq(heard(), { 1, 0, 0, 0 }, "drawing the same state again plays nothing")
-    ply("d7d5"); eq(heard(), { 2, 0, 0, 0 })
-    ply("e4d5"); eq(heard(), { 2, 1, 0, 0 }, "the first capture of the table is heard")
-    ply("d8d5"); eq(heard(), { 2, 2, 0, 0 })
-    ply("b1c3"); eq(heard(), { 3, 2, 0, 0 })
-    ply("d5e5"); eq(heard(), { 3, 2, 1, 0 }, "a check beats a quiet move")
-    ply("f1e2"); eq(heard(), { 4, 2, 1, 0 })
-    ply(nil, { k = "resign" }); eq(heard(), { 4, 2, 1, 1 })
-    T.render(); eq(heard(), { 4, 2, 1, 1 })
+    return w, T, s, ply
+  end
+
+  it("the sounds: one file a ply, none from SOUNDKIT and none for a redraw", function()
+    local w, T, _, ply = sounding()
+    local kit = #w.sounds
+    eq(ply("e2e4"), { "chess_move" })
+    local n = #w.soundFiles; T.render(); eq(files(w, n), {}, "drawing the same state again plays nothing")
+    eq(ply("d7d5"), { "chess_move" })
+    eq(ply("e4d5"), { "chess_capture" })
+    eq(ply("d8d5"), { "chess_capture" })
+    eq(ply("b1c3"), { "chess_move" })
+    eq(ply("d5e5"), { "chess_check" }, "a check beats a quiet move")
+    eq(ply("f1e2"), { "chess_move" })
+    eq(ply(nil, { k = "resign" }), { "game_win" }) -- black resigns: I win
+    eq(#w.sounds, kit)
   end)
 
-  it("the sounds of a mate: the end covers the check", function()
-    local w, T, f, s = setup()
-    local E = w.ns.Engines.chess
-    local base = { count(w, SOUND.move), count(w, SOUND.check), count(w, SOUND.over) }
-    for _, word in ipairs({ "f2f3", "e7e5", "g2g4", "d8h4" }) do
-      ok(E.apply(s.state, s.state.turn, { k = "move", f = sq(word:sub(1, 2)), t = sq(word:sub(3, 4)) })); T.render()
-    end
-    eq({ count(w, SOUND.move) - base[1], count(w, SOUND.check) - base[2], count(w, SOUND.over) - base[3] }, { 3, 0, 1 })
+  it("the sounds of a mate: my jingle, no check", function()
+    local _, _, _, ply = sounding()
+    for _, word in ipairs({ "f2f3", "e7e5", "g2g4" }) do ply(word) end
+    eq(ply("d8h4"), { "game_lose", "chess_move" })
   end)
 
   it("the table's own sounds are not touched and the theme names the chess textures", function()

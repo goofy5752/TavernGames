@@ -115,7 +115,7 @@ describe(".pkgmeta", function()
     end
   end)
 
-  it("the zip ships media/sounds (Hold'em's sounds, one per name) and leaves tools/ out", function()
+  it("the zip ships media/sounds (every game's sounds, one per name) and leaves tools/ out", function()
     local ignored, inIgnore = {}, false
     for line in io.lines(".pkgmeta") do
       line = line:gsub("\r", "")
@@ -125,7 +125,10 @@ describe(".pkgmeta", function()
     end
     ok(ignored.tools, "tools/ is packaged")
     for path in pairs(ignored) do ok(not ("media/sounds"):find("^" .. path:gsub("%p", "%%%0")), "ignored: " .. path) end
-    for _, name in ipairs({ "turn", "tick", "tickLast", "timeout", "check", "call", "bet", "allin", "fold", "deal", "board", "win" }) do
+    for _, name in ipairs({ "turn", "tick", "tickLast", "timeout", "check", "call", "bet", "allin", "fold", "deal", "board", "win",
+        "cards_deal", "card_play", "trick_take", "declare", "hand_end", "stock_close", "nine_swap", "dice_roll", "checker_move",
+        "checker_hit", "checker_off", "chess_move", "chess_capture", "chess_check", "chess_castle", "chess_promote", "ttt_x",
+        "ttt_o", "ttt_line", "die_roll", "roll_one", "coins_pay", "game_win", "game_lose", "game_draw" }) do
       local f = io.open("media/sounds/" .. name .. ".ogg", "rb")
       ok(f, "missing media/sounds/" .. name .. ".ogg")
       if f then ok(f:read(4) == "OggS", name .. ".ogg is not an Ogg file"); f:close() end

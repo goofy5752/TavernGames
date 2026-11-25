@@ -324,9 +324,6 @@ function View.update(f, s)
   f.session = s
   local st = s.state
   remember(f, s)
-  local dealt, mine = st.phase ~= "deal", View.seatTricks(s, s.mySeat) or 0 -- st.round: the deal counter
-  ns.Sounds.once("deal", s.tid .. ":" .. tostring(st.round) .. (dealt and "" or ":-"), s.tid, dealt)
-  ns.Sounds.once("trick", s.tid .. ":" .. tostring(st.round) .. ":" .. mine, s.tid, mine > 0)
   if f.peekAt ~= eventKey(s) then f.peek = false end
   local m = M.build(s, nil, f.names)
   if f.peek and m.canPeek then

@@ -59,16 +59,10 @@ local CLASS_NAMES = { DEATHKNIGHT = "DeathKnight", DEMONHUNTER = "DemonHunter" }
 Art.SOUNDS = {
   open = { "IG_CHARACTER_INFO_OPEN" },
   close = { "IG_CHARACTER_INFO_CLOSE" },
-  deal = { "IG_ABILITY_PAGE_TURN" },
-  trick = { "IG_BACKPACK_OPEN" },
   coins = { "LOOT_WINDOW_COIN_SOUND", "MONEY_FRAME_OPEN" },
   settled = { "LOOT_WINDOW_COIN_SOUND", "ACHIEVEMENT_MENU_OPEN" }, -- a coin sound on the settled toast (spec 5.4)
-  chessMove = { "IG_ABILITY_ICON_DROP" },     -- chess (ui/games/ChessView.lua): a quiet move, a capture, a check, the end
-  chessCapture = { "IG_BACKPACK_CLOSE" },
-  chessCheck = { "IG_PLAYER_INVITE" },
-  chessEnd = { "IG_QUEST_LIST_COMPLETE" },
 }
-local SOUND_KEYS = { "open", "close", "deal", "trick", "coins", "settled", "chessMove", "chessCapture", "chessCheck", "chessEnd" }
+local SOUND_KEYS = { "open", "close", "coins", "settled" }
 
 -- What /tavern probe art reports by type(); the last three are of a scratch frame and texture.
 local APIS = {
@@ -194,10 +188,16 @@ function Art.play(key)
   return (pcall(play, soundId, "SFX"))
 end
 
--- Our own sound files (media/sounds, Холдем: ui/games/HoldemSounds.lua), played by name.
+-- Our own sound files (media/sounds), played by name: Холдем's (ui/games/HoldemSounds.lua), then every
+-- other game's (ui/games/GameSounds.lua and its readers).
 Art.SOUND_DIR = "Interface\\AddOns\\TavernGames\\media\\sounds\\"
 Art.FILES = { turn = true, tick = true, tickLast = true, timeout = true, check = true, call = true, bet = true,
-  allin = true, fold = true, deal = true, board = true, win = true }
+  allin = true, fold = true, deal = true, board = true, win = true,
+  cards_deal = true, card_play = true, trick_take = true, declare = true, hand_end = true, stock_close = true,
+  nine_swap = true, dice_roll = true, checker_move = true, checker_hit = true, checker_off = true,
+  chess_move = true, chess_capture = true, chess_check = true, chess_castle = true, chess_promote = true,
+  ttt_x = true, ttt_o = true, ttt_line = true, die_roll = true, roll_one = true, coins_pay = true,
+  game_win = true, game_lose = true, game_draw = true }
 
 -- Plays our file `name` (Art.FILES) on the SFX channel -> true; false when muted, unknown or the client
 -- has no PlaySoundFile.

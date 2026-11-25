@@ -144,11 +144,11 @@ describe("art: report", function()
     local w = Wow.new{}; local A = w.ns.Art
     w.G.RAID_CLASS_COLORS = { WARRIOR = {}, MAGE = {} }
     w:hasFile(ALLIANCE_LOGO); w:hasAtlas("classicon-warrior")
-    w.G.SOUNDKIT.IG_BACKPACK_OPEN = 862
+    w.G.SOUNDKIT.IG_CHARACTER_INFO_OPEN = 862
     local rows, found, total = A.report()
     eq(row(rows, ALLIANCE_LOGO), "file"); eq(row(rows, "FactionIcon-Alliance"), "-")
     eq(row(rows, "classicon-warrior"), "atlas"); eq(row(rows, "Interface\\Icons\\ClassIcon_Warrior"), "-")
-    eq(row(rows, "IG_BACKPACK_OPEN"), "ok"); eq(row(rows, "MONEY_FRAME_OPEN"), "-")
+    eq(row(rows, "IG_CHARACTER_INFO_OPEN"), "ok"); eq(row(rows, "IG_BACKPACK_OPEN"), nil); eq(row(rows, "MONEY_FRAME_OPEN"), "-")
     eq(row(rows, "GetFileIDFromPath"), "function"); eq(row(rows, "C_Texture.GetAtlasInfo"), "function")
     eq(row(rows, "UnitIsVisible"), "function"); eq(row(rows, "SetPortraitToTexture"), "function")
     eq(row(rows, "Texture.SetAtlas"), "function"); eq(row(rows, "Texture.AddMaskTexture"), "function")

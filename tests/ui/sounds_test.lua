@@ -33,41 +33,6 @@ local function viewOf(game)
   return w, View, View.build(parent)
 end
 
-describe("ui: Sounds.once", function()
-  it("a deal sounds once per hand, my trick once per trick, and nothing when I join mid-hand", function()
-    local w = guildWow()
-    local S = w.ns.Sounds
-    eq(S.once("deal", "t:1:1"), false); eq(S.once("deal", "t:1:1"), false); eq(S.once("deal", "t:1:2"), true)
-    eq(count(w, DEAL), 1)
-    eq(S.once("trick", "t:2:1"), false); eq(S.once("trick", "t:2:2"), true); eq(S.once("trick", "t:2:2"), false)
-    eq(count(w, TRICK), 1)
-  end)
-
-  it("first sight is silent per table: another table's first key is remembered quietly too", function()
-    local w = guildWow()
-    local S = w.ns.Sounds
-    eq(S.once("deal", "a:1", "a"), false); eq(S.once("deal", "a:2", "a"), true)
-    eq(S.once("deal", "b:7", "b"), false); eq(S.once("deal", "b:8", "b"), true)
-    eq(S.once("deal", "a:3", "a"), true)
-  end)
-
-  it("a new key that is not audible is remembered without a sound", function()
-    local w = guildWow()
-    local S = w.ns.Sounds
-    eq(S.once("trick", "t:1:0", "t", false), false); eq(S.once("trick", "t:1:1", "t", true), true)
-    eq(S.once("trick", "t:2:0", "t", false), false); eq(#w.sounds, 1)
-    eq(S.once("trick", "t:2:1", "t", true), true)
-  end)
-
-  it("muted: nothing plays", function()
-    local w = guildWow()
-    local S = w.ns.Sounds
-    eq(w.ns.Art.play("coins"), true); local n = #w.sounds
-    w.ns.db.sound = false
-    eq(S.once("deal", "t:1"), false); eq(S.once("deal", "t:2"), false); eq(#w.sounds, n)
-  end)
-end)
-
 describe("ui: window sounds", function()
   it("the window opens and closes with a sound", function()
     local w = guildWow()
@@ -89,26 +54,6 @@ describe("ui: window sounds", function()
 end)
 
 describe("ui: game sounds", function()
-  it("Сантасе at a table I host: its first deal sounds, then my trick once per trick", function()
-    local w = guildWow()
-    w:slash("bots"); w:advance(0); w:advance(0)
-    w.ns.client:openTable{ game = "santase", access = "invite", turn = 45 }
-    w:advance(0)
-    local v = w.ns.TableFrame.view
-    w:click(v.inviteButton)
-    for _, r in ipairs(v.picker.rows) do
-      if r.frame:IsVisible() and r.peerName == BOT then w:click(r.frame) end
-    end
-    w:advance(2)
-    local s = w.ns.client.session
-    eq(s.state.hand, 1); eq(count(w, DEAL), 1)
-    w.ns.TableFrame.render(); eq(count(w, DEAL), 1) -- the same hand again: no second sound
-    s.state.won = { { 1, 4 }, {} }; w.ns.TableFrame.render(); eq(count(w, TRICK), 1)
-    w.ns.TableFrame.render(); eq(count(w, TRICK), 1)
-    s.state.won = { { 1, 4 }, { 2, 5 } }; w.ns.TableFrame.render(); eq(count(w, TRICK), 1) -- the other seat's trick
-    s.state.won = { { 1, 4, 3, 6 }, { 2, 5 } }; w.ns.TableFrame.render(); eq(count(w, TRICK), 2)
-  end)
-
   local SE -- the Сантасе engine
   local function santase(hand, won, tid)
     local st = SE.new{ first = 1 }
@@ -119,17 +64,15 @@ describe("ui: game sounds", function()
       tid = tid or "t#1", epoch = 1, seq = 1, role = "player", gameOver = function() return false end }
   end
 
-  it("Сантасе: joining mid-hand plays nothing; the next deal sounds", function()
+  it("Сантасе: the view plays no sound of its own (its sounds: ui/games/GameSounds.lua)", function()
     local w, View, f = viewOf("santase")
     SE = w.ns.Engines.santase
-    View.update(f, santase(3, { { 1, 4 }, {} })); eq(#w.sounds, 0)
-    View.update(f, santase(3, { { 1, 4 }, {} })); eq(#w.sounds, 0)
-    View.update(f, santase(4)); eq(count(w, DEAL), 1); eq(count(w, TRICK), 0)
-    View.update(f, santase(4, { { 1, 4 }, {} })); eq(count(w, TRICK), 1)
-    View.update(f, santase(9, { { 1, 4 }, {} }, "t#2")); eq(count(w, DEAL), 1); eq(count(w, TRICK), 1) -- another table: first sight
+    View.update(f, santase(3, { { 1, 4 }, {} })); View.update(f, santase(4))
+    View.update(f, santase(4, { { 1, 4 }, {} })); View.update(f, santase(4, { { 1, 4 }, { 2, 5 } }))
+    eq(w.sounds, {}); eq(w.soundFiles, {})
   end)
 
-  it("Белот: one sound per deal, my team's trick once per trick, silent mid-hand", function()
+  it("Белот: the view plays no sound of its own", function()
     local w, View, f = viewOf("belot")
     local E = w.ns.Engines.belot
     local function sess(round, phase, took)
@@ -143,13 +86,9 @@ describe("ui: game sounds", function()
       return { game = "belot", status = "live", mySeat = 1, seats = { ME, BOT, "В", "Г" }, state = view,
         tid = "t#1", epoch = 1, seq = 1, role = "player" }
     end
-    View.update(f, sess(2, "bid")); eq(#w.sounds, 0) -- joined mid-hand
-    View.update(f, sess(3, "deal")); eq(#w.sounds, 0) -- the next round waits for its cards
-    View.update(f, sess(3, "bid")); eq(count(w, DEAL), 1)
-    View.update(f, sess(3, "play", { 0, 0 })); eq(count(w, DEAL), 1); eq(count(w, TRICK), 0)
-    View.update(f, sess(3, "play", { 1, 0 })); eq(count(w, TRICK), 1)
-    View.update(f, sess(3, "play", { 1, 1 })); eq(count(w, TRICK), 1) -- the other team's
-    View.update(f, sess(3, "play", { 2, 1 })); eq(count(w, TRICK), 2)
+    View.update(f, sess(2, "bid")); View.update(f, sess(3, "deal")); View.update(f, sess(3, "bid"))
+    View.update(f, sess(3, "play", { 0, 0 })); View.update(f, sess(3, "play", { 1, 0 })); View.update(f, sess(3, "play", { 2, 1 }))
+    eq(w.sounds, {}); eq(w.soundFiles, {})
   end)
 
   local function holdem(w, hand, pot, cash)

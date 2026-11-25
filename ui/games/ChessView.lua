@@ -189,24 +189,6 @@ function View.seatClock(s, seat)
   return ns.Clock.left(s, seat)
 end
 
--- One sound per ply (check beats capture beats move), and one at the end of the game: every
--- kind is asked every time, with its own key (the first key of a kind is remembered in silence,
--- ns.Sounds.once), the kinds that lose to a better one with audible = false.
-local function sounds(s, st)
-  local S, tid, n = ns.Sounds, tostring(s.tid), #st.moves
-  local cap, check = 0, 0
-  for i, mv in ipairs(st.moves) do
-    if mv.san:find("x", 1, true) then cap = i end
-    if mv.san:find("[+#]") then check = i end
-  end
-  local over = st.phase == "over"
-  local ended = S.once("chessEnd", tid .. (over and (":over:" .. n .. ":" .. tostring(st.white)) or (":play:" .. tostring(st.white))), tid, over)
-  local top = n > 0 and not ended and (check == n and "chessCheck" or cap == n and "chessCapture" or "chessMove") or nil
-  S.once("chessMove", tid .. ":" .. n, tid, top == "chessMove")
-  S.once("chessCapture", tid .. ":" .. cap, tid, top == "chessCapture")
-  S.once("chessCheck", tid .. ":" .. check, tid, top == "chessCheck")
-end
-
 -- The files and ranks along the board, turned to the colour at the bottom.
 local function coordinates(f, bottom)
   for k = 1, 8 do
@@ -256,7 +238,6 @@ function View.update(f, s)
   coordinates(f, m.bottom)
   for i = 1, 64 do drawCell(f.cells[i], m.cells[i], skin, m.myTurn) end
   P.update(f, s, m)
-  sounds(s, st)
 
   local me = s.mySeat
   local offered = m.offerFor ~= nil and m.offerFor == me

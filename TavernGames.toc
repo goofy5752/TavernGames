@@ -170,6 +170,9 @@ ui/games/ChessModel.lua
 ui/games/ChessMoves.lua
 ui/games/ChessPanels.lua
 ui/games/ChessView.lua
+ui/games/GameSounds.lua
+ui/games/GameSoundsCards.lua
+ui/games/GameSoundsBoards.lua
 ui/InviteToast.lua
 ui/SettleToast.lua
 ui/HelpBook.lua
