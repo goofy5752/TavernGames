@@ -3,6 +3,7 @@
 ## Unreleased
 
 - **Settings:** the Discord server's address now sits under the source code's, in the same box you can copy from.
+- **Settings, Deck:** point at a deck and its whole face side opens beside it: the jack, queen, king and ace of every suit, and the back.
 
 ## 1.0.1 (2026-11-25)
 

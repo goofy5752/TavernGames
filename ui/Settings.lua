@@ -5,7 +5,8 @@ local _, ns = ...
 -- declined by the addon), the minimap button on/off, „Звуци“ (db.sound), „Покажи
 -- въведението“, and the addon and protocol versions. A second panel (mockup 08,
 -- „Облик и тесте“): the theme tiles (db.theme, applied after a reload) and the
--- deck tiles (db.deck, live: Decks.set redraws an open table).
+-- deck tiles (db.deck, live: Decks.set redraws an open table); hovering a deck tile shows
+-- the whole deck (DeckPreview).
 local Theme, W, L, C = ns.Theme, ns.W, ns.L, ns.Const
 
 local Settings = { view = nil }
@@ -167,7 +168,16 @@ local function buildLooks(page, v)
     t.card.deck = key
     t.card:set("KS")
     v.deckTiles[key] = t
+    -- hovering shows the whole deck to the tile's left, level with it (inside the window)
+    local px = x - ns.DeckPreview.W - GAP
+    local py = math.max(0, math.min(ns.MainWindow.BODY_H - ns.DeckPreview.H, rowY + (TILE_H - ns.DeckPreview.H) / 2))
+    t.frame:HookScript("OnEnter", function()
+      v.preview = v.preview or ns.DeckPreview.new(panel)
+      ns.DeckPreview.show(v.preview, key, ns.Decks.name(key, Theme.skin), sub, px, py)
+    end)
+    t.frame:HookScript("OnLeave", function() if v.preview then ns.DeckPreview.hide(v.preview) end end)
   end
+  panel:HookScript("OnHide", function() if v.preview then ns.DeckPreview.hide(v.preview) end end)
 end
 
 -- „Направено с ♥ от goofy5752“ and two addresses under the versions: the source code and the
