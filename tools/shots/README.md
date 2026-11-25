@@ -7,7 +7,8 @@ python tools/shots/client_art.py      # once, needs a local WoW install (see bel
 luajit tools/shots/scenes.lua && python tools/shots/render.py
 ```
 
-Run it from the repo root. You can also name scenes, for example `luajit tools/shots/scenes.lua hall belot` followed by
+Every README scene also has a Horde twin, `<scene>_horde`: the same scene booted as the Horde, for the README's
+"Horde look" fold. Run it from the repo root. You can also name scenes, for example `luajit tools/shots/scenes.lua hall belot` followed by
 `python tools/shots/render.py hall belot`. It needs LuaJIT, and Python with Pillow and numpy.
 The scenes `history_belot`, `history_long` (the longest names), `history_santase` and `history_chess` show the „История“
 window open beside a table, to check it against mockup 10; they are made only when named and are not README pictures.
@@ -50,7 +51,7 @@ What is meant to be so is in `lint_allow.lua`, each entry with its reason. The f
 ## How it works
 
 1. `scenes.lua` boots the tests' fake WoW client (`tests/helpers/wow.lua`, `frames.lua`) with the `ui/` files, in
-   English, as the player "Brannoc". Each scene is then set up through the addon's own code paths. The player opens
+   English, as the player "Psychedelic", a shaman (an Orc for the Horde, a Draenei for the Alliance). Each scene is then set up through the addon's own code paths. The player opens
    tables and the "Add bots" and "Start" buttons seat the bots. Bots host tables and play real games on the fake
    clock. The player's own moves are the ones the engine's bot (or its automatic move) would make. A Death Roll roll
    is answered by the server's chat line. At the end the visible frame tree is written to

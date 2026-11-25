@@ -10,7 +10,7 @@ local Shim = require("shim")
 local Wow = require("wow")
 
 local OUT = "tools/shots/build/"
-local ME = "Brannoc"
+local ME = "Psychedelic"
 local GUILD = "The Gilded Tankard"
 
 -- The client's class colours (RAID_CLASS_COLORS), for the fake that knows only the mage's.
@@ -20,7 +20,7 @@ local CLASS_COLORS = {
   MAGE = { 0.25, 0.78, 0.92 }, WARLOCK = { 0.53, 0.53, 0.93 }, DRUID = { 1.00, 0.49, 0.04 },
 }
 
-local RACES = { Alliance = { "Human", "Human", 1 }, Horde = { "Orc", "Orc", 2 } }
+local RACES = { Alliance = { "Draenei", "Draenei", 11 }, Horde = { "Orc", "Orc", 2 } } -- a shaman: the Draenei for the Alliance
 
 -- A fresh client in a guild, English UI, the player's name known, logged in.
 -- opts.faction: "Alliance" (default) | "Horde"; opts.members: more guild members (online);
@@ -28,6 +28,9 @@ local RACES = { Alliance = { "Human", "Human", 1 }, Horde = { "Orc", "Orc", 2 } 
 -- opts.screen: {w, h}, UIParent's size (default the tests' 1920 x 1080).
 -- The client art tools/shots/client_art.py took out of the WoW install (none: the addon's stand-ins show).
 local CLIENT_ART = Shim.loadClientArt()
+
+-- Set while a scene's Horde twin runs (see the end of the scenes): boot takes the Horde, write adds "_horde".
+local VARIANT
 
 local function boot(opts)
   opts = opts or {}
@@ -51,7 +54,7 @@ local function boot(opts)
   end
   -- The 3-D portrait of a unit is the client's render, which no file holds: the addon's own fallback shows.
   w.G.SetPortraitTexture, w.G.SetPortraitToTexture = nil, nil
-  w.faction = opts.faction or "Alliance"
+  w.faction = opts.faction or VARIANT or "Alliance"
   w.race = RACES[w.faction]
   w.sex = 2
   w.inGuild, w.guildName = true, opts.guild or GUILD
@@ -61,7 +64,7 @@ local function boot(opts)
     w.roster[#w.roster + 1] = { name = m .. "-Forever", online = true, guid = "Player-1-" .. m }
   end
   for cls, c in pairs(CLASS_COLORS) do w.G.RAID_CLASS_COLORS[cls] = { r = c[1], g = c[2], b = c[3] } end
-  w.G.UnitClass = function() return "Mage", "MAGE", 8 end
+  w.G.UnitClass = function() return "Shaman", "SHAMAN", 7 end
   w.money = opts.money or 2473650
   w:boot()
   w.ns.db.lang, w.ns.db.introDone = opts.lang or "en", true
@@ -104,6 +107,7 @@ end
 
 local function write(name, w, frames, opts)
   opts = opts or {}
+  if VARIANT == "Horde" and not name:find("_horde$") then name = name .. "_horde" end
   local snap = Shim.snapshot(w, opts.skip)
   snap.name = name
   -- With the client's art the world shows around the window(s): a wider margin.
@@ -356,7 +360,7 @@ scene("history_long", function()
   assert(okStop, "history_long: no second deal")
   local H, s = w.ns.HandHistory, w.ns.client.session
   for _, hand in ipairs(H.tables[s.tid].hands) do
-    hand.names = { "Brannoc", "Bot Barleybrewster", "Ivan Petrov", "Ivan Kolevski" }
+    hand.names = { ME, "Bot Barleybrewster", "Ivan Petrov", "Ivan Kolevski" }
   end
   H.draw(v.history, s)
   write("history_long", w, { w.ns.TableFrame.frame, v.history })
@@ -484,7 +488,7 @@ ledgerHistory = function(w, big)
   end
   local GAMES = { "belot", "santase", "tabla", "chess", "ttt", "holdem", "deathroll", "belot", "santase", "chess" }
   -- Who is good at what: the leaderboard gets a shape.
-  local skill = { Brannoc = 0.62, Elowen = 0.7, Thorgar = 0.45, Mirabel = 0.58, Kazrik = 0.52, Odric = 0.38, Sefa = 0.5, Varek = 0.42, Lysa = 0.55 }
+  local skill = { [ME] = 0.62, Elowen = 0.7, Thorgar = 0.45, Mirabel = 0.58, Kazrik = 0.52, Odric = 0.38, Sefa = 0.5, Varek = 0.42, Lysa = 0.55 }
   local everyone = { ME }
   for _, n in ipairs(MEMBER_NAMES) do everyone[#everyone + 1] = n end
   for k = 1, 64 do
@@ -680,6 +684,25 @@ scene("belot_horde", function()
   run(w, 0.5)
   write("belot_horde", w, { w.ns.TableFrame.frame })
 end)
+
+---------------------------------------------------------------------------
+-- Every README picture also in the Horde look: <name>_horde is the same scene booted as the Horde
+-- (the README's „Horde look“ fold). A scene that has its own Horde version keeps it.
+do
+  local base = {}
+  for i, name in ipairs(ORDER) do base[i] = name end
+  for _, name in ipairs(base) do
+    if not name:find("_horde$") and not Scenes[name .. "_horde"] then
+      local fn = Scenes[name]
+      scene(name .. "_horde", function()
+        VARIANT = "Horde"
+        local okRun, err = xpcall(fn, debug.traceback)
+        VARIANT = nil
+        if not okRun then error(err, 0) end
+      end)
+    end
+  end
+end
 
 ---------------------------------------------------------------------------
 
