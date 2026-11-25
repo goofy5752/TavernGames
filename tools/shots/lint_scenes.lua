@@ -247,6 +247,15 @@ return function(S)
     end)
   end
 
+  -- The deck preview over „Настройки“: the pointer on the gnomes (the longest king, Mekkatorque).
+  scene("deck_preview", function(P)
+    local w = boot(P, 21)
+    w.ns.MainWindow.show("settings")
+    S.run(w, 1)
+    w:hover(w.ns.Settings.view.deckTiles.gnome.frame)
+    return w
+  end)
+
   scene("book", function(P)
     local w = boot(P, 1)
     w.ns.HelpBook.open("holdem")

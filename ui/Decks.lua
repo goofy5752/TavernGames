@@ -18,7 +18,7 @@ local Decks = {
     undead = { faction = "horde", king = "Sylvanas", k = { "hood" }, q = { "hood" }, j = { "hood" } },
     tauren = { faction = "horde", king = "Cairne", k = { "horns" }, q = { "horns" }, j = { "horns" } },
     troll = { faction = "horde", king = "Vol'jin", k = { "tusks", "ears" }, q = { "tusks", "hair" }, j = { "tusks", "ears" } },
-    bloodelf = { faction = "horde", king = "Lor'themar", k = { "ears", "hair" }, q = { "ears", "hair" }, j = { "ears" } },
+    bloodelf = { faction = "horde", king = "Kael'thas", k = { "ears", "hair" }, q = { "ears", "hair" }, j = { "ears" } },
   },
   -- The race of each suit (S spades, H hearts, D diamonds, C clubs) in the faction deck.
   CITIES = {

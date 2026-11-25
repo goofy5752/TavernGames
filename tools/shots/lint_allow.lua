@@ -14,4 +14,6 @@ return {
     why = "the soft gold glow round the first three portraits of the leaderboard: its faded rim reaches 6-8 px over the place and the name, which read through it" },
   { check = "overlap", site = " under Widgets%.lua:%d+<TablePanels%.lua:%d+$", what = "under tex color$",
     why = "the „Покани“ picker and the question before „Стани“ open on a solid ground over the felt, above their button: what is under them is covered while they are open" },
+  { check = "overlap", site = " under [%w%.]+:%d+<DeckPreview%.lua:%d+$",
+    why = "the deck preview is a tooltip: while the pointer is on a deck tile it covers the settings left of the tile on a solid ground, and goes with the pointer" },
 }

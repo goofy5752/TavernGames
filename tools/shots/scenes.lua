@@ -661,6 +661,18 @@ scene("settings", function()
   write("settings", w, { w.ns.MainWindow.frame })
 end)
 
+-- The deck preview: the pointer on a deck tile shows the whole deck (not in the README).
+for _, d in ipairs({ { "deck_orc", "orc", "Horde" }, { "deck_faction", "faction", "Alliance" }, { "deck_gnome", "gnome", "Alliance" },
+                  { "deck_troll", "troll", "Horde" }, { "deck_bloodelf", "bloodelf", "Horde" } }) do
+  scene(d[1], function()
+    local w = boot{ faction = d[3] }
+    w.ns.MainWindow.show("settings")
+    run(w, 1)
+    w:hover(w.ns.Settings.view.deckTiles[d[2]].frame)
+    write(d[1], w, { w.ns.MainWindow.frame })
+  end, true)
+end
+
 scene("book", function()
   local w = boot()
   w.ns.HelpBook.open("belot")

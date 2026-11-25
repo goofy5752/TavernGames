@@ -177,4 +177,5 @@ ui/InviteToast.lua
 ui/SettleToast.lua
 ui/HelpBook.lua
 ui/Intro.lua
+ui/DeckPreview.lua
 ui/Settings.lua

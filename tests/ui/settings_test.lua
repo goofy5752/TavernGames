@@ -97,6 +97,52 @@ describe("ui: settings, Облик and Тесте", function()
     local last = xy("bloodelf")
     ok(-last[2] + 52 <= w.ns.MainWindow.BODY_H, "the last row inside the panel")
   end)
+
+  it("hovering a deck tile shows the whole deck: J, Q, K and A of every suit and the back", function()
+    local w, v = settings{ faction = "Horde" }
+    local P = w.ns.DeckPreview
+    eq(v.preview, nil)
+    w:hover(v.deckTiles.orc.frame)
+    local p = v.preview
+    eq(p.frame:IsShown(), true); eq(p.frame:GetFrameStrata(), "TOOLTIP"); eq(p.frame.mouse, false)
+    eq(p.title:GetText(), w.ns.L("deck.race.orc")); eq(p.sub:GetText(), "поп Thrall")
+    local n = 0
+    for _, suit in ipairs({ "S", "H", "D", "C" }) do
+      for _, rank in ipairs({ "J", "Q", "K", "A" }) do
+        local c = p.cards[rank .. suit]
+        eq({ c.deck, c.face, c.frame.mouse }, { "orc", rank .. suit, false }); n = n + 1
+      end
+    end
+    eq(n, 16)
+    eq({ p.cards.KH.cameo:IsShown(), p.cards.KH.ribbon:IsShown() }, { true, false }) -- as on the table: no ribbon
+    eq(p.cards.AS.crest:GetTexture(), w.ns.Theme.tex.crest_horde)
+    eq({ p.back.deck, p.back.face, p.back.body:GetTexture() }, { "orc", nil, w.ns.Theme.tex.card_back_horde })
+    v.deckTiles.orc.frame.scripts.OnLeave(v.deckTiles.orc.frame)
+    eq(p.frame:IsShown(), false)
+    -- the same preview for the next tile, now the faction deck under the Horde skin
+    w:hover(v.deckTiles.faction.frame)
+    eq(v.preview, p); eq(p.frame:IsShown(), true); eq(p.title:GetText(), "Градовете на Хордата")
+    eq({ p.cards.KS.deck, p.cards.QD.face, p.cards.QD.cameo:IsShown() }, { "faction", "QD", true })
+    eq(p.back.body:GetTexture(), w.ns.Theme.tex.card_back_horde)
+    -- leaving the tab hides it
+    w.ns.MainWindow.show("hall"); eq(p.frame:IsShown(), false)
+    eq({ P.W, P.H }, { 326, 364 })
+  end)
+
+  it("the preview sits left of the hovered tile, level with it, inside the window", function()
+    local w, v = settings()
+    local P, LOOKS_X, BODY_H = w.ns.DeckPreview, 530, w.ns.MainWindow.BODY_H
+    for _, key in ipairs(w.ns.Decks.ORDER) do
+      local t = v.deckTiles[key]
+      w:hover(t.frame)
+      local pt, tp = v.preview.frame.points[1], t.frame.points[1]
+      eq(pt[4] + P.W + 8, tp[4], key .. ": left of the tile")
+      ok(LOOKS_X + pt[4] >= 0, key .. ": inside the window on the left")
+      ok(pt[5] <= 0 and -pt[5] + P.H <= BODY_H, key .. ": inside the window top to bottom")
+      ok(-pt[5] <= -tp[5] and -pt[5] + P.H >= -tp[5] + 52, key .. ": level with the tile")
+      t.frame.scripts.OnLeave(t.frame)
+    end
+  end)
 end)
 
 describe("ui: settings, За аддона", function()

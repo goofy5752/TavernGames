@@ -36,15 +36,19 @@ local LEADERS = {
   human = { "Achievement_Leader_King_Varian_Wrynn" },
   nightelf = { "Achievement_Leader_Tyrande_Whisperwind" },
   dwarf = { "Achievement_Leader_King_Magni_Bronzebeard" },
-  gnome = { "Achievement_Leader_Gelbin_Mekkatorque", "Achievement_Leader_Gelbin Mekkatorque", "Achievement_Leader_Mekkatorque" },
+  gnome = { "Achievement_Leader_Gelbin_Mekkatorque", "Achievement_Leader_Gelbin Mekkatorque", "Achievement_Leader_Mekkatorque",
+    "INV_Misc_Head_Gnome_01" }, -- Forever has no Mekkatorque: the old gnome with the white moustache
   draenei = { "Achievement_Leader_Prophet_Velen" },
   orc = { "Achievement_Leader_ Thrall", "Achievement_Leader_Thrall" },
   undead = { "Achievement_Leader_Sylvanas" },
   tauren = { "Achievement_Leader_Cairne Bloodhoof", "Achievement_Leader_Cairne_Bloodhoof" },
-  troll = { "Achievement_Leader_Voljin", "Achievement_Leader_Vol'jin" },
-  bloodelf = { "Achievement_Leader_Lorthemar_Theron", "Achievement_Leader_Lor'themar_Theron", "Achievement_Leader_LorthemarTheron" },
+  troll = { "Achievement_Leader_Voljin", "Achievement_Leader_Vol'jin",
+    "INV_Misc_Head_Troll_01" }, -- Forever has no Vol'jin: the troll with the red mohawk
+  bloodelf = { "Achievement_Boss_Kael'thasSunstrider_01" }, -- Forever has no Lor'themar: the king is Kael'thas
 }
--- The sex of each race's leader, for a king that falls back to the race's own icon.
+-- Every race has a king of its own in the Forever client, never the jack's picture (the last
+-- candidates of gnome and troll are their old head icons). The sex of each race's leader, for a
+-- king that still falls back to the race's own icon.
 Art.LEADER_SEX = { nightelf = "female", undead = "female" }
 local COINS = { "gold", "silver", "copper" }
 local COIN_FILES = {
