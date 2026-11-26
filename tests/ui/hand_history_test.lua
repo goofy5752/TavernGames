@@ -1,8 +1,10 @@
 local Wow = require("wow")
 
 -- The table's hand history (ui/HandHistory.lua): a memory-only recorder fed by the client's
--- "session" event and the „История“ panel inside the table frame, for Белот, Сантасе and Холдем.
--- What matters most: it never shows a card the table has not seen face up.
+-- "session" event and the „История“ panel inside the table frame, for Сантасе and Холдем (Шах:
+-- tests/ui/chess_history_test.lua). Белот has none: remembering what was played is part of the
+-- game, its table keeps only „Последна взятка“. What matters most: it never shows a card the
+-- table has not seen face up.
 local A, B, C, D = "Иван Петров", "Мария Стоянова", "Kiro Barley", "Пешо Тодоров"
 local BOT = "Bot Ivanov"
 
@@ -41,7 +43,7 @@ local function nm(text) return (text:gsub(" |T[^|]*botmark[^|]*|t", "[bot]")) en
 --   a trick "1. Иван 8C · Мария 7C* +21 them" (* the card that took it; … under way),
 --   an event "Иван обяви 40 [KH QH]", a street "Търн: 9C~ TC~ JC~ KC" (~ an earlier street's),
 --   an action "Мария: малък блайнд 5", a hand turned up "Kiro 3C 6C: Флъш" (* the best),
---   my cards "Твоите карти 4C 7C", a legend, a note or a result as its text.
+--   my cards "Твоите карти 4C 7C", a note or a result as its text.
 local function say(row)
   local function faces(list, mark)
     local out = {}
@@ -61,10 +63,6 @@ local function say(row)
     return out
   elseif row.k == "show" then return { nm(row.name) .. " " .. faces(row.cards) .. ": " .. row.cat .. (row.best and "*" or "") }
   elseif row.k == "mine" then return { row.text .. " " .. faces(row.cards) }
-  elseif row.k == "legend" then
-    local out = {}
-    for k, x in ipairs(row.items) do out[k] = bare(x.text) end
-    return { table.concat(out, " | ") }
   end
   return { bare(row.text) }
 end
@@ -124,8 +122,14 @@ local function setup(wi, hi)
   return w, panel
 end
 
+-- FULL: the sessions carry the engine's whole state, every face, instead of my seat's view: what the
+-- history shows must then still be only what the table saw face up (its own gate, not the view's).
+local FULL = false
+-- Runs body() on views, then on full states.
+local function bothWays(body) return function() for _, full in ipairs({ false, true }) do FULL = full; body() end; FULL = false end end
+
 ---------------------------------------------------------------------------
--- Белот
+-- Белот: no history (remembering what was played is part of the game)
 ---------------------------------------------------------------------------
 
 local function deckOf(h1, h2, h3, h4)
@@ -144,352 +148,37 @@ local DECK_A = deckOf(
   "JH 8H 9C TC 7S 8S JD QD",
   "AC KC QC JC AS TS KD 9D")
 
--- FULL: the sessions carry the engine's whole state, every face, instead of my seat's view: what the
--- history shows must then still be only what the table saw face up (its own gate, not the view's).
-local FULL = false
--- Runs body() on views, then on full states.
-local function bothWays(body) return function() for _, full in ipairs({ false, true }) do FULL = full; body() end; FULL = false end end
-
-local function bsess(st, seat)
-  return { game = "belot", status = "live", mySeat = seat, seats = { A, B, C, D }, state = FULL and EB.snapshot(st) or EB.view(st, seat),
-    tid = "t#1", epoch = 1, seq = 1, role = seat and "player" or "watcher", gameNo = 1 }
-end
-local function bidx(st, face) for i = 1, 32 do if st.deck[i] == face then return i end end end
-
-describe("ui: hand history — Белот", function()
-  it("two tricks: each seat's card in turn order, the winner marked, the points, the contract; nothing unplayed", bothWays(function()
-    local w, panel = setup()
-    local H = w.ns.HandHistory
-    local sent = #w.sent
+describe("ui: hand history — none at Белот", function()
+  it("a live Белот table: no „История“ button, no record of its hands; „Последна взятка“ stays on the table", function()
+    local w = guildWow()
+    local client, TF, H, L = w.ns.client, w.ns.TableFrame, w.ns.HandHistory, w.ns.L
+    client:openTable{ game = "belot", access = "guild", turn = 45 }
+    w:advance(0)
+    local v, s = TF.view, client.session
+    s.seats, s.status = { A, B, C, D }, "live"
     local st = EB.new{ first = 1 }
     ok(EB.apply(st, 0, { k = "deal", deck = DECK_A }))
-    local played = {}
-    -- after every event: no card that is not on the table yet, on screen or in memory
     local function see()
-      H.observe(bsess(st, 1)); H.draw(panel, bsess(st, 1))
-      for _, face in ipairs(DECK_A) do
-        if not played[face] then neverShown(w, face); notRecorded(w, face) end
-      end
+      s.state = EB.view(st, 1)
+      client.events:emit("session", s)
+      TF.render()
+      eq(v.historyButton:IsShown(), false)
+      eq(next(H.tables), nil)
     end
     see()
     for _, b in ipairs({ "H", "P", "P", "P" }) do ok(EB.apply(st, st.turn, { k = "bid", b = b })); see() end
-    for _, face in ipairs({ "8C", "7C", "TC", "AC", "AS", "JS", "KS", "7S" }) do
-      ok(EB.apply(st, st.turn, { k = "play", i = bidx(st, face), c = face }), "play " .. face)
-      played[face] = true
-      see()
+    for _, face in ipairs({ "8C", "7C", "TC", "AC" }) do -- a whole trick: the last one to look at
+      local idx
+      for i = 1, 32 do if st.deck[i] == face then idx = i end end
+      ok(EB.apply(st, st.turn, { k = "play", i = idx, c = face }), "play " .. face); see()
     end
-    local L = w.ns.L
-    -- the hand, its contract (the suit's icon before it) and who called it, the teams, the tricks in
-    -- order with the winning card marked and their points (Пешо's team: theirs), the total so far
-    local soFar = L("table.historySoFar", L("table.historyScore", L("table.historyUs"), 0, L("table.historyThem"), 38))
-    eq(lines(H, bsess(st, 1)), {
-      L("table.historyHand", 1),
-      bare(L("belot.contract", L("belot.bid.H"))) .. " · " .. L("belot.by", "Иван"),
-      L("table.historyTeam", L("table.historyUs"), "Иван", "Kiro") .. " | " .. L("table.historyTeam", L("table.historyThem"), "Мария", "Пешо"),
-      "1. Иван 8C · Мария 7C · Kiro TC · Пешо AC* +21 them",
-      "2. Пешо AS* · Иван JS · Мария KS · Kiro 7S +17 them",
-      soFar,
-      "= " .. soFar,
-    })
-    ok(H.blocks(bsess(st, 1))[1].what:find("|T", 1, true), "the suit's icon")
-    -- a watcher: the teams by where they sit, no side on a trick
-    local watch = lines(H, bsess(st, nil))
-    eq(watch[3], L("table.historyTeam", L("belot.historyTeamA"), "Иван", "Kiro") .. " | " .. L("table.historyTeam", L("belot.historyTeamB"), "Мария", "Пешо"))
-    eq(watch[4], "1. Иван 8C · Мария 7C · Kiro TC · Пешо AC* +21")
-    for _, face in ipairs(DECK_A) do
-      if not played[face] then neverShown(w, face); notRecorded(w, face) end
-    end
-    eq(#w.sent, sent)
-  end))
-
-  -- A book of one Белот hand under contract b with these tricks ({faces in play order, the lead, the winner}).
-  local function book(H, b, tricks, seats)
-    local hand = { key = ":1", no = 1, names = seats or { A, B, C, D }, tricks = {}, events = {}, acts = {}, board = {},
-      contract = { seat = 1, b = b, x = 1 } }
-    for n, t in pairs(tricks) do
-      local cards = {}
-      for k, face in ipairs(t[1]) do cards[k] = { seat = (t[2] + k - 2) % 4 + 1, face = face } end
-      hand.tricks[n] = { cards = cards, win = t[3] }
-    end
-    H.tables["t#1"] = { game = "belot", ver = 1, hands = { hand } }
-    return hand
-  end
-  local function pts(H, seat)
-    local out = {}
-    for _, row in ipairs(H.blocks(bsess(EB.new{ first = 1 }, seat))[1].rows) do if row.k == "trick" then out[row.n] = row.pts end end
-    return out
-  end
-
-  it("a trick's points by the contract: a suit, no trumps, all trumps; the last trick's 10", function()
-    local w = setup()
-    local H, L = w.ns.HandHistory, w.ns.L
-    local spades = { "JS", "7S", "AS", "8S" }   -- the mockup's trick: J 20 + A 11 in spades
-    local hearts = { "9H", "TH", "KH", "QD" }   -- the nine is 14 in trumps, else 0
-    book(H, "S", { { spades, 1, 1 }, { hearts, 1, 2 }, [8] = { hearts, 2, 2 } })
-    eq(pts(H, 1), { 31, 17, [8] = 27 })
-    book(H, "H", { { spades, 1, 1 }, { hearts, 1, 2 } })
-    eq(pts(H, 1), { 13, 31 })
-    book(H, "N", { { spades, 1, 1 }, { hearts, 1, 2 }, [8] = { hearts, 2, 2 } })
-    eq(pts(H, 1), { 26, 34, [8] = 54 }) -- без коз: doubled, as the engine doubles the hand (the last 10 too)
-    book(H, "A", { { spades, 1, 1 }, { hearts, 1, 2 }, [8] = { spades, 3, 3 } })
-    eq(pts(H, 1), { 31, 31, [8] = 41 })
-    -- seat 2's view: its team's tricks are "us", the running total by team, mine first
-    local rows = H.blocks(bsess(EB.new{ first = 1 }, 2))[1].rows
-    eq({ rows[2].side, rows[3].side, rows[4].side }, { "them", "us", "them" })
-    eq(bare(rows[5].text), L("table.historyPartial")) -- tricks 3 … 7 unseen: no running total
-    book(H, "A", { { spades, 1, 1 }, { hearts, 1, 2 }, { spades, 3, 3 } })
-    rows = H.blocks(bsess(EB.new{ first = 1 }, 2))[1].rows
-    eq(bare(rows[5].text), L("table.historySoFar", L("table.historyScore", L("table.historyUs"), 31, L("table.historyThem"), 62)))
-  end)
-
-  it("контра and реконтра multiply only the result: a trick keeps its plain points", function()
-    local w = setup()
-    local H = w.ns.HandHistory
-    local spades, hearts = { "JS", "7S", "AS", "8S" }, { "9H", "TH", "KH", "QD" }
-    for _, x in ipairs({ 2, 4 }) do
-      book(H, "S", { { spades, 1, 1 }, { hearts, 1, 2 }, [8] = { hearts, 2, 2 } }).contract.x = x
-      eq(pts(H, 1), { 31, 17, [8] = 27 })
-      book(H, "N", { { spades, 1, 1 }, { hearts, 1, 2 } }).contract.x = x
-      eq(pts(H, 1), { 26, 34 }) -- без коз doubled, контра not
-    end
-  end)
-
-  it("без коз played out: each trick doubled, so the tricks and the total so far add up to the deal's own totals", function()
-    local w = setup()
-    local H, L = w.ns.HandHistory, w.ns.L
-    local st = EB.new{ first = 1 }
-    ok(EB.apply(st, 0, { k = "deal", deck = DECK_A })); H.observe(bsess(st, 1))
-    for _, b in ipairs({ "N", "P", "P", "P" }) do ok(EB.apply(st, st.turn, { k = "bid", b = b })); H.observe(bsess(st, 1)) end
-    local rnd = function() return 0.5 end
-    local sum, last = { 0, 0 }, nil
-    while st.phase == "play" do
-      ok(EB.apply(st, st.turn, EB.auto(st, st.turn, rnd)), "auto")
-      H.observe(bsess(st, 1))
-      -- the running total under the last trick is the doubled sum so far, mine first
-      sum = { 0, 0 }
-      for _, row in ipairs(H.blocks(bsess(st, 1))[1].rows) do
-        if row.k == "trick" and row.pts then local t = row.side == "us" and 1 or 2; sum[t] = sum[t] + row.pts end
-        if row.k == "result" then last = row.text end
-      end
-      if st.phase == "play" and st.trickNo > 1 then
-        eq(last, L("table.historySoFar", L("table.historyScore", L("table.historyUs"), sum[1], L("table.historyThem"), sum[2])))
-      end
-    end
-    ok(EB.apply(st, 0, { k = "score" })); H.observe(bsess(st, 1))
-    sum = { 0, 0 }
-    for _, row in ipairs(H.blocks(bsess(st, 1))[1].rows) do
-      if row.k == "trick" then local t = row.side == "us" and 1 or 2; sum[t] = sum[t] + row.pts end
-    end
-    local raw = st.res.raw
-    -- без коз: 120 card points and the last 10, doubled: 260, each team's own (a valat adds its 90 only to the total)
-    eq(sum[1] + sum[2], 260)
-    for t = 1, 2 do eq(sum[t] + ((st.res.valat and st.took[t] > 0 and st.took[3 - t] == 0) and 90 or 0), raw[t]) end
-  end)
-
-  it("a hand played out: the deal's own totals (st.res.raw), its tricks; closed to that line once the next comes", function()
-    local w, panel = setup()
-    local H, L = w.ns.HandHistory, w.ns.L
-    local st = EB.new{ first = 1 }
-    ok(EB.apply(st, 0, { k = "deal", deck = DECK_A })); H.observe(bsess(st, 1))
-    for _, b in ipairs({ "S", "P", "P", "P" }) do ok(EB.apply(st, st.turn, { k = "bid", b = b })); H.observe(bsess(st, 1)) end
-    local rnd = function() return 0.5 end
-    while st.phase == "play" do
-      ok(EB.apply(st, st.turn, EB.auto(st, st.turn, rnd)), "auto")
-      H.observe(bsess(st, 1))
-    end
-    eq(st.phase, "score")
-    ok(EB.apply(st, 0, { k = "score" })); H.observe(bsess(st, 1))
-    local raw = st.res.raw
-    eq(H.tables["t#1"].hands[1].score, { raw[1], raw[2] })
-    local sum = L("table.historyTricks", 8) .. " · " .. L("table.historyScore", L("table.historyUs"), raw[1], L("table.historyThem"), raw[2])
-    local ls = lines(H, bsess(st, 1))
-    eq({ ls[#ls - 1], ls[#ls] }, { sum, "= " .. sum }) -- the result row of the open hand, the line it closes to
-    -- the eight tricks' points add up to the cards' 152 and the last trick's 10
-    local total = 0
-    for _, row in ipairs(H.blocks(bsess(st, 1))[1].rows) do if row.k == "trick" then total = total + row.pts end end
-    eq(total, 162)
-    -- the next deal: hand 2 on top and open, hand 1 closed to its line
-    ok(EB.apply(st, 0, { k = "deal", deck = DECK_A })); H.observe(bsess(st, 1))
-    H.draw(panel, bsess(st, 1))
-    local blocks = H.blocks(bsess(st, 1))
-    eq({ blocks[1].title, blocks[1].open, blocks[2].title, blocks[2].open, blocks[2].sum }, { L("table.historyHand", 2), true, L("table.historyHand", 1), false, sum })
-  end)
-
-  it("a click on a hand's header opens or closes it; the state stays for the session", function()
-    local w, panel = setup()
-    local H, L = w.ns.HandHistory, w.ns.L
-    local old = book(H, "S", { { { "JS", "7S", "AS", "8S" }, 1, 1 } })
-    old.closed = true
-    local new = { key = ":2", no = 2, names = { A, B, C, D }, tricks = {}, events = {}, contract = { seat = 2, b = "N", x = 2 },
-      cur = { n = 1, cards = { { seat = 1, face = "AH" } } } }
-    table.insert(H.tables["t#1"].hands, new)
-    local s = bsess(EB.new{ first = 1 }, 1)
-    H.draw(panel, s)
-    local function headers()
-      local out = {}
-      for _, b in ipairs(panel.pool.kinds.button) do if b:IsShown() then out[#out + 1] = b end end
-      return out
-    end
-    local function cards()
-      local n = 0
-      for _, c in ipairs(panel.pool.kinds["card:normal"] or {}) do if c.frame:IsShown() then n = n + 1 end end
-      return n
-    end
-    eq(#headers(), 2)
-    eq(cards(), 4) -- hand 2's trick under way (one card, three empty slots); hand 1 closed
-    w:click(headers()[2]) -- hand 1 opens
-    eq({ H.isOpen(new, true), H.isOpen(old, false), cards() }, { true, true, 8 })
-    w:click(headers()[1]) -- hand 2 closes
-    eq({ H.isOpen(new, true), H.isOpen(old, false), cards() }, { false, true, 4 })
-    -- drawn again (a new event): the clicks are kept
-    H.tables["t#1"].ver = 2
-    H.draw(panel, s)
-    eq(cards(), 4)
-    eq(lines(H, s)[1], L("table.historyHand", 2))
-  end)
-
-  -- QA follow-up: a WoW name's word has at most 12 letters; the widest Latin ones and the collision form show
-  -- whole on one line under their cards, at 9 or more, in a box that holds them in the real font (64 px at 9).
-  it("12-letter names under the cards: whole, one line each, the row's names on two lines", function()
-    local w, panel = setup()
-    local H = w.ns.HandHistory
-    local names = { "Mormogwathum Ironfoot", "Ivan Petrovski", "Wolfgarmmund Deepforge", "Ivan Kolevski" }
-    book(H, "A", { { { "JS", "7S", "AS", "8S" }, 1, 2 } }, names)
-    local s = bsess(EB.new{ first = 1 }, 1)
-    H.draw(panel, s)
-    local seen, lines = {}, {}
-    for _, p in ipairs(panel.pool.placed) do
-      local t = p.r.objectType == "FontString" and plain(p.r.text or "")
-      if t == "Mormogwathum" or t == "Wolfgarmmund" or t == "Ivan P." or t == "Ivan K." then
-        seen[t] = true
-        ok(not p.r.text:find("\n", 1, true), "broken: " .. t)
-        ok(select(2, p.r:GetFont()) >= 9, "unreadable: " .. t)
-        ok(p.box >= 64, "a box narrower than a 12-letter name in the real font: " .. t .. " " .. p.box)
-        lines[p.y] = true
-      end
-    end
-    eq(seen, { Mormogwathum = true, Wolfgarmmund = true, ["Ivan P."] = true, ["Ivan K."] = true })
-    local n = 0
-    for _ in pairs(lines) do n = n + 1 end
-    eq(n, 2) -- the odd cards' names on one line, the even cards' on the next
-  end)
-
-  it("names: the first word, a bot's own name, an initial for two alike; a name wider than its slot staggers the row's names, never past the edge", function()
-    local w, panel = setup()
-    local H = w.ns.HandHistory
-    local Fit = require("fit")
-    local long = { "Ivan Petrov-Forever", "Bot Barleybrewster", "Ivan Kolev", "Bot Number12" }
-    book(H, "A", { { { "JS", "7S", "AS", "8S" }, 1, 2 }, { { "TH", "TD", "TC", "TS" }, 2, 3 } }, long)
-    local s = bsess(EB.new{ first = 1 }, 1)
-    eq(lines(H, s)[4], "1. Ivan P. JS · Barleybrewster[bot] 7S* · Ivan K. AS · Number12[bot] 8S +31 them")
-    H.draw(panel, s)
-    ok(Fit.check(panel.pool, panel.textW, "Белот, long names") > 20, "widgets checked")
-    -- QA follow-up: the bot's long name does not hold its slot: the row's names take two lines, the odd cards'
-    -- on the first, the even cards' on the second, each two slots wide; no name is broken by its letters
-    local found, ivan
-    for _, p in ipairs(panel.pool.placed) do
-      if p.r.objectType == "FontString" and nm(plain(p.r.text)) == "Barleybrewster[bot]" then found = found or p end
-      if p.r.objectType == "FontString" and plain(p.r.text) == "Ivan P." then ivan = ivan or p end
-    end
-    ok(found and not found.r.text:find("\n", 1, true), "the name broken: " .. tostring(found and found.r.text))
-    ok(found.y > ivan.y, "the second card's name is not on the second line")
-    eq(found.box, 2 * 48 - 4)
-    -- a hover over a name under its card gives the whole name
-    local areas = {}
-    for _, p in ipairs(panel.pool.placed) do if p.r.objectType == "Frame" and p.r.name then areas[#areas + 1] = p.r end end
-    eq(#areas, 8) -- two tricks of four cards
-    w:hover(areas[1]); eq(w.G.GameTooltip.lines, { "Ivan Petrov" }) -- no realm
-    areas[1].scripts.OnLeave(areas[1])
-    w:hover(areas[3]); eq(w.G.GameTooltip.lines, { "Bot Barleybrewster" }) -- the even cards' names come after the odd ones
-  end)
-
-  it("a passed-out deal says so; a deal voided in the auction says it was annulled", function()
-    local w, panel = setup()
-    local H, L = w.ns.HandHistory, w.ns.L
-    local st = EB.new{ first = 1 }
-    ok(EB.apply(st, 0, { k = "deal", deck = DECK_A })); H.observe(bsess(st, 1))
-    ok(EB.apply(st, st.turn, { k = "bid", b = "P" })); H.observe(bsess(st, 1))
-    ok(EB.apply(st, 0, { k = "void" })); H.observe(bsess(st, 1))
-    H.draw(panel, bsess(st, 1))
-    eq(lineWith(H, bsess(st, 1), L("belot.passed")), nil)
-    ok(EB.apply(st, 0, { k = "deal", deck = DECK_A })); H.observe(bsess(st, 1))
-    for _ = 1, 4 do ok(EB.apply(st, st.turn, { k = "bid", b = "P" })); H.observe(bsess(st, 1)) end
-    eq(st.phase, "deal")
-    H.draw(panel, bsess(st, 1))
-    -- newest first: the passed-out deal (#1 again: a void keeps the round), then the voided one
-    local blocks = H.blocks(bsess(st, 1))
-    eq({ blocks[1].title, blocks[1].sum, blocks[2].title, blocks[2].sum }, { L("table.historyHand", 1), L("belot.passed"), L("table.historyHand", 1), L("belot.historyVoid") })
-    eq(#H.tables["t#1"].hands, 2)
-  end)
-
-  -- Review: a hand first seen mid-way (a watcher, a /reload) summed only the tricks it saw.
-  it("a hand first seen mid-way: no running total nor trick count, it says its start was not seen", function()
-    local w = setup()
-    local H, L = w.ns.HandHistory, w.ns.L
-    local spades, hearts = { "JS", "7S", "AS", "8S" }, { "9H", "TH", "KH", "QD" }
-    book(H, "S", { [3] = { spades, 1, 1 }, [4] = { hearts, 1, 2 } })
-    local b = H.blocks(bsess(EB.new{ first = 1 }, 1))[1]
-    eq(bare(b.sum), L("table.historyPartial"))
-    ok(lineWith(H, bsess(EB.new{ first = 1 }, 1), L("table.historyPartial")), "no line says so")
-    eq(lineWith(H, bsess(EB.new{ first = 1 }, 1), (L("table.historySoFar", ""):gsub("%s+$", ""))), nil)
-    eq(pts(H, 1), { [3] = 31, [4] = 17 }) -- each trick's own points still
-    -- scored: the deal's own totals, without a count of the tricks it saw
-    local hand = book(H, "S", { [3] = { spades, 1, 1 }, [4] = { hearts, 1, 2 } })
-    hand.score, hand.closed = { 100, 62 }, true
-    b = H.blocks(bsess(EB.new{ first = 1 }, 1))[1]
-    eq(bare(b.sum), L("table.historyPartial") .. " · " .. L("table.historyScore", L("table.historyUs"), 100, L("table.historyThem"), 62))
-    -- every trick from the first: the count and the total, as before
-    book(H, "S", { { spades, 1, 1 }, { hearts, 1, 2 } })
-    b = H.blocks(bsess(EB.new{ first = 1 }, 1))[1]
-    eq(bare(b.sum), L("table.historySoFar", L("table.historyScore", L("table.historyUs"), 31, L("table.historyThem"), 17)))
-  end)
-
-  it("a deal voided in play keeps no running total: a note says it was annulled", function()
-    local w, panel = setup()
-    local H, L = w.ns.HandHistory, w.ns.L
-    local st = EB.new{ first = 1 }
-    ok(EB.apply(st, 0, { k = "deal", deck = DECK_A })); H.observe(bsess(st, 1))
-    for _, b in ipairs({ "H", "P", "P", "P" }) do ok(EB.apply(st, st.turn, { k = "bid", b = b })); H.observe(bsess(st, 1)) end
-    for _, face in ipairs({ "8C", "7C", "TC", "AC" }) do
-      ok(EB.apply(st, st.turn, { k = "play", i = bidx(st, face), c = face })); H.observe(bsess(st, 1))
-    end
-    ok(EB.apply(st, 0, { k = "void" })); H.observe(bsess(st, 1))
-    eq(st.phase, "deal")
-    local b = H.blocks(bsess(st, 1))[1]
-    eq(bare(b.sum), L("belot.historyVoid"))
-    eq(lineWith(H, bsess(st, 1), (L("table.historySoFar", ""):gsub("%s+$", ""))), nil)
-    local last = b.rows[#b.rows]
-    eq({ last.k, bare(last.text) }, { "note", L("belot.historyVoid") })
-    H.draw(panel, bsess(st, 1))
-  end)
-
-  it("a card with no face, a chess game with no white: no fault", function()
-    local w = setup()
-    local H = w.ns.HandHistory
-    local hand = book(H, "S", { { { "JS", "7S", "AS", "8S" }, 1, 1 } })
-    hand.tricks[1].cards[2].face = nil
-    local fine, why = pcall(H.blocks, bsess(EB.new{ first = 1 }, 1))
-    ok(fine, tostring(why))
-    H.tables["t#1"] = { game = "chess", ver = 1, hands = { { key = "chess:1", no = 1, names = { A, B }, moves = {} } } }
-    fine, why = pcall(H.blocks, { game = "chess", tid = "t#1", mySeat = 1 })
-    ok(fine, tostring(why))
-  end)
-
-  it("a new hand goes on top; at most 10 hands, the oldest dropped", function()
-    local w, panel = setup()
-    local H, L = w.ns.HandHistory, w.ns.L
-    for round = 1, 12 do
-      local st = EB.new{ first = 1 }
-      ok(EB.apply(st, 0, { k = "deal", deck = DECK_A }))
-      st.round = round
-      H.observe(bsess(st, 1))
-      H.draw(panel, bsess(st, 1))
-      eq(H.blocks(bsess(st, 1))[1].title, L("table.historyHand", round))
-    end
-    local heads = {}
-    for _, b in ipairs(H.blocks(bsess(EB.new{ first = 1 }, 1))) do heads[#heads + 1] = b.hand.no end
-    eq(heads, { 12, 11, 10, 9, 8, 7, 6, 5, 4, 3 })
-    eq(#H.tables["t#1"].hands, 10)
+    eq(H.lastError, nil)
+    eq({ H.GAMES.belot, H.RECORD.belot, H.BLOCK.belot, H.tables[s.tid] }, {})
+    eq(#H.blocks(s), 0)
+    eq(v.history:IsShown(), false)
+    local board = TF.built.belot
+    ok(board.peekButton:IsVisible(), "no „Последна взятка“")
+    eq(board.peekButton.text:GetText(), L("belot.peek"))
   end)
 end)
 
@@ -604,6 +293,132 @@ describe("ui: hand history — Сантасе", function()
     require("fit").check(panel.pool, panel.textW, "Сантасе events")
   end)
 
+  -- A book of one Сантасе hand with these tricks ({faces in play order, the lead, the winner}).
+  local function book(H, tricks, seats)
+    local hand = { key = ":1", no = 1, names = seats or { A, BOT }, tricks = {}, events = {}, acts = {}, board = {} }
+    for n, t in pairs(tricks) do
+      hand.tricks[n] = { cards = { { seat = t[2], face = t[1][1] }, { seat = 3 - t[2], face = t[1][2] } }, win = t[3] }
+    end
+    H.tables["t#1"] = { game = "santase", ver = 1, hands = { hand } }
+    return hand
+  end
+  local function ssess(seat) return { game = "santase", tid = "t#1", mySeat = seat } end
+
+  it("a click on a hand's header opens or closes it; the state stays for the session", function()
+    local w, panel = setup()
+    local H, L = w.ns.HandHistory, w.ns.L
+    local old = book(H, { { { "JS", "9S" }, 1, 1 } })
+    old.closed = true
+    local new = { key = ":2", no = 2, names = { A, BOT }, tricks = {}, events = {}, cur = { n = 1, cards = { { seat = 1, face = "AH" } } } }
+    table.insert(H.tables["t#1"].hands, new)
+    local s = ssess(1)
+    H.draw(panel, s)
+    local function headers()
+      local out = {}
+      for _, b in ipairs(panel.pool.kinds.button) do if b:IsShown() then out[#out + 1] = b end end
+      return out
+    end
+    local function cards()
+      local n = 0
+      for _, c in ipairs(panel.pool.kinds["card:normal"] or {}) do if c.frame:IsShown() then n = n + 1 end end
+      return n
+    end
+    eq(#headers(), 2)
+    eq(cards(), 2) -- hand 2's trick under way (one card, one empty slot); hand 1 closed
+    w:click(headers()[2]) -- hand 1 opens
+    eq({ H.isOpen(new, true), H.isOpen(old, false), cards() }, { true, true, 4 })
+    w:click(headers()[1]) -- hand 2 closes
+    eq({ H.isOpen(new, true), H.isOpen(old, false), cards() }, { false, true, 2 })
+    -- drawn again (a new event): the clicks are kept
+    H.tables["t#1"].ver = 2
+    H.draw(panel, s)
+    eq(cards(), 2)
+    eq(lines(H, s)[1], L("table.historyHand", 2))
+  end)
+
+  -- QA follow-up: a WoW name's word has at most 12 letters; the widest Latin ones show whole on one line
+  -- under their cards, at 9 or more, in a box that holds them in the real font (64 px at 9).
+  it("12-letter names under the cards: whole, one line each, the row's names on two lines", function()
+    local w, panel = setup()
+    local H = w.ns.HandHistory
+    book(H, { { { "JS", "9S" }, 1, 2 } }, { "Mormogwathum Ironfoot", "Wolfgarmmund Deepforge" })
+    H.draw(panel, ssess(1))
+    local seen, rows = {}, {}
+    for _, p in ipairs(panel.pool.placed) do
+      local t = p.r.objectType == "FontString" and plain(p.r.text or "")
+      if t == "Mormogwathum" or t == "Wolfgarmmund" then
+        seen[t] = true
+        ok(not p.r.text:find("\n", 1, true), "broken: " .. t)
+        ok(select(2, p.r:GetFont()) >= 9, "unreadable: " .. t)
+        ok(p.box >= 64, "a box narrower than a 12-letter name in the real font: " .. t .. " " .. p.box)
+        rows[p.y] = true
+      end
+    end
+    eq(seen, { Mormogwathum = true, Wolfgarmmund = true })
+    local n = 0
+    for _ in pairs(rows) do n = n + 1 end
+    eq(n, 2) -- the first card's name on one line, the second card's on the next
+  end)
+
+  it("names: the first word, a bot's own name; a name wider than its slot staggers the row's names, never past the edge", function()
+    local w, panel = setup()
+    local H = w.ns.HandHistory
+    local Fit = require("fit")
+    book(H, { { { "JS", "9S" }, 1, 2 }, { { "TH", "KH" }, 2, 1 } }, { "Ivan Petrov-Forever", "Bot Barleybrewster" })
+    local s = ssess(1)
+    eq(lines(H, s)[2], "1. Ivan JS · Barleybrewster[bot] 9S* +2 them")
+    H.draw(panel, s)
+    ok(Fit.check(panel.pool, panel.textW, "Сантасе, long names") > 8, "widgets checked")
+    -- QA follow-up: the bot's long name does not hold its slot: the row's names take two lines, the first
+    -- card's on the first, the second card's on the second, each two slots wide; no name is broken by its letters
+    local found, ivan
+    for _, p in ipairs(panel.pool.placed) do
+      if p.r.objectType == "FontString" and nm(plain(p.r.text)) == "Barleybrewster[bot]" then found = found or p end
+      if p.r.objectType == "FontString" and plain(p.r.text) == "Ivan" then ivan = ivan or p end
+    end
+    ok(found and not found.r.text:find("\n", 1, true), "the name broken: " .. tostring(found and found.r.text))
+    ok(found.y > ivan.y, "the second card's name is not on the second line")
+    eq(found.box, 2 * 48 - 4)
+    -- a hover over a name under its card gives the whole name
+    local areas = {}
+    for _, p in ipairs(panel.pool.placed) do if p.r.objectType == "Frame" and p.r.name then areas[#areas + 1] = p.r end end
+    eq(#areas, 4) -- two tricks of two cards
+    w:hover(areas[1]); eq(w.G.GameTooltip.lines, { "Ivan Petrov" }) -- no realm
+    areas[1].scripts.OnLeave(areas[1])
+    w:hover(areas[2]); eq(w.G.GameTooltip.lines, { "Bot Barleybrewster" })
+  end)
+
+  it("a card with no face, a chess game with no white: no fault", function()
+    local w = setup()
+    local H = w.ns.HandHistory
+    local hand = book(H, { { { "JS", "9S" }, 1, 1 } })
+    hand.tricks[1].cards[2].face = nil
+    local fine, why = pcall(H.blocks, ssess(1))
+    ok(fine, tostring(why))
+    H.tables["t#1"] = { game = "chess", ver = 1, hands = { { key = "chess:1", no = 1, names = { A, B }, moves = {} } } }
+    fine, why = pcall(H.blocks, { game = "chess", tid = "t#1", mySeat = 1 })
+    ok(fine, tostring(why))
+  end)
+
+  it("a new hand goes on top; at most 10 hands, the oldest dropped", function()
+    local w, panel = setup()
+    local H, L = w.ns.HandHistory, w.ns.L
+    for round = 1, 12 do
+      local st = ES.new{ first = 1 }
+      ok(ES.apply(st, 0, { k = "deal", deck = DM }))
+      st.hand = round
+      local s = { game = "santase", status = "live", mySeat = 1, seats = { A, BOT }, state = ES.view(st, 1), tid = "t#1", epoch = 1, seq = 1,
+        role = "player", gameNo = 1 }
+      H.observe(s)
+      H.draw(panel, s)
+      eq(H.blocks(s)[1].title, L("table.historyHand", round))
+    end
+    local heads = {}
+    for _, b in ipairs(H.blocks(ssess(1))) do heads[#heads + 1] = b.hand.no end
+    eq(heads, { 12, 11, 10, 9, 8, 7, 6, 5, 4, 3 })
+    eq(#H.tables["t#1"].hands, 10)
+  end)
+
   it("a hand first seen mid-way counts no tricks: it says its start was not seen", function()
     local w = setup()
     local H, L = w.ns.HandHistory, w.ns.L
@@ -616,7 +431,7 @@ describe("ui: hand history — Сантасе", function()
     eq(bare(H.blocks(s)[1].sum), L("table.historyTricks", 2))
   end)
 
-  it("the button only at Белот, Сантасе and Холдем tables; standing up drops the table's history", function()
+  it("the button only at Сантасе and Холдем tables, never at Белот; standing up drops the table's history", function()
     local w, v = santaseWithBot()
     local H = w.ns.HandHistory
     ok(next(H.tables) ~= nil, "the dealt hand is not recorded")
@@ -641,6 +456,14 @@ describe("ui: hand history — Сантасе", function()
     w.ns.client:openTable{ game = "ttt", access = "guild", turn = 45 }
     w:advance(0)
     eq({ v.historyButton:IsShown(), v.history:IsShown() }, { false, false })
+    w:click(v.standButton); w:advance(0)
+    w.ns.client:openTable{ game = "belot", access = "guild", turn = 45 }
+    w:advance(0)
+    eq({ v.historyButton:IsShown(), v.history:IsShown() }, { false, false })
+    w:click(v.standButton); w:advance(0)
+    w.ns.client:openTable{ game = "holdem", access = "guild", turn = 45 }
+    w:advance(0)
+    eq({ v.historyButton:IsShown(), v.history:IsShown() }, { true, false })
   end)
 end)
 
@@ -698,7 +521,7 @@ local function framesUnder(root)
 end
 
 describe("ui: hand history — the panel beside the table", function()
-  for _, game in ipairs({ "holdem", "santase", "belot" }) do
+  for _, game in ipairs({ "holdem", "santase" }) do
     it(game .. ": the open panel lies outside the table window; no play control under it", function()
       local w = guildWow()
       w.ns.client:openTable{ game = game, access = "guild", turn = 45 }
@@ -711,10 +534,8 @@ describe("ui: hand history — the panel beside the table", function()
       if game == "holdem" then
         s.seats = { A, B, C, false, false, false }; st = EH.new{ seats = { true, true, true } }
         ok(EH.apply(st, 0, { k = "hand" })); ok(EH.apply(st, 0, { k = "deal", deck = EH.DECK }))
-      elseif game == "santase" then
-        s.seats = { A, BOT }; st = ES.new{ first = 1 }; ok(ES.apply(st, 0, { k = "deal", deck = DM }))
       else
-        s.seats = { A, B, C, D }; st = EB.new{ first = 1 }; ok(EB.apply(st, 0, { k = "deal", deck = DECK_A }))
+        s.seats = { A, BOT }; st = ES.new{ first = 1 }; ok(ES.apply(st, 0, { k = "deal", deck = DM }))
       end
       s.status, s.state = "live", w.ns.Engines[game].view(st, 1)
       TF.render()
@@ -738,7 +559,7 @@ describe("ui: hand history — the panel beside the table", function()
         if r then ok(not overlap(panel, r), "a bottom button under the panel") end
       end
       ok(n > 3, "board frames resolved: " .. n)
-      local named = { holdem = { "foldButton", "callButton", "raiseButton", "allinButton", "plusButton" }, santase = { "marryButton", "closeButton" }, belot = {} }
+      local named = { holdem = { "foldButton", "callButton", "raiseButton", "allinButton", "plusButton" }, santase = { "marryButton", "closeButton" } }
       for _, key in ipairs(named[game]) do ok(board[key]:IsVisible() and rectOf(w, board[key]), key .. " not drawn") end
       ok(not overlap(panel, rectOf(w, v.area)), "over the felt")
     end)
@@ -767,7 +588,7 @@ describe("ui: hand history — the panel beside the table", function()
 
   it("the title bar's options line stops before the watchers and „История“", function()
     local w = guildWow()
-    w.ns.client:openTable{ game = "belot", access = "guild", turn = 45 }
+    w.ns.client:openTable{ game = "santase", access = "guild", turn = 45 }
     w:advance(0)
     local TF, H = w.ns.TableFrame, w.ns.HandHistory
     local v = TF.view
@@ -784,7 +605,7 @@ describe("ui: hand history — the panel beside the table", function()
   -- QA: the options of a cash Холдем in Bulgarian were cut with „…“ in the client.
   it("a long options line shrinks, then takes two lines of the title bar: never cut", function()
     local w = guildWow()
-    w.ns.client:openTable{ game = "belot", access = "guild", turn = 45 }
+    w.ns.client:openTable{ game = "holdem", access = "guild", turn = 45 }
     w:advance(0)
     local TF, H = w.ns.TableFrame, w.ns.HandHistory
     local v = TF.view
@@ -849,7 +670,7 @@ describe("ui: hand history — the panel beside the table", function()
   -- Review: a fault drawing the history aborted TableFrame.render, on every render.
   it("a fault drawing the history is noted, never stops the table, and is not drawn again until it changes", function()
     local w = guildWow()
-    w.ns.client:openTable{ game = "belot", access = "guild", turn = 45 }
+    w.ns.client:openTable{ game = "santase", access = "guild", turn = 45 }
     w:advance(0)
     local TF, H = w.ns.TableFrame, w.ns.HandHistory
     local v = TF.view
@@ -893,7 +714,7 @@ describe("ui: hand history — the panel beside the table", function()
 
   it("with no hand yet, its line reads on the list's dark ground, not under it", function()
     local w = guildWow()
-    w.ns.client:openTable{ game = "belot", access = "guild", turn = 45 }
+    w.ns.client:openTable{ game = "santase", access = "guild", turn = 45 }
     w:advance(0)
     local v = w.ns.TableFrame.view
     w:click(v.historyButton)

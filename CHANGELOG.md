@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.3 (2026-11-26)
+
+- **Belot:** the table no longer has a hand history. Remembering what has been played is part of the game, so only „Last trick“ is left, as before. Santase, Hold'em and Chess keep their history.
+
 ## 1.0.2 (2026-11-26)
 
 - **Settings:** the Discord server's address now sits under the source code's, in the same box you can copy from.

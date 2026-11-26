@@ -5,7 +5,6 @@ local _, ns = ...
 --   { hand, title, what (text) | trump (a face) + after (text), sum (the line of a closed hand),
 --     open, rows = { … } }
 -- and a row one of
---   legend { items = {{ dot = {r, g, b}, text }} }        Белот: who plays with whom
 --   trick  { n, slots, cards = {{ face, name, color, won }}, pts, side = "us" | "them" | nil, cur }
 --   event  { text, cards = {faces} }                     Сантасе: 20/40, the nine, the close
 --   note   { text }  result { text, coin }
@@ -13,10 +12,9 @@ local _, ns = ...
 --   acts   { list = {{ name, color, text, style = "fold" | "raise" | "allin" | nil }} }
 --   show   { name, color, cards, cat, best }
 --   side, moves (chess: ui/ChessHistory.lua)
--- Names are Names.short among the hand's seats in the class colour. The points of a trick and the
--- running total come from the cards played and the contract, by the engines' own values (Белот:
--- E.cardValue and the last trick's 10; Сантасе: E.VALUE and the 10 of a stock played out); a
--- finished Белот hand shows the totals the deal scored (hand.score: st.res.raw).
+-- Names are Names.short among the hand's seats in the class colour. The points of a trick come
+-- from the cards played, by the engine's own values (Сантасе: E.VALUE and the 10 of a stock played
+-- out). Белот has no history (ui/HandHistory.lua): its table shows only the last trick.
 local Theme, W, L, Cards = ns.Theme, ns.W, ns.L, ns.Cards
 local H = ns.HandHistory
 
@@ -55,7 +53,7 @@ end
 local function count(n) return n == 1 and L("table.historyTricks1") or L("table.historyTricks", n) end
 
 -- Were the hand's tricks seen from the first (1 … the last done, none missing)? A hand first
--- seen mid-way (a watcher come late, a /reload) has only some: no count nor running total then.
+-- seen mid-way (a watcher come late, a /reload) has only some: no trick count then.
 local function fromStart(hand)
   local top = 0
   for n in pairs(hand.tricks) do if n > top then top = n end end
@@ -84,78 +82,6 @@ local function trickRow(hand, n, t, cur, slots, pts, side)
     cards[k] = { face = c.face, name = name, color = color, full = full, won = not cur and c.seat == t.win }
   end
   return { k = "trick", n = n, slots = slots, cards = cards, pts = not cur and pts or nil, side = not cur and side or nil, cur = cur }
-end
-
----------------------------------------------------------------------------
--- Белот
----------------------------------------------------------------------------
-
-local function team(seat) return 2 - seat % 2 end
-
--- „Игра: ♠ Пика, контра · каза Petrova“: the suit's icon before a suit contract.
-local function contractText(hand)
-  local c = hand.contract
-  local game = L("belot.bid." .. c.b)
-  if Cards.COORD[c.b] then game = ns.HistoryKit.suitTag(c.b) .. " " .. game end
-  if c.x == 2 then game = L("belot.x2", game) elseif c.x == 4 then game = L("belot.x4", game) end
-  return L("belot.contract", game) .. " · " .. L("belot.by", H.whoText(hand, c.seat))
-end
-
--- The two teams' labels and seats, mine first: „ние“ / „те“, a watcher's „долу и горе“ / „ляво и дясно“.
-local function teams(me)
-  if me then
-    local mine = team(me)
-    return { { L("table.historyUs"), mine, me, (me + 1) % 4 + 1, GREEN }, { L("table.historyThem"), 3 - mine, me % 4 + 1, (me + 2) % 4 + 1, RED } }
-  end
-  return { { L("belot.historyTeamA"), 1, 1, 3, { Theme.rgb("goldHi") } }, { L("belot.historyTeamB"), 2, 2, 4, { Theme.rgb("accent") } } }
-end
-
-local function belot(hand, s)
-  local me = seated(s, 4)
-  local T = teams(me)
-  local block = { what = hand.contract and contractText(hand), rows = {} }
-  local rows = block.rows
-  if hand.names[1] then
-    local items = {}
-    for k, x in ipairs(T) do
-      items[k] = { dot = x[5], text = L("table.historyTeam", x[1], H.whoText(hand, x[3]), H.whoText(hand, x[4])) }
-    end
-    rows[#rows + 1] = { k = "legend", items = items }
-  end
-  local sum, tricks = { 0, 0 }, 0
-  walk(hand, function(n, t, cur)
-    local pts
-    if not cur and hand.contract then
-      pts = n == 8 and 10 or 0
-      for _, c in ipairs(t.cards) do pts = pts + (c.face and ns.Engines.belot.cardValue(hand.contract.b, c.face) or 0) end
-      -- Без коз: the engine doubles the hand's points (with the last 10; no announces in N), so a
-      -- trick counts double and the tricks add up to the final line. Контра / реконтра multiply
-      -- only the result, never a trick.
-      if hand.contract.b == "N" then pts = pts * 2 end
-      sum[team(t.win)] = sum[team(t.win)] + pts
-      tricks = tricks + 1
-    end
-    local side = me and t.win and (team(t.win) == team(me) and "us" or "them")
-    rows[#rows + 1] = trickRow(hand, n, t, cur, 4, pts, side)
-  end, function() end)
-  local a, b = T[1][2], T[2][2]
-  local total = hand.score or sum
-  local score = L("table.historyScore", T[1][1], total[a], T[2][1], total[b])
-  local whole = fromStart(hand)
-  if hand.score then -- the deal's own totals: right however much of it was seen
-    block.sum = (whole and count(tricks) or L("table.historyPartial")) .. " · " .. score .. (hand.valat and ", " .. L("belot.historyValat") or "")
-    rows[#rows + 1] = { k = "result", text = block.sum }
-  elseif hand.passed then
-    block.sum = L("belot.passed")
-    rows[#rows + 1] = { k = "note", text = block.sum }
-  elseif hand.closed and not hand.ended then -- the next deal came with no score: annulled
-    block.sum = L("belot.historyVoid")
-    rows[#rows + 1] = { k = "note", text = block.sum }
-  elseif tricks > 0 then
-    block.sum = whole and L("table.historySoFar", score) or L("table.historyPartial")
-    rows[#rows + 1] = { k = whole and "result" or "note", text = block.sum }
-  end
-  return block
 end
 
 ---------------------------------------------------------------------------
@@ -262,7 +188,7 @@ local function holdem(hand, s)
   return block
 end
 
-H.BLOCK.belot, H.BLOCK.santase, H.BLOCK.holdem = belot, santase, holdem
+H.BLOCK.santase, H.BLOCK.holdem = santase, holdem
 
 -- The hands of table s for the panel, the newest first (see the top of the file).
 function H.blocks(s)
