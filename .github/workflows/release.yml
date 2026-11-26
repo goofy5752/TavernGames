@@ -1,0 +1,85 @@
+name: release
+
+# A push to master whose toc carries a version without a tag yet releases it: the tests, then the
+# zip, the tag vX.Y.Z with a GitHub release, and the same zip on CurseForge (when the secret
+# CF_API_KEY is set). Any other push to master finds the tag there already and does nothing.
+# Start a release with `python tools/release/release.py bump X.Y.Z` in a PR (see tools/release/README.md).
+# Run by hand with "curseforge only" to upload the current version to CurseForge again
+# (for one whose CurseForge upload failed after its GitHub release).
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+    inputs:
+      curseforge_only:
+        description: "Upload the current version to CurseForge only (its GitHub release exists)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: release
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CF_API_KEY: ${{ secrets.CF_API_KEY }}
+      CF_GAME_VERSION: ${{ vars.CF_GAME_VERSION }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Is this version new?
+        id: v
+        run: |
+          v=$(python3 tools/release/release.py version)
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          if gh release view "v$v" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            echo "new=false" >> "$GITHUB_OUTPUT"
+            echo "v$v is released already: nothing to do." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "new=true" >> "$GITHUB_OUTPUT"
+            python3 tools/release/release.py notes "$v" > /dev/null # a release needs its CHANGELOG section
+          fi
+
+      - name: Install LuaJIT
+        if: steps.v.outputs.new == 'true'
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq luajit
+
+      - name: Run the test suite
+        if: steps.v.outputs.new == 'true'
+        env:
+          LC_ALL: C
+        run: bash t.sh
+
+      - name: Build the zip
+        if: steps.v.outputs.new == 'true' || inputs.curseforge_only
+        run: python3 tools/release/release.py zip "${{ steps.v.outputs.version }}" dist
+
+      - name: GitHub release
+        if: steps.v.outputs.new == 'true' && !inputs.curseforge_only
+        run: |
+          v="${{ steps.v.outputs.version }}"
+          python3 tools/release/release.py body "$v" > dist/body.md
+          gh release create "v$v" "dist/TavernGames-$v.zip" --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" --title "Tavern Games $v" --notes-file dist/body.md
+          echo "Released [v$v]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/tag/v$v)." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: CurseForge
+        if: (steps.v.outputs.new == 'true' || inputs.curseforge_only) && env.CF_API_KEY != ''
+        run: |
+          v="${{ steps.v.outputs.version }}"
+          python3 tools/release/release.py curseforge "dist/TavernGames-$v.zip" "$v" | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: No CurseForge key
+        if: (steps.v.outputs.new == 'true' || inputs.curseforge_only) && env.CF_API_KEY == ''
+        run: echo "The secret CF_API_KEY is not set, so CurseForge got nothing." >> "$GITHUB_STEP_SUMMARY"
