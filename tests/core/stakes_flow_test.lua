@@ -403,24 +403,24 @@ end
 -- funLog() run on the build of 82b0140 (before stage F1), where no HI had an
 -- ld and no LEV existed: generated once, by the same function.
 local FUN_82B0140 = [==[
-0 Иван Петров GUILD nil {cls="MAGE",id="Player-0000-00000001",re=true,t="HI",v=1,ver="1.0.1"}
-0 Мария Стоянова GUILD nil {cls="PRIEST",id="Player-0000-00000002",re=true,t="HI",v=1,ver="1.0.1"}
-0 Kiro Barley GUILD nil {cls="ROGUE",id="Player-0000-00000003",re=true,t="HI",v=1,ver="1.0.1"}
-1 Иван Петров WHISPER Мария Стоянова {cls="MAGE",id="Player-0000-00000001",re=false,t="HI",v=1,ver="1.0.1"}
-1 Иван Петров WHISPER Kiro Barley {cls="MAGE",id="Player-0000-00000001",re=false,t="HI",v=1,ver="1.0.1"}
-1 Мария Стоянова WHISPER Kiro Barley {cls="PRIEST",id="Player-0000-00000002",re=false,t="HI",v=1,ver="1.0.1"}
+0 Иван Петров GUILD nil {cls="MAGE",id="Player-0000-00000001",re=true,t="HI",v=1,ver="VER"}
+0 Мария Стоянова GUILD nil {cls="PRIEST",id="Player-0000-00000002",re=true,t="HI",v=1,ver="VER"}
+0 Kiro Barley GUILD nil {cls="ROGUE",id="Player-0000-00000003",re=true,t="HI",v=1,ver="VER"}
+1 Иван Петров WHISPER Мария Стоянова {cls="MAGE",id="Player-0000-00000001",re=false,t="HI",v=1,ver="VER"}
+1 Иван Петров WHISPER Kiro Barley {cls="MAGE",id="Player-0000-00000001",re=false,t="HI",v=1,ver="VER"}
+1 Мария Стоянова WHISPER Kiro Barley {cls="PRIEST",id="Player-0000-00000002",re=false,t="HI",v=1,ver="VER"}
 1 Иван Петров GUILD nil {ac="guild",e=1,g="ttt",h="Иван Петров",s={[1]="Иван Петров",[2]=false},st="open",t="TBL",tid="Иван Петров#1700000001",tn=45,v=1,w=0}
-2 Иван Петров GUILD nil {at="Иван Петров#1700000001",cls="MAGE",id="Player-0000-00000001",re=false,t="HI",v=1,ver="1.0.1"}
+2 Иван Петров GUILD nil {at="Иван Петров#1700000001",cls="MAGE",id="Player-0000-00000001",re=false,t="HI",v=1,ver="VER"}
 4 Kiro Barley WHISPER Иван Петров {t="WAT",tid="Иван Петров#1700000001",v=1}
 5 Иван Петров WHISPER Kiro Barley {e=1,q=0,t="SNP",tbl={ac="guild",e=1,g="ttt",h="Иван Петров",s={[1]="Иван Петров",[2]=false},st="open",tid="Иван Петров#1700000001",tn=45,w=1},tid="Иван Петров#1700000001",v=1}
 5 Иван Петров GUILD nil {ac="guild",e=1,g="ttt",h="Иван Петров",s={[1]="Иван Петров",[2]=false},st="open",t="TBL",tid="Иван Петров#1700000001",tn=45,v=1,w=1}
-5 Kiro Barley GUILD nil {at="Иван Петров#1700000001",cls="ROGUE",id="Player-0000-00000003",re=false,t="HI",v=1,ver="1.0.1"}
+5 Kiro Barley GUILD nil {at="Иван Петров#1700000001",cls="ROGUE",id="Player-0000-00000003",re=false,t="HI",v=1,ver="VER"}
 5 Мария Стоянова WHISPER Иван Петров {seat=2,t="SIT",tid="Иван Петров#1700000001",v=1}
 6 Иван Петров WHISPER Kiro Barley {a={k="sit",name="Мария Стоянова",seat=2},e=1,q=1,seat=0,t="EV",tid="Иван Петров#1700000001",v=1}
 6 Иван Петров WHISPER Мария Стоянова {e=1,q=1,t="SNP",tbl={ac="guild",e=1,g="ttt",h="Иван Петров",s={[1]="Иван Петров",[2]="Мария Стоянова"},st="open",tid="Иван Петров#1700000001",tn=45,w=1},tid="Иван Петров#1700000001",v=1}
 6 Иван Петров WHISPER Мария Стоянова {a={k="start"},e=1,left=45,q=2,seat=0,t="EV",tid="Иван Петров#1700000001",v=1}
 6 Иван Петров WHISPER Kiro Barley {a={k="start"},e=1,left=45,q=2,seat=0,t="EV",tid="Иван Петров#1700000001",v=1}
-6 Мария Стоянова GUILD nil {at="Иван Петров#1700000001",cls="PRIEST",id="Player-0000-00000002",re=false,t="HI",v=1,ver="1.0.1"}
+6 Мария Стоянова GUILD nil {at="Иван Петров#1700000001",cls="PRIEST",id="Player-0000-00000002",re=false,t="HI",v=1,ver="VER"}
 7 Иван Петров GUILD nil {ac="guild",e=1,g="ttt",h="Иван Петров",s={[1]="Иван Петров",[2]="Мария Стоянова"},st="live",t="TBL",tid="Иван Петров#1700000001",tn=45,v=1,w=1}
 8 Иван Петров WHISPER Мария Стоянова {a={c=1,k="mark"},e=1,left=45,q=3,seat=1,t="EV",tid="Иван Петров#1700000001",v=1}
 8 Иван Петров WHISPER Kiro Barley {a={c=1,k="mark"},e=1,left=45,q=3,seat=1,t="EV",tid="Иван Петров#1700000001",v=1}
@@ -480,7 +480,9 @@ describe("stakes: fun tables are untouched", function()
   it("a fun-only evening is byte-identical but for HI.ld and R", function()
     local log, levs, his = funLog()
     local ref = {}
-    for line in FUN_82B0140:gmatch("[^\n]+") do ref[#ref + 1] = line end
+    -- the addon's own version in a HI is written ver="VER" there: a version bump never breaks it
+    local own = 'ver="' .. ns.Const.VERSION .. '"'
+    for line in FUN_82B0140:gmatch("[^\n]+") do ref[#ref + 1] = (line:gsub('ver="VER"', function() return own end)) end
     eq(#log, #ref)
     for j = 1, math.max(#log, #ref) do eq(log[j], ref[j], "line " .. j) end
     -- What was dropped: the host's one LEV with the result, on GUILD; and every HI carried a digest.
