@@ -17,7 +17,7 @@ A push that leaves the version unchanged finds the tag already there and does no
 ## CurseForge
 
 - **Project:** the toc's `## X-Curse-Project-ID`.
-- **Key:** the repository secret `CF_API_KEY`, an API token from <https://authors.curseforge.com/account/api-tokens>.
+- **Key:** the repository secret `CF_API_KEY`, an API token from <https://authors.curseforge.com/#/settings/api-tokens>.
   Without it, CurseForge is skipped and the GitHub release still goes out.
 - **Game version:** taken from the toc's Interface (16001 is 1.60.1), among CurseForge's WoW Forever versions.
   If CurseForge names it differently, set the repository variable `CF_GAME_VERSION`.
