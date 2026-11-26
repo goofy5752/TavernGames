@@ -10,8 +10,9 @@ luajit tools/shots/scenes.lua && python tools/shots/render.py
 Every README scene also has a Horde twin, `<scene>_horde`: the same scene booted as the Horde, for the README's
 "Horde look" fold. Run it from the repo root. You can also name scenes, for example `luajit tools/shots/scenes.lua hall belot` followed by
 `python tools/shots/render.py hall belot`. It needs LuaJIT, and Python with Pillow and numpy.
-The scenes `history_belot`, `history_long` (the longest names), `history_santase` and `history_chess` show the „История“
-window open beside a table, to check it against mockup 10; they are made only when named and are not README pictures.
+The scenes `history_long` (the longest names), `history_santase` and `history_chess` show the „История“ window
+open beside a table, to check it against mockup 10; they are made only when named and are not README pictures. Belot has
+no „История“ (remembering the cards is part of the game): its table shows only the last trick.
 The scenes `names_hall`, `names_belot`, `names_deathroll` and `names_ledger` (which also writes `names_board`) show
 long two-word names, two players with one first word and bots, to check the short names, the bot mark and that no text
 is cut; they too are made only when named.
@@ -27,7 +28,7 @@ SHOTS_OUT=some/dir python tools/shots/render.py lint_hall_bg_h_min   # draws one
 
 `lint.lua` builds every window of the addon with long two-word names (their first words the widest 12-letter
 ones), two players with one first word at one table, bots, a 24-letter guild name and the biggest amounts (`lint_scenes.lua`: the hall and its list,
-every game table with the „История“ window, a cash Hold'em, the tavern window's tabs, the rules book, the
+every game table with the „История“ window where it has one, a cash Hold'em, the tavern window's tabs, the rules book, the
 new-table dialog of every game, the pay dialog, the stake questions, the toasts, the bill, the intro, the
 „Покани“ picker, the question before „Стани“). Each runs in English with the Alliance and in Bulgarian with
 the Horde (the hall and Belot also the other way round), then on four screens (1024x768, 1365x768, 1820x768,

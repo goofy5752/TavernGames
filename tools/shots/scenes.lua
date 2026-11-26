@@ -329,7 +329,8 @@ scene("holdem", function()
 end)
 
 -- The „История“ window open beside a table (mockup 10), for checking it: these scenes are made only
--- when named (luajit tools/shots/scenes.lua history_belot history_long history_santase history_chess).
+-- when named (luajit tools/shots/scenes.lua history_long history_santase history_chess). Белот has none:
+-- remembering the cards is part of the game, its table shows only the last trick.
 -- `game` played by me and bots until stop(st).
 local function withHistory(w, stop, limit, think, choose)
   local okStop = play(w, function(st, _, mine) return mine and stop(st) end, limit or 900, think or 1, choose)
@@ -339,28 +340,15 @@ local function withHistory(w, stop, limit, think, choose)
   return okStop, v
 end
 
--- Белот: the third deal under way (two closed above it), the trick on the table half played.
-scene("history_belot", function()
-  local w = boot{ seed = 11 }
-  myTable(w, "belot")
-  local okStop, v = withHistory(w, function(st) return st.phase == "play" and (st.round or 1) >= 3 and (st.trickNo or 1) >= 4 and #(st.trick or {}) == 2 end, 1200)
-  assert(okStop, "history_belot: no third deal")
-  -- the hand under way, and the one before it opened by a click on its header
-  local H = w.ns.HandHistory
-  local blocks = H.blocks(w.ns.client.session)
-  if blocks[2] then H.toggle(blocks[2].hand, false); H.draw(v.history, w.ns.client.session) end
-  write("history_belot", w, { w.ns.TableFrame.frame, v.history })
-end, true)
-
--- The same window with the longest names a table can have (two-word names, a bot's long one).
+-- The same window with the longest names a table can have (Сантасе: mine, a bot's long one).
 scene("history_long", function()
-  local w = boot{ seed = 11 }
-  myTable(w, "belot")
-  local okStop, v = withHistory(w, function(st) return st.phase == "play" and (st.round or 1) >= 2 and (st.trickNo or 1) >= 3 and #(st.trick or {}) == 3 end, 1200)
-  assert(okStop, "history_long: no second deal")
+  local w = boot{ seed = 5 }
+  myTable(w, "santase")
+  local okStop, v = withHistory(w, function(st) return st.phase == "play" and (st.hand or 1) >= 2 and (st.ntr[1] + st.ntr[2]) >= 2 and #(st.trick or {}) == 1 end, 900)
+  assert(okStop, "history_long: no second hand")
   local H, s = w.ns.HandHistory, w.ns.client.session
   for _, hand in ipairs(H.tables[s.tid].hands) do
-    hand.names = { ME, "Bot Barleybrewster", "Ivan Petrov", "Ivan Kolevski" }
+    hand.names = { [s.mySeat] = ME, [3 - s.mySeat] = "Bot Barleybrewster" }
   end
   H.draw(v.history, s)
   write("history_long", w, { w.ns.TableFrame.frame, v.history })
@@ -606,15 +594,14 @@ end, true)
 scene("names_belot", function()
   local w = boot{ seed = 11 }
   myTable(w, "belot")
-  local okStop, v = withHistory(w, function(st) return st.phase == "play" and (st.round or 1) >= 2 and (st.trickNo or 1) >= 3 and #(st.trick or {}) == 3 end, 1200)
+  local okStop = play(w, function(st, _, mine) return mine and st.phase == "play" and (st.round or 1) >= 2 and (st.trickNo or 1) >= 3 and #(st.trick or {}) == 3 end, 1200)
   assert(okStop, "names_belot: no second deal")
-  local s, H = w.ns.client.session, w.ns.HandHistory
+  run(w, 0.5)
+  local s = w.ns.client.session
   local names = { ME, "Bot Barleybrewster", "Ivan Petrovski", "Ivan Kolevski" }
   for i = 2, 4 do s.seats[i] = names[i] end
-  for _, hand in ipairs(H.tables[s.tid].hands) do hand.names = names end
   w.ns.TableFrame.render()
-  H.draw(v.history, s)
-  write("names_belot", w, { w.ns.TableFrame.frame, v.history })
+  write("names_belot", w, { w.ns.TableFrame.frame })
 end, true)
 
 -- A Death Roll of four: two Ivans and a long name beside me; seven cells on the ladder.

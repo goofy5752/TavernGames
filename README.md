@@ -25,7 +25,7 @@
 
 Every table is either **just for fun** or **staked in gold and silver**. The addon never moves gold by itself. It keeps a **guild-wide debt ledger**, fills in the amount for a **trade** or a **mail**, and you press the button. The addon runs on GUILD and WHISPER addon messages only, so it needs no server, website or external service.
 
-> **Version 1.0.2** ([changelog](CHANGELOG.md)), the first public release with a few additions. All seven games, stakes, the ledger, the leaderboard and the history are built, tested in game on WoW Forever and covered by more than 2500 automated tests. Please [open an issue](../../issues) or tell us on [Discord](https://discord.gg/uuZg5TRmZz) if something misbehaves.
+> **Version 1.0.3** ([changelog](CHANGELOG.md)), the first public release with a few additions. All seven games, stakes, the ledger, the leaderboard and the history are built, tested in game on WoW Forever and covered by more than 2500 automated tests. Please [open an issue](../../issues) or tell us on [Discord](https://discord.gg/uuZg5TRmZz) if something misbehaves.
 
 ## Table of contents
 
@@ -65,7 +65,7 @@ Every table is either **just for fun** or **staked in gold and silver**. The add
 - 🌍 **English and Bulgarian** interface, an in-game rules book and a first-run intro.
 - 🎨 **Your faction's tavern**: an *Alliance* look (lapis and gold) or a *Horde* look (blood and iron), with its own frames, felt, crests and sounds. The cards come in faction and race decks, with the faction's leaders as kings.
 - 🤖 **Practice bots**: add bots to a table *for fun* with one click to learn a game or try it alone. Bots never join a table with a stake.
-- 🗂️ **Hand history**: look back at every trick of Belot and Santase and every Hold'em hand while you play. Hold'em shows your current hand as it changes (*Pair of Kings*, *Full House*), and all-in hands are turned face up before the board runs out.
+- 🗂️ **Hand history**: look back at every trick of Santase and every Hold'em hand while you play. Belot shows only the last trick, since remembering the cards is part of the game. Hold'em shows your current hand as it changes (*Pair of Kings*, *Full House*), and all-in hands are turned face up before the board runs out.
 - ↘️ **Resizable windows**: drag the corner or the frame of the main window or a game table. Everything inside, from text to cards to boards, scales with it, and the size is remembered. Right-click the corner for the normal size.
 
 ## Games
@@ -344,7 +344,7 @@ Bug reports, rule corrections (especially for regional Belot and Santase variant
 - **Класация и история:** седмица, месец и всичко, титлата „Кралят/Кралицата на механата“, хронология на игрите и сравнение между двама играчи.
 - **Механата на твоята фракция:** облик на Алианса (лапис и злато) или на Ордата (кръв и желязо), с тестета на градовете и расите.
 - **Ботове за тренировка:** бутон „Добави ботове“ на маса за удоволствие. На маса със залог ботове не сядат.
-- **История на ръцете:** всяка взятка в Белот и Сантасе и всяка ръка в Холдема. В Холдема виждаш какво имаш в момента, а при all-in картите се обръщат преди борда.
+- **История на ръцете:** всяка взятка в Сантасе и всяка ръка в Холдема. Белот показва само последната взятка, защото помненето на картите е част от играта. В Холдема виждаш какво имаш в момента, а при all-in картите се обръщат преди борда.
 - **Разтегаеми прозорци:** хващаш ъгъла на прозореца или на масата и го правиш колкото искаш голям. Всичко вътре се уголемява заедно с него.
 - **Интерфейс на български и английски**, книга с правилата и въведение при първо пускане.
 

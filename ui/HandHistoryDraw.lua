@@ -90,24 +90,6 @@ function R.note(P, row, y, wd)
   return h + 4
 end
 
--- Dots and texts in a line that wraps: each item a 7 px dot and its words.
-function R.legend(P, row, y, wd)
-  local left, right = X0 + 16, X0 + wd
-  local x, top, lh = left, y, 0
-  for _, item in ipairs(row.items) do
-    local need = 11 + P:measure(item.text, "ui", 10)
-    if x > left and x + need > right then x, y, lh = left, y + lh + 4, 0 end
-    local dot = P:tex("ARTWORK")
-    dot:SetTexture(Theme.tex.chair)
-    dot:SetVertexColor(item.dot[1], item.dot[2], item.dot[3])
-    P:put(dot, x, y + 3, 7, 7)
-    local fs, h = P:text(x + 11, y, right - x - 11, item.text, "ui", 10, "inkDim")
-    lh = math.max(lh, h)
-    x = x + 11 + math.min(W.textWidth(fs), right - x - 11) + 12
-  end
-  return y + lh + 6 - top
-end
-
 function R.mine(P, row, y, wd)
   local fs = P:text(X0, y + 12, wd - 2 * (SMALL + 3) - 6, row.text, "ui", 11, "inkDim")
   smalls(P, X0 + math.min(W.textWidth(fs), wd - 2 * (SMALL + 3) - 6) + 6, y + 2, row.cards, function() return "mine" end)

@@ -1,20 +1,20 @@
 local _, ns = ...
 
--- The hand history of the table I sit or watch at (Белот, Сантасе, Холдем): a
--- recorder fed by the client's "session" event, the same state the views draw,
--- kept in memory only (never saved, never sent), the last MAX hands of the
--- table, dropped as soon as I leave it (no session, or another table). The
--- panel that shows it is ui/HandHistoryPanel.lua. A snapshot (my events jumped,
--- or another epoch) keeps the hand's record and reads the next change from it.
+-- The hand history of the table I sit or watch at (Сантасе, Холдем; Шах:
+-- ui/ChessHistory.lua): a recorder fed by the client's "session" event, the same
+-- state the views draw, kept in memory only (never saved, never sent), the last
+-- MAX hands of the table, dropped as soon as I leave it (no session, or another
+-- table). The panel that shows it is ui/HandHistoryPanel.lua. A snapshot (my
+-- events jumped, or another epoch) keeps the hand's record and reads the next
+-- change from it. Белот keeps none: remembering what was played is part of the
+-- game, its table shows only the last trick (ui/games/BelotView.lua).
 --
 -- It records only what the whole table has seen face up, whatever else my view
 -- may know:
---   Белот / Сантасе: the cards played to a trick (st.trick, st.last), the
---     contract (the auction is public), the trump suit (the face-up card),
---     the face-up trump card (Сантасе), Сантасе's declarations (the points of
---     st.mar, the suit of the card they lead: both of the pair are shown), the
---     close and the swap of the nine, the hand's result (Сантасе: its points,
---     E.points; Белот: the team totals of st.res.raw). Never a face of a hand or
+--   Сантасе: the cards played to a trick (st.trick, st.last), the trump suit and
+--     the face-up trump card, the declarations (the points of st.mar, the suit of
+--     the card they lead: both of the pair are shown), the close and the swap of
+--     the nine, the hand's result (its points, E.points). Never a face of a hand or
 --     of the stock, not even once the match is over and the view holds every face.
 --   Холдем: the blinds, every action (fold / check / call / bet / raise /
 --     all-in, from what each seat put in: st.p), the board, the result, the
@@ -25,15 +25,14 @@ local _, ns = ...
 --
 -- HandHistory.tables[tid] = { game, hands = { oldest … newest }, ver } and a
 -- hand = { key, no, names = {seat -> name}, … }:
---   card games: tricks = {[n] = { cards = {{seat, face}…}, win }}, cur (the trick
---     under way), contract (Белот), score = {us, them} and valat (Белот: st.res.raw),
---     tsuit, trump (the face-up card), shut (closed), events = {{at = trick, k, seat,
---     pts, suit}}, res = {winner, gp, pts} (Сантасе);
+--   Сантасе: tricks = {[n] = { cards = {{seat, face}…}, win }}, cur (the trick
+--     under way), tsuit, trump (the face-up card), shut (closed), events = {{at =
+--     trick, k, seat, pts, suit}}, res = {winner, gp, pts};
 --   Холдем: sb, bb, acts = {{street, seat, k, amt}…}, board = {faces}, mine,
 --     me, open, shown = {{seat, cards, cat}}, won = {{seat, amt}}, void, done.
 local E = ns.Engines
 
-local H = { MAX = 10, GAMES = { belot = true, santase = true, holdem = true }, RECORD = {}, BLOCK = {}, tables = {} }
+local H = { MAX = 10, GAMES = { santase = true, holdem = true }, RECORD = {}, BLOCK = {}, tables = {} }
 ns.HandHistory = H
 
 local function suit(face) return type(face) == "string" and face:sub(2, 2) or nil end
@@ -50,7 +49,7 @@ end
 
 -- The record of hand `no` of game `gid` (Холдем's state.g where core/Cash.lua set it at
 -- `start`, else none: a new game is seen by its hand count going back, see holdem();
--- none for the card games, whose new match begins with a "deal" phase that closes the
+-- none for Сантасе, whose new match begins with a "deal" phase that closes the
 -- last hand): the newest one, or a new one on top while that is another hand, closed,
 -- or ended with its game (`over`: the state is still that game's end). Never s.gameNo,
 -- which every adopted snapshot moves on. The oldest beyond MAX go. -> hand, fresh
@@ -78,43 +77,6 @@ function H.names(hand, s, n)
     local who = s.handNames and s.handNames[seat]
     if type(who) ~= "string" then who = s.seats and s.seats[seat] end
     if hand.names[seat] == nil and type(who) == "string" then hand.names[seat] = who end
-  end
-end
-
----------------------------------------------------------------------------
--- Белот: st.last = { cards, lead, win }; the tricks done = st.took[1] + st.took[2]
----------------------------------------------------------------------------
-
-local function belot(s, st, b)
-  local phase, top = st.phase, b.hands[#b.hands]
-  local res = st.res -- the deal just scored: its team totals, as the table's score shows them
-  if top and not top.closed and not top.score and res and res.contract and res.raw and res.round == top.no then
-    top.score, top.valat = { res.raw[1], res.raw[2] }, res.valat or nil
-  end
-  if phase == "deal" then -- between deals, or a void: the next deal is another hand
-    -- a passed-out deal leaves res without a contract, naming its round; a void none
-    if top and not top.closed and res and res.contract == nil and res.round == top.no then top.passed = true end
-    return close(b)
-  end
-  if phase == "match" and top then top.ended = true end
-  if phase ~= "bid" and phase ~= "play" and phase ~= "score" then return end
-  local hand = H.handOf(b, st.round)
-  H.names(hand, s, 4)
-  local c = st.contract
-  if c then hand.contract = { seat = c.seat, b = c.b, x = c.x } end
-  if phase == "bid" then return end
-  local done = (st.took and st.took[1] or 0) + (st.took and st.took[2] or 0)
-  local last = st.last
-  if last and done > 0 and not hand.tricks[done] then
-    local cards = {}
-    for k, i in ipairs(last.cards) do cards[k] = { seat = (last.lead + k - 2) % 4 + 1, face = st.deck[i] } end
-    hand.tricks[done] = { cards = cards, win = last.win }
-  end
-  hand.cur = nil
-  if st.trick and #st.trick > 0 and st.lead then
-    local cards = {}
-    for k, i in ipairs(st.trick) do cards[k] = { seat = (st.lead + k - 2) % 4 + 1, face = st.deck[i] } end
-    hand.cur = { n = done + 1, cards = cards }
   end
 end
 
@@ -176,7 +138,7 @@ local function santase(s, st, b)
   end
 end
 
-H.RECORD.belot, H.RECORD.santase = belot, santase
+H.RECORD.santase = santase
 
 -- The client's session changed (s, nil once I left): another table's history goes,
 -- the table's state is read into its own.

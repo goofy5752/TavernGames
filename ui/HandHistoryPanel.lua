@@ -3,7 +3,8 @@ local _, ns = ...
 -- „История“: the table's last hands (ui/HandHistory.lua) in a side window beside
 -- the table frame (its child: it moves and scales with it, ui/Resize.lua), never
 -- over the felt, its cards or its buttons. The button sits in the title bar left of
--- ⓘ at a Белот, Сантасе or Холдем table only and toggles it; it closes when I leave
+-- ⓘ at a Сантасе, Холдем or Шах table only (never at Белот: remembering the cards is
+-- part of that game, it shows only the last trick) and toggles it; it closes when I leave
 -- the table or another table's session comes. The newest hand on top, the hand
 -- under way growing as it is played, the list scrolled with the mouse wheel (W.Scroll),
 -- vertically only. What each hand shows is ui/HandHistoryRows.lua's (mockup 10, „Ново“), its
