@@ -25,7 +25,7 @@
 
 Every table is either **just for fun** or **staked in gold and silver**. The addon never moves gold by itself. It keeps a **guild-wide debt ledger**, fills in the amount for a **trade** or a **mail**, and you press the button. The addon runs on GUILD and WHISPER addon messages only, so it needs no server, website or external service.
 
-> **Version 1.0.1** ([changelog](CHANGELOG.md)), the first public release with a few additions. All seven games, stakes, the ledger, the leaderboard and the history are built, tested in game on WoW Forever and covered by more than 2500 automated tests. Please [open an issue](../../issues) or tell us on [Discord](https://discord.gg/uuZg5TRmZz) if something misbehaves.
+> **Version 1.0.2** ([changelog](CHANGELOG.md)), the first public release with a few additions. All seven games, stakes, the ledger, the leaderboard and the history are built, tested in game on WoW Forever and covered by more than 2500 automated tests. Please [open an issue](../../issues) or tell us on [Discord](https://discord.gg/uuZg5TRmZz) if something misbehaves.
 
 ## Table of contents
 
