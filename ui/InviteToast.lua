@@ -170,6 +170,7 @@ function InviteToast.acceptStaked(tid, sk, yes)
     if open then client:answerInvite(tid, "no") end
     return
   end
+  if not ns.StakePanels.ledgerReady(client, notice) then return end -- no ledger: no staked table (the invitation runs out)
   InviteToast.accepting = { tid = tid, untilTime = now() + ACCEPT_WATCH }
   if open then return client:answerInvite(tid, "yes") end
   local rec = client.lobby:get(tid)

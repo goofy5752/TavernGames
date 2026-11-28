@@ -749,6 +749,7 @@ T["stake.ask.leave"] = "If you stand up during a game or vanish for 3 minutes, y
 T["stake.ask.yes"] = "Accept and sit"
 T["stake.ask.no"] = "Cancel"
 T["refused.stake"] = "The table's stake is a different one. Look at it and sit again."
+T["refused.ledger"] = "Your guild's ledger has not loaded yet, and a staked table needs it. Wait a moment and try again."
 T["refused.roll"] = "At this table only a real /roll counts, and your client cannot make one."
 T["table.stake"] = "Stake: %s"
 T["table.stake.none"] = "Just for fun"

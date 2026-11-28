@@ -187,6 +187,7 @@ local function submit()
       if not stake then return D.error:SetText(L("dialog.stake.bad")) end
     end
   end
+  if stake ~= nil and not ns.StakePanels.ledgerReady(client, function(text) D.error:SetText(text) end) then return end
   local tid, code = client:openTable{ game = D.gameId, access = D.access.value, turn = D.turn.value, opt = opt, stake = stake }
   if tid then
     D.frame:Hide()

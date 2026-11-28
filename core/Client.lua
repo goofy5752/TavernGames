@@ -17,20 +17,39 @@ function Client.new(env)
   self.stakeNoted = false -- a db.stakeSat note was written in this run (see ns.Stake.note)
   ns.Stake.watch(self)
   ns.CashOut.watch(self) -- my buy-in after my sit, „Стани“ as a cash-out (core/CashOut.lua)
-  -- The guild's gold ledger (env.db.ledger[env.guild]); a client without a guild has none.
   if env.guild and env.db then
-    local ledgers = env.db.ledger or {}
-    env.db.ledger = ledgers
-    ledgers[env.guild] = ledgers[env.guild] or {}
-    self.ledger = ns.Ledger.new(ledgers[env.guild], env.me, env.epoch)
-    self.ledgerNet = ns.LedgerNet.new(self, self.ledger)
-    self.ledgerSync = ns.LedgerSync.new(self, self.ledger, self.ledgerNet)
-    self.stakes = ns.Stakes.new(self) -- outcomes to the ledger, claims against me (core/StakesBook.lua)
-    self.pay = ns.Pay.new(self) -- trade, mail, „Уредено“, „Напомни“ (core/Pay.lua)
+    self:openLedger()
   elseif not env.guild and env.log then
     env.log("ledger", nil, nil, "no guild: no ledger")
   end
   return self
+end
+
+-- The guild's gold ledger (env.db.ledger[env.guild]); a client without a guild has none.
+function Client:openLedger()
+  local env = self.env
+  local ledgers = env.db.ledger or {}
+  env.db.ledger = ledgers
+  ledgers[env.guild] = ledgers[env.guild] or {}
+  self.ledger = ns.Ledger.new(ledgers[env.guild], env.me, env.epoch)
+  self.ledgerNet = ns.LedgerNet.new(self, self.ledger)
+  self.ledgerSync = ns.LedgerSync.new(self, self.ledger, self.ledgerNet)
+  self.stakes = ns.Stakes.new(self) -- outcomes to the ledger, claims against me (core/StakesBook.lua)
+  self.pay = ns.Pay.new(self) -- trade, mail, „Уредено“, „Напомни“ (core/Pay.lua)
+end
+
+-- My guild's name came after I started: right after login the game client may
+-- not know it yet (wow/Adapter.lua asks again on the guild's events). The ledger
+-- opens now, as it would have at the start -> true | nil (a ledger already, no
+-- name, no saved variables).
+function Client:joinGuild(guild)
+  if self.ledger or type(guild) ~= "string" or guild == "" or not self.env.db then return nil end
+  self.env.guild = guild
+  self:openLedger()
+  if self.running then self.ledgerNet:start(); self.stakes:start() end
+  if self.env.log then self.env.log("ledger", nil, nil, "guild known: ledger opened") end
+  self.events:emit("ledger")
+  return true
 end
 
 function Client:on(event, fn) self.events:on(event, fn) end
