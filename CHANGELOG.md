@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.0.4 (2026-11-28)
 
 - **Stakes:** right after login the game sometimes doesn't know your guild's name yet. Tavern Games then started without the guild ledger, and every staked chair said "The table's stake is a different one". The ledger now opens as soon as the guild's name is known, with no `/reload`. If it still isn't loaded, the message says that instead.
 
