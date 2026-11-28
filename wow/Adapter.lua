@@ -227,6 +227,23 @@ function Adapter.guildName()
   return type(name) == "string" and name ~= "" and name or nil
 end
 
+-- The key of my guild's ledger (the guild's name, "-", my realm's), or nil
+-- while the game client does not know my guild's name (right after login).
+function Adapter.guildKey()
+  local name = Adapter.guildName()
+  local realm = asks(Adapter.fn("GetRealmName"))
+  return name and name .. "-" .. (type(realm) == "string" and realm or "") or nil
+end
+
+-- A client started before my guild's name was known gets its ledger once it is
+-- (ns.client:joinGuild): asked again on the guild's events.
+function Adapter.joinGuild()
+  local client = ns.client
+  if not client or client.ledger then return end
+  local key = Adapter.guildKey()
+  if key then client:joinGuild(key) end
+end
+
 -- env.groupedWith(name): is `name` (normalized full name) in my party or raid?
 -- From my own client's data only: its GUID from my guild roster scan in my
 -- group, or the name in UnitInRaid / UnitInParty / the group roster; never a
@@ -345,8 +362,7 @@ function Adapter.createClient(name, send)
   env.groupedWith = groupedWith
   env.race, env.sex = raceSex()
   env.money, env.trade, env.mail, env.date = money, ns.Trade, ns.Mail, localDate
-  local guild = GetGuildInfo("player")
-  env.guild = guild and guild .. "-" .. GetRealmName() or nil
+  env.guild = Adapter.guildKey() -- nil right after login, maybe: Adapter.joinGuild opens the ledger later
   env.member = Adapter.isMember
   env.loading, env.loadedAt = Adapter.loading, Adapter.loadedAt
   ns.RollChat.env(env, false)
@@ -495,10 +511,12 @@ local EVENTS = {
   PLAYER_ENTERING_WORLD = function() loadingScreen(false) end,
   PLAYER_GUILD_UPDATE = function()
     Adapter.lookUpName()
+    Adapter.joinGuild()
     if ns.Hall then ns.Hall.refresh() end
   end,
   GUILD_ROSTER_UPDATE = function(...)
     scanRoster(...)
+    Adapter.joinGuild()
     if ns.Hall then ns.Hall.refresh() end
   end,
   CHAT_MSG_SYSTEM = function(text)

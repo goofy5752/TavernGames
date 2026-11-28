@@ -197,6 +197,17 @@ function P.askInvite(inv)
   showAsk({ kind = "invite", tid = inv.tid, sk = inv.stake, game = inv.game })
 end
 
+-- Does my client hold the guild's ledger, which a staked table needs -> bool. One
+-- started before the game client knew my guild gets it now when the name is
+-- known (wow/Adapter.lua's joinGuild); else "refused.ledger" is said, never a
+-- wrong reason („другия залог“).
+function P.ledgerReady(client, say)
+  if not client.ledger and ns.Adapter and ns.Adapter.joinGuild then ns.Adapter.joinGuild() end
+  if client.ledger then return true end
+  say(L("refused.ledger"))
+  return false
+end
+
 -- „Приемам и сядам“ (yes) or „Отказ“.
 function P.answer(yes)
   local q, client = P.question, ns.client
@@ -210,8 +221,8 @@ function P.answer(yes)
   if not yes then return end
   if q.kind == "keep" then
     client:acceptStake()
-  elseif client:sit(q.tid, q.seat, q.sk, buy) == nil and not client.ledger then
-    ns.Hall.say(L("refused.stake")) -- a client without a ledger sits at no staked table
+  elseif P.ledgerReady(client, ns.Hall.say) then -- a client without a ledger sits at no staked table
+    client:sit(q.tid, q.seat, q.sk, buy)
   end
 end
 

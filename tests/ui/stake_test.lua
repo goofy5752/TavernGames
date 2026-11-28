@@ -623,10 +623,51 @@ describe("ui: the stake, the minors of fix round 1", function()
     w.ns.MainWindow.show()
     local P = w.ns.StakePanels
     tbl(w, B, 50000)
+    w.guildName = false -- the game client does not know my guild's name (yet)
     w.ns.client.ledger = nil
     w:click(w.ns.Hall.view.tables[1].chairs[2].button)
     w:click(P.askYes)
-    eq(w.ns.Hall.view.footer:GetText(), w.ns.L("refused.stake"))
+    eq(w.ns.Hall.view.footer:GetText(), w.ns.L("refused.ledger")) -- never „the table's stake is a different one“
+    eq(#w:sentOf("SIT"), 0)
+  end)
+
+  -- Found in game: right after login GetGuildInfo answered nil, my client started
+  -- without a ledger and every staked chair said „The table's stake is a different one“.
+  it("a guild named only after login: the ledger opens on the guild's events, the staked chair sits", function()
+    local w = Wow.new{ ui = true }
+    w.inGuild, w.guildName = true, false
+    w.roster = { { name = ME .. "-Forever", online = true, guid = Wow.GUID } }
+    w:boot(); w:firstRunDone()
+    w:fire("GUILD_ROSTER_UPDATE"); w:fire("PLAYER_LOGIN")
+    local client = w.ns.client
+    ok(client, "the client started"); eq(client.ledger, nil)
+    w:slash("ledger")
+    ok(#w:chatWith(w.ns.L("ledger.none")) > 0, "/tavern ledger says it is not loaded")
+    w.guildName = nil -- now the game client knows it: „Механата“
+    w:fire("GUILD_ROSTER_UPDATE")
+    ok(client.ledger, "the ledger opened"); eq(client.env.guild, "Механата-Forever")
+    ok(client.ledgerNet and client.stakes and client.pay, "all of it")
+    w.ns.MainWindow.show()
+    local P = w.ns.StakePanels
+    local tid = tbl(w, B, 50000)
+    w:click(w.ns.Hall.view.tables[1].chairs[2].button)
+    w:click(P.askYes)
+    local sit = lastSent(w, "SIT")
+    ok(sit, "SIT sent"); eq({ sit.msg.tid, sit.msg.sk }, { tid, 50000 })
+  end)
+
+  it("a chair clicked once the name is known opens the ledger itself, with no guild event", function()
+    local w = guildWow()
+    w.ns.MainWindow.show()
+    local P = w.ns.StakePanels
+    local client = w.ns.client
+    client.ledger, client.ledgerNet, client.ledgerSync, client.stakes, client.pay = nil, nil, nil, nil, nil
+    client.env.guild = nil
+    local tid = tbl(w, B, 50000)
+    w:click(w.ns.Hall.view.tables[1].chairs[2].button)
+    w:click(P.askYes)
+    ok(client.ledger, "opened at the click")
+    eq((lastSent(w, "SIT") or { msg = {} }).msg.tid, tid)
   end)
 
   it("the „Стани“ question follows the roster while it is open (M3)", function()
